@@ -104,6 +104,8 @@ const VIEW_LABELS: Record<DashboardView, string> = {
   picks: 'My picks',
 }
 
+const RATE_LIMITED_MESSAGE = 'You are saving choices faster than we can record them. Wait a few minutes, then try again.'
+
 async function invokePublicClientDashboard<T>(body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/public-client-dashboard`, {
     method: 'POST',
@@ -114,6 +116,11 @@ async function invokePublicClientDashboard<T>(body: Record<string, unknown>): Pr
     body: JSON.stringify({ ...body, hostname: currentHostname() }),
   })
   const payload = await response.json().catch(() => ({})) as { error?: string }
+  if (response.status === 429) {
+    // Throttled: the server's message says to wait; keep a readable fallback
+    // in case the body did not survive the trip.
+    throw new Error(payload.error || RATE_LIMITED_MESSAGE)
+  }
   if (!response.ok) throw new Error(payload.error || 'Dashboard request failed')
   return payload as T
 }

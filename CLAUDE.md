@@ -2,7 +2,7 @@
 
 ## 1. Project Overview
 
-Podcast placement platform, mid-migration from a single-agency admin tool to an **invite-only multi-tenant SaaS** where sub-agencies ("workspaces") manage their own clients, podcast discovery, outreach campaigns, and client deliverables. Billing, HeyGen video, and Fathom sales-call features are retired for the invite-only MVP (their edge functions return HTTP 410).
+Podcast placement platform, mid-migration from a single-agency admin tool to an **invite-only multi-tenant SaaS** where sub-agencies ("workspaces") manage their own clients, podcast discovery, outreach campaigns, and client deliverables. HeyGen video, Fathom sales calls and the legacy single-agency Stripe checkout (`create-checkout-session`, `create-addon-checkout`, `stripe-webhook`) are retired and return HTTP 410. **Workspace billing is live**: invited workspaces pay a Stripe subscription and buy credit packs inside `/app` (`workspace-credit-checkout`, `workspace-billing-portal`, `workspace-subscription-webhook`, `stripe-credit-webhook`, and `workspace-credit-refill-tick`, which charges saved cards off-session for auto-refill).
 
 **User surfaces:**
 - `/app/*` — workspace tenant app (Supabase Auth; invite-only B2B users)
@@ -10,7 +10,7 @@ Podcast placement platform, mid-migration from a single-agency admin tool to an 
 - `/admin/*` — legacy single-agency admin pages (still live: podcast database, calendar, clients, guest resources)
 - `/portal/*` — end-client portal (custom bearer-token auth, NOT Supabase Auth)
 - `/prospect/:slug`, `/client/:slug`, `/onboarding/:token` — public capability-URL pages (the slug/token is the credential)
-- Public marketing site (`/`, `/blog`, etc.)
+- Public marketing site: `/` sells the done-for-you podcast guesting service (one monthly price, "Book a call" via Cal.com); `/platform` describes the workspace SaaS (plans listed, every CTA goes to the request-to-join form); `/blog`, etc.
 
 ## 2. Tech Stack
 
@@ -36,7 +36,7 @@ Podcast placement platform, mid-migration from a single-agency admin tool to an 
 
 ```
 src/
-  App.tsx              — All routes (React Router); billing/checkout routes redirect home
+  App.tsx              — All routes (React Router); legacy /checkout routes redirect home
   main.tsx             — Entry point (Sentry init, React render)
   index.css            — CSS variables (design tokens), Tailwind layers
   pages/
@@ -106,14 +106,16 @@ The legacy inline-CORS/`[Function Name]` logging style exists in ~50 older funct
   reappear in copy, docs or comments.
 - Target audience: Entrepreneurs, founders, thought leaders seeking podcast guest appearances
 - Avoid: Overpromising, vague claims, exclamation marks in body copy
-- Pricing may be **stated** publicly, but nothing may be **sold** publicly: the
-  landing page names what a plan costs so people can self-qualify before asking
-  to join, and every call to action still goes to the request-to-join form.
-  Checkout copy remains out of scope — the billing edge functions are retired
-  and return 410, so a public page must never imply you can buy on the spot.
-  Public prices come from `billing_plans` (seeded in
-  `20260730000100_billing_plans.sql`, priced in `20260731000100/000200`); if the
-  page and `/app/platform/billing` disagree, that screen is right.
+- Pricing may be **stated** publicly, but nothing may be **sold** publicly.
+  - `/` (done-for-you service) states its monthly price; its calls to action
+    book a call — never a checkout.
+  - `/platform` (workspace SaaS) names what each plan costs so agencies can
+    self-qualify, and every call to action goes to the request-to-join form.
+    Stripe checkout exists only inside `/app` for invited, signed-in workspaces;
+    a public page must never imply you can buy on the spot.
+  - SaaS prices come from `billing_plans` (seeded in
+    `20260730000100_billing_plans.sql`, priced in `20260731000100/000200`); if
+    `/platform` and `/app/platform/billing` disagree, that screen is right.
 
 ## 7. Testing and Quality Bar
 
@@ -167,9 +169,8 @@ npx supabase db push
 - `VITE_SENTRY_DSN` — Sentry error tracking DSN
 - `VITE_APP_URL` — canonical browser application origin
 
-No provider or service credential belongs in a `VITE_` variable. Billing and
-HeyGen/video generation are retired in the invite-only MVP; Podscan, AI, email,
-Google, Instantly, and webhook secrets remain server-only.
+No provider or service credential belongs in a `VITE_` variable. Stripe, Podscan,
+AI, email, Google, Instantly, and webhook secrets are server-only.
 
 **Edge function env vars (set in Supabase dashboard, not in `.env`):**
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — auto-injected
@@ -177,6 +178,7 @@ Google, Instantly, and webhook secrets remain server-only.
 - `PODSCAN_API_KEY` — podcast data
 - `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts per-workspace Instantly keys
 - `RESEND_API_KEY` — transactional email
+- `STRIPE_SECRET_KEY`, `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET`, `STRIPE_CREDIT_WEBHOOK_SECRET` — workspace subscriptions and credit packs
 - `ACCESS_REQUEST_NOTIFY_EMAIL` — recipient for landing-page access requests (optional; the request is stored regardless)
 - Custom domains: `CUSTOM_DOMAIN_PROVIDER` (`railway` default, or `cloudflare`) selects where
   *new* tenant domains are created. Existing rows keep the provider recorded on them, so

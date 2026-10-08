@@ -191,6 +191,9 @@ async function notifyPlatform(request: {
         html,
         text,
       }),
+      // A hung provider must not hold the visitor's request open; the request
+      // row is already stored, so a missed notification loses nothing.
+      signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) console.error('[Request Workspace Access] Notification was rejected by the provider')
   } catch (_error) {

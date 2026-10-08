@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   getWorkspaceProspect,
   getWorkspaceProspects,
+  rotateWorkspaceProspectLink,
   type ProspectShortlistPodcast,
   type ProspectWorkspaceSummary,
   type WorkspaceProspect,
@@ -20,6 +21,7 @@ vi.mock('@/services/prospectDashboards', () => ({
   getWorkspaceProspect: vi.fn(),
   getWorkspaceProspects: vi.fn(),
   removeWorkspaceProspectPhoto: vi.fn(),
+  rotateWorkspaceProspectLink: vi.fn(),
   setWorkspaceProspectPublished: vi.fn(),
   updateWorkspaceProspect: vi.fn(),
   updateWorkspaceProspectPodcast: vi.fn(),
@@ -148,6 +150,20 @@ describe('WorkspaceProspectDashboards finder link', () => {
    * there was dropped and the finder opened unscoped. The prospect-aware
    * finder is the one at /advanced.
    */
+  it('regenerates the private link only after the operator confirms', async () => {
+    const rotated = { ...prospect, slug: 'prospect-rotated' }
+    vi.mocked(rotateWorkspaceProspectLink).mockResolvedValue({ dashboard: rotated, podcasts: [] } as never)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Regenerate private link/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/current link stops working immediately/i)).toBeInTheDocument()
+    expect(rotateWorkspaceProspectLink).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Regenerate link' }))
+    await waitFor(() => expect(rotateWorkspaceProspectLink).toHaveBeenCalledWith(workspaceId, prospectId))
+  })
+
   it('sends a prospect to the finder that reads the prospect parameter', async () => {
     renderPage()
 

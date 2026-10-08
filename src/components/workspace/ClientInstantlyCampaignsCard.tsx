@@ -86,7 +86,7 @@ export const ClientInstantlyCampaignsCard = ({
         current ? { ...current, links } : current
       ))
       void queryClient.invalidateQueries({ queryKey: linksQueryKey })
-      void queryClient.invalidateQueries({ queryKey: ['workspace-inbox-threads'] })
+      void queryClient.invalidateQueries({ queryKey: ['workspace-inbox', workspaceId] })
       toast.success(`Instantly campaigns linked to ${clientName}.`)
     },
     onError: (error) => {

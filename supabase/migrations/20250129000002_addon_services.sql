@@ -133,3 +133,12 @@ CREATE TRIGGER update_booking_addons_updated_at
   BEFORE UPDATE ON public.booking_addons
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+
+-- replay-safety: 20250129000001 (which sorts first on a fresh database) shortens
+-- this service's description, but the row only exists from this file on.
+-- Repeat that idempotent update here so a fresh replay ends with the same data.
+UPDATE public.addon_services
+SET short_description = '5 professionally edited clips for social media'
+WHERE name = 'Short-Form Content Package'
+  AND short_description = 'Get 5 professionally edited clips optimized for social media';

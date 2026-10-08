@@ -84,8 +84,8 @@ export default function PortalResetPassword() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (password.length < 8) {
-      setError('Use at least 8 characters.')
+    if (password.length < 12) {
+      setError('Use at least 12 characters.')
       return
     }
     if (password !== confirmation) {
@@ -135,7 +135,7 @@ export default function PortalResetPassword() {
           </div>
           <h1 className="text-2xl font-semibold leading-none tracking-tight">Choose a new password</h1>
           <CardDescription>
-            At least 8 characters. You will sign in with it right after.
+            At least 12 characters. You will sign in with it right after.
           </CardDescription>
         </CardHeader>
         <CardContent>

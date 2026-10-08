@@ -527,7 +527,96 @@ function sendMissingStaticFile(response) {
   response.end('Not Found')
 }
 
-function setApplicationHeaders(request, response) {
+// Every third-party origin the built app frames. Schedulers come from
+// src/lib/schedulerEmbed.ts (EMBEDDABLE_HOSTS, with and without www., since the
+// embed keeps whatever host the operator pasted); Loom from the prospect page
+// and Platform University; YouTube and Vimeo from university lessons and
+// testimonial embeds. A host added there has to be added here, or its frame is
+// blocked.
+const FRAME_SOURCES = Object.freeze([
+  'https://www.loom.com',
+  'https://www.youtube-nocookie.com',
+  'https://www.youtube.com',
+  'https://player.vimeo.com',
+  'https://calendly.com',
+  'https://www.calendly.com',
+  'https://cal.com',
+  'https://www.cal.com',
+  'https://app.cal.com',
+  'https://savvycal.com',
+  'https://www.savvycal.com',
+  'https://tidycal.com',
+  'https://www.tidycal.com',
+  'https://meetings.hubspot.com',
+  'https://meetings-eu1.hubspot.com',
+  'https://zcal.co',
+  'https://www.zcal.co',
+])
+
+// Supabase (REST, functions, storage, realtime) and Sentry ingest. The project
+// URL is baked into the bundle at build time, so the hosted wildcards stay in
+// even when the server was not told which project it is.
+const CONNECT_SOURCES = Object.freeze([
+  'https://*.supabase.co',
+  'wss://*.supabase.co',
+  'https://*.ingest.sentry.io',
+  'https://*.ingest.us.sentry.io',
+  'https://*.ingest.de.sentry.io',
+])
+
+function originOf(value) {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = new URL(value.trim())
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.origin : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The Content-Security-Policy for every response.
+ *
+ * 'self' covers tenant custom domains, because each one serves this same app
+ * from its own origin. Scripts are 'self' only: the built index.html carries no
+ * executable inline script (its JSON-LD blocks are data, not script). Styles
+ * need 'unsafe-inline' because Radix/shadcn and the app set inline style
+ * attributes. Images are any https source, since podcast artwork, host photos
+ * and workspace logos come from arbitrary CDNs.
+ */
+export function buildContentSecurityPolicy({ supabaseUrl, sentryDsn } = {}) {
+  const connect = new Set(["'self'", ...CONNECT_SOURCES])
+  const supabaseOrigin = originOf(supabaseUrl)
+  if (supabaseOrigin) {
+    connect.add(supabaseOrigin)
+    connect.add(supabaseOrigin.replace(/^http/u, 'ws'))
+  }
+  const sentryOrigin = originOf(sentryDsn)
+  if (sentryOrigin) connect.add(sentryOrigin)
+
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https:",
+    "media-src 'self' blob: https:",
+    `connect-src ${Array.from(connect).join(' ')}`,
+    `frame-src 'self' ${FRAME_SOURCES.join(' ')}`,
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ')
+}
+
+export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains'
+
+function setApplicationHeaders(request, response, contentSecurityPolicy) {
+  response.setHeader('Strict-Transport-Security', STRICT_TRANSPORT_SECURITY)
+  response.setHeader('Content-Security-Policy', contentSecurityPolicy)
   response.setHeader('Referrer-Policy', 'no-referrer')
   response.setHeader('X-Content-Type-Options', 'nosniff')
   response.setHeader('X-Frame-Options', 'DENY')
@@ -591,9 +680,14 @@ export function createProductionServer({
   supabaseUrl = process.env.SUPABASE_PUBLIC_URL ?? process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
   applicationOrigin = process.env.PUBLIC_APP_URL ?? process.env.VITE_APP_URL,
   fetchImpl = globalThis.fetch,
+  sentryDsn = process.env.VITE_SENTRY_DSN,
 } = {}) {
+  const contentSecurityPolicy = buildContentSecurityPolicy({
+    supabaseUrl: supabaseUrl ?? process.env.VITE_SUPABASE_URL,
+    sentryDsn,
+  })
   return createServer(async (request, response) => {
-    setApplicationHeaders(request, response)
+    setApplicationHeaders(request, response, contentSecurityPolicy)
 
     try {
       const requestUrl = new URL(request.url ?? '/', 'http://localhost')

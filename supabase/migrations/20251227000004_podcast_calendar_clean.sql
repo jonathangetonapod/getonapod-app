@@ -7,13 +7,17 @@
 DROP VIEW IF EXISTS public.daily_bookings CASCADE;
 DROP VIEW IF EXISTS public.calendar_view CASCADE;
 DROP VIEW IF EXISTS public.client_overview CASCADE;
-DROP TABLE IF EXISTS public.bookings CASCADE;
-DROP TABLE IF EXISTS public.clients CASCADE;
+-- replay-safety: the original "DROP TABLE IF EXISTS public.bookings/clients
+-- CASCADE" lines are removed. On a fresh database both tables are created
+-- earlier (20250127000001) and have already gained the portal, bio, photo and
+-- booking-detail columns that production has; dropping them here would wipe
+-- those columns and every FK pointing at clients. The CREATE TABLEs below are
+-- IF NOT EXISTS for the same reason.
 
 -- =============================================================================
 -- CLIENTS TABLE
 -- =============================================================================
-CREATE TABLE public.clients (
+CREATE TABLE IF NOT EXISTS public.clients (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT,
@@ -35,7 +39,7 @@ CREATE INDEX clients_created_at_idx ON public.clients(created_at DESC);
 -- =============================================================================
 -- BOOKINGS TABLE
 -- =============================================================================
-CREATE TABLE public.bookings (
+CREATE TABLE IF NOT EXISTS public.bookings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
   podcast_name TEXT NOT NULL,

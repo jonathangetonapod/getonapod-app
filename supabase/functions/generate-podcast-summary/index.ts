@@ -71,6 +71,7 @@ Guidelines:
           },
         ],
       }),
+      signal: AbortSignal.timeout(30_000),
     })
 
     if (!response.ok) {
@@ -80,7 +81,10 @@ Guidelines:
     }
 
     const data = await response.json()
-    const summary = data.content[0].text
+    const summary = data?.content?.[0]?.text
+    if (typeof summary !== 'string') {
+      throw new Error('Claude API returned no text content')
+    }
 
     console.log('✅ Summary generated:', summary)
 

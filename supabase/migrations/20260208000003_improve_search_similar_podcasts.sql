@@ -48,4 +48,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION search_similar_podcasts IS 'Search for similar podcasts with pre-filters for guest acceptance, activity recency, and exclusion lists';
+-- replay-safety: CREATE OR REPLACE with a fourth argument adds an overload next
+-- to the 3-argument version from 20260129_add_podcast_embeddings.sql, so the
+-- bare function name is ambiguous here. Name the signature explicitly.
+COMMENT ON FUNCTION search_similar_podcasts(vector, float, int, text[]) IS 'Search for similar podcasts with pre-filters for guest acceptance, activity recency, and exclusion lists';

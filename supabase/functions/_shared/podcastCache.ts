@@ -92,7 +92,8 @@ export async function generateMissingEmbeddings(
           model: EMBEDDING_MODEL,
           input: text,
           dimensions: EMBEDDING_DIMENSIONS
-        })
+        }),
+        signal: AbortSignal.timeout(20_000),
       });
 
       if (!response.ok) {

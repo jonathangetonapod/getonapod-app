@@ -1,88 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { jsonResponse, optionsResponse } from '../_shared/workspaceAuth.ts'
 
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+const METHODS = ['POST'] as const
 
-  try {
-    await requirePlatformAdminOrService(req)
-    const { replyId } = await req.json()
-
-    // Validation
-    if (!replyId) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'replyId is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Get Email Bison API token from environment
-    const bisonApiToken = Deno.env.get('EMAIL_BISON_API_TOKEN')
-
-    if (!bisonApiToken) {
-      throw new Error('EMAIL_BISON_API_TOKEN not configured')
-    }
-
-    // Fetch conversation thread from Email Bison API
-    console.log('[Fetch Email Thread] Fetching thread for reply ID:', replyId)
-
-    const bisonResponse = await fetch(
-      `https://send.leadgenjay.com/api/replies/${replyId}/conversation-thread`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${bisonApiToken}`,
-          'Accept': 'application/json',
-        },
-      }
-    )
-
-    if (!bisonResponse.ok) {
-      const errorText = await bisonResponse.text()
-      console.error('[Fetch Email Thread] Email Bison API error:', errorText)
-      throw new Error(`Email Bison API error: ${bisonResponse.status} ${errorText}`)
-    }
-
-    const threadData = await bisonResponse.json()
-
-    console.log('[Fetch Email Thread] Successfully fetched thread')
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: threadData,
-      }),
-      {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-  } catch (error) {
-    console.error('[Fetch Email Thread] Error:', error)
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-  }
+// Retired in the invite-only MVP: nothing in the app, the other functions,
+// the schedules or the documented integrations called it, and the legacy Email Bison reply inbox is gone; the workspace inbox replaces it.
+serve((req) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+  return jsonResponse(req, METHODS, 410, {
+    error: 'Email thread lookup is not available',
+    code: 'EMAIL_THREAD_DISABLED',
+  })
 })

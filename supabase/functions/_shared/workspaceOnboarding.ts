@@ -507,6 +507,7 @@ export async function sendOnboardingEmail(input: {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to: [input.recipientEmail], subject, html, text }),
+      signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) return { status: 'failed', providerMessageId: null, error: 'Email provider rejected the message' }
     const data = await response.json() as { id?: unknown }

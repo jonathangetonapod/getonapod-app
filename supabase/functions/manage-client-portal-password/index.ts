@@ -208,14 +208,24 @@ serve(async (req) => {
         const token = crypto.randomUUID()
         const tokenHash = await hashPortalSessionToken(token)
         const expiresAt = new Date(Date.now() + INVITE_TOKEN_TTL_DAYS * 86_400_000).toISOString()
+        // An owner-issued link supersedes every earlier link for this client.
+        // (Self-serve reset requests add a token instead of replacing one, so
+        // the table holds one row per token, not one per client.)
+        const { error: supersedeError } = await admin
+          .from('client_portal_reset_tokens')
+          .delete()
+          .eq('client_id', clientId)
+        if (supersedeError) {
+          throw new HttpError(503, 'PASSWORD_BACKEND_UNAVAILABLE', 'The invitation could not be prepared')
+        }
         const { error: tokenError } = await admin
           .from('client_portal_reset_tokens')
-          .upsert({
+          .insert({
             client_id: clientId,
             token_hash: tokenHash,
             expires_at: expiresAt,
             requested_ip: null,
-          }, { onConflict: 'client_id' })
+          })
         if (tokenError) {
           throw new HttpError(503, 'PASSWORD_BACKEND_UNAVAILABLE', 'The invitation could not be prepared')
         }
@@ -293,14 +303,24 @@ serve(async (req) => {
         const token = crypto.randomUUID()
         const tokenHash = await hashPortalSessionToken(token)
         const expiresAt = new Date(Date.now() + INVITE_TOKEN_TTL_DAYS * 86_400_000).toISOString()
+        // An owner-issued link supersedes every earlier link for this client.
+        // (Self-serve reset requests add a token instead of replacing one, so
+        // the table holds one row per token, not one per client.)
+        const { error: supersedeError } = await admin
+          .from('client_portal_reset_tokens')
+          .delete()
+          .eq('client_id', clientId)
+        if (supersedeError) {
+          throw new HttpError(503, 'PASSWORD_BACKEND_UNAVAILABLE', 'The setup link could not be prepared')
+        }
         const { error: tokenError } = await admin
           .from('client_portal_reset_tokens')
-          .upsert({
+          .insert({
             client_id: clientId,
             token_hash: tokenHash,
             expires_at: expiresAt,
             requested_ip: null,
-          }, { onConflict: 'client_id' })
+          })
         if (tokenError) {
           throw new HttpError(503, 'PASSWORD_BACKEND_UNAVAILABLE', 'The setup link could not be prepared')
         }

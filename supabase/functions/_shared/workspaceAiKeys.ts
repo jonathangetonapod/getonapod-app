@@ -131,9 +131,11 @@ export async function probeAiKey(provider: AiProvider, apiKey: string): Promise<
     const response = provider === 'anthropic'
       ? await fetch('https://api.anthropic.com/v1/models?limit=1', {
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        signal: AbortSignal.timeout(10_000),
       })
       : await fetch('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
       })
     return response.ok
   } catch (_error) {

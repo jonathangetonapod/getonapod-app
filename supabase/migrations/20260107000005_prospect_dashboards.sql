@@ -25,6 +25,19 @@ CREATE INDEX idx_prospect_dashboards_created_at ON prospect_dashboards(created_a
 ALTER TABLE prospect_dashboards ENABLE ROW LEVEL SECURITY;
 
 -- Admin users can do everything
+-- replay-safety: admin_users has no user_id column (see
+-- 20260109000002_fix_admin_rls_policies.sql, which adds the working
+-- email-based admin policy), so this policy cannot be created on a fresh
+-- database. Create it only if that column exists.
+DO $replay$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'admin_users'
+      AND column_name = 'user_id'
+  ) THEN
+    EXECUTE $policy$
 CREATE POLICY "Admin users can manage prospect dashboards"
   ON prospect_dashboards
   FOR ALL
@@ -40,7 +53,11 @@ CREATE POLICY "Admin users can manage prospect dashboards"
       SELECT 1 FROM admin_users
       WHERE admin_users.user_id = auth.uid()
     )
-  );
+  )
+    $policy$;
+  END IF;
+END
+$replay$;
 
 -- Public read access for active dashboards (via slug lookup)
 -- This allows the public prospect view page to fetch data

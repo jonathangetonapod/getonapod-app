@@ -78,6 +78,7 @@ IMPORTANT: Reply with ONLY the category name from the list above. Nothing else. 
           },
         ],
       }),
+      signal: AbortSignal.timeout(30_000),
     })
 
     if (!haikuResponse.ok) {
@@ -87,7 +88,11 @@ IMPORTANT: Reply with ONLY the category name from the list above. Nothing else. 
     }
 
     const haikuData = await haikuResponse.json()
-    const suggestedCategory = haikuData.content[0].text.trim()
+    const firstBlock = haikuData?.content?.[0]
+    if (typeof firstBlock?.text !== 'string') {
+      throw new Error('Haiku API returned no text content')
+    }
+    const suggestedCategory = firstBlock.text.trim()
 
     console.log(`[Auto-Categorize] Raw suggestion: ${suggestedCategory}`)
 

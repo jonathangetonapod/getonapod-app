@@ -2,6 +2,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -112,6 +115,7 @@ async function getGoogleAccessToken(): Promise<string> {
 
   // Exchange JWT for access token
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -190,6 +194,7 @@ serve(async (req) => {
     console.log('[Create Sheet] Template ID:', templateId)
 
     const copyResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${templateId}/copy`, {
+      signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -221,6 +226,7 @@ serve(async (req) => {
       const ownershipResponse = await fetch(
         `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`,
         {
+          signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -249,6 +255,7 @@ serve(async (req) => {
     const shareResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

@@ -7,8 +7,16 @@ import {
   requireOnlyKeys,
 } from '../_shared/workspaceAuth.ts'
 import { corsHeaders as platformCorsHeaders, ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
+import { HttpError } from '../_shared/httpError.ts'
+import { enforcePublicFeedbackRate } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
+
+// Feedback only moves a dashboard forward from the states a prospect reading a
+// live link can be in. 'engaged' and 'converted' stay put; anything else
+// (archived, failed, a draft that slipped through) is the operator's call, not
+// a side effect of somebody clicking on an old link.
+const ENGAGEABLE_LIFECYCLE_STATUSES = ['ready', 'sent', 'viewed'] as const
 
 const fallbackCorsHeaders = {
   'Access-Control-Allow-Origin': platformCorsHeaders['Access-Control-Allow-Origin'],
@@ -129,6 +137,20 @@ serve(async (req) => {
       )
     }
 
+    // Anyone with the link can write here. Throttle per dashboard and per
+    // caller before touching feedback.
+    try {
+      await enforcePublicFeedbackRate(supabase, req, 'prospect', dashboard.id)
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return new Response(
+          JSON.stringify({ success: false, error: error.message, code: error.code }),
+          { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      throw error
+    }
+
     // Upsert feedback (unique on prospect_dashboard_id + podcast_id)
     const feedbackData: Record<string, unknown> = {
       prospect_dashboard_id: dashboard.id,
@@ -154,20 +176,38 @@ serve(async (req) => {
       throw upsertError
     }
 
-    const { error: engagementError } = await supabase
-      .from('prospect_dashboards')
-      .update({
-        first_engaged_at: dashboard.first_engaged_at || new Date().toISOString(),
-        lifecycle_status: dashboard.lifecycle_status === 'converted' ? 'converted' : 'engaged',
-      })
-      .eq('id', dashboard.id)
-      .eq('is_active', true)
-      .eq('content_ready', true)
-      .not('published_at', 'is', null)
+    // Both writes are conditional in the database, not on the row read above,
+    // so a dashboard archived or converted in between is never moved back.
+    if (!dashboard.first_engaged_at) {
+      const { error: firstEngagedError } = await supabase
+        .from('prospect_dashboards')
+        .update({ first_engaged_at: new Date().toISOString() })
+        .eq('id', dashboard.id)
+        .is('first_engaged_at', null)
+        .eq('is_active', true)
+        .eq('content_ready', true)
+        .not('published_at', 'is', null)
 
-    if (engagementError) {
-      console.error('[Save Prospect Feedback] Dashboard engagement update failed')
-      throw engagementError
+      if (firstEngagedError) {
+        console.error('[Save Prospect Feedback] Dashboard engagement update failed')
+        throw firstEngagedError
+      }
+    }
+
+    if ((ENGAGEABLE_LIFECYCLE_STATUSES as readonly string[]).includes(dashboard.lifecycle_status)) {
+      const { error: engagementError } = await supabase
+        .from('prospect_dashboards')
+        .update({ lifecycle_status: 'engaged' })
+        .eq('id', dashboard.id)
+        .in('lifecycle_status', [...ENGAGEABLE_LIFECYCLE_STATUSES])
+        .eq('is_active', true)
+        .eq('content_ready', true)
+        .not('published_at', 'is', null)
+
+      if (engagementError) {
+        console.error('[Save Prospect Feedback] Dashboard engagement update failed')
+        throw engagementError
+      }
     }
 
     console.log(`[Save Prospect Feedback] Saved feedback: ${feedback.id} (status: ${feedback.status})`)

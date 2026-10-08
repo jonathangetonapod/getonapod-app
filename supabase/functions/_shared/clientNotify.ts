@@ -12,6 +12,9 @@
 import { whiteLabelOnboardingSender } from './workspaceOnboarding.ts'
 import { workspaceLinkOrigin } from './workspaceOrigin.ts'
 
+// A hung provider must not hold the calling request open.
+const RESEND_TIMEOUT_MS = 10_000
+
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any
@@ -203,6 +206,20 @@ async function deliver(
       .eq('event_key', input.eventKey.slice(0, 200))
   }
 
+  const release = async () => {
+    const { error } = await admin
+      .from('client_notifications')
+      .delete()
+      .eq('workspace_id', input.workspaceId)
+      .eq('client_id', input.clientId)
+      .eq('event_key', input.eventKey.slice(0, 200))
+      .eq('status', 'sending')
+    if (error) {
+      console.error('[Client Notify] Could not release the notification claim')
+      await finish('failed', { error: 'Email provider was temporarily unavailable' })
+    }
+  }
+
   const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
   const from = whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), input.workspaceName)
   if (!apiKey || !from) {
@@ -222,10 +239,19 @@ async function deliver(
         html: input.html,
         text: input.text,
       }),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     })
     if (!response.ok) {
       console.error('[Client Notify] Provider rejected the message')
-      await finish('failed', { error: 'Email provider rejected the message' })
+      if (response.status === 429 || response.status >= 500) {
+        // The provider definitively did not take the message, so release the
+        // claim and let the next trigger for this event try again. A timeout
+        // or network failure is NOT released: the message may have gone out,
+        // and a second copy is worse than a missed one.
+        await release()
+      } else {
+        await finish('failed', { error: 'Email provider rejected the message' })
+      }
       return { status: 'failed', reason: 'provider_rejected' }
     }
     const data = await response.json().catch(() => ({}))

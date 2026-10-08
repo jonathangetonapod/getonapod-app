@@ -189,6 +189,14 @@ BEGIN
       AND workspace.status = 'active'
   LOOP
     IF target.actor_user_id IS NULL THEN
+      -- replay-safety: a freshly reset database has no auth users at all, so
+      -- the default workspace has no owner to attribute the seed to. Skip it
+      -- there (the template can be seeded once an owner exists); any database
+      -- with users still fails loudly as before.
+      IF NOT EXISTS (SELECT 1 FROM auth.users) THEN
+        RAISE NOTICE 'skipping default workspace onboarding seed: no auth users (fresh database)';
+        CONTINUE;
+      END IF;
       RAISE EXCEPTION 'active default workspace has no onboarding seed actor';
     END IF;
 

@@ -19,6 +19,7 @@ import {
   Mic2,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Sparkles,
@@ -55,6 +56,7 @@ import {
   getWorkspaceProspect,
   getWorkspaceProspects,
   removeWorkspaceProspectPhoto,
+  rotateWorkspaceProspectLink,
   setWorkspaceProspectPublished,
   updateWorkspaceProspect,
   updateWorkspaceProspectPodcast,
@@ -638,6 +640,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState<ProspectProfileForm>(emptyProfileForm)
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [rotateLinkDialogOpen, setRotateLinkDialogOpen] = useState(false)
   const [rebuildDialogOpen, setRebuildDialogOpen] = useState(false)
   const [shortlistSearch, setShortlistSearch] = useState('')
   const [shortlistCategory, setShortlistCategory] = useState('all')
@@ -821,6 +824,19 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     },
     onSuccess: async (nextDetail) => refreshAfterMutation(nextDetail),
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The shortlist could not be updated.'),
+  })
+
+  const rotateLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!selected) throw new Error('Choose a prospect first.')
+      return rotateWorkspaceProspectLink(workspaceId, selected.id)
+    },
+    onSuccess: async (nextDetail) => {
+      setRotateLinkDialogOpen(false)
+      await refreshAfterMutation(nextDetail)
+      toast.success('New private link issued. The old link no longer works.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The private link could not be regenerated.'),
   })
 
   const archiveMutation = useMutation({
@@ -1014,7 +1030,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const building = buildMutation.isPending || (buildInProgress && !buildStale)
   // Said on every button that starts a build, and hidden once one is running.
   const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: listQuery.data?.ai_keys?.anthropic })}</span>
-  const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending
+  const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending || rotateLinkMutation.isPending
   const nextActionKind = !selected?.readiness.profile_ready
     ? 'profile'
     : selected.readiness.visible_count < 5
@@ -1447,7 +1463,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                     </CardContent>
                   </Card>
 
-                  {canManage && <div className="flex justify-end"><Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setArchiveDialogOpen(true)}><Archive className="mr-2 h-4 w-4" />Archive prospect</Button></div>}
+                  {canManage && (
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button variant="ghost" onClick={() => setRotateLinkDialogOpen(true)}><RefreshCw className="mr-2 h-4 w-4" />Regenerate private link</Button>
+                      <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setArchiveDialogOpen(true)}><Archive className="mr-2 h-4 w-4" />Archive prospect</Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1493,6 +1514,13 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
               <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: listQuery.data?.ai_keys?.anthropic })}</span>
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rotateLinkDialogOpen} onOpenChange={(open) => { if (!open && !rotateLinkMutation.isPending) setRotateLinkDialogOpen(false) }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Regenerate the private link for {selected?.prospect_name}?</DialogTitle><DialogDescription>The current link stops working immediately, including in any email already sent. Share the new link with anyone who should still see this dashboard. The shortlist and feedback are unchanged.</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="outline" onClick={() => setRotateLinkDialogOpen(false)}>Cancel</Button><Button disabled={rotateLinkMutation.isPending} onClick={() => rotateLinkMutation.mutate()}>{rotateLinkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Regenerate link</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

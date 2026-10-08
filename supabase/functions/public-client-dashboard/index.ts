@@ -14,6 +14,7 @@ import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { requestHostname, requireServedByHost, resolveHostWorkspaceId } from '../_shared/workspaceDomain.ts'
 import { loadWorkspacePresentation } from '../_shared/portalBranding.ts'
 import { notifyWorkspaceOfApprovals } from '../_shared/clientNotify.ts'
+import { enforcePublicFeedbackRate, shouldRecordPublicView } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
 const DASHBOARD_FIELDS = [
@@ -149,10 +150,14 @@ serve(async (req) => {
       const slug = requireSlug(body.slug)
       const dashboard = await findDashboard(admin, slug, hostWorkspaceId)
 
-      const { error: viewError } = await admin.rpc('record_public_client_dashboard_view', {
-        p_client_id: dashboard.id,
-      })
-      if (viewError) console.error('Public client dashboard view count failed')
+      // A reload, a refetch on focus, or a script in a loop is not a new
+      // reader. Count one view per caller per dashboard per hour.
+      if (await shouldRecordPublicView(admin, req, 'client', dashboard.id)) {
+        const { error: viewError } = await admin.rpc('record_public_client_dashboard_view', {
+          p_client_id: dashboard.id,
+        })
+        if (viewError) console.error('Public client dashboard view count failed')
+      }
 
       return jsonResponse(req, METHODS, 200, { dashboard })
     }
@@ -205,6 +210,10 @@ serve(async (req) => {
 
       if (podcastError) throw new HttpError(500, 'PODCAST_LOOKUP_FAILED', 'Podcast could not be verified')
       if (!podcast) throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Podcast is not on this dashboard')
+
+      // Anyone with the link can write here. Throttle per dashboard and per
+      // caller before touching feedback or sending the approval nudge.
+      await enforcePublicFeedbackRate(admin, req, 'client', dashboard.id)
 
       const { data, error } = await admin
         .from('client_podcast_feedback')

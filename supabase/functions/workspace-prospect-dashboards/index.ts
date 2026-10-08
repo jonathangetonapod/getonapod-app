@@ -1685,6 +1685,35 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, await detailPayload(context.admin, workspaceId, dashboardId))
     }
 
+    if (action === 'rotate-link') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'dashboard_id'])
+      // The slug is the only credential the public page has. Clearing it lets
+      // the capability trigger issue a fresh unguessable one; the old link
+      // stops resolving at once, and a client linked to this prospect follows
+      // the new slug through the ON UPDATE CASCADE foreign key.
+      const { data: rotated, error } = await context.admin
+        .from('prospect_dashboards')
+        .update({ slug: null })
+        .eq('id', dashboardId)
+        .eq('workspace_id', workspaceId)
+        .select('slug')
+        .maybeSingle()
+      if (error) throw new HttpError(500, 'PROSPECT_LINK_ROTATE_FAILED', 'The private link could not be regenerated')
+      if (!rotated) throw new HttpError(404, 'PROSPECT_NOT_FOUND', 'Workspace prospect dashboard not found')
+      if (typeof rotated.slug !== 'string' || !rotated.slug || rotated.slug === existing.slug) {
+        throw new HttpError(500, 'PROSPECT_LINK_ROTATE_FAILED', 'The private link could not be regenerated')
+      }
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: 'workspace.prospect.link_rotated',
+        entityType: 'prospect_dashboard',
+        entityId: dashboardId,
+        metadata: { was_published: Boolean(existing.published_at) },
+      })
+      return jsonResponse(req, METHODS, 200, await detailPayload(context.admin, workspaceId, dashboardId))
+    }
+
     if (action === 'archive') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'dashboard_id'])
       const { error } = await context.admin

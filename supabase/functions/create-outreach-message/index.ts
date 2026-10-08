@@ -7,6 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 }
 
+// Raised for problems with the caller's payload. Only these messages are
+// returned to the caller; anything else is logged here and answered generically
+// so database or runtime detail never leaves the function.
+class WebhookInputError extends Error {}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -36,24 +41,30 @@ serve(async (req) => {
     if (new TextEncoder().encode(rawPayload).byteLength > 262_144) {
       return new Response('Payload too large', { status: 413, headers: corsHeaders })
     }
-    const payload = JSON.parse(rawPayload)
+    // deno-lint-ignore no-explicit-any
+    let payload: any
+    try {
+      payload = JSON.parse(rawPayload)
+    } catch {
+      throw new WebhookInputError('Request body must be valid JSON')
+    }
     console.log('[Create Outreach Message] Received verified Clay webhook')
 
     // Validate required fields from Clay
     if (!payload.client_id) {
-      throw new Error('client_id is required')
+      throw new WebhookInputError('client_id is required')
     }
 
     if (!payload.final_host_email) {
-      throw new Error('final_host_email is required')
+      throw new WebhookInputError('final_host_email is required')
     }
 
     if (!payload.email_1) {
-      throw new Error('email_1 is required')
+      throw new WebhookInputError('email_1 is required')
     }
 
     if (!payload.subject_line) {
-      throw new Error('subject_line is required')
+      throw new WebhookInputError('subject_line is required')
     }
 
     // Accept host_name directly, or construct from first_name + last_name
@@ -63,7 +74,7 @@ serve(async (req) => {
     } else if (payload.first_name || payload.last_name) {
       hostName = [payload.first_name, payload.last_name].filter(Boolean).join(' ').trim()
     } else {
-      throw new Error('host_name or (first_name and/or last_name) is required')
+      throw new WebhookInputError('host_name or (first_name and/or last_name) is required')
     }
 
     // Extract podcast name from research text (looks for "Podcast Research Report: NAME" pattern)
@@ -89,7 +100,7 @@ serve(async (req) => {
 
     if (clientError || !client) {
       console.error('[Create Outreach Message] Client not found:', clientError)
-      throw new Error(`Client not found: ${payload.client_id}`)
+      throw new WebhookInputError(`Client not found: ${payload.client_id}`)
     }
 
     console.log('[Create Outreach Message] Client verified:', client.name)
@@ -187,15 +198,16 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error('[Create Outreach Message] Error:', error)
+    const inputError = error instanceof WebhookInputError
+    if (!inputError) console.error('[Create Outreach Message] Error:', error)
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Something went wrong on our side. Try again in a moment',
+        error: inputError ? error.message : 'Something went wrong on our side. Try again in a moment',
       }),
       {
-        status: 400,
+        status: inputError ? 400 : 500,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',

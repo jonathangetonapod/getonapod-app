@@ -158,6 +158,7 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
           },
         ],
       }),
+      signal: AbortSignal.timeout(90_000),
     })
 
     if (!claudeResponse.ok) {
@@ -171,8 +172,8 @@ Return ONLY valid JSON, no markdown code blocks or other text.`
 
     // Extract text content from response (web search responses have multiple block types)
     let analysisText = ''
-    for (const block of claudeData.content) {
-      if (block.type === 'text') {
+    for (const block of Array.isArray(claudeData?.content) ? claudeData.content : []) {
+      if (block?.type === 'text' && typeof block.text === 'string') {
         analysisText += block.text
         console.log('[Analyze Podcast Fit] Found text block, length:', block.text?.length)
       }

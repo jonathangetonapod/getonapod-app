@@ -7,6 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
 }
 
+// Raised for problems with the caller's payload. Only these messages are
+// returned to the caller; anything else is logged here and answered generically
+// so database or runtime detail never leaves the function.
+class WebhookInputError extends Error {}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -43,7 +48,13 @@ serve(async (req) => {
     if (new TextEncoder().encode(rawPayload).byteLength > 262_144) {
       return new Response('Payload too large', { status: 413, headers: corsHeaders })
     }
-    const payload = JSON.parse(rawPayload)
+    // deno-lint-ignore no-explicit-any
+    let payload: any
+    try {
+      payload = JSON.parse(rawPayload)
+    } catch {
+      throw new WebhookInputError('Request body must be valid JSON')
+    }
     console.log('[Campaign Webhook] Received verified Email Bison webhook')
 
     // Parse Email Bison webhook structure
@@ -91,7 +102,7 @@ serve(async (req) => {
 
     // Validation
     if (!email) {
-      throw new Error('Email is required')
+      throw new WebhookInputError('Email is required')
     }
 
     console.log('[Campaign Webhook] Processing interested reply from:', email)
@@ -171,15 +182,16 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error('[Campaign Webhook] Error:', error)
+    const inputError = error instanceof WebhookInputError
+    if (!inputError) console.error('[Campaign Webhook] Error:', error)
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Something went wrong on our side. Try again in a moment',
+        error: inputError ? error.message : 'Something went wrong on our side. Try again in a moment',
       }),
       {
-        status: 500,
+        status: inputError ? 400 : 500,
         headers: {
           ...corsHeaders,
           'Content-Type': 'application/json',

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { once } from 'node:events'
 import {
+  buildContentSecurityPolicy,
   clientDashboardShareShell,
   generateOnboardingPreviewPng,
   loadClientDashboardShareMetadata,
@@ -131,6 +132,19 @@ const generatedPreview = generateOnboardingPreviewPng('#BE185D')
 assert.deepEqual([...generatedPreview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
 assert.equal(generatedPreview.readUInt32BE(16), 1200)
 assert.equal(generatedPreview.readUInt32BE(20), 630)
+
+{
+  const policy = buildContentSecurityPolicy({
+    supabaseUrl: 'https://api.example-project.dev/rest/v1',
+    sentryDsn: 'https://public@o1.ingest.us.sentry.io/2',
+  })
+  const csp = cspDirectives(policy)
+  assert.ok(csp.get('connect-src').includes('https://api.example-project.dev'), 'a custom Supabase origin must be connectable')
+  assert.ok(csp.get('connect-src').includes('wss://api.example-project.dev'), 'a custom Supabase origin must allow realtime')
+  assert.ok(csp.get('connect-src').includes('https://o1.ingest.us.sentry.io'), 'the Sentry DSN host must be connectable')
+  assert.doesNotMatch(policy, /'unsafe-eval'|\*;|\s\*\s/u, 'the policy must not allow eval or a bare wildcard')
+  assert.doesNotMatch(buildContentSecurityPolicy({ supabaseUrl: 'javascript:alert(1)' }), /javascript:/u)
+}
 
 const port = await availablePort()
 const origin = `http://127.0.0.1:${port}`
@@ -272,7 +286,32 @@ try {
   }
 }
 
+function cspDirectives(policy) {
+  return new Map(policy.split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
+    const [name, ...values] = part.split(/\s+/u)
+    return [name, values]
+  }))
+}
+
 function assertSecurityHeaders(response, route) {
+  assert.equal(response.headers.get('strict-transport-security'), 'max-age=31536000; includeSubDomains', route)
+  const policy = response.headers.get('content-security-policy')
+  assert.ok(policy, `${route} must send a Content-Security-Policy`)
+  const csp = cspDirectives(policy)
+  assert.deepEqual(csp.get('frame-ancestors'), ["'none'"], route)
+  assert.deepEqual(csp.get('object-src'), ["'none'"], route)
+  assert.deepEqual(csp.get('base-uri'), ["'self'"], route)
+  assert.deepEqual(csp.get('form-action'), ["'self'"], route)
+  assert.deepEqual(csp.get('script-src'), ["'self'"], `${route} must not allow inline or third-party script`)
+  assert.ok(csp.get('default-src')?.includes("'self'"), route)
+  assert.ok(csp.get('connect-src')?.includes('https://*.supabase.co'), route)
+  assert.ok(csp.get('connect-src')?.includes('wss://*.supabase.co'), route)
+  assert.ok(csp.get('img-src')?.includes('https:'), `${route} must allow podcast artwork from any https CDN`)
+  assert.ok(csp.get('style-src')?.includes("'unsafe-inline'"), route)
+  assert.ok(csp.get('font-src')?.includes('https://fonts.gstatic.com'), route)
+  for (const frame of ['https://www.loom.com', 'https://calendly.com', 'https://cal.com', 'https://www.youtube-nocookie.com']) {
+    assert.ok(csp.get('frame-src')?.includes(frame), `${route} must allow ${frame} frames`)
+  }
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer', route)
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff', route)
   assert.equal(response.headers.get('x-frame-options'), 'DENY', route)

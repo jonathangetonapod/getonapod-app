@@ -9,6 +9,9 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { corsHeaders as platformCorsHeaders, ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 const fallbackCorsHeaders = {
   'Access-Control-Allow-Origin': platformCorsHeaders['Access-Control-Allow-Origin'],
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -90,6 +93,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwt = `${signatureInput}.${signatureEncoded}`
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -209,6 +213,7 @@ Return ONLY valid JSON, no markdown code blocks.`
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(90_000),
     })
 
     if (!response.ok) {
@@ -218,8 +223,8 @@ Return ONLY valid JSON, no markdown code blocks.`
 
     const data = await response.json()
     let text = ''
-    for (const block of data.content) {
-      if (block.type === 'text') text += block.text
+    for (const block of Array.isArray(data?.content) ? data.content : []) {
+      if (block?.type === 'text' && typeof block.text === 'string') text += block.text
     }
 
     // Parse JSON from response
@@ -385,6 +390,7 @@ serve(async (req) => {
     const metadataResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -407,7 +413,7 @@ serve(async (req) => {
 
     const sheetResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      { signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS), headers: { 'Authorization': `Bearer ${accessToken}` } }
     )
 
     if (!sheetResponse.ok) {
@@ -769,7 +775,7 @@ serve(async (req) => {
               console.log('[Get Client Podcasts] Fetching from Podscan:', podcastId)
               const podscanRes = await fetch(
                 `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
+                { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
               )
 
               if (!podscanRes.ok) {
@@ -806,7 +812,7 @@ serve(async (req) => {
                 console.log('[Get Client Podcasts] Fetching demographics for:', podcastData.podcast_name)
                 const demoRes = await fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
                 )
                 if (demoRes.ok) {
                   const demoData = await demoRes.json()

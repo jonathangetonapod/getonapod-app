@@ -49,6 +49,24 @@ CREATE POLICY "Public read access for prospect_dashboard_podcasts"
   USING (true);
 
 -- Admin write access
+-- replay-safety: admin_users has no user_id column, and on a fresh database
+-- 20260109000002 has already created the working email-based policy under this
+-- name. Create this original version only if that column exists and the
+-- policy does not.
+DO $replay$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'admin_users'
+      AND column_name = 'user_id'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'prospect_dashboard_podcasts'
+      AND policyname = 'Admin write access for prospect_dashboard_podcasts'
+  ) THEN
+    EXECUTE $policy$
 CREATE POLICY "Admin write access for prospect_dashboard_podcasts"
   ON prospect_dashboard_podcasts
   FOR ALL
@@ -57,7 +75,11 @@ CREATE POLICY "Admin write access for prospect_dashboard_podcasts"
       SELECT 1 FROM admin_users
       WHERE admin_users.user_id = auth.uid()
     )
-  );
+  )
+    $policy$;
+  END IF;
+END
+$replay$;
 
 -- Service role can do everything (for edge functions)
 CREATE POLICY "Service role full access for prospect_dashboard_podcasts"

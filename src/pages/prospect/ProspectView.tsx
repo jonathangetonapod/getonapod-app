@@ -395,6 +395,9 @@ function ProspectViewContent() {
       if (!response.ok) {
         // Error bodies are not always JSON; a parser error would hide the real message.
         const errorData = await response.json().catch(() => ({}))
+        if (response.status === 429) {
+          throw new Error(errorData.error || 'You are saving choices faster than we can record them. Wait a few minutes, then try again.')
+        }
         throw new Error(errorData.error || 'Failed to save feedback')
       }
 

@@ -2,6 +2,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -70,6 +73,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwt = `${signatureInput}.${signatureEncoded}`
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -167,6 +171,7 @@ RULES:
       max_tokens: 3000,
       messages: [{ role: 'user', content: prompt }],
     }),
+    signal: AbortSignal.timeout(90_000),
   })
 
   if (!claudeResponse.ok) {
@@ -176,8 +181,8 @@ RULES:
 
   const claudeData = await claudeResponse.json()
   let rawText = ''
-  for (const block of claudeData.content) {
-    if (block.type === 'text') {
+  for (const block of Array.isArray(claudeData?.content) ? claudeData.content : []) {
+    if (block?.type === 'text' && typeof block.text === 'string') {
       rawText = block.text.trim()
       break
     }
@@ -381,6 +386,7 @@ async function createMediaKitDoc(
 ): Promise<{ docId: string; docUrl: string }> {
   const docTitle = `${guest.name} — Podcast Guest Media Kit`
   const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -578,6 +584,7 @@ async function createMediaKitDoc(
   const updateResponse = await fetch(
     `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
     {
+      signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -600,6 +607,7 @@ async function createMediaKitDoc(
       const imgResponse = await fetch(
         `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
         {
+          signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -704,6 +712,7 @@ serve(async (req) => {
     const permResponse = await fetch(
       `https://www.googleapis.com/drive/v3/files/${docId}/permissions`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

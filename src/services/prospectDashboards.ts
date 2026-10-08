@@ -386,3 +386,18 @@ export async function archiveWorkspaceProspect(
     dashboard_id: dashboardId.toLowerCase(),
   }, 'Failed to archive the prospect dashboard.')
 }
+
+/**
+ * Issue a new private link for a prospect dashboard. The old link stops
+ * working immediately; anyone who should keep access needs the new one.
+ */
+export function rotateWorkspaceProspectLink(
+  workspaceId: string,
+  dashboardId: string,
+): Promise<WorkspaceProspectDetail> {
+  return invokeProspectStudio({
+    action: 'rotate-link',
+    workspace_id: workspaceId.toLowerCase(),
+    dashboard_id: dashboardId.toLowerCase(),
+  }, 'Failed to regenerate the private link.')
+}

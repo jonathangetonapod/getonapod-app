@@ -1,107 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { jsonResponse, optionsResponse } from '../_shared/workspaceAuth.ts'
 
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+const METHODS = ['POST'] as const
 
-  try {
-    await requirePlatformAdminOrService(req)
-    const { bisonReplyId, message, subject } = await req.json()
-
-    // Validation
-    if (!bisonReplyId) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'bisonReplyId is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    if (!message) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'message is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Get Email Bison API token from environment
-    const bisonApiToken = Deno.env.get('EMAIL_BISON_API_TOKEN')
-
-    if (!bisonApiToken) {
-      throw new Error('EMAIL_BISON_API_TOKEN not configured')
-    }
-
-    console.log('[Send Reply] Sending reply for Bison reply ID:', bisonReplyId)
-
-    // Convert newlines to HTML breaks for proper email formatting
-    const htmlMessage = message.replace(/\n/g, '<br>')
-
-    // Call Email Bison API to send reply
-    const bisonResponse = await fetch(
-      `https://send.leadgenjay.com/api/replies/${bisonReplyId}/reply`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${bisonApiToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          reply_all: true, // Automatically choose sender and recipients
-          inject_previous_email_body: true, // Include previous email thread
-          message: htmlMessage,
-          content_type: 'html', // Send as HTML for proper line breaks
-          use_dedicated_ips: false,
-        }),
-      }
-    )
-
-    if (!bisonResponse.ok) {
-      const errorText = await bisonResponse.text()
-      console.error('[Send Reply] Email Bison API error:', errorText)
-      throw new Error(`Email Bison API error: ${bisonResponse.status} ${errorText}`)
-    }
-
-    const responseData = await bisonResponse.json()
-
-    console.log('[Send Reply] Successfully sent reply')
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Reply sent successfully',
-        data: responseData.data,
-      }),
-      {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-  } catch (error) {
-    console.error('[Send Reply] Error:', error)
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
-  }
+// Retired in the invite-only MVP: nothing in the app, the other functions,
+// the schedules or the documented integrations called it, and the legacy Email Bison reply inbox is gone; the workspace inbox replaces it.
+serve((req) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+  return jsonResponse(req, METHODS, 410, {
+    error: 'Reply sending is not available',
+    code: 'REPLY_SENDING_DISABLED',
+  })
 })

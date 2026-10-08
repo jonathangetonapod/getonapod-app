@@ -17,6 +17,7 @@ import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billi
 
 const METHODS = ['POST'] as const
 const API_BASE = 'https://podscan.fm/api/v1'
+const PODSCAN_TIMEOUT_MS = 20_000
 const SEARCH_KEYS = new Set([
   'query',
   'category_ids',
@@ -109,23 +110,45 @@ function positiveHeaderNumber(headers: Headers, name: string): number | undefine
   return Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
+function podscanTransportError(error: unknown): HttpError {
+  if (error instanceof HttpError) return error
+  if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+    return new HttpError(504, 'PODSCAN_TIMEOUT', 'Podscan did not respond in time')
+  }
+  return new HttpError(502, 'PODSCAN_UNAVAILABLE', 'Podscan could not be reached')
+}
+
 async function fetchPodscan(path: string, params?: URLSearchParams): Promise<PodscanFetchResult> {
   const url = new URL(`${API_BASE}${path}`)
   if (params) url.search = params.toString()
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${requiredSecret()}`,
-      Accept: 'application/json',
-    },
-  })
+  // One signal covers the request and the body read, so a stalled index
+  // cannot hold the request open; the caller's catch refunds the charge.
+  const signal = AbortSignal.timeout(PODSCAN_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${requiredSecret()}`,
+        Accept: 'application/json',
+      },
+      signal,
+    })
+  } catch (error) {
+    throw podscanTransportError(error)
+  }
 
   const declaredLength = Number(response.headers.get('content-length') ?? '0')
   if (Number.isFinite(declaredLength) && declaredLength > 5_000_000) {
     throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }
 
-  const raw = await response.text()
+  let raw: string
+  try {
+    raw = await response.text()
+  } catch (error) {
+    throw podscanTransportError(error)
+  }
   if (new TextEncoder().encode(raw).byteLength > 5_000_000) {
     throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }

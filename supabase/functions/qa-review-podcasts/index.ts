@@ -155,6 +155,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(60_000),
     })
 
     if (!response.ok) {
@@ -164,7 +165,9 @@ Respond with ONLY valid JSON (no markdown, no explanation):
     }
 
     const data = await response.json()
-    const responseText = data.content[0].text.trim()
+    const firstText = data?.content?.[0]?.text
+    if (typeof firstText !== 'string') throw new Error('AI response had no text content')
+    const responseText = firstText.trim()
 
     // Parse JSON — try raw first, then extract from markdown blocks
     let parsed: any

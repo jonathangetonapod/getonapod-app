@@ -190,6 +190,19 @@ const autopilotMigration = readFileSync('supabase/migrations/20260726000700_clie
 assert.match(autopilotMigration, /REFERENCES public\.clients\(workspace_id, id\) ON DELETE CASCADE/u)
 assert.match(autopilotMigration, /ENABLE ROW LEVEL SECURITY/u)
 assert.match(autopilotMigration, /cron\.schedule\(/u)
+// 20261008000100: autopilot settings, the allowance gate and the legacy
+// public buckets are no longer reachable from browser roles.
+const grantHardening = readFileSync('supabase/migrations/20261008000100_tighten_grants_and_portal_auth.sql', 'utf8')
+assert.match(grantHardening, /REVOKE ALL PRIVILEGES ON TABLE public\.client_autopilot_settings FROM PUBLIC, anon, authenticated;/u)
+assert.match(grantHardening, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.client_autopilot_settings TO service_role;/u)
+assert.match(grantHardening, /REVOKE ALL ON FUNCTION public\.workspace_allowance_is_payable\(UUID\) FROM PUBLIC, anon, authenticated;/u)
+assert.match(grantHardening, /DROP POLICY IF EXISTS "Public read access to client assets" ON storage\.objects;/u)
+assert.match(grantHardening, /DROP POLICY IF EXISTS "Public read access for prospect images" ON storage\.objects;/u)
+assert.match(grantHardening, /DROP POLICY IF EXISTS "Authenticated users can upload prospect images" ON storage\.objects;/u)
+assert.match(grantHardening, /DROP POLICY IF EXISTS "Authenticated users can delete prospect images" ON storage\.objects;/u)
+assert.doesNotMatch(grantHardening, /FOR SELECT\s+TO (public|anon)/u)
+assert.match(shortlistEdge, /authContext\.admin\s*\.from\('client_autopilot_settings'\)/u)
+assert.doesNotMatch(readFileSync('src/services/clientShortlist.ts', 'utf8'), /from\('client_autopilot_settings'\)/u)
 
 // Deno prompt defaults must stay in sync with the canonical docs JSON.
 const denoDefaults = readFileSync('supabase/functions/_shared/researchPromptDefaults.ts', 'utf8')
@@ -269,6 +282,10 @@ assert.match(portalBrandingShared, /\.from\('workspace_audit_log'\)[\s\S]*?\.eq\
 assert.match(portalBrandingShared, /name: presentedWorkspaceName\(metadata\?\.client_brand_name \?\? workspace\.name\)/u)
 assert.match(portalBrandingShared, /primary_color: presentedWorkspaceColor[\s\S]*?accent_color: presentedWorkspaceColor/u)
 assert.match(publicDashboardEdge, /if \(action === 'metadata'\)[\s\S]*?dashboard_tagline: dashboard\.dashboard_tagline,[\s\S]*?workspace: dashboard\.workspace,[\s\S]*?if \(action === 'get'\)[\s\S]*?record_public_client_dashboard_view/u)
+// A view is recorded once per caller per dashboard per hour, not per request.
+assert.match(publicDashboardEdge, /if \(action === 'get'\)[\s\S]*?shouldRecordPublicView\(admin, req, 'client', dashboard\.id\)[\s\S]*?record_public_client_dashboard_view/u)
+// Public feedback writes are throttled before the upsert and the approval nudge.
+assert.match(publicDashboardEdge, /if \(action === 'feedback_upsert'\)[\s\S]*?enforcePublicFeedbackRate\(admin, req, 'client', dashboard\.id\)[\s\S]*?\.from\('client_podcast_feedback'\)[\s\S]*?notifyWorkspaceOfApprovals/u)
 assert.match(clientBrandingMigration, /client_brand_name TEXT/u)
 assert.match(clientBrandingMigration, /client_brand_primary_color TEXT/u)
 assert.match(clientBrandingMigration, /client_brand_accent_color TEXT/u)

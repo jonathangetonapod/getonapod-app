@@ -9,6 +9,9 @@ import {
   requirePlatformAdminOrService,
 } from '../_shared/workspaceAuth.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 /*
  * Static single-origin CORS meant this function answered every request with the
  * platform origin, while the dashboard read next to it resolves the caller's
@@ -95,6 +98,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwt = `${signatureInput}.${signatureEncoded}`
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -429,6 +433,7 @@ Return ONLY valid JSON, no markdown code blocks.`
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(90_000),
     })
 
     if (!response.ok) {
@@ -438,8 +443,8 @@ Return ONLY valid JSON, no markdown code blocks.`
 
     const data = await response.json()
     let text = ''
-    for (const block of data.content) {
-      if (block.type === 'text') text += block.text
+    for (const block of Array.isArray(data?.content) ? data.content : []) {
+      if (block?.type === 'text' && typeof block.text === 'string') text += block.text
     }
 
     // Parse JSON from response
@@ -593,7 +598,7 @@ serve(async (req) => {
       // Get sheet metadata
       const metaRes = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        { signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS), headers: { 'Authorization': `Bearer ${accessToken}` } }
       )
       if (!metaRes.ok) {
         console.error('[Get Prospect Podcasts] Sheet metadata error:', await metaRes.text())
@@ -608,7 +613,7 @@ serve(async (req) => {
       // Read podcast IDs + compatibility scores from columns E:G
       const sheetRes = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!E:G`,
-        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        { signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS), headers: { 'Authorization': `Bearer ${accessToken}` } }
       )
       if (!sheetRes.ok) {
         throw new Error(`Failed to read Google Sheet: ${await sheetRes.text()}`)
@@ -717,6 +722,7 @@ serve(async (req) => {
     const metadataResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${accessToken}`,
         },
@@ -742,7 +748,7 @@ serve(async (req) => {
 
     const sheetResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      { signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS), headers: { 'Authorization': `Bearer ${accessToken}` } }
     )
 
     if (!sheetResponse.ok) {
@@ -1192,11 +1198,11 @@ serve(async (req) => {
               const [podscanRes, demoRes] = await Promise.all([
                 fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
                 ),
                 fetch(
                   `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' } }
+                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
                 ).catch(() => null),
               ])
 

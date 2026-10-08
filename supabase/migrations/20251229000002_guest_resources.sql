@@ -1,3 +1,12 @@
+-- replay-safety: 20251229000001_guest_resources_fixed.sql creates exactly the
+-- same types, tables, indexes and seed rows (it differs only in two policies),
+-- so on a fresh database this file would fail on CREATE TYPE resource_type.
+-- Run the original body below only when 20251229000001 has not already created
+-- guest_resources. Production already has these objects.
+DO $replay$
+BEGIN
+  IF to_regclass('public.guest_resources') IS NULL THEN
+    EXECUTE $guest_resources$
 -- Guest Resources Table
 -- Stores educational content, guides, and resources for podcast guests
 
@@ -134,3 +143,7 @@ INSERT INTO guest_resources (title, description, content, category, type, featur
   false,
   5
 );
+$guest_resources$;
+  END IF;
+END
+$replay$;

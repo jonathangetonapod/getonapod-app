@@ -1,5 +1,7 @@
 -- Create prospect_podcast_feedback table for prospects to approve/reject podcasts and leave notes
-CREATE TABLE prospect_podcast_feedback (
+-- replay-safety: IF NOT EXISTS because 20260107000001 creates this table first
+-- on a fresh database.
+CREATE TABLE IF NOT EXISTS prospect_podcast_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   prospect_dashboard_id UUID NOT NULL REFERENCES prospect_dashboards(id) ON DELETE CASCADE,
   podcast_id TEXT NOT NULL, -- Podscan podcast ID

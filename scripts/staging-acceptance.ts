@@ -748,7 +748,7 @@ function readManifest(): EdgeManifest {
   const retired = manifest?.retired_http_410_functions
   const unauthenticated = manifest?.unauthenticated_tombstone_probes
   const excluded = manifest?.excluded_from_tenant_environment
-  assertSafe(Array.isArray(retired) && retired.length === 17, 'EDGE_MANIFEST_INVALID')
+  assertSafe(Array.isArray(retired) && retired.length === 45, 'EDGE_MANIFEST_INVALID')
   assertSafe(Array.isArray(unauthenticated) && unauthenticated.length === 5, 'EDGE_MANIFEST_INVALID')
   assertSafe(Array.isArray(excluded) && excluded.length === 2, 'EDGE_MANIFEST_INVALID')
   assertSafe(

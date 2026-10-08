@@ -2,6 +2,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -91,6 +94,7 @@ async function getGoogleAccessToken(): Promise<string> {
 
   // Exchange JWT for access token
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -136,6 +140,7 @@ serve(async (req) => {
     // Submit to Google Indexing API
     console.log('[Submit Indexing] Submitting URL:', url)
     const googleResponse = await fetch('https://indexing.googleapis.com/v3/urlNotifications:publish', {
+      signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

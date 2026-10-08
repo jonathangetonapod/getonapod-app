@@ -245,59 +245,80 @@ export async function instantlyRequest<T>(
   const url = new URL(`${INSTANTLY_API_PREFIX}${path}`, INSTANTLY_API_ORIGIN);
   if (options.query) url.search = options.query.toString();
 
+  // The timeout stays armed until the body has been read, so a provider that
+  // sends headers and then stalls the body cannot hang the request.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let response: Response;
   try {
-    response = await fetch(url, {
-      method: options.method ?? "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal,
-    });
-  } catch {
-    throw new InstantlyApiError(
-      0,
-      "INSTANTLY_UNAVAILABLE",
-      "Instantly could not be reached",
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: options.method ?? "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: controller.signal,
+      });
+    } catch {
+      throw new InstantlyApiError(
+        0,
+        "INSTANTLY_UNAVAILABLE",
+        "Instantly could not be reached",
+      );
+    }
+
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw providerFailure(response.status);
+    }
+    if (response.status === 204) return undefined as T;
+
+    const declaredLength = Number(
+      response.headers.get("content-length") ?? "0",
     );
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > MAX_PROVIDER_RESPONSE_BYTES
+    ) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new InstantlyApiError(
+        502,
+        "INSTANTLY_RESPONSE_INVALID",
+        "Instantly returned an invalid response",
+      );
+    }
+    let raw: string;
+    try {
+      raw = await response.text();
+    } catch {
+      throw new InstantlyApiError(
+        0,
+        "INSTANTLY_UNAVAILABLE",
+        "Instantly could not be reached",
+      );
+    }
+    if (
+      new TextEncoder().encode(raw).byteLength > MAX_PROVIDER_RESPONSE_BYTES
+    ) {
+      throw new InstantlyApiError(
+        502,
+        "INSTANTLY_RESPONSE_INVALID",
+        "Instantly returned an invalid response",
+      );
+    }
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      throw new InstantlyApiError(
+        502,
+        "INSTANTLY_RESPONSE_INVALID",
+        "Instantly returned an invalid response",
+      );
+    }
   } finally {
     clearTimeout(timeout);
-  }
-
-  if (!response.ok) throw providerFailure(response.status);
-  if (response.status === 204) return undefined as T;
-
-  const declaredLength = Number(response.headers.get("content-length") ?? "0");
-  if (
-    Number.isFinite(declaredLength) &&
-    declaredLength > MAX_PROVIDER_RESPONSE_BYTES
-  ) {
-    throw new InstantlyApiError(
-      502,
-      "INSTANTLY_RESPONSE_INVALID",
-      "Instantly returned an invalid response",
-    );
-  }
-  const raw = await response.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_PROVIDER_RESPONSE_BYTES) {
-    throw new InstantlyApiError(
-      502,
-      "INSTANTLY_RESPONSE_INVALID",
-      "Instantly returned an invalid response",
-    );
-  }
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    throw new InstantlyApiError(
-      502,
-      "INSTANTLY_RESPONSE_INVALID",
-      "Instantly returned an invalid response",
-    );
   }
 }
 

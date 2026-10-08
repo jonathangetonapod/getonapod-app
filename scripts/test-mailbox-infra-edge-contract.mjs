@@ -41,4 +41,14 @@ assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.workspace_mailbox_or
 assert.match(migration, /'mailbox_domain_purchase', 'mailbox_monthly', 'other'/u)
 assert.match(migration, /ENABLE ROW LEVEL SECURITY/u)
 
+// 20261008000100: orders are written only by the edge function on the
+// service role, so browser roles hold no table privileges at all.
+const grantHardening = readFileSync('supabase/migrations/20261008000100_tighten_grants_and_portal_auth.sql', 'utf8')
+assert.match(grantHardening, /REVOKE ALL PRIVILEGES ON TABLE public\.workspace_mailbox_orders FROM PUBLIC, anon, authenticated;/u)
+assert.match(grantHardening, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.workspace_mailbox_orders TO service_role;/u)
+const mailboxEdgeSource = readFileSync('supabase/functions/workspace-mailbox-infra/index.ts', 'utf8')
+for (const call of mailboxEdgeSource.matchAll(/(\w+(?:\.\w+)?)\s*\.from\('workspace_mailbox_orders'\)/gu)) {
+  assert.equal(call[1], 'authContext.admin', 'workspace_mailbox_orders must be accessed with the service-role client')
+}
+
 process.stdout.write('Mailbox infra edge contract checks passed\n')

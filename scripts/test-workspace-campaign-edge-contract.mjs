@@ -1734,3 +1734,12 @@ for (const promptId of ['podcast_research', 'write_email']) {
 assert.match(edge, /\.from\("workspace_outreach_suppressions"\)[\s\S]{0,260}\.eq\("contact_email", target\.contact_email\.trim\(\)\.toLowerCase\(\)\)/u)
 assert.match(edge, /That address is on the workspace do-not-contact list/u)
 
+// Legacy outreach webhooks answer unexpected failures generically; only
+// payload problems the caller can fix are echoed back.
+for (const webhook of ['campaign-reply-webhook', 'create-outreach-message']) {
+  const source = readFileSync(`supabase/functions/${webhook}/index.ts`, 'utf8')
+  assert.match(source, /class WebhookInputError extends Error \{\}/u, webhook)
+  assert.match(source, /error: inputError \? error\.message : 'Something went wrong on our side\. Try again in a moment'/u, webhook)
+  assert.match(source, /status: inputError \? 400 : 500/u, webhook)
+  assert.doesNotMatch(source, /error instanceof Error \? error\.message/u, webhook)
+}

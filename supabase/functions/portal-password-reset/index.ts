@@ -37,10 +37,19 @@ function normalizedEmail(value: unknown): string {
   return email
 }
 
+// New passwords chosen through self-serve reset need 12 characters. Existing
+// credentials (including older 8-character ones) keep working at login; only
+// the password being set here is held to the higher floor.
+const MIN_RESET_PASSWORD_LENGTH = 12
+
 function requirePortalPassword(value: unknown): string {
-  // Same policy as manage-client-portal-password: 8-256 chars, non-blank.
-  if (typeof value !== 'string' || value.length < 8 || value.length > 256 || !value.trim()) {
-    throw new HttpError(400, 'INVALID_PASSWORD', 'Password must be between 8 and 256 characters')
+  if (
+    typeof value !== 'string'
+    || value.length < MIN_RESET_PASSWORD_LENGTH
+    || value.length > 256
+    || !value.trim()
+  ) {
+    throw new HttpError(400, 'INVALID_PASSWORD', 'Password must be between 12 and 256 characters')
   }
   return value
 }
@@ -94,16 +103,31 @@ serve(async (req) => {
         const tokenHash = await hashPortalSessionToken(token)
         const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000).toISOString()
 
-        const { error: upsertError } = await admin
+        // A new request adds a token; it never replaces one. Overwriting let an
+        // anonymous caller who knew a client's email silently invalidate the
+        // link the client was about to use. Pending tokens stay valid until
+        // they expire or one is redeemed (redemption burns every token for
+        // the client), and the per-email reservation above bounds how many
+        // can be live at once.
+        const { error: expiredCleanupError } = await admin
           .from('client_portal_reset_tokens')
-          .upsert({
+          .delete()
+          .eq('client_id', client.id)
+          .lte('expires_at', new Date().toISOString())
+        if (expiredCleanupError) {
+          console.error('[Portal Password Reset] Expired token cleanup failed')
+        }
+
+        const { error: insertError } = await admin
+          .from('client_portal_reset_tokens')
+          .insert({
             client_id: client.id,
             token_hash: tokenHash,
             expires_at: expiresAt,
             requested_ip: ip,
-          }, { onConflict: 'client_id' })
+          })
 
-        if (!upsertError) {
+        if (!insertError) {
           const branding = await safeWorkspaceBranding(admin, workspace ?? {})
           const linkOrigin = await workspaceLinkOrigin(admin, workspace?.id ?? null)
           const delivery = await sendPortalResetEmail({

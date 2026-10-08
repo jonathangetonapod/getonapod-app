@@ -9,6 +9,9 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { partitionPodcastExports } from '../_shared/podcastExportDedupe.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -200,6 +203,7 @@ serve(async (req) => {
 
     // Exchange JWT for access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -225,6 +229,7 @@ serve(async (req) => {
     const sheetMetadataResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${access_token}`,
           'Content-Type': 'application/json',
@@ -246,6 +251,7 @@ serve(async (req) => {
     const existingIdsResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${existingIdsRange}`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         headers: {
           'Authorization': `Bearer ${access_token}`,
           'Content-Type': 'application/json',
@@ -308,6 +314,7 @@ serve(async (req) => {
     const appendResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=RAW`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${access_token}`,

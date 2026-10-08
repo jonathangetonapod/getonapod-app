@@ -99,25 +99,39 @@ ALTER TABLE email_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_bounces ENABLE ROW LEVEL SECURITY;
 
 -- Admin full access
-CREATE POLICY "Admins have full access to email_logs"
-  ON email_logs
-  FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM admins
-      WHERE admins.user_id = auth.uid()
-    )
-  );
+-- replay-safety: these two policies read from a table named "admins" that no
+-- migration ever creates (the admin table is admin_users). Create them only
+-- when public.admins exists, so a fresh database can replay. Unchanged for any
+-- database that already ran this file.
+DO $replay$
+BEGIN
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE $policy$
+      CREATE POLICY "Admins have full access to email_logs"
+        ON email_logs
+        FOR ALL
+        USING (
+          EXISTS (
+            SELECT 1 FROM admins
+            WHERE admins.user_id = auth.uid()
+          )
+        )
+    $policy$;
 
-CREATE POLICY "Admins have full access to email_bounces"
-  ON email_bounces
-  FOR ALL
-  USING (
-    EXISTS (
-      SELECT 1 FROM admins
-      WHERE admins.user_id = auth.uid()
-    )
-  );
+    EXECUTE $policy$
+      CREATE POLICY "Admins have full access to email_bounces"
+        ON email_bounces
+        FOR ALL
+        USING (
+          EXISTS (
+            SELECT 1 FROM admins
+            WHERE admins.user_id = auth.uid()
+          )
+        )
+    $policy$;
+  END IF;
+END
+$replay$;
 
 -- Service role can insert/update (for webhooks)
 CREATE POLICY "Service role can manage email_logs"

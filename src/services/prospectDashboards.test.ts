@@ -7,6 +7,7 @@ import {
   getWorkspaceProspect,
   getWorkspaceProspects,
   removeWorkspaceProspectPhoto,
+  rotateWorkspaceProspectLink,
   setWorkspaceProspectPublished,
   updateWorkspaceProspectPodcast,
   uploadWorkspaceProspectPhoto,
@@ -22,6 +23,17 @@ const dashboardId = '22222222-2222-4222-8222-222222222222'
 
 describe('prospectDashboards service', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('rotates the private link with a narrow, lowercased action', async () => {
+    invoke.mockResolvedValueOnce({ data: { dashboard: { id: dashboardId, slug: 'prospect-new' }, podcasts: [] }, error: null } as never)
+
+    const detail = await rotateWorkspaceProspectLink(workspaceId.toUpperCase(), dashboardId.toUpperCase())
+
+    expect(invoke).toHaveBeenCalledWith('workspace-prospect-dashboards', {
+      body: { action: 'rotate-link', workspace_id: workspaceId, dashboard_id: dashboardId },
+    })
+    expect(detail.dashboard.slug).toBe('prospect-new')
+  })
 
   it('uses workspace-scoped list and detail reads', async () => {
     invoke

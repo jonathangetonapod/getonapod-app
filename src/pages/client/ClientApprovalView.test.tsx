@@ -204,6 +204,26 @@ describe('ClientApprovalView', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
+  it('tells the client to wait when saving is throttled', async () => {
+    const baseFetch = globalThis.fetch as (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || '{}')) as { action?: string }
+      if (body.action === 'feedback_upsert') {
+        return new Response('not json', { status: 429 })
+      }
+      return baseFetch(input, init)
+    }))
+    renderDashboard()
+    await screen.findByRole('heading', { name: 'The Clear Leader' })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Not a fit' })[1])
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'You are saving choices faster than we can record them. Wait a few minutes, then try again.',
+    ))
+    expect(screen.queryByText('You have reviewed all 2 shows')).not.toBeInTheDocument()
+  })
+
   it('offers a way back when opened from the portal', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(

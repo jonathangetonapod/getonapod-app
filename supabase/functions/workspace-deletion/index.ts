@@ -240,7 +240,11 @@ serve(async (req) => {
       // moment this returns, so billing for the remainder would be for nothing.
       const cancelled = await fetch(
         `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
-        { method: 'DELETE', headers: { Authorization: `Bearer ${stripeKey}` } },
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${stripeKey}` },
+          signal: AbortSignal.timeout(20_000),
+        },
       ).catch(() => null)
 
       // A subscription Stripe no longer has is already in the state we want.

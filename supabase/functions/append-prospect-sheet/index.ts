@@ -3,6 +3,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { generateMissingEmbeddings } from '../_shared/podcastCache.ts'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
+// A hung Google API call must not hold the request open.
+const GOOGLE_API_TIMEOUT_MS = 30_000
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -108,6 +111,7 @@ async function getGoogleAccessToken(): Promise<string> {
   const jwt = `${signatureInput}.${signatureEncoded}`
 
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -198,7 +202,7 @@ serve(async (req) => {
     // Get the actual sheet tab name (not always "Sheet1")
     const metadataResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
-      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      { signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS), headers: { 'Authorization': `Bearer ${accessToken}` } }
     )
     let sheetName = 'Sheet1'
     if (metadataResponse.ok) {
@@ -211,6 +215,7 @@ serve(async (req) => {
     const appendResponse = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=RAW`,
       {
+        signal: AbortSignal.timeout(GOOGLE_API_TIMEOUT_MS),
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,

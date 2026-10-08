@@ -6,6 +6,9 @@ import { HttpError } from './workspaceAuth.ts'
 import { whiteLabelOnboardingSender } from './workspaceOnboarding.ts'
 import { platformOrigin } from './workspaceOrigin.ts'
 
+// A hung provider must not hold the reset or invite request open.
+const RESEND_TIMEOUT_MS = 10_000
+
 export interface PortalResetEmailResult {
   status: 'sent' | 'failed' | 'skipped'
   providerMessageId: string | null
@@ -53,6 +56,7 @@ export async function sendPortalInviteEmail(input: {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to: [input.recipientEmail], subject, html, text }),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     })
     if (!response.ok) {
       console.error('[Portal Invite Email] Provider rejected the message')
@@ -100,6 +104,7 @@ export async function sendPortalResetEmail(input: {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ from, to: [input.recipientEmail], subject, html, text }),
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     })
     if (!response.ok) {
       console.error('[Portal Reset Email] Provider rejected the message')

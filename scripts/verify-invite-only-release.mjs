@@ -23,7 +23,10 @@ const EXPECTED_COUNTS = Object.freeze({
   changedFunctions: 119,
   deployedFunctions: 117,
   excludedFunctions: 2,
-  retiredFunctions: 18,
+  // 45 after the legacy Email Bison inbox, matching experiments, and other
+  // admin-era functions with no caller in the app, the other functions, the
+  // schedules, or a documented integration became tombstones (2026-10-08).
+  retiredFunctions: 45,
   unauthenticatedTombstones: 5,
   // +2: _shared/promptVariables.ts and its test, the prompt variable registry.
   // 146 with _shared/promptRequirements.ts and its test: the fields a prompt
@@ -44,13 +47,15 @@ const EXPECTED_COUNTS = Object.freeze({
   // 164 with automatic credit refills: the tick, _shared/creditPacks.ts (moved
   // out of the checkout function so reading a price no longer executes its
   // serve), and the tick's own test surface.
+  // 169 with _shared/publicRateLimit.ts and its test: throttling for the public
+  // client and prospect capability pages (2026-10-08).
   // 167 with platform-university, the training-lesson library (2026-08-07).
   // 166 with the purge tick, which finishes those deletions on a schedule
   // rather than in a request.
   // 165 with workspace deletion: one entrypoint. It reuses the Instantly and
   // domain-provider helpers rather than adding its own, because tearing a
   // workspace down has to stop sending exactly the way pausing does.
-  edgeTypeScriptFiles: 167,
+  edgeTypeScriptFiles: 169,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -61,20 +66,47 @@ const EXPECTED_PHASE_KEYS = Object.freeze([
 
 const EXPECTED_RETIRED_FUNCTIONS = Object.freeze([
   'analyze-sales-call',
+  'backfill-prospect-podcasts',
+  'batch-create-bison-leads',
+  'batch-delete-prospect-podcasts',
+  'batch-update-bookings',
   'batch-update-orders',
+  'benchmark-match-prospect',
+  'classify-reply',
   'classify-sales-call',
   'create-addon-checkout',
+  'create-bison-lead',
   'create-checkout-session',
+  'delete-prospect',
+  'delete-reply',
+  'export-podcasts-csv',
+  'fetch-and-classify-replies',
+  'fetch-email-thread',
   'generate-background-video',
+  'generate-client-bio',
   'generate-heygen-video',
+  'generate-reply',
+  'generate-tagline',
   'get-client-portfolio',
   'get-customer-analytics',
+  'get-outreach-podcasts',
   'get-outreach-podcasts-v2',
+  'get-pipeline-analytics',
+  'get-podcast-demographics',
   'get-sales-call-analytics',
+  'get-testimonials',
+  'get-upcoming-bookings',
   'manage-admin-users',
+  'read-outreach-list',
+  'run-experiment-sweep',
+  'run-matching-experiment',
+  'save-onboarding-session',
+  'search-podcasts',
   'send-portal-magic-link',
+  'send-reply',
   'stripe-webhook',
   'sync-fathom-calls',
+  'sync-replies',
   'update-order-status',
   'update-prospect-dashboard',
   'verify-portal-token',

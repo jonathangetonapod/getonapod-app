@@ -148,8 +148,14 @@ assert.doesNotMatch(publicPodcasts.match(/if \(cacheOnly && prospectDashboardId\
 assert.match(publicPodcasts, /materializeCanonicalShortlist\(supabase, prospectDashboardId, orderedPodcasts\)/u)
 assert.match(publicFeedback, /\.from\('prospect_dashboard_podcasts'\)[\s\S]*?\.eq\('visibility', 'visible'\)/u)
 assert.doesNotMatch(publicFeedback, /\.from\('prospect_podcast_analyses'\)/u)
-assert.match(publicFeedback, /first_engaged_at: dashboard\.first_engaged_at \|\| new Date\(\)\.toISOString\(\)/u)
-assert.match(publicFeedback, /lifecycle_status: dashboard\.lifecycle_status === 'converted' \? 'converted' : 'engaged'/u)
+assert.match(publicFeedback, /\.update\(\{ first_engaged_at: new Date\(\)\.toISOString\(\) \}\)[\s\S]*?\.is\('first_engaged_at', null\)/u)
+// Feedback advances only a live, not-yet-engaged dashboard; it must never revive
+// an archived or failed one or demote a converted one.
+assert.match(publicFeedback, /const ENGAGEABLE_LIFECYCLE_STATUSES = \['ready', 'sent', 'viewed'\] as const/u)
+assert.match(publicFeedback, /\.update\(\{ lifecycle_status: 'engaged' \}\)[\s\S]*?\.in\('lifecycle_status', \[\.\.\.ENGAGEABLE_LIFECYCLE_STATUSES\]\)/u)
+assert.doesNotMatch(publicFeedback, /lifecycle_status === 'converted' \? 'converted' : 'engaged'/u)
+// Public writes are throttled per dashboard and per caller before anything is saved.
+assert.match(publicFeedback, /enforcePublicFeedbackRate\(supabase, req, 'prospect', dashboard\.id\)[\s\S]*?\.from\('prospect_podcast_feedback'\)/u)
 assert.match(publicDashboard, /brand_name: workspace\.client_brand_name \|\| workspace\.name/u)
 
 process.stdout.write('Workspace Prospect Studio Edge contract checks passed\n')
@@ -162,3 +168,9 @@ assert.match(
   /const linkedClientsResult = slugs\.length > 0[\s\S]*?from\('clients'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)[\s\S]*?\.in\('prospect_dashboard_slug', slugs\)/u,
 )
 assert.match(studio, /linked_client: clientBySlug\.get\(dashboard\.slug\) \?\? null/u)
+
+// Rotating the private link is a manager action that issues a fresh slug from
+// the capability trigger (never a caller-chosen value) and is audited.
+assert.match(studio, /requireManager\(access\)[\s\S]*?if \(action === 'rotate-link'\)/u, 'link rotation must require manager access')
+assert.match(studio, /if \(action === 'rotate-link'\)[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'dashboard_id'\]\)[\s\S]*?\.update\(\{ slug: null \}\)[\s\S]*?\.eq\('workspace_id', workspaceId\)[\s\S]*?rotated\.slug === existing\.slug[\s\S]*?action: 'workspace\.prospect\.link_rotated'/u)
+console.log('Workspace Prospect Studio link-rotation contract checks passed')

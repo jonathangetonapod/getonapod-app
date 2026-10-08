@@ -7,12 +7,41 @@
 -- ==================== STEP 1: DROP OLD TABLE ====================
 
 -- Drop the old trigger first
-DROP TRIGGER IF EXISTS "on-insert" ON public."Podcasts";
+-- replay-safety: DROP TRIGGER IF EXISTS still errors when the table is missing,
+-- and the manually created "Podcasts" table never exists on a fresh database.
+-- The DROP TABLE ... CASCADE below removes the trigger anyway.
+DO $replay$
+BEGIN
+  IF to_regclass('public."Podcasts"') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS "on-insert" ON public."Podcasts";
+  END IF;
+END
+$replay$;
 
 -- Drop the old Podcasts table
 DROP TABLE IF EXISTS public."Podcasts" CASCADE;
 
 -- ==================== STEP 2: CREATE CENTRAL PODCASTS TABLE ====================
+
+-- replay-safety: on a fresh database 20251227000006_podcast_calendar_system.sql
+-- has created an older, incompatible public.podcasts (name/url/ratings, no
+-- podscan_id), which would turn the CREATE TABLE IF NOT EXISTS below into a
+-- no-op. Drop that superseded shape (and, by CASCADE, the FK and view that
+-- depend on it) only when podcasts lacks podscan_id. Production's podcasts table
+-- has podscan_id, so this is a no-op there.
+DO $replay$
+BEGIN
+  IF to_regclass('public.podcasts') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'podcasts'
+         AND column_name = 'podscan_id'
+     ) THEN
+    DROP TABLE public.podcasts CASCADE;
+  END IF;
+END
+$replay$;
 
 CREATE TABLE IF NOT EXISTS public.podcasts (
   -- Primary Identifier
@@ -441,6 +470,15 @@ FROM public.podcasts;
 -- Grant access to the view
 GRANT SELECT ON public.podcast_cache_statistics TO authenticated;
 GRANT SELECT ON public.podcast_cache_statistics TO anon;
+
+-- replay-safety: attach the fetch-count trigger from
+-- 20260125000001_auto_increment_fetch_count.sql, which sorts before this file
+-- and so could not attach it on a fresh database. Idempotent.
+DROP TRIGGER IF EXISTS trigger_auto_increment_fetch_count ON public.podcasts;
+CREATE TRIGGER trigger_auto_increment_fetch_count
+  BEFORE INSERT OR UPDATE ON public.podcasts
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_increment_fetch_count();
 
 -- ==================== COMPLETION MESSAGE ====================
 

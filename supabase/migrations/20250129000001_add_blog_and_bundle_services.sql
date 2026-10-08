@@ -1,3 +1,22 @@
+-- replay-safety: this file sorts before 20250129000002_addon_services.sql,
+-- which creates addon_services. Create the table here with the exact
+-- 20250129000002 definition so a fresh database can replay; the later CREATE
+-- TABLE IF NOT EXISTS is then a no-op. Production already has the table.
+CREATE TABLE IF NOT EXISTS public.addon_services (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  short_description TEXT, -- For card/banner display
+  price_cents INTEGER NOT NULL, -- Price in cents
+  stripe_product_id TEXT UNIQUE,
+  stripe_price_id TEXT UNIQUE,
+  active BOOLEAN DEFAULT true,
+  features JSONB DEFAULT '[]'::jsonb, -- Array of feature strings
+  delivery_days INTEGER DEFAULT 5, -- Expected delivery timeline
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- Add Blog Post and Bundle Services
 
 -- ============================================================================
