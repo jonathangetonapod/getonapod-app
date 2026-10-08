@@ -22,7 +22,6 @@ const RequestAccess = lazyRoute(() => import("./pages/RequestAccess"));
 const Resources = lazyRoute(() => import("./pages/Resources"));
 const Blog = lazyRoute(() => import("./pages/Blog"));
 const BlogPost = lazyRoute(() => import("./pages/BlogPost"));
-const Course = lazyRoute(() => import("./pages/Course"));
 const WhatToExpect = lazyRoute(() => import("./pages/WhatToExpect"));
 const Privacy = lazyRoute(() => import("./pages/Privacy"));
 const Terms = lazyRoute(() => import("./pages/Terms"));
@@ -136,7 +135,7 @@ const App = () => (
             <Route path="/premium-placements" element={<Navigate to="/" replace />} />
             <Route path="/blog" element={<Blog />} />
             <Route path="/blog/:slug" element={<BlogPost />} />
-            <Route path="/course" element={<Course />} />
+            <Route path="/course" element={<Navigate to="/" replace />} />
             <Route path="/what-to-expect" element={<WhatToExpect />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />

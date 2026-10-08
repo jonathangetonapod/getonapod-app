@@ -236,7 +236,7 @@ try {
   assert.equal(clientPreviewBytes.readUInt32BE(20), 630)
 
   let indexHtml = ''
-  for (const route of ['/', '/resources', '/blog/example-post', '/course', '/what-to-expect']) {
+  for (const route of ['/', '/resources', '/blog/example-post', '/what-to-expect']) {
     const response = await fetch(`${origin}${route}`)
     assert.equal(response.status, 200, route)
     assertSecurityHeaders(response, route)

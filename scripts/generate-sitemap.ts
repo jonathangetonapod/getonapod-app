@@ -73,7 +73,6 @@ async function generateSitemap() {
     { url: '/platform', priority: '0.9', changefreq: 'weekly' },
     { url: '/blog', priority: '0.9', changefreq: 'daily' },
     { url: '/resources', priority: '0.8', changefreq: 'weekly' },
-    { url: '/course', priority: '0.8', changefreq: 'monthly' },
     { url: '/what-to-expect', priority: '0.8', changefreq: 'monthly' },
     { url: '/privacy', priority: '0.3', changefreq: 'yearly' },
     { url: '/terms', priority: '0.3', changefreq: 'yearly' },
