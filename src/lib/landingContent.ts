@@ -20,7 +20,8 @@ export const CALL_LABEL = 'Book a 30-minute call'
 export const CONTACT_EMAIL = 'jonathan@getonapod.com'
 
 /** One plan. Stated so people can self-qualify; nothing is sold on-page. */
-export const MONTHLY_PRICE = 500
+export const MONTHLY_PRICE = 1000
+export const MONTHLY_PRICE_TEXT = `$${MONTHLY_PRICE.toLocaleString('en-US')}`
 
 /** One plan's terms, as the pricing section below states them. */
 export const MINIMUM_MONTHS = 3
@@ -85,8 +86,6 @@ export const CLIENT_QUOTES: ClientQuote[] = [
     portrait: '/testimonials/frank-rohde.webp',
   },
   {
-    // His video also praises short-form clips, which the offer above does not
-    // include, so the quote keeps to podcasts.
     quote: 'Our whole goal was to use podcasts as a general exercise for marketing. I can’t recommend working with them more. They were great and easy to work with, and they were able to get us on various media channels and podcasts.',
     name: 'Sam Hollander',
     role: 'Co-founder and CEO, ShareClub',
@@ -109,9 +108,9 @@ export interface Hero {
 }
 
 export const HERO: Hero = {
-  kicker: 'Done-for-you podcast guesting for founders, executives, authors and coaches',
+  kicker: 'Done-for-you podcast guesting and clips for founders, executives, authors and coaches',
   title: ['Get booked on the podcasts', 'your customers already listen to.'],
-  lead: 'Get On A Pod pitches you to active shows in your niche, puts confirmed recordings on your calendar and sends a prep brief before each one. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
+  lead: 'Get On A Pod pitches you to active shows in your niche, puts confirmed recordings on your calendar and sends a prep brief before each one. Then every episode comes back as 5 captioned vertical clips, ready to post on LinkedIn, Instagram, TikTok and YouTube Shorts. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
 }
 
 export const HERO_SECONDARY = 'See how it works'
@@ -174,6 +173,7 @@ export const PLAN_INCLUDES = [
   'Speaker one-sheet, positioning, and pitch angles written for you',
   'You approve every show before we confirm the booking',
   'Prep brief and talking points before every recording',
+  '5 captioned vertical clips from every episode, sized for LinkedIn, Reels, TikTok and Shorts — the files are yours',
   'No setup fees and no paid placements — 3-month minimum, then month to month',
 ]
 
@@ -186,10 +186,11 @@ export const FAQ: Faq[] = [
   { q: 'How many shows will I get booked on?', a: "It depends on your niche and how bookable your story is, but most clients see 2–4 confirmed bookings a month once outreach ramps up (usually by week three). We tell you the honest number for your niche on the first call — including if it's lower." },
   { q: 'What kinds of podcasts do you pitch?', a: 'Vetted, active shows with real audiences in your space — not pay-to-play placements or dormant feeds. You see every show before we pitch it, and you approve every booking before we confirm.' },
   { q: 'When do I record my first episode?', a: 'Pitches go out in week one. Most clients have their first recording on the calendar within 3–5 weeks, and episodes typically publish 2–8 weeks after recording, depending on the show.' },
+  { q: 'Do I get clips from my episodes?', a: 'Yes, clipping is included. When an episode publishes, we get the full recording from the host and cut 5 vertical clips from its strongest moments, captioned so they work with the sound off and sized for LinkedIn, Instagram Reels, TikTok and YouTube Shorts. At 2–4 bookings a month, that is roughly 10–20 clips a month to post. The files are yours to keep and reuse.' },
   { q: 'Is there a contract?', a: "A 3-month minimum to start — that's how long it takes outreach to ramp and bookings to land. After that it's month to month, cancel anytime. If we're not putting you on shows worth your time, you shouldn't be paying us." },
   { q: 'What do you need from me?', a: 'About an hour up front for the positioning interview, then roughly 15 minutes a week to approve shows. After that, just show up to the recordings — we handle everything else.' },
   { q: 'What if a host says no?', a: "Most do — that's the nature of outreach, and it's priced into the volume. Every pitch is personalized to the show, every follow-up is researched, and a no this quarter often becomes a yes next season when your proof gets stronger." },
-  { q: 'How is this different from a PR agency?', a: 'PR agencies charge $2,000–5,000 a month, spread across press, awards, and everything else. We do exactly one thing — podcast guesting — and we do it every week.' },
+  { q: 'How is this different from a PR agency?', a: 'PR agencies charge $2,000–5,000 a month, spread across press, awards, and everything else. We do one thing — podcast guesting, from the first pitch to the clips you post afterwards — and we do it every week.' },
 ]
 
 /** "The SaaS Podcast" → "SP": what stands in the artwork mat until there is art. */

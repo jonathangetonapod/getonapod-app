@@ -57,7 +57,7 @@ const Navbar = () => {
           homepage states the same facts under its hero. */}
       <div className="dfy-site-strip">
         <div className="dfy-site-strip-in">
-          <span>Done-for-you podcast guesting · $500 a month</span>
+          <span>Done-for-you podcast guesting · $1,000 a month</span>
           <span>You approve every show · about 15 minutes a week</span>
         </div>
       </div>

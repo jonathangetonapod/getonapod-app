@@ -48,16 +48,17 @@ describe('Landing', () => {
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
     expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
-    expect(screen.getByText('$500')).toBeInTheDocument()
+    expect(screen.getByText('$1,000')).toBeInTheDocument()
   })
 
   // The terms, under the hero, in the same words the pricing section uses.
   it('states the terms under the hero, before the reader scrolls', () => {
     renderPage()
-    const facts = screen.getByText('$500 a month').parentElement
+    const facts = screen.getByText('$1,000 a month').parentElement
     expect(facts).toHaveTextContent('3-month minimum')
     expect(facts).toHaveTextContent('about 15 minutes a week of your time')
     expect(facts).toHaveTextContent('you approve every show')
+    expect(facts).toHaveTextContent('5 clips from every episode')
     expect(screen.getAllByText(/30 minutes on video with Jonathan Garces/u)).toHaveLength(2)
     expect(screen.getAllByText(/opens cal\.com in a new tab/iu).length).toBeGreaterThanOrEqual(2)
   })

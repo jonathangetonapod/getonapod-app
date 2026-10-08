@@ -67,7 +67,7 @@ const steps = [
     number: '10',
     title: 'Episode goes live',
     duration: 'Usually 2–8 weeks later',
-    description: 'We notify you when the episode publishes and share the links so you can use it.',
+    description: 'We notify you when the episode publishes, get the full recording from the host and send you 5 captioned vertical clips, ready for your social feeds.',
   },
   {
     number: '11',
@@ -95,7 +95,7 @@ const summaryCards = [
   },
   {
     label: 'Ongoing',
-    title: 'Bookings, prep briefs and published episodes',
+    title: 'Bookings, prep briefs, episodes and clips',
     description: 'Most clients record their first episode within 3–5 weeks, and it usually goes live 2–8 weeks after that.',
   },
 ];
@@ -128,7 +128,7 @@ const WhatToExpect = () => {
             <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">
               Book a 30-minute call
             </a>
-            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $500 a month</a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $1,000 a month</a>
           </div>
 
           <p className="dfy-cta-note">
@@ -193,7 +193,7 @@ const WhatToExpect = () => {
             <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">
               Book a 30-minute call
             </a>
-            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $500 a month</a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $1,000 a month</a>
           </div>
           <p className="dfy-book-note">30 minutes, no commitment.</p>
         </div>

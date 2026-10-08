@@ -182,7 +182,7 @@ export default function BlogPost() {
               <section className="dfy-panel">
                 <h2 className="dfy-title">Get booked on the podcasts your customers already listen to</h2>
                 <p className="dfy-copy">
-                  Get On A Pod pitches the shows, books the recordings and sends you a prep brief before each one, for $500 a month. Most clients have 2–4 bookings a month once outreach ramps up.
+                  Get On A Pod pitches the shows, books the recordings and sends you a prep brief before each one, then turns every episode into 5 vertical clips for social, for $1,000 a month. Most clients have 2–4 bookings a month once outreach ramps up.
                 </p>
                 <div className="dfy-cta-row">
                   <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">

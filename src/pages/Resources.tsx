@@ -157,7 +157,7 @@ export default function Resources() {
         <span className="dfy-kicker">Need more than templates?</span>
         <h2><span>If you want the bookings, not just the homework,</span><span>we handle that too.</span></h2>
         <p className="dfy-book-copy">
-          Use the free resources to sharpen your own process. Or have Get On A Pod build the shortlist, pitch the shows and handle the follow-up for $500 a month. Most clients have 2–4 bookings a month once outreach ramps up.
+          Use the free resources to sharpen your own process. Or have Get On A Pod build the shortlist, pitch the shows and handle the follow-up for $1,000 a month. Most clients have 2–4 bookings a month once outreach ramps up.
         </p>
         <div className="dfy-cta-row">
           <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">

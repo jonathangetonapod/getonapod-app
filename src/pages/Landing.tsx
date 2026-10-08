@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom'
 import PageSEO from '@/components/seo/PageSEO'
 import {
   CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, HERO, HERO_SECONDARY,
-  MINIMUM_MONTHS, MONTHLY_PRICE, PODCAST_CATALOG, PLAN_INCLUDES, WEEKLY_MINUTES, initials,
+  MINIMUM_MONTHS, MONTHLY_PRICE_TEXT, PODCAST_CATALOG, PLAN_INCLUDES, WEEKLY_MINUTES, initials,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
 
@@ -54,10 +54,11 @@ const Hero = () => (
     <p className="dfy-cta-note">{CALL_PROMISE} {CALL_NOTE}</p>
     {/* The terms, before anyone scrolls to the pricing section that states them. */}
     <p className="dfy-kicker dfy-facts">
-      <span>${MONTHLY_PRICE} a month</span>
+      <span>{MONTHLY_PRICE_TEXT} a month</span>
       <span>{MINIMUM_MONTHS}-month minimum</span>
       <span>about {WEEKLY_MINUTES} minutes a week of your time</span>
       <span>you approve every show</span>
+      <span>5 clips from every episode</span>
     </p>
     <a className="dfy-proof" href="#quotes">
       <span className="dfy-proof-faces" aria-hidden="true">
@@ -104,6 +105,11 @@ const PodcastsHow = () => (
       <p className="dfy-how-n dfy-tnum">03</p>
       <h2 className="dfy-how-title">You show up and talk</h2>
       <p className="dfy-how-copy">Most clients record their first episode within 3–5 weeks. Every booking lands on your calendar with a prep brief: the host, the audience, the angle and the one thing to plug.</p>
+    </div>
+    <div className="dfy-how-row">
+      <p className="dfy-how-n dfy-tnum">04</p>
+      <h2 className="dfy-how-title">We turn it into a week of posts</h2>
+      <p className="dfy-how-copy">When the episode airs, we get the full recording from the host and cut 5 vertical clips from its strongest moments, captioned and sized for LinkedIn, Instagram, TikTok and YouTube Shorts: one for each weekday. The show's listeners hear you once; your own network sees you all week.</p>
     </div>
     <p className="dfy-how-more"><Link to="/what-to-expect">See the week-by-week plan</Link></p>
   </section>
@@ -341,7 +347,7 @@ const Pricing = () => (
     <span className="dfy-kicker">Pricing</span>
     <div className="dfy-split">
       <div>
-        <p className="dfy-price">${MONTHLY_PRICE}<small>/month</small></p>
+        <p className="dfy-price">{MONTHLY_PRICE_TEXT}<small>/month</small></p>
         <p className="dfy-price-note">One plan. 3-month minimum, then month to month. PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.</p>
         <a className="dfy-btn dfy-btn-primary dfy-price-cta" href={CALL_URL} target="_blank" rel="noopener noreferrer">Book a call to start<NewTab /></a>
       </div>
