@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceProspectDashboards from '@/pages/app/WorkspaceProspectDashboards'
 import { useAuth } from '@/contexts/AuthContext'
 import {
+  createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
   rotateWorkspaceProspectLink,
@@ -97,7 +98,7 @@ const prospect: WorkspaceProspect = {
   },
 }
 
-function renderPage(props: { platformWorkspaceId?: string } = {}) {
+function renderPage(props: { platformWorkspaceId?: string } = {}, initialEntry = '/app/prospect-dashboards') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -107,7 +108,7 @@ function renderPage(props: { platformWorkspaceId?: string } = {}) {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceProspectDashboards {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -150,6 +151,30 @@ describe('WorkspaceProspectDashboards finder link', () => {
    * there was dropped and the finder opened unscoped. The prospect-aware
    * finder is the one at /advanced.
    */
+  // A ?prospect= left from the previous selection used to win over the new
+  // draft, so creating a prospect snapped the view back to the old one.
+  it('selects a newly created prospect even when the address names another', async () => {
+    const createdId = '55555555-5555-4555-8555-555555555555'
+    const created = { ...prospect, id: createdId, prospect_name: 'Dallas Fontaine', updated_at: '2026-07-22T00:00:00.000Z' }
+    vi.mocked(createWorkspaceProspect).mockResolvedValue(created)
+    renderPage({}, `/app/prospect-dashboards?prospect=${prospectId}`)
+
+    await waitFor(() => expect(mockedDetail).toHaveBeenCalledWith(workspaceId, prospectId))
+    mockedList.mockResolvedValue({
+      workspace: workspaceSummary,
+      viewer_role: 'owner',
+      can_manage: true,
+      dashboards: [prospect, created],
+    })
+    fireEvent.click((await screen.findAllByRole('button', { name: /New prospect/u }))[0])
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Dallas Fontaine' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }))
+
+    await waitFor(() => expect(mockedDetail).toHaveBeenCalledWith(workspaceId, createdId))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(mockedDetail.mock.calls.at(-1)).toEqual([workspaceId, createdId])
+  })
+
   it('regenerates the private link only after the operator confirms', async () => {
     const rotated = { ...prospect, slug: 'prospect-rotated' }
     vi.mocked(rotateWorkspaceProspectLink).mockResolvedValue({ dashboard: rotated, podcasts: [] } as never)

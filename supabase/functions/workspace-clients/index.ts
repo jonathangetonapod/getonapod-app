@@ -19,6 +19,7 @@ import {
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
+import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 
 const METHODS = ['POST'] as const
 const CLIENT_FIELDS = [
@@ -166,7 +167,7 @@ function bookingPayload(value: unknown): Record<string, string | boolean | null>
   if (!BOOKING_STATUSES.includes(status)) {
     throw new HttpError(400, 'INVALID_FIELD', 'status is not a known placement stage')
   }
-  return {
+  const payload: Record<string, string | boolean | null> = {
     podcast_name: podcastName,
     podcast_url: optionalString(input.podcast_url, 'podcast_url', 2048),
     host_name: optionalString(input.host_name, 'host_name', 200),
@@ -177,11 +178,18 @@ function bookingPayload(value: unknown): Record<string, string | boolean | null>
     episode_url: optionalString(input.episode_url, 'episode_url', 2048),
     notes: optionalString(input.notes, 'notes', 10_000),
     prep_sent: input.prep_sent === true,
-    // The journey links: which shortlist row and which outreach this
-    // placement came from. Composite FKs reject a mismatched client.
-    shortlist_podcast_id: optionalUuid(input.shortlist_podcast_id, 'shortlist_podcast_id'),
-    campaign_target_id: optionalUuid(input.campaign_target_id, 'campaign_target_id'),
   }
+  // The journey links: which shortlist row and which outreach this placement
+  // came from. Composite FKs reject a mismatched client. They are written only
+  // when the request names them, so an edit form that never shows them cannot
+  // erase the link by leaving them out; an explicit null still clears one.
+  if (Object.prototype.hasOwnProperty.call(input, 'shortlist_podcast_id')) {
+    payload.shortlist_podcast_id = optionalUuid(input.shortlist_podcast_id, 'shortlist_podcast_id')
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'campaign_target_id')) {
+    payload.campaign_target_id = optionalUuid(input.campaign_target_id, 'campaign_target_id')
+  }
+  return payload
 }
 
 function clientPayload(value: unknown): Record<string, string | null> {
@@ -208,8 +216,23 @@ function clientPayload(value: unknown): Record<string, string | null> {
   }
 }
 
-function rpcError(error: { message?: string }): never {
+function rpcError(error: { message?: string; details?: string | null }): never {
   const message = (error.message ?? '').toLowerCase()
+  if (message.includes('workspace client limit reached')) {
+    let limit: { client_limit?: number; active_clients?: number } = {}
+    try {
+      limit = JSON.parse(error.details ?? '{}')
+    } catch {
+      limit = {}
+    }
+    throw new HttpError(
+      409,
+      'CLIENT_LIMIT_REACHED',
+      typeof limit.client_limit === 'number' && typeof limit.active_clients === 'number'
+        ? `This plan covers ${limit.client_limit} active clients and ${limit.active_clients} are already active. Pause or archive a client, or upgrade, to make another active.`
+        : 'This plan’s active client limit is reached. Pause or archive a client, or upgrade, to make another active.',
+    )
+  }
   if (
     message.includes('active workspace manager')
     || message.includes('active workspace staff')
@@ -246,6 +269,14 @@ async function aiKeyPresence(admin: Parameters<typeof workspaceAiKeyStatus>[0], 
     return { anthropic: status.anthropic.configured, openai: status.openai.configured }
   } catch {
     return { anthropic: false, openai: false }
+  }
+}
+
+async function linkOriginOrNull(admin: Parameters<typeof workspaceLinkOrigin>[0], workspaceId: string): Promise<string | null> {
+  try {
+    return await workspaceLinkOrigin(admin, workspaceId)
+  } catch {
+    return null
   }
 }
 
@@ -398,51 +429,67 @@ serve(async (req) => {
         })
       }
       const usage = { input: 0, output: 0 }
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': anthropicKey.apiKey,
-          'anthropic-version': '2023-06-01',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-5',
-          // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
-          thinking: { type: 'disabled' },
-          max_tokens: 2_500,
-          system: 'You draft podcast-guest AI SDR profiles for booking agencies. Write in the voice of the agency describing their client. Return ONLY a JSON object, no markdown.',
-          messages: [{
-            role: 'user',
-            content: `Draft the AI SDR profile fields for this podcast guest. Return ONLY JSON with these string fields (each 2-5 sentences, concrete, no hype): {"positioning": how to introduce them and what makes them credible, "topics_and_angles": the topics and specific angles they speak on best, "listener_takeaways": what an audience concretely gains, "proof_points": specific numbers/results/credentials worth citing, "ideal_opportunities": which shows and audiences are the best fit, "booking_details": practical booking notes (format preferences, availability, tech setup) — write "To be confirmed with the client" for anything unknown rather than inventing it}.\n\nGUEST:\nName: ${client.name}\nBio: ${String(client.bio).slice(0, 4_000)}\nWebsite: ${client.website ?? 'n/a'}\nLinkedIn: ${client.linkedin_url ?? 'n/a'}\n\nEVIDENCE FROM RESEARCHED SHOWS:\n${JSON.stringify(evidence).slice(0, 6_000)}`,
-          }],
-        }),
-        signal: AbortSignal.timeout(45_000),
-      }).catch(async (error: unknown) => {
-        await refundDraft()
-        throw error
-      })
-      if (!response.ok) {
-        await refundDraft()
-        throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft could not be generated. Try again shortly')
-      }
-      const payloadJson = await response.json() as {
-        content?: Array<{ type: string; text?: string }>
-        usage?: { input_tokens?: number; output_tokens?: number }
-      }
-      usage.input = payloadJson.usage?.input_tokens ?? 0
-      usage.output = payloadJson.usage?.output_tokens ?? 0
-      const text = (payloadJson.content ?? []).find((block) => block.type === 'text')?.text ?? ''
-      let draft: Record<string, unknown> = {}
+      // Everything from the request to a usable draft sits inside one refund
+      // path: a network failure, an error status, a body that is not JSON, or
+      // a draft with no usable field all give a fresh charge back.
+      let fields: Record<string, string> = {}
       try {
-        draft = JSON.parse(text.replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, ''))
-      } catch (_error) {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': anthropicKey.apiKey,
+            'anthropic-version': '2023-06-01',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-5',
+            // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
+            thinking: { type: 'disabled' },
+            max_tokens: 2_500,
+            system: 'You draft podcast-guest AI SDR profiles for booking agencies. Write in the voice of the agency describing their client. Return ONLY a JSON object, no markdown.',
+            messages: [{
+              role: 'user',
+              content: `Draft the AI SDR profile fields for this podcast guest. Return ONLY JSON with these string fields (each 2-5 sentences, concrete, no hype): {"positioning": how to introduce them and what makes them credible, "topics_and_angles": the topics and specific angles they speak on best, "listener_takeaways": what an audience concretely gains, "proof_points": specific numbers/results/credentials worth citing, "ideal_opportunities": which shows and audiences are the best fit, "booking_details": practical booking notes (format preferences, availability, tech setup) — write "To be confirmed with the client" for anything unknown rather than inventing it}.\n\nGUEST:\nName: ${client.name}\nBio: ${String(client.bio).slice(0, 4_000)}\nWebsite: ${client.website ?? 'n/a'}\nLinkedIn: ${client.linkedin_url ?? 'n/a'}\n\nEVIDENCE FROM RESEARCHED SHOWS:\n${JSON.stringify(evidence).slice(0, 6_000)}`,
+            }],
+          }),
+          signal: AbortSignal.timeout(45_000),
+        })
+        if (!response.ok) {
+          throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft could not be generated. Try again shortly')
+        }
+        let payloadJson: {
+          content?: Array<{ type: string; text?: string }>
+          usage?: { input_tokens?: number; output_tokens?: number }
+        }
+        try {
+          payloadJson = await response.json()
+        } catch (_error) {
+          throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft came back malformed. Try again')
+        }
+        usage.input = payloadJson?.usage?.input_tokens ?? 0
+        usage.output = payloadJson?.usage?.output_tokens ?? 0
+        const text = (Array.isArray(payloadJson?.content) ? payloadJson.content : [])
+          .find((block) => block?.type === 'text')?.text ?? ''
+        let draft: Record<string, unknown> = {}
+        try {
+          const parsed = JSON.parse(String(text).replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, ''))
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) draft = parsed
+        } catch (_error) {
+          throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft came back malformed. Try again')
+        }
+        const extracted: Record<string, string> = {}
+        for (const field of AI_SDR_PROFILE_FIELDS) {
+          const value = draft[field]
+          if (typeof value === 'string' && value.trim()) extracted[field] = value.trim().slice(0, 4_000)
+        }
+        if (Object.keys(extracted).length === 0) {
+          throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft came back empty. Try again')
+        }
+        fields = extracted
+      } catch (error) {
         await refundDraft()
-        throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft came back malformed. Try again')
-      }
-      const fields: Record<string, string> = {}
-      for (const field of AI_SDR_PROFILE_FIELDS) {
-        const value = draft[field]
-        if (typeof value === 'string' && value.trim()) fields[field] = value.trim().slice(0, 4_000)
+        if (error instanceof HttpError) throw error
+        throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft could not be generated. Try again shortly')
       }
       await logOperationCost(admin, {
         workspaceId,
@@ -582,13 +629,17 @@ serve(async (req) => {
       }
 
       if (action === 'booking-delete') {
-        const { error: deleteError } = await admin
+        const { data: deletedRows, error: deleteError } = await admin
           .from('bookings')
           .delete()
           .eq('id', bookingId!)
           .eq('client_id', clientId!)
+          .select('id')
         if (deleteError) {
           throw new HttpError(500, 'BOOKING_OPERATION_FAILED', 'The placement could not be removed')
+        }
+        if (!deletedRows || deletedRows.length === 0) {
+          throw new HttpError(404, 'BOOKING_NOT_FOUND', 'That placement no longer exists for this client')
         }
         await writeAudit(admin, {
           workspaceId,
@@ -605,14 +656,22 @@ serve(async (req) => {
       const now = new Date().toISOString()
       // Read the prior state before writing so the notifier can tell a real
       // transition from a re-save of a row that was already in that stage.
-      const previousStatus = action === 'booking-update'
-        ? (await admin
+      let previousStatus: string | null = null
+      if (action === 'booking-update') {
+        const { data: existing, error: existingError } = await admin
           .from('bookings')
           .select('status')
           .eq('id', bookingId!)
           .eq('client_id', clientId!)
-          .maybeSingle()).data?.status ?? null
-        : null
+          .maybeSingle()
+        if (existingError) {
+          throw new HttpError(500, 'BOOKING_OPERATION_FAILED', 'The placement could not be loaded')
+        }
+        if (!existing) {
+          throw new HttpError(404, 'BOOKING_NOT_FOUND', 'That placement no longer exists for this client')
+        }
+        previousStatus = existing.status ?? null
+      }
       const { data: booking, error: bookingError } = action === 'booking-create'
         ? await admin
           .from('bookings')
@@ -626,7 +685,14 @@ serve(async (req) => {
           .eq('client_id', clientId!)
           .select(columns)
           .maybeSingle()
-      if (bookingError || !booking) {
+      if (bookingError) {
+        throw new HttpError(500, 'BOOKING_OPERATION_FAILED', 'The placement could not be saved')
+      }
+      if (!booking) {
+        // The row vanished between the read and the write.
+        if (action === 'booking-update') {
+          throw new HttpError(404, 'BOOKING_NOT_FOUND', 'That placement no longer exists for this client')
+        }
         throw new HttpError(500, 'BOOKING_OPERATION_FAILED', 'The placement could not be saved')
       }
       await writeAudit(admin, {
@@ -878,6 +944,12 @@ serve(async (req) => {
         viewer_role: access.role,
         can_manage: ['owner', 'admin', 'platform_admin'].includes(access.role),
         ai_keys: await aiKeyPresence(admin, workspaceId),
+        // The origin the client's share links are built on: the agency's
+        // serving primary domain when it has one, otherwise the platform. The
+        // same source the onboarding and portal emails use, so a link copied
+        // here matches the one the client was emailed. Null only when the
+        // platform origin itself is unconfigured; the page then falls back.
+        public_base_url: await linkOriginOrNull(admin, workspaceId),
         client: {
           ...client,
           // A legacy auto_send row reads as auto_draft here exactly as in
@@ -1032,31 +1104,10 @@ serve(async (req) => {
       })
     }
 
-    // Plan limit, checked here rather than in the browser. included_active_clients
-    // has existed since billing was sketched and nothing has ever read it, so the
-    // cap was only a number in a column. Only creation is gated: editing or
-    // reactivating an existing client must never be blocked by a limit changed
-    // after they signed up.
-    if (action === 'create') {
-      const { data: allowanceRows, error: allowanceError } = await admin.rpc(
-        'workspace_client_allowance_v1',
-        { p_workspace_id: workspaceId },
-      )
-      if (allowanceError) {
-        throw new HttpError(503, 'PLAN_LIMIT_UNCHECKED', 'The plan limit could not be verified. Try again shortly')
-      }
-      const allowance = (allowanceRows ?? [])[0] as
-        | { active_clients?: number; client_limit?: number; can_add_client?: boolean }
-        | undefined
-      if (allowance && allowance.can_add_client === false) {
-        throw new HttpError(
-          409,
-          'CLIENT_LIMIT_REACHED',
-          `This plan covers ${allowance.client_limit} active clients and ${allowance.active_clients} are already active. Archive a client or upgrade to add another.`,
-        )
-      }
-    }
-
+    // The plan's active-client cap is enforced inside
+    // workspace_client_operation_v2 (20261011000800), under a workspace row
+    // lock, on create-as-active and on any move to active. A separate read
+    // here could not stop two concurrent creates taking the last seat.
     const { data, error } = await admin.rpc('workspace_client_operation_v2', {
       p_action: action,
       p_workspace_id: workspaceId,

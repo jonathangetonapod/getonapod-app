@@ -88,8 +88,10 @@ describe('WorkspaceBilling', () => {
     mockedOverview.mockResolvedValue(overviewFixture as never)
     renderPage('/app/settings/billing?checkout=success')
 
-    expect(await screen.findByText(/Waiting for your credits/)).toBeInTheDocument()
-    expect(screen.getByText(/the payment went through but the credits did not/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Waiting for Stripe to confirm the payment/)).toBeInTheDocument()
+    expect(screen.getByText(/contact support rather than paying again/i)).toBeInTheDocument()
+    // ?checkout=success can be typed by anyone, so nothing claims the payment landed.
+    expect(screen.queryByText(/payment went through|within a minute/i)).not.toBeInTheDocument()
   })
 
   // Selling a pack while the same page says the balance will not move is asking

@@ -12,7 +12,9 @@ import {
   getHostRelationship,
   linkHostRelationshipClient,
   listHostRelationships,
+  listHostRelationshipsPage,
   saveHostRelationship,
+  unlinkHostRelationshipClient,
   type HostRelationshipDetail,
   type HostRelationshipSummary,
 } from '@/services/hostRelationships'
@@ -29,14 +31,35 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
 }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
-vi.mock('@/services/hostRelationships', () => ({
-  addHostRelationshipNote: vi.fn(),
-  createHostRelationship: vi.fn(),
-  getHostRelationship: vi.fn(),
-  linkHostRelationshipClient: vi.fn(),
-  listHostRelationships: vi.fn(),
-  saveHostRelationship: vi.fn(),
-}))
+vi.mock('@/services/hostRelationships', () => {
+  const listHostRelationships = vi.fn()
+  return {
+    addHostRelationshipNote: vi.fn(),
+    createHostRelationship: vi.fn(),
+    getHostRelationship: vi.fn(),
+    linkHostRelationshipClient: vi.fn(),
+    listHostRelationships,
+    // The page reads the book a page at a time; by default one page holds the
+    // whole list the older tests describe through listHostRelationships.
+    listHostRelationshipsPage: vi.fn(async (workspaceId: string) => {
+      const rows = ((await listHostRelationships(workspaceId)) ?? []) as Array<{ derived_state: string }>
+      return {
+        relationships: rows,
+        total: rows.length,
+        offset: 0,
+        has_more: false,
+        next_offset: null,
+        counts: {
+          in_conversation: rows.filter((row) => row.derived_state === 'in_conversation').length,
+          booked: rows.filter((row) => row.derived_state === 'booked').length,
+          engaged: rows.filter((row) => ['replied', 'declined'].includes(row.derived_state)).length,
+        },
+      }
+    }),
+    saveHostRelationship: vi.fn(),
+    unlinkHostRelationshipClient: vi.fn(),
+  }
+})
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedAdminWorkspace = vi.mocked(getAdminWorkspaceView)
@@ -47,6 +70,8 @@ const mockedSave = vi.mocked(saveHostRelationship)
 const mockedAddNote = vi.mocked(addHostRelationshipNote)
 const mockedCreate = vi.mocked(createHostRelationship)
 const mockedLinkClient = vi.mocked(linkHostRelationshipClient)
+const mockedListPage = vi.mocked(listHostRelationshipsPage)
+const mockedUnlinkClient = vi.mocked(unlinkHostRelationshipClient)
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const platformWorkspaceId = '99999999-9999-4999-8999-999999999999'
@@ -249,6 +274,49 @@ describe('WorkspaceRelationships', () => {
       'href',
       `/app/master-inbox?client=${clientId}&thread=thread-one`,
     )
+  })
+
+  it('states whole-book totals and loads the rest of a large book on request', async () => {
+    mockedListPage
+      .mockResolvedValueOnce({
+        relationships: [relationship],
+        total: 2,
+        offset: 0,
+        has_more: true,
+        next_offset: 1,
+        counts: { in_conversation: 7, booked: 3, engaged: 4 },
+      })
+      .mockResolvedValueOnce({
+        relationships: [{ ...relationship, podcast_id: 'show-two', podcast_name: 'Second Show' }],
+        total: 2,
+        offset: 1,
+        has_more: false,
+        next_offset: null,
+        counts: { in_conversation: 7, booked: 3, engaged: 4 },
+      })
+    renderPage()
+
+    expect(await screen.findByText('7 in conversation')).toBeInTheDocument()
+    expect(screen.getByText('3 placed')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 relationships loaded. Search, filters and sorting cover the loaded rows.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more relationships' }))
+
+    expect(await screen.findByText('Second Show')).toBeInTheDocument()
+    expect(mockedListPage).toHaveBeenLastCalledWith(workspaceId, { offset: 1 })
+    expect(screen.queryByRole('button', { name: 'Load more relationships' })).not.toBeInTheDocument()
+  })
+
+  it('lets a manager unlink a client from a host', async () => {
+    mockedUnlinkClient.mockResolvedValue(undefined)
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Open' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlink Taylor Client from this host' }))
+
+    await waitFor(() => expect(mockedUnlinkClient).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      clientId,
+    }))
   })
 
   // The header counted live conversations; which of them had gone silent —

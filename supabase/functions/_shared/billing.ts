@@ -183,19 +183,22 @@ export async function chargeCredits(
  *
  * Never throws. A refund that fails must not replace the caller's real error
  * with a billing one: the operation already failed, and that is the failure
- * worth reporting.
+ * worth reporting. It does report the outcome, though: true when the debit is
+ * refunded (now or by an earlier call — the RPC is idempotent per debit) or
+ * there was nothing to refund, false when the refund did not land. Callers
+ * that track a refund to completion must not record it as done on false.
  */
 export async function refundCredits(
   admin: ReturnType<typeof createAdminClient>,
   input: { workspaceId: string; entryId: string | null; reason?: string },
-): Promise<void> {
+): Promise<boolean> {
   /*
    * entryId alone decides. It is non-null exactly when a real debit was
    * written, so gating on the enforcement flag as well meant flipping the
    * flag off between a charge and its failure ate the refund: the debit stood
    * for work that was never delivered.
    */
-  if (!input.entryId) return
+  if (!input.entryId) return true
   try {
     const { error } = await admin.rpc('refund_workspace_credits_v1', {
       p_workspace_id: input.workspaceId,
@@ -206,11 +209,14 @@ export async function refundCredits(
       // The one observability this has: supabase-js reports failures as a
       // return value, so without this line a failed refund vanished silently.
       console.error(`[billing] refund of entry ${input.entryId} failed: ${error.message}`)
+      return false
     }
+    return true
   } catch (error) {
     // Never rethrown — the operation's own failure is the one worth
     // reporting — but never silent either.
     console.error(`[billing] refund of entry ${input.entryId} threw: ${error instanceof Error ? error.message : 'unknown'}`)
+    return false
   }
 }
 

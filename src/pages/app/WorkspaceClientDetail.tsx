@@ -132,6 +132,31 @@ const onboardingStatusStyles: Record<WorkspaceClientOnboardingSummary['status'],
   revoked: 'border-red-200 bg-red-50 text-red-800',
 }
 
+/**
+ * Starts a clipboard write inside the click that asked for it, for text that
+ * only exists once a request finishes. Safari refuses writeText once an await
+ * has broken the user gesture; a ClipboardItem holding a promise is written
+ * synchronously and filled in when the text arrives. Resolves false rather
+ * than throwing, so the caller can show the text instead of losing it.
+ */
+function copyTextWhenReady(text: Promise<string>): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      return navigator.clipboard
+        .write([new ClipboardItem({
+          'text/plain': text.then((value) => new Blob([value], { type: 'text/plain' })),
+        })])
+        .then(() => true, () => false)
+    }
+    if (navigator.clipboard?.writeText) {
+      return text.then((value) => navigator.clipboard.writeText(value)).then(() => true, () => false)
+    }
+  } catch {
+    // Fall through: the caller shows the text.
+  }
+  return Promise.resolve(false)
+}
+
 function labelForStatus(value: string): string {
   return value
     .split('_')
@@ -336,6 +361,8 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const [slugRotateOpen, setSlugRotateOpen] = useState(false)
   const [slugRotateBusy, setSlugRotateBusy] = useState(false)
   const [portalInviteBusy, setPortalInviteBusy] = useState(false)
+  // A link the clipboard refused, shown so it is never lost.
+  const [revealedLink, setRevealedLink] = useState<{ title: string; description: string; url: string } | null>(null)
   const [portalPreviewBusy, setPortalPreviewBusy] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileEditorOpen, setProfileEditorOpen] = useState(false)
@@ -387,12 +414,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const [prospectLinkBusy, setProspectLinkBusy] = useState(false)
   const activeTab = resolveClientDetailTab(searchParams.get('tab'))
 
-  // The shortlist rows behind this client's placements come from the same
-  // workspace-wide payload the pipeline reads (and share its cache), fetched
-  // only once the Placements tab is open: most visits never need it.
+  // The shortlist rows behind this client's placements come from the
+  // pipeline function, filtered to this client so the page never downloads
+  // the whole workspace for one record. Keyed under the pipeline's prefix so
+  // invalidating the pipeline refreshes this too. Fetched only once the
+  // Placements tab is open: most visits never need it.
   const systemQuery = useQuery({
-    queryKey: ['workspace-client-podcast-system', user?.id || 'unknown', workspaceId],
-    queryFn: () => getWorkspaceClientPodcastSystem(workspaceId),
+    queryKey: ['workspace-client-podcast-system', user?.id || 'unknown', workspaceId, 'client', canonicalClientId],
+    queryFn: () => getWorkspaceClientPodcastSystem(workspaceId, { clientId: canonicalClientId }),
     enabled: validAddress && activeTab === 'placements',
     retry: false,
     staleTime: 30_000,
@@ -614,17 +643,22 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const copyPortalSetupLink = async () => {
     if (portalInviteBusy) return
     setPortalInviteBusy(true)
+    // The clipboard write starts here, inside the click, before any await.
+    const setupPromise = createWorkspaceClientPortalSetupLink(workspaceId, canonicalClientId)
+    const copied = copyTextWhenReady(setupPromise.then((setup) => setup.url))
     try {
-      const setup = await createWorkspaceClientPortalSetupLink(workspaceId, canonicalClientId)
-      await detailQuery.refetch()
-      // A link was just minted server-side; if the clipboard is unavailable
-      // (insecure context, older browser) reveal the URL instead of implying
-      // nothing happened.
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(setup.url)
+      const setup = await setupPromise
+      void detailQuery.refetch()
+      // A link was just minted server-side; when the clipboard refuses it,
+      // show the URL instead of implying nothing happened.
+      if (await copied) {
         toast.success('Setup link copied. Share it with the client — they set their own password. Expires in 7 days.')
       } else {
-        window.prompt('Copy this client setup link (expires in 7 days):', setup.url)
+        setRevealedLink({
+          title: 'Client setup link',
+          description: 'Copy this link and share it with the client. They set their own password. It expires in 7 days.',
+          url: setup.url,
+        })
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The setup link could not be created.')
@@ -636,6 +670,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const openPortalPreview = async () => {
     if (portalPreviewBusy) return
     setPortalPreviewBusy(true)
+    // Opened now, inside the click: a window opened after the request returns
+    // is a popup the browser blocks. It is pointed at the preview once the
+    // session exists, and closed if it never does.
+    const previewWindow = window.open('', '_blank')
     try {
       const preview = await createWorkspaceClientPortalPreview(workspaceId, canonicalClientId)
       // UTF-8-safe base64: btoa alone throws on any character outside Latin-1
@@ -643,8 +681,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       // whole preview. Encode the bytes, not the code units.
       const clientPayload = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(preview.client))))
       const hash = `#session=${encodeURIComponent(preview.session_token)}&expires=${encodeURIComponent(preview.expires_at)}&client=${encodeURIComponent(clientPayload)}`
-      window.open(`/portal/preview${hash}`, '_blank', 'noopener')
+      const previewUrl = new URL(`/portal/preview${hash}`, window.location.origin).toString()
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.opener = null
+        previewWindow.location.href = previewUrl
+      } else if (!window.open(previewUrl, '_blank', 'noopener')) {
+        toast.error('Your browser blocked the preview window. Allow pop-ups for this site and try again.')
+      }
     } catch (error) {
+      previewWindow?.close()
       toast.error(error instanceof Error ? error.message : 'The portal preview could not be started.')
     } finally {
       setPortalPreviewBusy(false)
@@ -682,13 +727,15 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     }
   }
   const copyPublicLink = async (path: string, label: string) => {
-    try {
-      if (!navigator.clipboard) throw new Error('Clipboard is unavailable')
-      const appOrigin = import.meta.env.VITE_APP_URL || window.location.origin
-      await navigator.clipboard.writeText(new URL(path, appOrigin).toString())
+    // Built on the agency's own domain when one is serving, the same origin
+    // the client's emails use, so a white-label client never gets a platform
+    // address. The app URL is only the fallback for an older function build.
+    const shareOrigin = detail?.public_base_url || import.meta.env.VITE_APP_URL || window.location.origin
+    const url = new URL(path, shareOrigin).toString()
+    if (await copyTextWhenReady(Promise.resolve(url))) {
       toast.success(`${label} copied.`)
-    } catch {
-      toast.error('Copy failed. Open the page and copy the address manually.')
+    } else {
+      setRevealedLink({ title: label, description: 'Copy this link to share it.', url })
     }
   }
 
@@ -1293,6 +1340,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               </div>
             </section>
 
+            {systemQuery.data?.truncated && (
+              <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                This client has more pipeline records than can be loaded at once, so only the most recent are linked here. Some placements may not open their shortlist details.
+              </p>
+            )}
             <Card>
               <CardHeader className="flex flex-row items-start justify-between gap-4"><div><CardTitle>All placements</CardTitle><CardDescription>Booked, in progress, recorded, published, and cancelled appearances. Details opens the shortlist row behind a placement.</CardDescription></div><Button asChild variant="outline" size="sm"><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Find more</Link></Button></CardHeader>
               <CardContent>
@@ -1960,6 +2012,43 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={revealedLink !== null} onOpenChange={(open) => { if (!open) setRevealedLink(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{revealedLink?.title}</DialogTitle>
+            <DialogDescription>{revealedLink?.description}</DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="revealed-link" className="sr-only">Link</Label>
+          <Input
+            id="revealed-link"
+            readOnly
+            value={revealedLink?.url ?? ''}
+            onFocus={(event) => event.currentTarget.select()}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const url = revealedLink?.url
+                if (!url) return
+                void copyTextWhenReady(Promise.resolve(url)).then((ok) => {
+                  if (ok) {
+                    toast.success('Link copied.')
+                    setRevealedLink(null)
+                  } else {
+                    toast.error('Copy is blocked here. Select the link and copy it manually.')
+                  }
+                })
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" />Copy
+            </Button>
+            <Button type="button" onClick={() => setRevealedLink(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ClientBookingDialog
         open={bookingDialogOpen}
         onOpenChange={setBookingDialogOpen}

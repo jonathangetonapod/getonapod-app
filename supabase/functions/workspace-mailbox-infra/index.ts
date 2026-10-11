@@ -38,6 +38,17 @@ function requireManager(access: WorkspaceFeatureAccess): void {
   }
 }
 
+/**
+ * A provider call whose outcome is unknown: the request may have been accepted
+ * even though no answer arrived. A timeout, a dropped connection or a gateway
+ * error in front of the provider all look like this. It is never treated as a
+ * refusal, because for a purchase that would refund credits for domains the
+ * provider may be registering with real money.
+ */
+class WinnrOutcomeUnknownError extends HttpError {}
+
+const AMBIGUOUS_GATEWAY_STATUSES = new Set([502, 503, 504])
+
 async function winnrRequestRaw(
   token: string,
   path: string,
@@ -58,7 +69,7 @@ async function winnrRequestRaw(
       signal: AbortSignal.timeout(25_000),
     })
   } catch (_error) {
-    throw new HttpError(503, 'WINNR_UNAVAILABLE', 'The mailbox provider is unreachable right now')
+    throw new WinnrOutcomeUnknownError(503, 'WINNR_UNAVAILABLE', 'The mailbox provider is unreachable right now')
   }
   const payload = await response.json().catch(() => null) as
     | { data?: unknown; error?: { code?: string; message?: string } }
@@ -68,6 +79,9 @@ async function winnrRequestRaw(
     console.error('[Mailbox Infra] Winnr error', code)
     if (response.status === 402) {
       throw new HttpError(503, 'WINNR_PAYMENT_FAILED', 'The provider payment failed. Contact support')
+    }
+    if (AMBIGUOUS_GATEWAY_STATUSES.has(response.status)) {
+      throw new WinnrOutcomeUnknownError(503, 'WINNR_UNAVAILABLE', 'The mailbox provider is unavailable right now')
     }
     throw new HttpError(502, 'WINNR_ERROR', 'The mailbox provider rejected the request')
   }
@@ -203,18 +217,23 @@ interface MailboxOrderRow {
   error_message: string | null
   created_at: string
   charged_entry_ids?: string[] | null
+  credits_refunded_at?: string | null
 }
 
 const ORDER_COLUMNS =
-  'id, winnr_job_id, status, domains, mailbox_count, credits_charged, warming_enabled_at, error_message, created_at, charged_entry_ids'
+  'id, winnr_job_id, status, domains, mailbox_count, credits_charged, warming_enabled_at, error_message, created_at, charged_entry_ids, credits_refunded_at'
 
 // An order row with no provider job after this long never got the provider's
 // confirmation recorded; it is surfaced instead of polling forever in silence.
 const UNCONFIRMED_ORDER_MS = 30 * 60_000
+const UNCONFIRMED_ORDER_MESSAGE =
+  'The provider did not confirm this order in time. It may still be provisioning, so the credits were kept. Contact support before ordering these domains again.'
+const REFUND_PENDING_MESSAGE =
+  'Returning the credits for this order did not finish. It is retried automatically; contact support if this message stays.'
 
-/** Ledger entry ids stay server-side; the browser never needs them. */
-function publicOrder(order: MailboxOrderRow): Omit<MailboxOrderRow, 'charged_entry_ids'> {
-  const { charged_entry_ids: _chargedEntryIds, ...rest } = order
+/** Ledger entry ids and refund bookkeeping stay server-side. */
+function publicOrder(order: MailboxOrderRow): Omit<MailboxOrderRow, 'charged_entry_ids' | 'credits_refunded_at'> {
+  const { charged_entry_ids: _chargedEntryIds, credits_refunded_at: _creditsRefundedAt, ...rest } = order
   return rest
 }
 
@@ -252,50 +271,102 @@ async function mailboxUserIds(apiKey: string, domainNames: string[]): Promise<st
  * now reopens a refunded key on retry, so the retry pays.
  *
  * A failure to refund must not mask the provider error that caused it, so
- * this never throws.
+ * this never throws. It reports whether every debit was refunded, so an order
+ * is only recorded as refunded once that is true; the refund RPC is
+ * idempotent per debit, so retrying the whole list is safe.
  */
 async function refundMailboxCredits(
   authContext: AuthContext,
   workspaceId: string,
   orders: Array<{ domain: string }>,
   chargedEntryIds: string[],
-): Promise<void> {
-  if (chargedEntryIds.length === 0) return
+): Promise<boolean> {
+  if (chargedEntryIds.length === 0) return true
+  let failedEntries = 0
   for (const entryId of chargedEntryIds) {
-    await refundCredits(authContext.admin, {
+    const refunded = await refundCredits(authContext.admin, {
       workspaceId,
       entryId,
       reason: 'mailbox order was not accepted by the provider',
     })
+    if (!refunded) failedEntries += 1
   }
   await writeAudit(authContext.admin, {
     workspaceId,
     actorUserId: authContext.user.id,
-    action: 'workspace.mailbox_infra.refunded',
+    action: failedEntries === 0 ? 'workspace.mailbox_infra.refunded' : 'workspace.mailbox_infra.refund_incomplete',
     entityType: 'mailbox_order',
     entityId: null,
-    metadata: { domains: orders.map((order) => order.domain), refunded_entries: chargedEntryIds.length },
+    metadata: {
+      domains: orders.map((order) => order.domain),
+      refunded_entries: chargedEntryIds.length - failedEntries,
+      failed_entries: failedEntries,
+    },
   }).catch(() => undefined)
+  return failedEntries === 0
+}
+
+/**
+ * Refund a failed order's debits and record the outcome on the row.
+ *
+ * credits_refunded_at is stamped only after every debit is back. Stamping it
+ * first meant a refund that failed half way read as done for ever: nothing
+ * would try again and the workspace kept paying for an order that never
+ * existed. On failure the row says the refund needs finishing, and the next
+ * status poll or overview retries it.
+ */
+async function settleMailboxRefund(
+  authContext: AuthContext,
+  workspaceId: string,
+  order: Pick<MailboxOrderRow, 'id' | 'domains' | 'charged_entry_ids'>,
+  reason: string,
+): Promise<string> {
+  const refunded = await refundMailboxCredits(
+    authContext,
+    workspaceId,
+    (Array.isArray(order.domains) ? order.domains : []) as Array<{ domain: string }>,
+    Array.isArray(order.charged_entry_ids) ? order.charged_entry_ids : [],
+  )
+  const now = new Date().toISOString()
+  const message = refunded
+    ? `${reason} The credits for this order were returned.`
+    : `${reason} ${REFUND_PENDING_MESSAGE}`
+  const { error } = await authContext.admin.from('workspace_mailbox_orders')
+    .update(refunded
+      ? { credits_refunded_at: now, error_message: message, updated_at: now }
+      : { error_message: message, updated_at: now })
+    .eq('workspace_id', workspaceId)
+    .eq('id', order.id)
+    .is('credits_refunded_at', null)
+  if (error) {
+    console.error('[Mailbox Infra] could not record the refund outcome', order.id)
+  }
+  if (!refunded) {
+    console.error('[Mailbox Infra] refund incomplete, needs reconciliation', order.id)
+  }
+  return message
 }
 
 /**
  * Fail an order and give back its credits, once.
  *
  * The conditional update is the claim: only the caller that flips the row from
- * processing to failed refunds, so two status polls racing over the same
- * failed job cannot both reach the ledger (the refund RPC is idempotent per
- * debit as well). A refunded debit reopens its idempotency key, so retrying
- * the same domain charges afresh instead of replaying the refunded debit.
+ * processing to failed starts the refund, so two status polls racing over the
+ * same failed job cannot both reach the ledger at once (the refund RPC is
+ * idempotent per debit as well). A refunded debit reopens its idempotency key,
+ * so retrying the same domain charges afresh instead of replaying the
+ * refunded debit. Returns the message recorded on the row, or null when
+ * another caller had already claimed the failure.
  */
 async function failMailboxOrder(
   authContext: AuthContext,
   workspaceId: string,
   order: Pick<MailboxOrderRow, 'id' | 'domains' | 'charged_entry_ids'>,
-  message: string,
-): Promise<void> {
+  reason: string,
+): Promise<string | null> {
   const now = new Date().toISOString()
   const { data: claimed, error } = await authContext.admin.from('workspace_mailbox_orders')
-    .update({ status: 'failed', error_message: message, credits_refunded_at: now, updated_at: now })
+    .update({ status: 'failed', error_message: `${reason} ${REFUND_PENDING_MESSAGE}`, updated_at: now })
     .eq('workspace_id', workspaceId)
     .eq('id', order.id)
     .eq('status', 'processing')
@@ -303,15 +374,10 @@ async function failMailboxOrder(
     .select('id')
   if (error) {
     console.error('[Mailbox Infra] could not mark order failed', order.id)
-    return
+    return null
   }
-  if (!claimed || claimed.length === 0) return
-  await refundMailboxCredits(
-    authContext,
-    workspaceId,
-    (Array.isArray(order.domains) ? order.domains : []) as Array<{ domain: string }>,
-    Array.isArray(order.charged_entry_ids) ? order.charged_entry_ids : [],
-  )
+  if (!claimed || claimed.length === 0) return null
+  return await settleMailboxRefund(authContext, workspaceId, order, reason)
 }
 
 /**
@@ -329,6 +395,17 @@ async function advanceMailboxOrder(
   apiKey: string,
   order: MailboxOrderRow,
 ): Promise<MailboxOrderRow> {
+  // A failed order whose refund did not finish is retried on every poll until
+  // it does. Without this, one failed RPC kept the debit for good.
+  if (
+    order.status === 'failed' &&
+    !order.credits_refunded_at &&
+    Array.isArray(order.charged_entry_ids) &&
+    order.charged_entry_ids.length > 0
+  ) {
+    const message = await settleMailboxRefund(authContext, workspaceId, order, 'This order failed.')
+    return { ...order, error_message: message }
+  }
   if (order.status !== 'processing') return order
   if (!order.winnr_job_id) {
     if (Date.now() - new Date(order.created_at).getTime() > UNCONFIRMED_ORDER_MS) {
@@ -345,9 +422,12 @@ async function advanceMailboxOrder(
     `/jobs/${encodeURIComponent(order.winnr_job_id)}`,
   )
   if (job.status === 'failed') {
-    const message = 'Provisioning failed at the provider. The credits for this order were returned.'
-    await failMailboxOrder(authContext, workspaceId, order, message)
-    return { ...order, status: 'failed', error_message: message }
+    const message = await failMailboxOrder(authContext, workspaceId, order, 'Provisioning failed at the provider.')
+    return {
+      ...order,
+      status: 'failed',
+      error_message: message ?? 'Provisioning failed at the provider.',
+    }
   }
   if (job.status !== 'completed') return order
 
@@ -493,9 +573,10 @@ serve(async (req) => {
             byoKeyUsed: usingWorkspaceKey,
           })
           // Fresh debits only: a replay names an earlier attempt's paid
-          // charge, and refunding it would claw back delivered work.
+          // charge, and refunding it would claw back delivered work. The same
+          // holds for credits_charged: this order did not pay for a replay.
           if (domainCharge.entryId && !domainCharge.replayed) chargedEntryIds.push(domainCharge.entryId)
-          creditsCharged += domainCharge.charged
+          if (!domainCharge.replayed) creditsCharged += domainCharge.charged
           for (const mailbox of order.mailboxes) {
             const mailboxCharge = await chargeCredits(authContext.admin, {
               workspaceId,
@@ -507,7 +588,7 @@ serve(async (req) => {
               byoKeyUsed: usingWorkspaceKey,
             })
             if (mailboxCharge.entryId && !mailboxCharge.replayed) chargedEntryIds.push(mailboxCharge.entryId)
-            creditsCharged += mailboxCharge.charged
+            if (!mailboxCharge.replayed) creditsCharged += mailboxCharge.charged
           }
         }
       } catch (error) {
@@ -541,9 +622,23 @@ serve(async (req) => {
       const trackedOrder = { id: orderRow.id as string, domains: orders, charged_entry_ids: chargedEntryIds }
 
       // Credits are spent before the provider is called, so an order the
-      // provider never accepted has to give them back. Without this, a Winnr
-      // outage charges for infrastructure that does not exist.
-      let purchase: { job_id?: string; status?: string }
+      // provider refused has to give them back. Without this, a Winnr outage
+      // charges for infrastructure that does not exist.
+      //
+      // Only a definite refusal refunds. A timeout or a dropped connection may
+      // have reached the provider, which then registers the domains with real
+      // money; refunding then gave the order away. Those orders stay
+      // processing with the debit kept, say so on the row, and go to support.
+      const markUnconfirmed = async () => {
+        const { error: markError } = await authContext.admin.from('workspace_mailbox_orders')
+          .update({ error_message: UNCONFIRMED_ORDER_MESSAGE, updated_at: new Date().toISOString() })
+          .eq('workspace_id', workspaceId)
+          .eq('id', orderRow.id)
+          .eq('status', 'processing')
+        if (markError) console.error('[Mailbox Infra] could not mark order unconfirmed', orderRow.id)
+        console.error('[Mailbox Infra] provider outcome unknown, debit kept', orderRow.id)
+      }
+      let purchase: { job_id?: string; status?: string } | null
       try {
         purchase = await winnrRequest<{ job_id?: string; status?: string }>(winnrKey.apiKey, '/domains/purchase', {
           method: 'POST',
@@ -560,12 +655,18 @@ serve(async (req) => {
           },
         })
       } catch (error) {
-        await failMailboxOrder(authContext, workspaceId, trackedOrder, 'The provider did not accept the order. The credits were returned.')
+        if (error instanceof WinnrOutcomeUnknownError) {
+          await markUnconfirmed()
+          throw new HttpError(504, 'WINNR_UNCONFIRMED', UNCONFIRMED_ORDER_MESSAGE)
+        }
+        await failMailboxOrder(authContext, workspaceId, trackedOrder, 'The provider did not accept the order.')
         throw error
       }
-      if (!purchase.job_id) {
-        await failMailboxOrder(authContext, workspaceId, trackedOrder, 'The provider did not accept the order. The credits were returned.')
-        throw new HttpError(502, 'WINNR_ERROR', 'The provider did not accept the order')
+      // A success response without a job id is not a refusal either: the
+      // provider answered 2xx, so it may well be building the order.
+      if (!purchase?.job_id) {
+        await markUnconfirmed()
+        throw new HttpError(504, 'WINNR_UNCONFIRMED', UNCONFIRMED_ORDER_MESSAGE)
       }
 
       // The provider has accepted and is spending real money, so the job id

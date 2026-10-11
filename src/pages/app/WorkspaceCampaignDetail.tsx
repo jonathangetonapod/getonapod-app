@@ -335,10 +335,21 @@ const SEND_DAY_OPTIONS = [
   { index: 6, label: 'Sat' },
 ] as const
 
-/** A count typed into a number field, floored at one; blank or junk reads as one. */
+/** A count typed into a number field, floored at one; blank or junk reads as one. Display only. */
 function countOrOne(value: string): number {
   const parsed = Math.floor(Number(value))
   return Number.isFinite(parsed) && parsed >= 1 ? parsed : 1
+}
+
+// The same bounds the create dialog and the edge function enforce.
+const DAILY_LIMIT_RANGE = { min: 1, max: 1000 } as const
+const FOLLOW_UP_DELAY_RANGE = { min: 1, max: 60 } as const
+
+/** A whole number within the range, or null so the field can say what is wrong instead of saving a guess. */
+function wholeNumberInRange(value: string, range: { min: number; max: number }): number | null {
+  if (value.trim() === '') return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= range.min && parsed <= range.max ? parsed : null
 }
 
 function formatSendDays(days: number[]): string {
@@ -449,6 +460,15 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [settingsFollowUpTwo, setSettingsFollowUpTwo] = useState('7')
   const followUpOneDays = countOrOne(settingsFollowUpOne)
   const followUpTwoDays = countOrOne(settingsFollowUpTwo)
+  const dailyLimitValue = wholeNumberInRange(settingsDailyLimit, DAILY_LIMIT_RANGE)
+  const followUpOneValue = wholeNumberInRange(settingsFollowUpOne, FOLLOW_UP_DELAY_RANGE)
+  const followUpTwoValue = wholeNumberInRange(settingsFollowUpTwo, FOLLOW_UP_DELAY_RANGE)
+  const dailyLimitError = dailyLimitValue === null
+    ? `Enter a whole number between ${DAILY_LIMIT_RANGE.min} and ${DAILY_LIMIT_RANGE.max}.`
+    : null
+  const followUpDelayError = followUpOneValue === null || followUpTwoValue === null
+    ? `Each wait must be a whole number of days between ${FOLLOW_UP_DELAY_RANGE.min} and ${FOLLOW_UP_DELAY_RANGE.max}.`
+    : null
   const [campaignRunningPreview, setCampaignRunningPreview] = useState<boolean | null>(null)
   // Which row in Podcasts is showing its live delivery detail. Delivery
   // questions belong beside the delivery columns, not on the messages tab.
@@ -692,13 +712,13 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         clientId,
         name: settingsName.trim(),
         timezone: settingsTimezone.trim(),
-        dailyLimit: countOrOne(settingsDailyLimit),
+        dailyLimit: dailyLimitValue,
         senderAccounts: Array.from(settingsSenders),
         sendDays: settingsSendDays,
         sendWindowStart: settingsWindowStart,
         sendWindowEnd: settingsWindowEnd,
-        followUpOneDelayDays: followUpOneDays,
-        followUpTwoDelayDays: followUpTwoDays,
+        followUpOneDelayDays: followUpOneValue,
+        followUpTwoDelayDays: followUpTwoValue,
       }
       return campaign
         ? await updateWorkspaceCampaignSettings(common)
@@ -813,7 +833,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   // All four save buttons post the same payload, so an invalid schedule has
   // to stop every one of them, not only the button on the Schedule tab.
   const scheduleInvalid = settingsSendDays.length === 0 || settingsWindowStart >= settingsWindowEnd
-  const settingsSaveDisabled = !canManageCampaign || !settingsName.trim() || scheduleInvalid || settingsMutation.isPending
+  const countsInvalid = Boolean(dailyLimitError || followUpDelayError)
+  const settingsSaveDisabled = !canManageCampaign || !settingsName.trim() || scheduleInvalid || countsInvalid || settingsMutation.isPending
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -1086,8 +1107,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                             <Input
                               id={step.waitBefore.id}
                               type="number"
-                              min={1}
-                              max={60}
+                              min={FOLLOW_UP_DELAY_RANGE.min}
+                              max={FOLLOW_UP_DELAY_RANGE.max}
+                              aria-invalid={wholeNumberInRange(step.waitBefore.value, FOLLOW_UP_DELAY_RANGE) === null}
+                              aria-describedby={followUpDelayError ? 'campaign-detail-follow-up-error' : undefined}
                               value={step.waitBefore.value}
                               onChange={(event) => step.waitBefore?.set(event.target.value)}
                               disabled={!canManageCampaign}
@@ -1113,9 +1136,15 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       </div>
                     )
                   })}
+                  {followUpDelayError && (
+                    <p id="campaign-detail-follow-up-error" className="text-xs font-medium text-destructive">{followUpDelayError}</p>
+                  )}
                   <Button size="sm" className="w-full" disabled={settingsSaveDisabled} onClick={() => settingsMutation.mutate()}>
                     {settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save cadence
                   </Button>
+                  {dailyLimitError && (
+                    <p className="text-xs font-medium text-destructive">The daily lead limit is not valid. Fix it on Schedule before saving.</p>
+                  )}
                   {scheduleInvalid ? (
                     <p className="text-xs font-medium text-destructive">The sending schedule is not valid. Fix it on Schedule before saving.</p>
                   ) : (
@@ -1262,7 +1291,18 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="campaign-detail-limit">Daily lead limit</Label>
-                      <Input id="campaign-detail-limit" type="number" min={1} max={1000} value={settingsDailyLimit} onChange={(event) => setSettingsDailyLimit(event.target.value)} disabled={!canManageCampaign} />
+                      <Input
+                        id="campaign-detail-limit"
+                        type="number"
+                        min={DAILY_LIMIT_RANGE.min}
+                        max={DAILY_LIMIT_RANGE.max}
+                        value={settingsDailyLimit}
+                        onChange={(event) => setSettingsDailyLimit(event.target.value)}
+                        disabled={!canManageCampaign}
+                        aria-invalid={Boolean(dailyLimitError)}
+                        aria-describedby={dailyLimitError ? 'campaign-detail-limit-error' : undefined}
+                      />
+                      {dailyLimitError && <p id="campaign-detail-limit-error" className="text-xs text-destructive">{dailyLimitError}</p>}
                       <p className="text-xs text-muted-foreground">The most new podcast hosts this campaign may email in a day, across every sending account.</p>
                     </div>
                   </div>
@@ -1442,7 +1482,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               </div>
 
               <div className="flex flex-col gap-3 rounded-2xl border bg-muted/15 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-xl text-xs leading-5 text-muted-foreground">Save name and mailbox changes before changing campaign status. Pausing stops new sends; resuming continues the existing campaign.</p>
+                <div className="max-w-xl space-y-1">
+                  <p className="text-xs leading-5 text-muted-foreground">Save name and mailbox changes before changing campaign status. Pausing stops new sends; resuming continues the existing campaign.</p>
+                  {countsInvalid && (
+                    <p className="text-xs font-medium text-destructive">
+                      {dailyLimitError ? 'The daily lead limit on Schedule is not valid.' : 'A follow-up wait on Sequences is not valid.'} Fix it before saving.
+                    </p>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button variant="outline" disabled={settingsSaveDisabled} onClick={() => settingsMutation.mutate()}>{settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save settings</Button>
                   {campaign?.instantly_campaign_id && canManageCampaign && (

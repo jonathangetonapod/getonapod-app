@@ -6,7 +6,6 @@ import {
   HttpError,
   jsonResponse,
   optionsResponse,
-  parseJsonObject,
   requireOnlyKeys,
   requireString,
   requireUuid,
@@ -277,6 +276,53 @@ function questionById(definition: ReturnType<typeof validateOnboardingDefinition
   return question
 }
 
+/**
+ * Read a JSON object body with a hard byte cap enforced while streaming.
+ *
+ * The shared parser reads the whole body and measures it afterwards, which is
+ * only safe when a declared length was checked first. Here a body may arrive
+ * with no length at all, so the count is kept chunk by chunk and the stream is
+ * cancelled as soon as it passes the cap.
+ */
+async function parseCappedJsonObject(req: Request, maxBytes: number): Promise<Record<string, unknown>> {
+  const contentType = req.headers.get('content-type')?.toLowerCase() ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new HttpError(415, 'JSON_REQUIRED', 'Content-Type must be application/json')
+  }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  if (req.body) {
+    const reader = req.body.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined)
+        throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large')
+      }
+      chunks.push(value)
+    }
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    throw new HttpError(400, 'INVALID_JSON', 'Request body must be valid JSON')
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, 'INVALID_BODY', 'Request body must be a JSON object')
+  }
+  return value as Record<string, unknown>
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     // The preflight has to answer with the tenant's own origin, and it is the
@@ -296,20 +342,20 @@ serve(async (req) => {
      * Declared length first: this endpoint is unauthenticated and accepts the
      * largest bodies in the codebase, and the token that authorizes the work
      * travels INSIDE the body — so the one check that can run before the
-     * buffer fills is the declared size. A chunked request with no length is
-     * refused outright rather than trusted to be small.
+     * buffer fills is the declared size. A request without one is not refused:
+     * the Supabase gateway and the tenant-domain worker can both forward a
+     * body chunked, so a 411 turned away real clients. Its body is read
+     * through a running byte count instead, and refused the moment it passes
+     * the cap, so an undeclared body is never buffered past the limit either.
      */
     // Number('') is 0, so a missing or empty header used to pass as a tiny
     // body. Only a non-negative integer counts as declared.
     const lengthHeader = req.headers.get('content-length')?.trim() ?? ''
     const declaredLength = /^\d+$/u.test(lengthHeader) ? Number(lengthHeader) : Number.NaN
-    if (!Number.isSafeInteger(declaredLength)) {
-      throw new HttpError(411, 'LENGTH_REQUIRED', 'Requests must declare a Content-Length')
-    }
-    if (declaredLength > MAX_BODY_BYTES) {
+    if (Number.isSafeInteger(declaredLength) && declaredLength > MAX_BODY_BYTES) {
       throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large')
     }
-    const body = await parseJsonObject(req, MAX_BODY_BYTES)
+    const body = await parseCappedJsonObject(req, MAX_BODY_BYTES)
     const action = typeof body.action === 'string' ? body.action : ''
     /*
      * Reject unknown actions before any capability or database work. The

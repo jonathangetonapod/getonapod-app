@@ -4,6 +4,7 @@ import {
   getClientBookings,
   getPortalExperience,
   loginWithPassword,
+  logout,
   requestPortalPasswordReset,
   sessionStorage,
   setPortalNotifications,
@@ -275,5 +276,47 @@ describe('setPortalNotifications', () => {
     await expect(setPortalNotifications('77777777-7777-4777-8777-777777777777', true))
       .rejects.toThrow('Portal session does not match the requested client.')
     expect(mockedInvoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('logout', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.sessionStorage.clear()
+  })
+
+  it('removes only the portal session keys and keeps the remembered agency brand', async () => {
+    mockedInvoke.mockResolvedValue({ data: { success: true }, error: null } as never)
+    sessionStorage.save(
+      { session_token: 'token', expires_at: '2099-01-01T00:00:00.000Z', client_id: 'client-1' },
+      { id: 'client-1', name: 'Taylor' } as never,
+    )
+    window.sessionStorage.setItem('client_portal_brand', JSON.stringify({ slug: 'acme', name: 'Acme Audio' }))
+    window.sessionStorage.setItem('unrelated_key', 'kept')
+
+    await logout('token')
+
+    expect(mockedInvoke).toHaveBeenCalledWith('logout-portal-session', { body: { sessionToken: 'token' } })
+    expect(window.sessionStorage.getItem('client_portal_session')).toBeNull()
+    expect(window.sessionStorage.getItem('client_portal_client')).toBeNull()
+    expect(sessionStorage.get()).toEqual({ session: null, client: null })
+    expect(window.sessionStorage.getItem('client_portal_brand')).toBe(JSON.stringify({ slug: 'acme', name: 'Acme Audio' }))
+    expect(window.sessionStorage.getItem('unrelated_key')).toBe('kept')
+  })
+})
+
+describe('loginWithPassword refusals', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('carries the rate-limit code and status so the form can say so', async () => {
+    const context = new Response(JSON.stringify({ error: 'Too many sign-in attempts.', code: 'LOGIN_RATE_LIMITED' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    mockedInvoke.mockResolvedValue({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'), { context }) } as never)
+
+    await expect(loginWithPassword('a@b.co', 'pw')).rejects.toMatchObject({ code: 'LOGIN_RATE_LIMITED', status: 429 })
   })
 })

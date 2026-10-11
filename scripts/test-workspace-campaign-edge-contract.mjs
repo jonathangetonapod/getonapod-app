@@ -1771,6 +1771,19 @@ assert.match(
   /if \(draftSaveError\) \{[\s\S]*?await refundCredits\(admin, \{[\s\S]*?entryId: pkg\.chargeEntryId,[\s\S]*?throw new HttpError\(500, 'DRAFT_SAVE_FAILED'/u,
 )
 assert.match(enrollTick, /threadKey,\s+emailId,\s+\}\)/u)
+// A throw for one reply is caught per email: the cursor freezes at it, the
+// handled prefix is still written, the failure is recorded on the integration
+// row, and a reply failing MAX_EMAIL_FAILURES ticks running is skipped.
+assert.match(enrollTick, /\} catch \(error\) \{\s*\n\s*cursorFrozen = true\s*\n\s*if \(!emailFailure\) emailFailure = \{ emailId: loopEmailId, detail: failureDetail\(error\) \}\s*\n\s*skipped \+= 1\s*\n\s*break\s*\n\s*\}/u)
+assert.ok(
+  enrollTick.indexOf('if (!emailFailure) emailFailure = { emailId: loopEmailId') < enrollTick.indexOf('.update({ auto_draft_cursor_ts: cursorHigh })'),
+  'the per-email catch must sit before the cursor write so the handled prefix is persisted',
+)
+assert.match(enrollTick, /const MAX_EMAIL_FAILURES = 3/u)
+assert.match(enrollTick, /previousFailure\?\.emailId === loopEmailId &&\s*\n\s*previousFailure\.count >= MAX_EMAIL_FAILURES[\s\S]*?action: 'workspace\.inbox\.auto_draft_skipped'[\s\S]*?advanceCursor\(createdAt\)/u)
+assert.match(enrollTick, /\.select\('workspace_id, status, api_key_ciphertext, api_key_iv, auto_draft_cursor_ts, last_error'\)/u)
+assert.match(enrollTick, /await recordIntegrationError\(workspaceId, message\)/u)
+assert.match(enrollTick, /if \(cursorError\) \{/u)
 // The reply-package charge is keyed to the exact reply, with one spelling of
 // the host address.
 assert.match(sdrShared, /input\.leadEmail\.trim\(\)\.toLowerCase\(\)/u)

@@ -22,6 +22,8 @@ const response: ClientPodcastSystemResponse = {
   viewer_role: 'owner',
   can_manage: true,
   generated_at: '2026-07-25T12:00:00.000Z',
+  truncated: false,
+  truncated_sources: [],
   clients: [],
   summary: {
     total: 0,
@@ -74,6 +76,33 @@ describe('clientPodcastSystem service', () => {
 
     expect(result.workspace.logo_path).toBeNull()
     expect(result.workspace.logo_updated_at).toBeNull()
+  })
+
+  it('asks for one client when a client id is given', async () => {
+    invoke.mockResolvedValueOnce({ data: response, error: null } as never)
+    const clientId = '33333333-3333-4333-8333-333333333333'
+
+    await getWorkspaceClientPodcastSystem(workspaceId, { clientId: clientId.toUpperCase() })
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-podcast-system', {
+      body: { action: 'list', workspace_id: workspaceId, client_id: clientId },
+    })
+  })
+
+  it('reads a truncated payload, and an older payload without the flag as complete', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { ...response, truncated: true, truncated_sources: ['bookings', 7] },
+      error: null,
+    } as never)
+    const truncated = await getWorkspaceClientPodcastSystem(workspaceId)
+    expect(truncated.truncated).toBe(true)
+    expect(truncated.truncated_sources).toEqual(['bookings'])
+
+    const { truncated: _flag, truncated_sources: _sources, ...older } = response
+    invoke.mockResolvedValueOnce({ data: older, error: null } as never)
+    const complete = await getWorkspaceClientPodcastSystem(workspaceId)
+    expect(complete.truncated).toBe(false)
+    expect(complete.truncated_sources).toEqual([])
   })
 
   it('rejects a response for a different workspace', async () => {

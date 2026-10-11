@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDown,
   ArrowUp,
@@ -219,8 +219,18 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
   const [builderError, setBuilderError] = useState<string | null>(null)
   const [workspaceLogoUnavailable, setWorkspaceLogoUnavailable] = useState(false)
 
+  // Initialize once each time the builder opens on a template. A background
+  // refresh hands over a new template object (or a late workspace name/logo),
+  // and re-running on that would wipe what the user is typing.
+  const initializedForRef = useRef<string | null>(null)
+  const templateKey = template?.id ?? 'new'
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      initializedForRef.current = null
+      return
+    }
+    if (initializedForRef.current === templateKey) return
+    initializedForRef.current = templateKey
     const next = template
       ? {
           name: template.name,
@@ -236,8 +246,12 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
     setActiveSectionId(firstSection?.id ?? null)
     setActiveQuestionId(firstSection?.questions[0]?.id ?? null)
     setBuilderError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the template id on purpose
+  }, [open, templateKey])
+
+  useEffect(() => {
     setWorkspaceLogoUnavailable(false)
-  }, [open, template, workspaceName, workspaceLogoUrl])
+  }, [workspaceLogoUrl])
 
   const questionCount = useMemo(
     () => draft.definition.sections.reduce((total, section) => total + section.questions.length, 0),
@@ -265,11 +279,18 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
   }
 
   // Only offered on a new template: replacing a saved template's questions
-  // with one click would throw away work.
+  // with one click would throw away work. It replaces the form itself and keeps
+  // the name, description and reminders the user already set.
   const applyStarterForm = () => {
     const starter = starterOnboardingTemplate(brandedWorkspaceName)
     const firstSection = starter.definition.sections[0]
-    setDraft(starter)
+    const untouched = emptyDraft(workspaceName)
+    setDraft((current) => ({
+      name: current.name.trim() && current.name !== untouched.name ? current.name : starter.name,
+      description: current.description.trim() ? current.description : starter.description,
+      reminder_days: current.reminder_days.length > 0 ? current.reminder_days : starter.reminder_days,
+      definition: starter.definition,
+    }))
     setActiveSectionId(firstSection.id)
     setActiveQuestionId(firstSection.questions[0]?.id ?? null)
     setBuilderError(null)

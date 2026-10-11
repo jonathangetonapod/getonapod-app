@@ -150,6 +150,15 @@ export interface ClientPodcastSystemResponse {
   viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
   can_manage: boolean
   generated_at: string
+  /**
+   * True when at least one source hit its row cap and only the newest rows
+   * are shown. Counts on the page are then partial and should say so.
+   * Always set by getWorkspaceClientPodcastSystem (false for an older
+   * function build that never sent it).
+   */
+  truncated?: boolean
+  /** Which sources were cut short (shortlist, bookings, inbox_threads, ...). */
+  truncated_sources?: string[]
   clients: ClientPodcastSystemClient[]
   summary: {
     total: number
@@ -165,12 +174,16 @@ export interface ClientPodcastSystemResponse {
 
 export async function getWorkspaceClientPodcastSystem(
   workspaceId: string,
+  options: { clientId?: string } = {},
 ): Promise<ClientPodcastSystemResponse> {
   const canonicalWorkspaceId = workspaceId.toLowerCase()
+  const canonicalClientId = options.clientId ? options.clientId.toLowerCase() : null
   const { data, error } = await supabase.functions.invoke('workspace-client-podcast-system', {
     body: {
       action: 'list',
       workspace_id: canonicalWorkspaceId,
+      // One client's pipeline only, for the client record.
+      ...(canonicalClientId ? { client_id: canonicalClientId } : {}),
     },
   })
   if (error) {
@@ -185,6 +198,7 @@ export async function getWorkspaceClientPodcastSystem(
     || !Array.isArray(response.clients)
     || !Array.isArray(response.items)
     || !response.summary
+    || (canonicalClientId !== null && response.clients.some((client) => client.id?.toLowerCase() !== canonicalClientId))
   ) {
     throw new Error('The pipeline response did not match the workspace address.')
   }
@@ -195,8 +209,13 @@ export async function getWorkspaceClientPodcastSystem(
    * fields that are simply absent. Missing reads as no logo, which is what the
    * shell drew before either existed.
    */
+  const truncatedSources = Array.isArray(response.truncated_sources)
+    ? response.truncated_sources.filter((source): source is string => typeof source === 'string')
+    : []
   return {
     ...response,
+    truncated: response.truncated === true || truncatedSources.length > 0,
+    truncated_sources: truncatedSources,
     workspace: {
       ...response.workspace,
       logo_path: typeof response.workspace.logo_path === 'string' ? response.workspace.logo_path : null,

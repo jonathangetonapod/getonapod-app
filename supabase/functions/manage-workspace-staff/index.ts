@@ -841,6 +841,54 @@ function requireInviteRole(value: unknown): InviteRole {
   return role as InviteRole;
 }
 
+const PORTFOLIO_PAGE_SIZE = 1_000;
+const PORTFOLIO_MAX_PAGES = 200;
+
+/**
+ * Read a select to the end, a page at a time. The builder must apply a stable
+ * order and the given range. Returns the first error instead of partial rows,
+ * so a total is either complete or not shown.
+ */
+async function readAllPages(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+): Promise<{ data: Array<Record<string, unknown>>; error: unknown }> {
+  const rows: Array<Record<string, unknown>> = [];
+  for (let index = 0; index < PORTFOLIO_MAX_PAGES; index += 1) {
+    const from = index * PORTFOLIO_PAGE_SIZE;
+    const { data, error } = await page(from, from + PORTFOLIO_PAGE_SIZE - 1);
+    if (error) return { data: [], error };
+    const batch = (data ?? []) as Array<Record<string, unknown>>;
+    rows.push(...batch);
+    if (batch.length < PORTFOLIO_PAGE_SIZE) return { data: rows, error: null };
+  }
+  // More rows than the page ceiling: refuse rather than under-report.
+  return { data: [], error: new Error("portfolio read exceeded its page limit") };
+}
+
+/**
+ * Whether Stripe holds a card for this customer that can be charged again.
+ * The same question the refill tick asks before charging, so the billing
+ * page and the tick cannot disagree. Null when Stripe cannot be asked (no key,
+ * timeout, error), and the caller falls back to the ledger proof.
+ */
+async function stripeHasSavedCard(customerId: string): Promise<boolean | null> {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")?.trim();
+  if (!stripeKey) return null;
+  try {
+    const query = new URLSearchParams({ customer: customerId, type: "card", limit: "1" });
+    const response = await fetch(`https://api.stripe.com/v1/payment_methods?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${stripeKey}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null) as { data?: unknown } | null;
+    if (!body || !Array.isArray(body.data)) return null;
+    return body.data.length > 0;
+  } catch (_error) {
+    return null;
+  }
+}
+
 async function listWorkspaceStaff(
   admin: AdminClient,
   workspaceId: string,
@@ -3020,13 +3068,16 @@ serve(async (req) => {
           .select("operation_type, credit_cost, effective_from")
           .lte("effective_from", new Date().toISOString())
           .order("effective_from", { ascending: false }),
-        // Proof a card was actually saved: the checkout marks the payment for
-        // off-session reuse, so the webhook's grant — keyed stripe:… — exists
-        // exactly when a charge completed with a card Stripe kept.
-        admin.from("workspace_credit_ledger")
+        // Fallback proof a card was saved, used only when Stripe cannot be
+        // asked: a lot bought by a real payment. Any stripe:… ledger key used
+        // to count, but free checkouts and refund or dispute reversals carry
+        // that key too, with no card behind them. A free checkout records no
+        // payment reference, and a reversal creates no lot.
+        admin.from("workspace_credit_lots")
           .select("id")
           .eq("workspace_id", workspaceId)
-          .like("idempotency_key", "stripe:%")
+          .eq("source", "purchase")
+          .not("stripe_payment_ref", "is", null)
           .limit(1)
           .maybeSingle(),
       ]);
@@ -3038,6 +3089,18 @@ serve(async (req) => {
         || spentResult.error || usageResult.error || pricesResult.error
       ) {
         throw new HttpError(503, "BILLING_UNAVAILABLE", "Billing data is temporarily unavailable");
+      }
+
+      // Stripe itself is the authority on whether a card is saved: the same
+      // question the refill tick asks before it charges. The ledger proof is
+      // only the fallback for when Stripe is not configured or not answering.
+      const customerIdForCard = typeof profileResult.data?.stripe_customer_id === "string"
+        ? profileResult.data.stripe_customer_id
+        : "";
+      let hasSavedCard = false;
+      if (customerIdForCard) {
+        const stripeAnswer = await stripeHasSavedCard(customerIdForCard);
+        hasSavedCard = stripeAnswer === null ? Boolean(cardProofResult.data) : stripeAnswer;
       }
 
       const now = Date.now();
@@ -3108,9 +3171,7 @@ serve(async (req) => {
           // cancelled, and auto top-ups were offered with nothing saved to
           // charge. A completed purchase is the event that saves a card, and
           // the webhook grant is its receipt.
-          has_saved_card: typeof profileResult.data?.stripe_customer_id === "string"
-            && profileResult.data.stripe_customer_id.length > 0
-            && Boolean(cardProofResult.data),
+          has_saved_card: hasSavedCard,
           cancel_at_period_end: profileResult.data?.cancel_at_period_end === true,
           current_period_end: profileResult.data?.current_period_end ?? null,
           balance,
@@ -3278,21 +3339,37 @@ serve(async (req) => {
       // Every workspace at once. The per-workspace overview answers "how is
       // this agency doing"; the only way to ask "which agency needs me" was to
       // open each one in turn, so nobody ever asked it.
+      //
+      // Every read is paged to the end. PostgREST caps an unpaged select at
+      // its max-rows setting, so the lots and this month's ledger — which grow
+      // with every operation — were silently truncated and the balances and
+      // spend shown here came out low with nothing to say so. A page that
+      // fails fails the whole portfolio rather than showing partial totals.
       const [workspacesResult, profilesResult, lotsResult, spendResult] = await Promise.all([
-        admin.from("workspaces").select("id, name, status").eq("status", "active"),
-        admin.from("workspace_billing_profiles")
-          .select("workspace_id, plan_key, billing_status, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id"),
-        admin.from("workspace_credit_lots")
-          .select("workspace_id, remaining, expires_at")
-          .gt("remaining", 0),
+        readAllPages((from, to) => admin.from("workspaces")
+          .select("id, name, status")
+          .eq("status", "active")
+          .order("id", { ascending: true })
+          .range(from, to)),
+        readAllPages((from, to) => admin.from("workspace_billing_profiles")
+          .select("workspace_id, plan_key, billing_status, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id")
+          .order("workspace_id", { ascending: true })
+          .range(from, to)),
+        readAllPages((from, to) => admin.from("workspace_credit_lots")
+          .select("id, workspace_id, remaining, expires_at")
+          .gt("remaining", 0)
+          .order("id", { ascending: true })
+          .range(from, to)),
         // Debits net of refunds, the same arithmetic the per-workspace
         // overview uses — the two screens used to disagree by construction.
-        admin.from("workspace_credit_ledger")
-          .select("workspace_id, amount, entry_type")
+        readAllPages((from, to) => admin.from("workspace_credit_ledger")
+          .select("id, workspace_id, amount, entry_type")
           .in("entry_type", ["debit", "refund"])
-          .gte("created_at", monthStart.toISOString()),
+          .gte("created_at", monthStart.toISOString())
+          .order("id", { ascending: true })
+          .range(from, to)),
       ]);
-      if (workspacesResult.error) {
+      if (workspacesResult.error || profilesResult.error || lotsResult.error || spendResult.error) {
         throw new HttpError(503, "PORTFOLIO_UNAVAILABLE", "The billing portfolio could not be read");
       }
 

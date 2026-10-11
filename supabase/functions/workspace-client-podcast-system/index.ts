@@ -204,21 +204,73 @@ interface PageResult<T> {
   error: unknown
 }
 
+interface Loaded<T> {
+  rows: T[]
+  truncated: boolean
+}
+
+/**
+ * Pages through a source up to `budget` rows. Reaching the budget no longer
+ * refuses the whole page: a large workspace gets the newest rows and a
+ * truncated flag the UI states, rather than a 409 and nothing at all.
+ */
 async function loadAll<T>(
   unavailableCode: string,
   loader: (from: number, to: number) => PromiseLike<PageResult<T>>,
-): Promise<T[]> {
+  budget = MAX_ROWS_PER_SOURCE,
+): Promise<Loaded<T>> {
   const rows: T[] = []
-  for (let from = 0; from < MAX_ROWS_PER_SOURCE; from += PAGE_SIZE) {
-    const result = await loader(from, from + PAGE_SIZE - 1)
+  for (let from = 0; from < budget; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, budget) - 1
+    const result = await loader(from, to)
     if (result.error) {
       throw new HttpError(500, unavailableCode, 'The Client Command Center could not be loaded')
     }
     const page = result.data || []
     rows.push(...page)
-    if (page.length < PAGE_SIZE) return rows
+    if (page.length < to - from + 1) return { rows, truncated: false }
   }
-  throw new HttpError(409, 'CLIENT_PODCAST_SYSTEM_LIMIT', 'This workspace has too many podcast records to load safely')
+  // Exactly at the budget: one more row decides whether anything was left out.
+  const peek = await loader(budget, budget)
+  if (peek.error) {
+    throw new HttpError(500, unavailableCode, 'The Client Command Center could not be loaded')
+  }
+  return { rows, truncated: (peek.data || []).length > 0 }
+}
+
+/**
+ * The same, for a source filtered by client. The client ids go out in chunks
+ * so a workspace with many clients never builds an `in` filter longer than a
+ * request line can carry. The row budget is shared across chunks.
+ */
+async function loadForClients<T>(
+  unavailableCode: string,
+  clientIds: string[],
+  loader: (clientIdChunk: string[], from: number, to: number) => PromiseLike<PageResult<T>>,
+): Promise<Loaded<T>> {
+  const rows: T[] = []
+  for (const clientIdChunk of chunks(clientIds)) {
+    const remaining = MAX_ROWS_PER_SOURCE - rows.length
+    if (remaining <= 0) return { rows, truncated: true }
+    const result = await loadAll(unavailableCode, (from, to) => loader(clientIdChunk, from, to), remaining)
+    rows.push(...result.rows)
+    if (result.truncated) return { rows, truncated: true }
+  }
+  return { rows, truncated: false }
+}
+
+/**
+ * Index rows by key keeping the FIRST row seen. Every source is read newest
+ * first, so the first row for a key is the current one; a plain Map built
+ * from the array kept the last, which was the oldest.
+ */
+function firstByKey<T, K>(rows: T[], keyOf: (row: T) => K): Map<K, T> {
+  const result = new Map<K, T>()
+  for (const row of rows) {
+    const key = keyOf(row)
+    if (!result.has(key)) result.set(key, row)
+  }
+  return result
 }
 
 function chunks<T>(values: T[]): T[][] {
@@ -269,6 +321,7 @@ async function loadDirectContacts(
       .select('podcast_id,email,host_name,verification_status,last_verified_at')
       .in('podcast_id', podcastIdChunk)
       .eq('verification_status', 'verified')
+      .order('last_verified_at', { ascending: false, nullsFirst: false })
     if (error) {
       throw new HttpError(500, 'CLIENT_PODCAST_CONTACTS_UNAVAILABLE', 'The Client Command Center could not be loaded')
     }
@@ -445,26 +498,37 @@ serve(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
 
     const body = await parseJsonObject(req, 4_096)
-    requireOnlyKeys(body, ['action', 'workspace_id'])
+    requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
     if (body.action !== 'list') {
       throw new HttpError(400, 'INVALID_ACTION', 'Unknown Client Command Center action')
     }
 
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
+    // Optional: one client's pipeline, for the client detail page, which
+    // otherwise downloaded the whole workspace to show a single client.
+    const onlyClientId = body.client_id === undefined || body.client_id === null
+      ? null
+      : requireUuid(body.client_id, 'client_id')
     const context = await requireAuthenticatedUser(req)
     const access = await requireWorkspaceFeatureAccess(context, workspaceId)
     const canManage = MANAGER_ROLES.has(access.role)
 
-    const clients = await loadAll<ClientRow>('CLIENT_PODCAST_CLIENTS_UNAVAILABLE', (from, to) => (
-      context.admin
+    const clientsLoaded = await loadAll<ClientRow>('CLIENT_PODCAST_CLIENTS_UNAVAILABLE', (from, to) => {
+      let query = context.admin
         .from('clients')
         .select('id,name,status,photo_url,email,contact_person,website,bio,calendar_link,media_kit_url,dashboard_slug,portal_access_enabled,portal_last_login_at,ai_sdr_profile,ai_sdr_profile_updated_at,created_at,updated_at')
         .eq('workspace_id', workspaceId)
+      if (onlyClientId) query = query.eq('id', onlyClientId)
+      return query
         .order('name', { ascending: true })
         .order('id', { ascending: true })
         .range(from, to) as unknown as PromiseLike<PageResult<ClientRow>>
-    ))
+    })
+    const clients = clientsLoaded.rows
     const clientIds = clients.map((client) => client.id)
+    if (onlyClientId && clientIds.length === 0) {
+      throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
+    }
 
     if (clientIds.length === 0) {
       return jsonResponse(req, METHODS, 200, {
@@ -481,6 +545,8 @@ serve(async (req) => {
         viewer_role: access.role,
         can_manage: canManage,
         generated_at: new Date().toISOString(),
+        truncated: false,
+        truncated_sources: [],
         clients: [],
         summary: {
           total: 0,
@@ -495,82 +561,102 @@ serve(async (req) => {
       })
     }
 
-    const [shortlist, feedback, legacyOutreach, targets, bookings, analyses, onboarding] = await Promise.all([
-      loadAll<ShortlistRow>('CLIENT_PODCAST_SHORTLIST_UNAVAILABLE', (from, to) => (
+    const [
+      shortlistLoaded,
+      feedbackLoaded,
+      legacyOutreachLoaded,
+      targetsLoaded,
+      bookingsLoaded,
+      analysesLoaded,
+      onboardingLoaded,
+    ] = await Promise.all([
+      loadForClients<ShortlistRow>('CLIENT_PODCAST_SHORTLIST_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('client_dashboard_podcasts')
           .select('id,client_id,podcast_id,podcast_name,podcast_description,podcast_image_url,podcast_url,publisher_name,audience_size,ai_clean_description,ai_fit_reasons,ai_pitch_angles,ai_analyzed_at,visibility,operator_notes,created_at,updated_at')
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .order('id', { ascending: true })
           .range(from, to) as unknown as PromiseLike<PageResult<ShortlistRow>>
       )),
-      loadAll<FeedbackRow>('CLIENT_PODCAST_FEEDBACK_UNAVAILABLE', (from, to) => (
+      loadForClients<FeedbackRow>('CLIENT_PODCAST_FEEDBACK_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('client_podcast_feedback')
           .select('client_id,podcast_id,status,notes,updated_at')
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<FeedbackRow>>
       )),
-      loadAll<LegacyOutreachRow>('CLIENT_PODCAST_OUTREACH_UNAVAILABLE', (from, to) => (
+      loadForClients<LegacyOutreachRow>('CLIENT_PODCAST_OUTREACH_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('podcast_outreach_actions')
           .select('client_id,podcast_id,webhook_sent_at,created_at')
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .eq('action', 'sent')
           .gte('webhook_response_status', 200)
           .lt('webhook_response_status', 300)
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<LegacyOutreachRow>>
       )),
-      loadAll<CampaignTargetRow>('CLIENT_PODCAST_CAMPAIGNS_UNAVAILABLE', (from, to) => (
-        context.admin
+      loadAll<CampaignTargetRow>('CLIENT_PODCAST_CAMPAIGNS_UNAVAILABLE', (from, to) => {
+        let query = context.admin
           .from('workspace_client_campaign_targets')
           .select('id,campaign_id,client_id,shortlist_podcast_id,status,host_name,contact_email,research_notes,pitch_subject,pitch_body,email_open_count,email_reply_count,launched_at,last_activity_at,last_error,updated_at')
           .eq('workspace_id', workspaceId)
+        if (onlyClientId) query = query.eq('client_id', onlyClientId)
+        return query
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<CampaignTargetRow>>
-      )),
-      loadAll<BookingRow>('CLIENT_PODCAST_BOOKINGS_UNAVAILABLE', (from, to) => (
+      }),
+      loadForClients<BookingRow>('CLIENT_PODCAST_BOOKINGS_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('bookings')
           .select('id,client_id,podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<BookingRow>>
       )),
-      loadAll<AnalysisRow>('CLIENT_PODCAST_ANALYSES_UNAVAILABLE', (from, to) => (
+      loadForClients<AnalysisRow>('CLIENT_PODCAST_ANALYSES_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('client_podcast_analyses')
           .select('client_id,podcast_id,ai_clean_description,ai_fit_reasons,ai_pitch_angles,ai_analyzed_at,updated_at')
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<AnalysisRow>>
       )),
-      loadAll<OnboardingRow>('CLIENT_PODCAST_ONBOARDING_UNAVAILABLE', (from, to) => (
+      loadForClients<OnboardingRow>('CLIENT_PODCAST_ONBOARDING_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('workspace_onboarding_instances')
           .select('id,client_id,status,invited_at,submitted_at,approved_at,updated_at,archived_at')
           .eq('workspace_id', workspaceId)
-          .in('client_id', clientIds)
+          .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .order('id', { ascending: true })
           .range(from, to) as unknown as PromiseLike<PageResult<OnboardingRow>>
       )),
     ])
+    const shortlist = shortlistLoaded.rows
+    const feedback = feedbackLoaded.rows
+    const legacyOutreach = legacyOutreachLoaded.rows
+    const targets = targetsLoaded.rows
+    const bookings = bookingsLoaded.rows
+    const analyses = analysesLoaded.rows
+    const onboarding = onboardingLoaded.rows
 
     // The conversation each placement already has in Master Inbox. Threads
     // record the show they came from at ingestion, so this is a join rather
     // than a provider call — and it is what turns "open the client's inbox and
     // hunt" into opening the one thread that belongs to this host.
-    const { data: threadStateRows } = await context.admin
+    const THREAD_LIMIT = 5_000
+    let threadQuery = context.admin
       .from('workspace_inbox_thread_state')
       .select('thread_key,client_id,podcast_id,status,updated_at')
       .eq('workspace_id', workspaceId)
       .not('podcast_id', 'is', null)
+    if (onlyClientId) threadQuery = threadQuery.eq('client_id', onlyClientId)
+    const { data: threadStateRows, error: threadStateError } = await threadQuery
       .order('updated_at', { ascending: false })
-      .limit(5_000)
+      .limit(THREAD_LIMIT)
     const threadByClientPodcast = new Map<string, ThreadStateRow>()
     for (const row of (threadStateRows || []) as unknown as ThreadStateRow[]) {
       if (!row.podcast_id) continue
@@ -578,6 +664,21 @@ serve(async (req) => {
       const key = recordKey(row.client_id, row.podcast_id)
       if (!threadByClientPodcast.has(key)) threadByClientPodcast.set(key, row)
     }
+
+    // Which sources were cut short, so the page can say its counts are partial
+    // instead of presenting them as the whole workspace.
+    const truncatedSources = [
+      ['clients', clientsLoaded.truncated],
+      ['shortlist', shortlistLoaded.truncated],
+      ['feedback', feedbackLoaded.truncated],
+      ['legacy_outreach', legacyOutreachLoaded.truncated],
+      ['campaign_targets', targetsLoaded.truncated],
+      ['bookings', bookingsLoaded.truncated],
+      ['analyses', analysesLoaded.truncated],
+      ['onboarding', onboardingLoaded.truncated],
+      // A failed thread read leaves conversations unknown, which is also partial.
+      ['inbox_threads', Boolean(threadStateError) || (threadStateRows || []).length >= THREAD_LIMIT],
+    ].flatMap(([source, cut]) => (cut ? [source as string] : []))
 
     const uniquePodcastIds = Array.from(new Set([
       ...shortlist.map((podcast) => podcast.podcast_id),
@@ -589,11 +690,11 @@ serve(async (req) => {
     const clientsById = new Map(clients.map((client) => [client.id, client]))
     const catalogByPodscanId = new Map(catalog.map((podcast) => [podcast.podscan_id, podcast]))
     const catalogById = new Map(catalog.map((podcast) => [podcast.id, podcast]))
-    const feedbackByKey = new Map(feedback.map((row) => [recordKey(row.client_id, row.podcast_id), row]))
-    const outreachByKey = new Map(legacyOutreach.map((row) => [recordKey(row.client_id, row.podcast_id), row]))
-    const targetByShortlistId = new Map(targets.map((row) => [row.shortlist_podcast_id, row]))
-    const analysisByKey = new Map(analyses.map((row) => [recordKey(row.client_id, row.podcast_id), row]))
-    const directContactByPodcastId = new Map(directContacts.map((row) => [row.podcast_id, row]))
+    const feedbackByKey = firstByKey(feedback, (row) => recordKey(row.client_id, row.podcast_id))
+    const outreachByKey = firstByKey(legacyOutreach, (row) => recordKey(row.client_id, row.podcast_id))
+    const targetByShortlistId = firstByKey(targets, (row) => row.shortlist_podcast_id)
+    const analysisByKey = firstByKey(analyses, (row) => recordKey(row.client_id, row.podcast_id))
+    const directContactByPodcastId = firstByKey(directContacts, (row) => row.podcast_id)
     const onboardingByClientId = new Map<string, OnboardingRow>()
     for (const row of onboarding) {
       if (!row.archived_at && !onboardingByClientId.has(row.client_id)) {
@@ -847,6 +948,8 @@ serve(async (req) => {
       viewer_role: access.role,
       can_manage: canManage,
       generated_at: new Date().toISOString(),
+      truncated: truncatedSources.length > 0,
+      truncated_sources: truncatedSources,
       clients: clients.map((client) => {
         const clientItems = items.filter((item) => item.client.id === client.id)
         const clientOnboarding = onboardingByClientId.get(client.id) || null

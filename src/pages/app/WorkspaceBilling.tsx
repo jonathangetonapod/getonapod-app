@@ -113,7 +113,9 @@ const WorkspaceBilling = () => {
         // No marker: the grant heuristic below still works, minus the
         // protection against confirming from an older purchase.
       }
-      toast.success('Payment received — your credits will appear within a minute.')
+      // The redirect alone proves nothing (anyone can add ?checkout=success),
+      // so the copy promises only what the webhook will confirm.
+      toast.info('Checkout finished. Your credits appear once Stripe confirms the payment.')
       // Credits are granted by the Stripe webhook, not by the redirect. If the
       // webhook is not wired up the payment still succeeds and the balance
       // never moves, so this watches for it rather than leaving the operator
@@ -404,9 +406,9 @@ const WorkspaceBilling = () => {
                 <div role="status" className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
                   <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
                   <span>
-                    <span className="font-semibold">Waiting for your credits.</span> Stripe confirms the payment to us
-                    separately from this page. If the balance has not moved in a minute, the payment went through
-                    but the credits did not — contact support rather than paying again.
+                    <span className="font-semibold">Waiting for Stripe to confirm the payment.</span> Credits are added
+                    once it does, and this page checks for them for a minute. If your balance has not changed by
+                    then and Stripe sent you a receipt, contact support rather than paying again.
                   </span>
                 </div>
               )}

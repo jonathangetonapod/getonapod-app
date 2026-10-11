@@ -130,13 +130,31 @@ describe('SetupChecklist', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
   })
 
-  it('treats a read that fails as not done, without an error', async () => {
+  // A failed read is not a step left undone: telling an agency to connect
+  // Instantly when it already has is wrong in a way they act on.
+  it('marks a step whose read failed as unknown, not as not done, without an error', async () => {
     vi.mocked(getWorkspaceClients).mockRejectedValue(new Error('Clients could not be loaded.'))
     renderChecklist()
 
     expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
-    expect(screen.getByText('Add your first client').closest('li')).toHaveAttribute('data-done', 'false')
+    const step = screen.getByText('Add your first client').closest('li')
+    expect(step).toHaveAttribute('data-done', 'unknown')
+    expect(step).toHaveTextContent('Could not be checked right now')
+    expect(screen.getByText('3 of 4 required steps done (1 could not be checked)')).toBeInTheDocument()
     expect(screen.queryByText('Clients could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  it('waits for every read before showing the card', async () => {
+    let releaseBilling: (value: unknown) => void = () => undefined
+    vi.mocked(getWorkspaceBillingOverview).mockImplementation(() => new Promise((resolve) => { releaseBilling = resolve }) as never)
+    renderChecklist()
+
+    await waitFor(() => expect(getWorkspaceClients).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument()
+
+    releaseBilling({ has_subscription: true, balance: 0 })
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
   })
 
   it('renders nothing once dismissed for this workspace', () => {

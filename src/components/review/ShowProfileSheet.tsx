@@ -2,7 +2,7 @@ import { Award, BarChart3, Check, CheckCircle2, Loader2, MessageSquare, RotateCc
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { PodcastArtwork } from '@/components/review/PodcastArtwork'
@@ -70,6 +70,9 @@ export const ShowProfileSheet = ({
         {podcast ? (
           <div className="flex h-full flex-col">
             <SheetTitle className="sr-only">{podcast.podcast_name}</SheetTitle>
+            <SheetDescription className="sr-only">
+              Show profile for {podcast.podcast_name}: audience, fit, and your decision.
+            </SheetDescription>
 
             <div className="relative h-44 flex-shrink-0 overflow-hidden sm:h-64">
               <PodcastArtwork podcast={podcast} className="h-full w-full" decorative />

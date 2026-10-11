@@ -101,14 +101,22 @@ export const FocusedReview = ({
                 <DialogDescription className="sr-only">Review one podcast at a time from {label} and mark whether you are interested.</DialogDescription>
                 <p className="mt-0.5 text-xs text-[#74808a]">{label} · Match {index + 1} of {queue.length} · {reviewedCount} reviewed</p>
               </div>
-              <div className="hidden h-1.5 w-40 overflow-hidden rounded-full bg-[#e6ded4] sm:block">
+              <div
+                role="progressbar"
+                aria-label="Review progress"
+                aria-valuemin={1}
+                aria-valuemax={Math.max(queue.length, 1)}
+                aria-valuenow={index + 1}
+                aria-valuetext={`Match ${index + 1} of ${queue.length}`}
+                className="hidden h-1.5 w-40 overflow-hidden rounded-full bg-[#e6ded4] sm:block"
+              >
                 <div className="h-full rounded-full bg-[var(--campaign-accent)]" style={{ width: ((index + 1) / Math.max(queue.length, 1)) * 100 + '%' }} />
               </div>
             </div>
 
             <div className="grid lg:grid-cols-[0.9fr_1.1fr]">
               <div className="border-b border-[#e2d9ce] p-5 sm:p-7 lg:border-b-0 lg:border-r">
-                <PodcastArtwork podcast={podcast} className="aspect-[16/10] w-full rounded-3xl shadow-[0_18px_50px_rgba(16,32,51,.16)] lg:aspect-square" decorative />
+                <PodcastArtwork key={podcast.podcast_id} podcast={podcast} className="aspect-[16/10] w-full rounded-3xl shadow-[0_18px_50px_rgba(16,32,51,.16)] lg:aspect-square" decorative />
                 <dl className="mt-5 grid grid-cols-3 divide-x divide-[#e2d9ce] rounded-2xl border border-[#e2d9ce] bg-white py-3 text-center">
                   {[
                     { label: 'Listeners', value: podcast.audience_size ? formatListeners(podcast.audience_size) : '-' },
@@ -163,6 +171,7 @@ export const FocusedReview = ({
                       type="button"
                       variant="outline"
                       disabled={isSaving}
+                      aria-pressed={status === 'rejected'}
                       onClick={() => decide('rejected')}
                       className={cn(
                         'min-h-14 gap-2 rounded-2xl border-[#d8cec4] text-sm font-bold',
@@ -177,6 +186,7 @@ export const FocusedReview = ({
                     <Button
                       type="button"
                       disabled={isSaving}
+                      aria-pressed={status === 'approved'}
                       onClick={() => decide('approved')}
                       className={cn(
                         'min-h-14 gap-2 rounded-2xl text-sm font-bold',

@@ -128,8 +128,8 @@ export function AutoRefillCard({ workspaceId, overview, onSaved }: AutoRefillCar
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><RefreshCw className="h-4 w-4" />Automatic top-ups</CardTitle>
         <CardDescription>
-          Keep working when credits run out, instead of stopping mid-task. We buy a pack on your saved card and the
-          credits arrive within a minute.
+          Keep working when credits run out, instead of stopping mid-task. We buy a pack on your saved card, and the
+          credits are added once Stripe confirms the charge.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

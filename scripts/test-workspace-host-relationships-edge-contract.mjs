@@ -54,7 +54,19 @@ assert.match(edge, /requireAuthenticatedUser\(req\)/u)
 assert.match(edge, /workspaceCredentialIsFresh\(authContext\)/u)
 assert.match(edge, /requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
 assert.match(edge, /const MANAGER_ROLES = new Set\(\['owner', 'admin', 'platform_admin'\]\)/u)
-assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v1/u)
+assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v2/u)
+// The book is paged with whole-book totals; it used to stop at 500 rows
+// without saying so, and the header counted only what arrived.
+const pagingMigration = readFileSync('supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql', 'utf8')
+assert.match(pagingMigration, /CREATE OR REPLACE FUNCTION public\.workspace_host_relationship_book_v2\([\s\S]*?p_offset INTEGER DEFAULT 0/u)
+assert.match(pagingMigration, /\(COUNT\(\*\) OVER \(\)\)::INTEGER AS total_count/u)
+assert.match(pagingMigration, /rel\.last_contacted_at DESC NULLS LAST,[\s\S]*?rel\.podcast_id\s*LIMIT[\s\S]*?OFFSET GREATEST\(0, COALESCE\(p_offset, 0\)\)/u)
+assert.match(pagingMigration, /REVOKE ALL ON FUNCTION public\.workspace_host_relationship_book_v2\(UUID, INTEGER, INTEGER\) FROM PUBLIC, anon, authenticated/u)
+assert.match(edge, /requireOnlyKeys\(body, \['action', 'workspace_id', 'limit', 'offset'\]\)/u)
+assert.match(edge, /has_more: nextOffset < total,/u)
+assert.match(service, /export async function listHostRelationshipsPage\(/u)
+assert.match(page, /useInfiniteQuery\(/u)
+assert.match(page, /Load more relationships/u)
 assert.match(edge, /select\('podscan_id, podcast_image_url'\)[\s\S]*?podcast_image_url:/u)
 // Hand-added and inbox-captured shows hold a generated id, so name is the only
 // remaining route to their cover art — and a duplicated name resolves to null
@@ -101,7 +113,15 @@ assert.match(
   /resolveShowByEmail\([\s\S]*?from\('workspace_host_relationships'\)[\s\S]*?\.eq\('contact_email', email\)[\s\S]*?from\('workspace_client_campaign_targets'\)[\s\S]*?\.eq\('normalized_contact_email', email\)[\s\S]*?from\('podcast_direct_contacts'\)[\s\S]*?\.eq\('normalized_email', email\)/u,
   'email resolution must try the book, then workspace targets, then the shared catalog',
 )
-assert.match(edge, /const resolved = showId \|\| !contactEmail\s+\? null\s+: await resolveShowByEmail\(admin, workspaceId, contactEmail, showName\)/u)
+assert.match(edge, /const resolved = showId \|\| !contactEmail\s+\? null\s+: await resolveShowByEmail\(admin, workspaceId, contactEmail, showName, threadKey\)/u)
+// The shared catalog answers only for an address this workspace already holds
+// (a campaign pitched it, or its inbox read a thread from it); otherwise any
+// manager could type an email and learn its show and host.
+assert.match(
+  edge,
+  /const linkedByCampaign = \(targets \?\? \[\]\)\.length > 0\s*if \(!linkedByCampaign && !\(await emailOnWorkspaceThread\(admin, workspaceId, email, threadKey\)\)\) \{\s*return null\s*\}\s*const \{ data: contacts, error: contactsError \} = await admin\.from\('podcast_direct_contacts'\)/u,
+)
+assert.match(edge, /async function emailOnWorkspaceThread\([\s\S]*?from\('workspace_inbox_thread_state'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.eq\('thread_key', threadKey\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.eq\('lead_email', email\)/u)
 assert.match(edge, /showId \?\?= resolved\?\.podcastId \?\? newManualPodcastId\(\)/u)
 // An unresolved capture stays unnamed. A placeholder show name would become
 // this host's identity and fork the book once the real name appears.

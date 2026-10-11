@@ -15,11 +15,14 @@
     <link rel="manifest" href="/site.webmanifest" />
 
     <!--
-      The marketing head below (title and structured data) is for / and the
-      other indexable marketing pages. scripts/serve-production.mjs strips it
-      from every other route, and on pages an agency's clients open (portal,
-      prospect, client, onboarding) it also strips the app name, icons and
-      manifest, so those pages never name the platform.
+      The marketing head below (title and structured data) is for / only.
+      scripts/serve-production.mjs serves it unchanged on /. On the other
+      indexable marketing pages it keeps the Organization block, drops the
+      Service and FAQPage blocks and replaces the title with the brand name
+      (each page's PageSEO sets its real title). On every other route it strips
+      all of it, and on pages an agency's clients open (portal, prospect,
+      client, onboarding) it also strips the app name, icons and manifest, so
+      those pages never name the platform.
     -->
     <title>Podcast booking for tech founders and SaaS owners | Get On A Pod</title>
     <!-- Structured Data -->

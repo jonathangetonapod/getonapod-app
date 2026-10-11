@@ -4,14 +4,19 @@
 // Stripe event id — replays and retries can never double-grant.
 //
 // Events this endpoint must be subscribed to in the Stripe dashboard:
-// checkout.session.completed, payment_intent.succeeded, charge.refunded and
-// charge.dispute.created.
+// checkout.session.completed, payment_intent.succeeded, charge.refunded,
+// charge.dispute.created and charge.dispute.closed.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { createAdminClient } from '../_shared/workspaceAuth.ts'
 
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60
+const STRIPE_API = 'https://api.stripe.com/v1'
+// How long a refund or dispute for a credit pack whose lot cannot be found yet
+// is handed back to Stripe for retry. Long enough for an out-of-order grant to
+// land; past it the lot is not coming, and retrying would only add noise.
+const MISSING_LOT_RETRY_SECONDS = 3 * 24 * 60 * 60
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -110,6 +115,9 @@ serve(async (req) => {
   // bought (stripe_payment_ref, written when the lot is granted).
   if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
     return await reverseCredits(event as { id: string; type: string; data?: { object?: Record<string, unknown> } })
+  }
+  if (event.type === 'charge.dispute.closed') {
+    return await reinstateWonDispute(event as { id: string; type: string; data?: { object?: Record<string, unknown> } })
   }
 
   // Two ways credits are bought, and they are different Stripe events. A
@@ -256,7 +264,27 @@ async function reverseCredits(event: {
   }
   if (result.found !== true) {
     // Most charges are not credit purchases — subscription invoices refund
-    // through here too — so an unmatched payment is expected, not an error.
+    // through here too — so an unmatched payment is usually expected. But a
+    // credit pack's lot may simply not be found yet: Stripe does not promise
+    // order, and the grant that records the payment on the lot can land after
+    // the refund. Acknowledging that for ever left the credits spendable with
+    // the money gone, so a recent credit-pack payment is handed back for retry.
+    const pack = await creditPackPayment(object, paymentRef)
+    if (pack.lookupFailed) {
+      console.error('[Stripe Credit Webhook] Payment could not be checked for a credit pack')
+      return json(500, { error: 'PAYMENT_LOOKUP_FAILED' })
+    }
+    if (pack.isCreditPack) {
+      const ageSeconds = pack.createdAt === null ? 0 : Date.now() / 1000 - pack.createdAt
+      if (ageSeconds < MISSING_LOT_RETRY_SECONDS) {
+        console.warn('[Stripe Credit Webhook] Credit pack lot not found yet; asking Stripe to retry')
+        return json(500, { error: 'LOT_NOT_FOUND_YET' })
+      }
+      console.warn(
+        `[Stripe Credit Webhook] ${dispute ? 'Dispute' : 'Refund'} for credit pack payment ${paymentRef} found no lot after the retry window; needs reconciliation`,
+      )
+      return json(200, { received: true, ignored: 'no credit lot for this payment', reconcile: true })
+    }
     return json(200, { received: true, ignored: 'no credit lot for this payment' })
   }
   if ((result.already_spent ?? 0) > 0) {
@@ -270,4 +298,116 @@ async function reverseCredits(event: {
     already_spent: result.already_spent ?? 0,
     workspace_id: result.workspace_id ?? null,
   })
+}
+
+/**
+ * Whether a payment bought a credit pack, and when it was made.
+ *
+ * Both purchase paths put workspace_id on the PaymentIntent's metadata (the
+ * checkout through payment_intent_data, the automatic top-up directly), and
+ * subscription invoices carry none, so that key is the test. A charge
+ * usually carries the metadata itself; a dispute does not, so the
+ * PaymentIntent is read from Stripe.
+ */
+async function creditPackPayment(
+  object: Record<string, unknown>,
+  paymentRef: string,
+): Promise<{ isCreditPack: boolean; createdAt: number | null; lookupFailed: boolean }> {
+  const ownMetadata = (object.metadata ?? {}) as Record<string, unknown>
+  const isCharge = object.object === 'charge'
+  if (isCharge && typeof ownMetadata.workspace_id === 'string' && ownMetadata.workspace_id) {
+    return {
+      isCreditPack: true,
+      createdAt: typeof object.created === 'number' ? object.created : null,
+      lookupFailed: false,
+    }
+  }
+  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim()
+  if (!stripeKey) {
+    console.warn('[Stripe Credit Webhook] STRIPE_SECRET_KEY is not set; cannot check the payment for a credit pack')
+    return { isCreditPack: false, createdAt: null, lookupFailed: false }
+  }
+  try {
+    const response = await fetch(`${STRIPE_API}/payment_intents/${encodeURIComponent(paymentRef)}`, {
+      headers: { Authorization: `Bearer ${stripeKey}` },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (response.status === 404) return { isCreditPack: false, createdAt: null, lookupFailed: false }
+    if (!response.ok) return { isCreditPack: false, createdAt: null, lookupFailed: true }
+    const intent = await response.json().catch(() => null) as
+      | { metadata?: Record<string, unknown>; created?: unknown }
+      | null
+    if (!intent) return { isCreditPack: false, createdAt: null, lookupFailed: true }
+    const metadata = intent.metadata ?? {}
+    return {
+      isCreditPack: typeof metadata.workspace_id === 'string' && metadata.workspace_id.length > 0,
+      createdAt: typeof intent.created === 'number' ? intent.created : null,
+      lookupFailed: false,
+    }
+  } catch (_error) {
+    return { isCreditPack: false, createdAt: null, lookupFailed: true }
+  }
+}
+
+/**
+ * charge.dispute.closed with status won: give back what the dispute took.
+ *
+ * Winning returns the money, so the credits charge.dispute.created removed
+ * belong to the workspace again. They are found by the dispute id the
+ * reversal journaled, and granted back as a purchased lot (no expiry, like the
+ * pack they came from) under a key per dispute, so every redelivery of the
+ * closing event is a no-op. A dispute that removed nothing — the credits were
+ * already spent — grants nothing. Lost or other outcomes keep the reversal.
+ */
+async function reinstateWonDispute(event: {
+  id: string
+  type: string
+  data?: { object?: Record<string, unknown> }
+}): Promise<Response> {
+  const object = event.data?.object ?? {}
+  const disputeId = typeof object.id === 'string' ? object.id : null
+  if (!disputeId) return json(200, { received: true, ignored: 'no dispute id' })
+  if (object.status !== 'won') {
+    return json(200, { received: true, ignored: `dispute ${typeof object.status === 'string' ? object.status : 'unknown'}` })
+  }
+
+  const admin = createAdminClient()
+  const { data: reversals, error } = await admin
+    .from('workspace_credit_ledger')
+    .select('workspace_id, amount')
+    .eq('entry_type', 'adjustment')
+    .eq('reference_kind', 'stripe_dispute')
+    .eq('reference_id', disputeId)
+    .limit(10)
+  if (error) {
+    console.error('[Stripe Credit Webhook] Dispute reversal lookup failed')
+    return json(500, { error: 'LOOKUP_FAILED' })
+  }
+  const rows = (reversals ?? []) as Array<{ workspace_id: string; amount: number }>
+  if (rows.length === 0) {
+    return json(200, { received: true, ignored: 'nothing was reversed for this dispute' })
+  }
+  const workspaceId = rows[0].workspace_id
+  if (rows.some((row) => row.workspace_id !== workspaceId)) {
+    console.error('[Stripe Credit Webhook] Dispute reversals name more than one workspace; needs reconciliation')
+    return json(200, { received: true, ignored: 'ambiguous dispute reversal', reconcile: true })
+  }
+  const removed = rows.reduce((sum, row) => sum + Math.max(0, -(Number(row.amount) || 0)), 0)
+  if (removed <= 0) return json(200, { received: true, ignored: 'nothing was reversed for this dispute' })
+
+  const { error: grantError } = await admin.rpc('grant_workspace_credits_v1', {
+    p_workspace_id: workspaceId,
+    p_source: 'purchase',
+    p_amount: removed,
+    p_expires_at: null,
+    p_reference_kind: 'stripe_dispute_won',
+    p_reference_id: disputeId,
+    p_actor_user_id: null,
+    p_idempotency_key: `stripe-dispute-won:${disputeId}`,
+  })
+  if (grantError) {
+    console.error('[Stripe Credit Webhook] Dispute reinstatement grant failed')
+    return json(500, { error: 'GRANT_FAILED' })
+  }
+  return json(200, { received: true, reinstated: removed, workspace_id: workspaceId })
 }

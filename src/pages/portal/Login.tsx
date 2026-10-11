@@ -9,6 +9,28 @@ import { currentHostname } from '@/lib/workspaceHost'
 import { isPortalBrandSlug, readPortalBrand, rememberPortalBrand } from '@/components/portal/portalBrandMemory'
 import '@/styles/agencyLanding.css'
 
+type LoginError = 'empty' | 'mismatch' | 'limited' | 'unavailable' | 'offline'
+
+// supabase-js answers "Failed to send a request to the Edge Function" when the
+// request never reached the server; the browser's own fetch failures read
+// "Failed to fetch" (Chromium), "NetworkError ..." (Firefox) or "Load failed"
+// (Safari). toFunctionError keeps that message and leaves status unset.
+const OFFLINE_MESSAGE = /failed to send a request|failed to fetch|networkerror|load failed/iu
+
+/**
+ * Which sentence a failed sign-in gets. Every verdict about the credentials
+ * reads the same, so the form never says whether an address exists. The
+ * attempt limit is counted before any account lookup, for addresses with and
+ * without an account alike, so saying it was hit gives nothing away either.
+ */
+const loginErrorFor = (err: unknown): LoginError => {
+  const { code, status, message } = (err ?? {}) as { code?: unknown; status?: unknown; message?: unknown }
+  if (code === 'LOGIN_RATE_LIMITED' || status === 429) return 'limited'
+  if (code === 'LOGIN_UNAVAILABLE' || (typeof status === 'number' && status >= 500)) return 'unavailable'
+  if (status === undefined && typeof message === 'string' && OFFLINE_MESSAGE.test(message)) return 'offline'
+  return 'mismatch'
+}
+
 interface LoginBranding {
   name: string
   logo_url: string | null
@@ -31,7 +53,7 @@ export default function PortalLogin() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<'empty' | 'mismatch' | 'offline' | null>(null)
+  const [error, setError] = useState<LoginError | null>(null)
   const [rememberedBrand] = useState(() => readPortalBrand())
   const [linkBranding, setLinkBranding] = useState<LoginBranding | null>(null)
 
@@ -107,11 +129,7 @@ export default function PortalLogin() {
       // Context will handle navigation
     } catch (err) {
       console.error('Failed to login:', err)
-      // One sentence for every verdict the server reaches, so the form never
-      // says whether the address exists. Only a request that never got there
-      // says something else, because that is about the connection.
-      const message = err instanceof Error ? err.message : ''
-      setError(/failed to fetch|networkerror|load failed/iu.test(message) ? 'offline' : 'mismatch')
+      setError(loginErrorFor(err))
     } finally {
       setLoading(false)
     }
@@ -126,6 +144,9 @@ export default function PortalLogin() {
   const agencyLogoSource = linkBranding?.logo_url || (!linkBranding ? remembered?.logo_url : null) || null
   const agencyLogoUrl = agencyLogoSource ? safeExternalUrl(agencyLogoSource) : null
   const agencyColor = linkBranding?.primary_color || remembered?.primary_color || undefined
+  const emailInvalid = error === 'mismatch' || (error === 'empty' && !email.trim())
+  const passwordInvalid = error === 'mismatch' || (error === 'empty' && !password)
+  const errorId = 'portal-login-error'
 
   return (
     <div className="gp-page gp-auth-split gp-auth-solo">
@@ -191,6 +212,8 @@ export default function PortalLogin() {
                 value={email}
                 disabled={loading}
                 onChange={(e) => { setEmail(e.target.value); setError(null) }}
+                aria-invalid={emailInvalid || undefined}
+                aria-describedby={error ? errorId : undefined}
                 autoFocus
               />
             </div>
@@ -209,6 +232,8 @@ export default function PortalLogin() {
                   value={password}
                   disabled={loading}
                   onChange={(e) => { setPassword(e.target.value); setError(null) }}
+                  aria-invalid={passwordInvalid || undefined}
+                  aria-describedby={error ? errorId : undefined}
                 />
                 <button
                   type="button"
@@ -226,9 +251,13 @@ export default function PortalLogin() {
             </button>
 
             {error && (
-              <p className="gp-form-error" role="alert">
+              <p id={errorId} className="gp-form-error" role="alert">
                 {error === 'empty' && 'Enter your email and password.'}
-                {error === 'offline' && 'Could not reach the server. Try again.'}
+                {error === 'offline' && 'Could not reach the server. Check your connection, then try again.'}
+                {error === 'unavailable' && 'Sign-in is temporarily unavailable. Try again in a few minutes.'}
+                {error === 'limited' && (
+                  <>Too many sign-in attempts. Wait a few minutes, then try again, or <Link to={forgotHref}>reset your password</Link>.</>
+                )}
                 {error === 'mismatch' && (
                   <>That email and password do not match. Try again, or <Link to={forgotHref}>reset your password</Link>.</>
                 )}

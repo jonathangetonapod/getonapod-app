@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { HelmetProvider } from 'react-helmet-async'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -96,5 +96,73 @@ describe('PortalLogin white-label', () => {
     expect(mockedInvoke).toHaveBeenCalledWith('public-client-dashboard', expect.objectContaining({
       body: expect.objectContaining({ slug: 'dallas-fontaine-a0fd' }),
     }))
+  })
+})
+
+describe('PortalLogin refusals', () => {
+  const loginWithPassword = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.sessionStorage.clear()
+    mockedUseClientPortal.mockReturnValue({
+      client: null,
+      branding: null,
+      loading: false,
+      isImpersonating: false,
+      loginWithPassword,
+    } as never)
+  })
+
+  const submitWith = async (failure: unknown) => {
+    loginWithPassword.mockRejectedValueOnce(failure)
+    renderAt('/portal/login')
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'taylor@example.com' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong-password' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    return screen.findByRole('alert')
+  }
+
+  it('says the credentials do not match and marks both fields', async () => {
+    const alert = await submitWith(Object.assign(new Error('Invalid email or password'), { code: 'INVALID_CREDENTIALS', status: 401 }))
+
+    expect(alert).toHaveTextContent('That email and password do not match.')
+    expect(alert.id).toBe('portal-login-error')
+    for (const field of [screen.getByLabelText('Email'), screen.getByLabelText('Password')]) {
+      expect(field).toHaveAttribute('aria-invalid', 'true')
+      expect(field).toHaveAttribute('aria-describedby', 'portal-login-error')
+    }
+  })
+
+  it('says the attempt limit was reached on the rate-limit code', async () => {
+    const alert = await submitWith(Object.assign(new Error('Too many sign-in attempts.'), { code: 'LOGIN_RATE_LIMITED', status: 429 }))
+
+    expect(alert).toHaveTextContent('Too many sign-in attempts. Wait a few minutes, then try again')
+    expect(alert).not.toHaveTextContent('do not match')
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-describedby', 'portal-login-error')
+  })
+
+  it('says the server could not be reached when the request never left', async () => {
+    const alert = await submitWith(new Error('Failed to send a request to the Edge Function'))
+
+    expect(alert).toHaveTextContent('Could not reach the server.')
+  })
+
+  it('says sign-in is unavailable on a server failure', async () => {
+    const alert = await submitWith(Object.assign(new Error('Login is temporarily unavailable'), { code: 'LOGIN_UNAVAILABLE', status: 503 }))
+
+    expect(alert).toHaveTextContent('Sign-in is temporarily unavailable.')
+  })
+
+  it('marks only the empty field when something is missing', async () => {
+    renderAt('/portal/login')
+    fireEvent.change(await screen.findByLabelText('Email'), { target: { value: 'taylor@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter your email and password.')
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true')
+    expect(loginWithPassword).not.toHaveBeenCalled()
   })
 })

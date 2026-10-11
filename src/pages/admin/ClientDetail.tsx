@@ -1581,13 +1581,32 @@ export default function ClientDetail() {
   // Podcast Outreach handlers
   const handleSaveWebhookUrl = async () => {
     if (!client?.id) return
+    // The send function refuses anything but a public https endpoint, so say
+    // so here instead of saving a URL every send will reject.
+    const trimmedWebhookUrl = webhookUrl.trim()
+    if (trimmedWebhookUrl) {
+      let parsedWebhookUrl: URL | null = null
+      try {
+        parsedWebhookUrl = new URL(trimmedWebhookUrl)
+      } catch {
+        parsedWebhookUrl = null
+      }
+      if (!parsedWebhookUrl || parsedWebhookUrl.protocol !== 'https:' || !parsedWebhookUrl.hostname.includes('.')) {
+        toast({
+          title: 'Webhook URL not saved',
+          description: 'Enter a full https:// address for the webhook, for example https://hooks.example.com/outreach.',
+          variant: 'destructive'
+        })
+        return
+      }
+    }
 
     setSavingWebhookUrl(true)
     try {
       // RLS silently updates 0 rows for another workspace's client, so check the returned rows.
       const { data: updatedRows, error } = await supabase
         .from('clients')
-        .update({ outreach_webhook_url: webhookUrl || null })
+        .update({ outreach_webhook_url: trimmedWebhookUrl || null })
         .eq('id', client.id)
         .select('id')
 

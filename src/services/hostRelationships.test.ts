@@ -8,6 +8,7 @@ import {
   getHostRelationship,
   linkHostRelationshipClient,
   listHostRelationships,
+  listHostRelationshipsPage,
   listOutreachSuppressions,
   removeOutreachSuppression,
   saveHostRelationship,
@@ -41,10 +42,53 @@ describe('hostRelationships service', () => {
       threads: [],
     })
     expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-host-relationships', {
-      body: { action: 'list', workspace_id: canonicalWorkspaceId },
+      body: { action: 'list', workspace_id: canonicalWorkspaceId, limit: 500, offset: 0 },
     })
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
       body: { action: 'detail', workspace_id: canonicalWorkspaceId, podcast_id: 'show-one' },
+    })
+  })
+
+  it('pages the book with whole-book totals and follows pages for the full list', async () => {
+    const first = { podcast_id: 'show-one', derived_state: 'in_conversation' }
+    const second = { podcast_id: 'show-two', derived_state: 'booked' }
+    invoke.mockResolvedValueOnce({
+      data: {
+        relationships: [first],
+        total: 2,
+        offset: 0,
+        has_more: true,
+        next_offset: 1,
+        counts: { in_conversation: 1, booked: 1, engaged: 0 },
+      },
+      error: null,
+    } as never)
+
+    const page = await listHostRelationshipsPage(workspaceId, { offset: 0, limit: 1 })
+    expect(page).toEqual({
+      relationships: [first],
+      total: 2,
+      offset: 0,
+      has_more: true,
+      next_offset: 1,
+      counts: { in_conversation: 1, booked: 1, engaged: 0 },
+    })
+    expect(invoke).toHaveBeenLastCalledWith('workspace-host-relationships', {
+      body: { action: 'list', workspace_id: canonicalWorkspaceId, limit: 1, offset: 0 },
+    })
+
+    invoke
+      .mockResolvedValueOnce({
+        data: { relationships: [first], total: 2, offset: 0, has_more: true, next_offset: 1, counts: {} },
+        error: null,
+      } as never)
+      .mockResolvedValueOnce({
+        data: { relationships: [second], total: 2, offset: 1, has_more: false, next_offset: null, counts: {} },
+        error: null,
+      } as never)
+    await expect(listHostRelationships(workspaceId)).resolves.toEqual([first, second])
+    expect(invoke).toHaveBeenLastCalledWith('workspace-host-relationships', {
+      body: { action: 'list', workspace_id: canonicalWorkspaceId, limit: 500, offset: 1 },
     })
   })
 

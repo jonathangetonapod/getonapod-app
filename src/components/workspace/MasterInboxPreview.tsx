@@ -627,7 +627,11 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
       toast.success(input.value === null
         ? 'Status reset in Instantly.'
         : moved
-          ? `Status updated. Moved to ${movedTo === 'interested' ? 'Interested only' : 'Other replies'}.`
+          ? movedTo === 'interested'
+            ? 'Status updated. Moved to Interested only.'
+            : input.value === 2
+              ? 'Meeting booked. The conversation is now under Other replies, since Interested only shows Interested.'
+              : 'Status updated. Moved to Other replies.'
           : 'Status updated in Instantly.')
       void inboxQuery.refetch()
       void leadDetailQuery.refetch()
@@ -1489,7 +1493,7 @@ const MasterInboxPreview = ({ workspaceId, clients, clientsLoading, clientsError
                         })}
                       </div>
                       <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-                        Writes straight to Instantly and moves this conversation between Interested only and Other replies.
+                        Writes straight to Instantly. Only Interested keeps a conversation in Interested only; Meeting booked, Not interested and Reset move it to Other replies.
                       </p>
                     </div>
                   ) : null}

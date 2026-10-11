@@ -192,13 +192,15 @@ serve(async (req) => {
       // Everything that depends on whether the email matched (the account
       // lookup, the per-email quota, the token write, the email send) runs
       // after the response, so a match and a miss take the same time to
-      // answer. Without a background runtime the work is awaited and the
-      // response padded to a fixed floor instead.
+      // answer. Without a background runtime the response waits exactly the
+      // fixed floor and the work is left running on the event loop, never
+      // awaited: awaiting it first meant a slow provider call on a match
+      // pushed the response past the floor, and that difference is the very
+      // signal the floor exists to hide.
       const work = issueResetForEmail(admin, email, ip).catch(() => {
         console.error('[Portal Password Reset] Background reset failed')
       })
       if (!runInBackground(work)) {
-        await work
         await padToFloor(startedAt, RESET_REQUEST_RESPONSE_FLOOR_MS)
       }
 

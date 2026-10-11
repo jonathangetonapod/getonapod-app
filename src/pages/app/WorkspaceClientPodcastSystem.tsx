@@ -670,6 +670,12 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
         ) : system.clients.length === 0 ? (
           <Card><CardContent className="flex min-h-80 flex-col items-center justify-center px-6 text-center"><Users className="h-10 w-10 text-muted-foreground/50" /><h2 className="mt-4 text-xl font-semibold">No clients in this workspace yet</h2><p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">Create the first client account to start onboarding, building a guest profile, and finding podcast opportunities.</p><Button asChild className="mt-5"><Link to={`${baseHref}/clients`}>Open Clients</Link></Button></CardContent></Card>
         ) : (
+          <>
+          {system.truncated && (
+            <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              This workspace has more pipeline records than can be loaded at once, so only the most recent are shown. Open a client to see their full history.
+            </p>
+          )}
           <AllClientsView
             rollups={rollups}
             items={system.items}
@@ -679,6 +685,7 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
             onChooseClient={chooseClient}
             onOpenItem={setSelectedItemId}
           />
+          </>
         )}
       </div>
 

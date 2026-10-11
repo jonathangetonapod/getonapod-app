@@ -132,8 +132,10 @@ export async function logout(sessionToken: string): Promise<void> {
   })
   if (error) throw await toFunctionError(error, 'Failed to invalidate the portal session.')
 
-  // Clear tab-scoped, in-memory, and legacy persistent storage.
-  sessionStorage.clear()
+  // The portal store below, not window.sessionStorage: it removes only the
+  // portal session keys (memory, tab and legacy storage), so the agency brand
+  // remembered for the tab (portalBrandMemory) survives signing out.
+  portalSessionStore.clear()
 }
 
 export interface ClientPortalData {
@@ -156,7 +158,7 @@ export interface ClientPortalData {
  */
 export async function getClientBookings(clientId: string): Promise<ClientPortalData> {
   // Get session token if exists
-  const { session } = sessionStorage.get()
+  const { session } = portalSessionStore.get()
 
   if (session && session.client_id !== clientId) {
     throw new Error('Portal session does not match the requested client.')
@@ -258,7 +260,7 @@ export interface PortalExperienceOverview {
  * journey, approved guest profile, and placements) in one round trip.
  */
 export async function getPortalExperience(clientId: string): Promise<PortalExperienceOverview> {
-  const { session } = sessionStorage.get()
+  const { session } = portalSessionStore.get()
 
   if (session && session.client_id !== clientId) {
     throw new Error('Portal session does not match the requested client.')
@@ -298,7 +300,7 @@ export interface PortalCalendarEventInput {
 }
 
 function portalRequestBody(clientId: string, extra: Record<string, unknown>): Record<string, unknown> {
-  const { session } = sessionStorage.get()
+  const { session } = portalSessionStore.get()
   if (session && session.client_id !== clientId) {
     throw new Error('Portal session does not match the requested client.')
   }
@@ -342,43 +344,6 @@ export async function setPortalNotifications(clientId: string, enabled: boolean)
 }
 
 /**
- * Get a single booking by ID (with authorization check)
- */
-export async function getClientBooking(clientId: string, bookingId: string): Promise<Booking> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('id', bookingId)
-    .eq('client_id', clientId) // Authorization check
-    .single()
-
-  if (error) {
-    throw new Error(`Failed to fetch booking: ${error.message}`)
-  }
-
-  return data as Booking
-}
-
-/**
- * Get client portal activity log for a specific client
- * (Admin use only - requires service role)
- */
-export async function getClientPortalActivity(clientId: string, limit = 50) {
-  const { data, error } = await supabase
-    .from('client_portal_activity_log')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('created_at', { ascending: false })
-    .limit(limit)
-
-  if (error) {
-    throw new Error(`Failed to fetch activity log: ${error.message}`)
-  }
-
-  return data
-}
-
-/**
  * Enable or disable portal access for a client (Admin use only)
  */
 export async function updatePortalAccess(clientId: string, enabled: boolean): Promise<void> {
@@ -398,110 +363,7 @@ export async function updatePortalAccess(clientId: string, enabled: boolean): Pr
   }
 }
 
-/**
- * Get client portal stats (Admin use only)
- */
-export async function getPortalStats() {
-  const { data, error } = await supabase.rpc('get_client_portal_stats')
-
-  if (error) {
-    console.error('Failed to fetch portal stats:', error)
-    return {
-      total_clients_with_access: 0,
-      active_sessions_count: 0,
-      logins_last_24h: 0,
-      logins_last_7d: 0
-    }
-  }
-
-  return data
-}
-
-/**
- * Get cached podcast fit analysis or generate new one if not cached
- */
-export async function getPodcastFitAnalysis(
-  clientId: string,
-  bookingId: string,
-  clientBio: string,
-  podcastName: string,
-  podcastDescription?: string,
-  hostName?: string,
-  audienceSize?: number
-): Promise<string | null> {
-  // Check cache first
-  const { data: cached, error: cacheError } = await supabase
-    .from('podcast_fit_analyses')
-    .select('analysis')
-    .eq('client_id', clientId)
-    .eq('booking_id', bookingId)
-    .maybeSingle()
-
-  if (!cacheError && cached?.analysis) {
-    return cached.analysis
-  }
-
-  // Generate new analysis via Edge Function
-  try {
-    const { data, error } = await supabase.functions.invoke('analyze-podcast-fit', {
-      body: {
-        clientBio,
-        podcastName,
-        podcastDescription: podcastDescription || '',
-        hostName,
-        audienceSize,
-      }
-    })
-
-    if (error) {
-      console.error('Failed to analyze podcast fit:', error)
-      return null
-    }
-
-    if (!data?.analysis) {
-      console.error('No analysis returned from Edge Function')
-      return null
-    }
-
-    // Save to cache
-    const { error: saveError } = await supabase
-      .from('podcast_fit_analyses')
-      .insert({
-        client_id: clientId,
-        booking_id: bookingId,
-        podcast_name: podcastName,
-        podcast_description: podcastDescription,
-        analysis: data.analysis
-      })
-
-    if (saveError) {
-      console.error('Failed to cache analysis:', saveError)
-      // Don't fail if cache save fails - we still have the analysis
-    }
-
-    return data.analysis
-  } catch (error) {
-    console.error('Error generating podcast fit analysis:', error)
-    return null
-  }
-}
-
-/**
- * Invalidate cached analysis for a booking (e.g., when client bio changes)
- */
-export async function invalidatePodcastFitAnalysis(clientId: string, bookingId: string): Promise<void> {
-  const { error } = await supabase
-    .from('podcast_fit_analyses')
-    .delete()
-    .eq('client_id', clientId)
-    .eq('booking_id', bookingId)
-
-  if (error) {
-    console.error('Failed to invalidate cache:', error)
-  }
-}
-
-export const sessionStorage = {
+const portalSessionStore = {
   ...createPortalSessionStore<ClientPortalSession, Client>(),
   isExpired: (session: ClientPortalSession): boolean => {
     const expiresAt = new Date(session.expires_at)
@@ -509,3 +371,10 @@ export const sessionStorage = {
     return now >= expiresAt
   }
 }
+
+/**
+ * Kept under its historical name for existing importers. It shadows
+ * window.sessionStorage inside this module, so code here uses
+ * portalSessionStore to make clear which store it touches.
+ */
+export const sessionStorage = portalSessionStore

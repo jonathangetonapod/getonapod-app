@@ -632,3 +632,19 @@ for (const method of allowedProvisioningMethods) {
 assert.match(source, /function invalidRpcResponse\(where\?: string\): never \{/u)
 assert.match(source, /console\.error\(`\[manage-workspace-staff\] invalid RPC response: \$\{where\}`\)/u)
 assert.match(source, /"member\.setup_method",/u)
+
+// Billing: a saved card is Stripe's answer, with a lot bought by a real
+// payment as the fallback. Any stripe:… ledger key no longer counts, because
+// free checkouts and reversals carry it with no card behind them.
+assert.doesNotMatch(source, /\.like\("idempotency_key", "stripe:%"\)/u)
+assert.match(source, /async function stripeHasSavedCard\(customerId: string\): Promise<boolean \| null>/u)
+assert.match(source, /https:\/\/api\.stripe\.com\/v1\/payment_methods\?/u)
+assert.match(source, /hasSavedCard = stripeAnswer === null \? Boolean\(cardProofResult\.data\) : stripeAnswer;/u)
+assert.match(source, /\.eq\("source", "purchase"\)\s*\n\s*\.not\("stripe_payment_ref", "is", null\)/u)
+assert.match(source, /has_saved_card: hasSavedCard,/u)
+// The billing portfolio pages every read to the end, so PostgREST's row cap
+// cannot truncate its totals, and any failed page fails the whole read.
+const portfolio = source.slice(source.indexOf('if (action === "billing-portfolio")'), source.indexOf('if (action === "credits-adjust")'))
+assert.match(source, /async function readAllPages\(/u)
+assert.equal((portfolio.match(/readAllPages\(\(from, to\) => admin\.from\(/gu) ?? []).length, 4)
+assert.match(portfolio, /if \(workspacesResult\.error \|\| profilesResult\.error \|\| lotsResult\.error \|\| spendResult\.error\)/u)

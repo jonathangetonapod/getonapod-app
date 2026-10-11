@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Activity,
@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   UserRoundPlus,
   Users,
+  X,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { OutreachSuppressionsDialog } from '@/components/workspace/OutreachSuppressionsDialog'
@@ -63,8 +64,9 @@ import {
   createHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
-  listHostRelationships,
+  listHostRelationshipsPage,
   saveHostRelationship,
+  unlinkHostRelationshipClient,
   type HostRelationshipClientIntent,
   type HostRelationshipDerivedState,
   type HostRelationshipManualStage,
@@ -259,9 +261,14 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     gcTime: 0,
   })
   const selectedWorkspaceReady = !isPlatformWorkspace || Boolean(selectedWorkspaceQuery.data?.workspace)
-  const bookQuery = useQuery({
-    queryKey: ['host-relationships', workspaceId],
-    queryFn: () => listHostRelationships(workspaceId),
+  // Paged from the server. The book used to stop at 500 rows without saying
+  // so; now each page carries the whole-book total and state counts, and the
+  // rest loads on request.
+  const bookQuery = useInfiniteQuery({
+    queryKey: ['host-relationships', workspaceId, 'book'],
+    queryFn: ({ pageParam }) => listHostRelationshipsPage(workspaceId, { offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => (lastPage.has_more && lastPage.next_offset !== null ? lastPage.next_offset : undefined),
     enabled: validWorkspaceId && selectedWorkspaceReady,
     retry: false,
   })
@@ -279,7 +286,12 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   })
 
   // Stable identity so the derived memos below only recompute on new data.
-  const relationships = useMemo(() => bookQuery.data ?? [], [bookQuery.data])
+  const relationships = useMemo(
+    () => bookQuery.data?.pages.flatMap((page) => page.relationships) ?? [],
+    [bookQuery.data],
+  )
+  const firstBookPage = bookQuery.data?.pages[0]
+  const bookTotal = firstBookPage?.total ?? relationships.length
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return relationships.filter((row) => (
@@ -340,14 +352,17 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   // The count of live conversations is not the actionable fact — which of
   // them has gone silent is. Recency sort puts exactly those at the bottom.
   const quiet = useMemo(() => quietConversations(relationships), [relationships])
-  const counts = useMemo(() => ({
-    live: relationships.filter((row) => row.derived_state === 'in_conversation').length,
-    placed: relationships.filter((row) => row.derived_state === 'booked').length,
-    engaged: relationships.filter((row) => ['replied', 'declined'].includes(row.derived_state)).length,
-  }), [relationships])
+  // Whole-book figures from the server, so the header is right before every
+  // page has loaded.
+  const counts = {
+    live: firstBookPage?.counts.in_conversation ?? 0,
+    placed: firstBookPage?.counts.booked ?? 0,
+    engaged: firstBookPage?.counts.engaged ?? 0,
+  }
 
   const invalidate = (podcastId: string) => {
-    void queryClient.invalidateQueries({ queryKey: ['host-relationships', workspaceId] })
+    // The book only: the bare prefix also matched this page's client list.
+    void queryClient.invalidateQueries({ queryKey: ['host-relationships', workspaceId, 'book'] })
     void queryClient.invalidateQueries({ queryKey: ['host-relationship', workspaceId, podcastId] })
   }
   const noteMutation = useMutation({
@@ -383,6 +398,16 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       invalidate(input.podcastId)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The client could not be linked.'),
+  })
+  const unlinkMutation = useMutation({
+    mutationFn: (input: { podcastId: string; clientId: string }) => (
+      unlinkHostRelationshipClient(workspaceId, input)
+    ),
+    onSuccess: (_result, input) => {
+      toast.success('Client removed from this host.')
+      invalidate(input.podcastId)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The client could not be removed from this host.'),
   })
   const createMutation = useMutation({
     mutationFn: () => createHostRelationship(workspaceId, {
@@ -883,8 +908,22 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                             : (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {detail.clients.map((client) => (
-                                  <Badge key={client.client_id} variant="secondary" className="font-normal">
+                                  <Badge key={client.client_id} variant="secondary" className="gap-1 font-normal">
                                     {client.client_name ?? 'Client'} · {client.intent.replace('_', ' ')}
+                                    {canManage && (
+                                      <button
+                                        type="button"
+                                        className="-mr-1 ml-0.5 rounded-full p-0.5 hover:bg-background disabled:opacity-50"
+                                        aria-label={`Unlink ${client.client_name ?? 'client'} from this host`}
+                                        disabled={unlinkMutation.isPending}
+                                        onClick={() => unlinkMutation.mutate({
+                                          podcastId: row.podcast_id,
+                                          clientId: client.client_id,
+                                        })}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    )}
                                   </Badge>
                                 ))}
                               </div>
@@ -1134,6 +1173,24 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
               </Button>
             </div>
           </nav>
+        )}
+
+        {bookQuery.hasNextPage && (
+          <div className="flex flex-col gap-3 rounded-xl border border-dashed px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {relationships.length} of {bookTotal} relationships loaded. Search, filters and sorting cover the loaded rows.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={bookQuery.isFetchingNextPage}
+              onClick={() => void bookQuery.fetchNextPage()}
+            >
+              {bookQuery.isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Load more relationships
+            </Button>
+          </div>
         )}
 
         <OutreachSuppressionsDialog

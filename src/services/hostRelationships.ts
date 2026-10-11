@@ -85,12 +85,81 @@ async function invokeHostRelationships<T>(body: Record<string, unknown>, message
   return data as T
 }
 
-export async function listHostRelationships(workspaceId: string): Promise<HostRelationshipSummary[]> {
-  const data = await invokeHostRelationships<{ relationships: HostRelationshipSummary[] }>(
-    { action: 'list', workspace_id: workspaceId.toLowerCase() },
+export const HOST_RELATIONSHIP_PAGE_SIZE = 500
+const HOST_RELATIONSHIP_MAX_PAGES = 20
+
+/** One page of the book, with whole-book totals for the header. */
+export interface HostRelationshipPage {
+  relationships: HostRelationshipSummary[]
+  /** Every relationship in the book, not just this page. */
+  total: number
+  offset: number
+  has_more: boolean
+  next_offset: number | null
+  /** Whole-book counts by derived state. */
+  counts: { in_conversation: number; booked: number; engaged: number }
+}
+
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0
+}
+
+export async function listHostRelationshipsPage(
+  workspaceId: string,
+  options: { offset?: number; limit?: number } = {},
+): Promise<HostRelationshipPage> {
+  const offset = Math.max(0, options.offset ?? 0)
+  const data = await invokeHostRelationships<Partial<HostRelationshipPage> & { relationships?: unknown }>(
+    {
+      action: 'list',
+      workspace_id: workspaceId.toLowerCase(),
+      limit: options.limit ?? HOST_RELATIONSHIP_PAGE_SIZE,
+      offset,
+    },
     'The relationship book could not be loaded.',
   )
-  return Array.isArray(data.relationships) ? data.relationships : []
+  const relationships = Array.isArray(data?.relationships)
+    ? data.relationships as HostRelationshipSummary[]
+    : []
+  // An older function build sends neither totals nor paging: the page it
+  // returned is then the whole known book.
+  const total = typeof data?.total === 'number' ? count(data.total) : offset + relationships.length
+  const nextOffset = typeof data?.next_offset === 'number' && data.next_offset > offset ? data.next_offset : null
+  const counts = data?.counts && typeof data.counts === 'object'
+    ? {
+      in_conversation: count(data.counts.in_conversation),
+      booked: count(data.counts.booked),
+      engaged: count(data.counts.engaged),
+    }
+    : {
+      in_conversation: relationships.filter((row) => row.derived_state === 'in_conversation').length,
+      booked: relationships.filter((row) => row.derived_state === 'booked').length,
+      engaged: relationships.filter((row) => ['replied', 'declined'].includes(row.derived_state)).length,
+    }
+  return {
+    relationships,
+    total,
+    offset,
+    has_more: data?.has_more === true && nextOffset !== null,
+    next_offset: data?.has_more === true ? nextOffset : null,
+    counts,
+  }
+}
+
+/**
+ * The whole book, page by page (bounded), for callers that need every row
+ * at once, such as the database's relationship badges.
+ */
+export async function listHostRelationships(workspaceId: string): Promise<HostRelationshipSummary[]> {
+  const rows: HostRelationshipSummary[] = []
+  let offset = 0
+  for (let page = 0; page < HOST_RELATIONSHIP_MAX_PAGES; page += 1) {
+    const result = await listHostRelationshipsPage(workspaceId, { offset })
+    rows.push(...result.relationships)
+    if (!result.has_more || result.next_offset === null) break
+    offset = result.next_offset
+  }
+  return rows
 }
 
 export async function getHostRelationship(workspaceId: string, podcastId: string): Promise<HostRelationshipDetail> {

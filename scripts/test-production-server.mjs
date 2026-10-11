@@ -9,6 +9,7 @@ import {
   generateOnboardingPreviewPng,
   loadClientDashboardShareMetadata,
   loadOnboardingShareMetadata,
+  marketingPageShell,
   neutralApplicationShell,
   whiteLabelOnboardingShell,
 } from './serve-production.mjs'
@@ -146,6 +147,11 @@ assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"|Get 
   for (const type of ['Organization', 'Service', 'FAQPage']) {
     assert.match(builtIndex, new RegExp(`"@type": "${type}"`, 'u'), `index.html must keep the ${type} JSON-LD for /`)
   }
+  const marketingShell = marketingPageShell(builtIndex)
+  assert.match(marketingShell, /"@type": "Organization"/u, 'marketing pages keep the Organization JSON-LD')
+  assert.doesNotMatch(marketingShell, /"@type": "(?:Service|FAQPage)"/u, 'only / may carry the Service and FAQ JSON-LD')
+  assert.match(marketingShell, /<title>Get On A Pod<\/title>/u, 'marketing pages drop the homepage title')
+  assert.doesNotMatch(marketingShell, /Podcast booking for tech founders/u)
   assert.doesNotMatch(neutralApplicationShell(builtIndex, '/portal/login'), /Get On A Pod|application\/ld\+json/iu)
   assert.doesNotMatch(neutralApplicationShell(builtIndex, '/prospect/abc'), /Get On A Pod|application\/ld\+json/iu)
 }
@@ -267,12 +273,21 @@ try {
   assert.equal(clientPreviewBytes.readUInt32BE(20), 630)
 
   let indexHtml = ''
-  for (const route of ['/', '/resources', '/blog/example-post', '/what-to-expect']) {
+  // Every page in the sitemap must be indexable and cacheable.
+  for (const route of ['/', '/platform', '/privacy', '/terms', '/blog', '/resources', '/blog/example-post', '/what-to-expect']) {
     const response = await fetch(`${origin}${route}`)
     assert.equal(response.status, 200, route)
     assertSecurityHeaders(response, route)
     assert.equal(response.headers.get('x-robots-tag'), null, route)
-    if (route === '/') indexHtml = await response.text()
+    assert.notEqual(response.headers.get('cache-control'), 'private, no-store', route)
+    const html = await response.text()
+    if (route === '/') {
+      indexHtml = html
+      continue
+    }
+    assert.doesNotMatch(html, /"@type": "(?:Service|FAQPage)"/u, `${route} must not carry the homepage FAQ or Service structured data`)
+    assert.doesNotMatch(html, /Podcast booking for tech founders/u, `${route} must not carry the homepage title`)
+    assert.match(html, /"@type": "Organization"/u, `${route} keeps the Organization structured data`)
   }
   assert.match(indexHtml, /application\/ld\+json/u, '/ must keep its structured data for crawlers')
   assert.match(indexHtml, /"@type": "FAQPage"/u, '/ must keep its FAQ structured data')

@@ -354,6 +354,26 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const location = useLocation()
   const matchesPath = (href: string) => location.pathname === href || location.pathname.startsWith(`${href}/`)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const sidebarTriggerRef = useRef<HTMLButtonElement>(null)
+  const sidebarCloseRef = useRef<HTMLButtonElement>(null)
+  const sidebarWasOpenRef = useRef(false)
+  // On small screens the sidebar is a drawer: focus goes into it when it
+  // opens, Escape closes it, and focus returns to the menu button afterwards.
+  useEffect(() => {
+    if (sidebarOpen) {
+      sidebarWasOpenRef.current = true
+      sidebarCloseRef.current?.focus()
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') setSidebarOpen(false)
+      }
+      window.addEventListener('keydown', closeOnEscape)
+      return () => window.removeEventListener('keydown', closeOnEscape)
+    }
+    if (sidebarWasOpenRef.current) {
+      sidebarWasOpenRef.current = false
+      sidebarTriggerRef.current?.focus()
+    }
+  }, [sidebarOpen])
   const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
   const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
     ? 'My Workspace'
@@ -466,7 +486,10 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
     enabled: Boolean(workingClientWorkspaceId),
-    staleTime: 60_000,
+    // Clients are added, paused and renamed on other pages and in other tabs;
+    // re-read on focus so the picker does not offer a stale list.
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
     retry: false,
   })
   const workingClients = useMemo(
@@ -606,16 +629,23 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
         />
       )}
 
+      {/* Closed on a small screen, the drawer is invisible as well as off
+          screen, so its links leave the tab order and the accessibility tree.
+          Visibility transitions with the slide, so it hides once the slide ends. */}
       <aside
+        id="workspace-sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 transform border-r border-border bg-card transition-transform duration-200 ease-in-out lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          'fixed inset-y-0 left-0 z-50 w-64 transform border-r border-border bg-card transition-[transform,visibility] duration-200 ease-in-out lg:visible lg:translate-x-0',
+          sidebarOpen ? 'visible translate-x-0' : 'invisible -translate-x-full',
         )}
       >
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center justify-between border-b border-border px-6">
-            <h1 className="truncate text-xl font-bold">{workspaceName}</h1>
+            {/* Not a heading: every page has its own h1, and this name repeats
+                on all of them. */}
+            <p className="truncate text-xl font-bold">{workspaceName}</p>
             <Button
+              ref={sidebarCloseRef}
               variant="ghost"
               size="icon"
               className="lg:hidden"
@@ -746,9 +776,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
       <div className="min-w-0 lg:pl-64">
         <header className="sticky top-0 z-30 flex h-20 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
           <Button
+            ref={sidebarTriggerRef}
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(true)}
+            aria-controls="workspace-sidebar"
+            aria-expanded={sidebarOpen}
             aria-label="Open workspace navigation"
             className="lg:hidden"
           >

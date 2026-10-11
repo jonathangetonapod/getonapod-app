@@ -30,6 +30,8 @@ import {
 const METHODS = ['POST'] as const
 const BUCKET = 'workspace-onboarding-assets'
 const BRAND_LOGO_MAX_BYTES = 2_097_152
+// A delivered invitation cannot be emailed again for this long.
+const RESEND_COOLDOWN_MS = 10 * 60 * 1000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 type AdminClient = Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
 
@@ -888,6 +890,35 @@ serve(async (req) => {
       const expiresAt = responseString(instance.capability_expires_at, 'capability expiry', 64)
       if (!(new Date(expiresAt).valueOf() > Date.now())) {
         throw new HttpError(409, 'ONBOARDING_LINK_EXPIRED', 'This link has expired. Rotate it to send the client a new one')
+      }
+      /*
+       * One resend per onboarding per cooldown. Each click sent the client
+       * another copy of the same email with nothing in between, so a few
+       * impatient clicks filled their inbox from the agency's domain. Only a
+       * delivered email starts the cooldown: a failed send can be retried at
+       * once, because nothing reached the client.
+       */
+      const { data: lastSent, error: lastSentError } = await admin
+        .from('workspace_onboarding_notifications')
+        .select('sent_at')
+        .eq('workspace_id', workspaceId)
+        .eq('instance_id', instanceId)
+        .in('kind', ['invitation', 'changes_requested'])
+        .not('sent_at', 'is', null)
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (lastSentError) {
+        console.error('[workspace-onboarding] Last delivery could not be read for the resend cooldown', lastSentError.code ?? '')
+      }
+      const lastSentAt = typeof lastSent?.sent_at === 'string' ? Date.parse(lastSent.sent_at) : Number.NaN
+      if (Number.isFinite(lastSentAt) && Date.now() - lastSentAt < RESEND_COOLDOWN_MS) {
+        const minutes = Math.max(1, Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - lastSentAt)) / 60_000))
+        throw new HttpError(
+          429,
+          'ONBOARDING_RESEND_COOLDOWN',
+          `This client was emailed a few minutes ago. You can resend in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+        )
       }
       const generation = integerValue(instance.capability_generation, 'capability generation', 1, 2_147_483_646)
       const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())

@@ -90,6 +90,29 @@ describe('WorkspaceLayout', () => {
     } as never)
   })
 
+  it('runs the mobile drawer as a drawer: hidden when closed, Escape closes it, focus moves in and back', () => {
+    renderLayout()
+    const sidebar = document.getElementById('workspace-sidebar') as HTMLElement
+    const trigger = screen.getByRole('button', { name: 'Open workspace navigation' })
+    // Closed: invisible below lg, so its links leave the tab order.
+    expect(sidebar).toHaveClass('invisible', 'lg:visible')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(trigger)
+    expect(sidebar).toHaveClass('visible')
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(document.activeElement).toBe(within(sidebar).getByRole('button', { name: 'Close workspace navigation' }))
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(sidebar).toHaveClass('invisible')
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('does not make the repeated workspace name a page heading', () => {
+    renderLayout()
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
+  })
+
   it('puts buying credits one click away, not behind a settings sub-page', () => {
     renderLayout()
 

@@ -8,6 +8,13 @@
 // revoke PUBLIC on it in the same file, or the function must be on that
 // allowlist. A later GRANT of EXECUTE to anon or authenticated on a SECURITY
 // DEFINER function is also refused unless the function is allowlisted.
+//
+// The allowlist is read from the newest migration that carries the
+// security-definer-allowlist markers (20261011000600 replaced the baseline's,
+// dropping cleanup_expired_portal_data and get_client_portal_stats). No later
+// migration may restore EXECUTE for PUBLIC by default in public: per-schema
+// default privileges add to the global ones, so a global GRANT would re-open
+// every new public function to anon and authenticated.
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -17,9 +24,11 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 const migrationsDirectory = path.join(root, 'supabase/migrations')
 const BASELINE = '20261011000500_security_definer_grants_and_confirmed_invites.sql'
 
-export function readAllowlist(baselineSql) {
-  const block = baselineSql.match(/-- security-definer-allowlist:start([\s\S]*?)-- security-definer-allowlist:end/u)
-  assert.ok(block, `${BASELINE} must mark its allowlist with security-definer-allowlist comments`)
+const ALLOWLIST_MARKER = /-- security-definer-allowlist:start([\s\S]*?)-- security-definer-allowlist:end/u
+
+export function readAllowlist(sql, fileName = BASELINE) {
+  const block = sql.match(ALLOWLIST_MARKER)
+  assert.ok(block, `${fileName} must mark its allowlist with security-definer-allowlist comments`)
   const names = [...block[1].replace(/--[^\n]*/gu, '').matchAll(/'([a-z0-9_]+)'/gu)].map((match) => match[1])
   assert.ok(names.length > 0, 'the SECURITY DEFINER allowlist must not be empty')
   return new Set(names)
@@ -49,6 +58,22 @@ export function definerFunctions(sql) {
     if (/\bSECURITY\s+DEFINER\b/iu.test(header)) names.add(match[1].toLowerCase())
   }
   return names
+}
+
+/** Statements that would give PUBLIC (or anon/authenticated) EXECUTE on new public functions by default. */
+export function defaultFunctionGrants(sql) {
+  const source = stripComments(sql)
+  const found = []
+  const pattern = /ALTER\s+DEFAULT\s+PRIVILEGES\s+((?:FOR\s+(?:ROLE|USER)\s+[^;]*?\s+)?(?:IN\s+SCHEMA\s+([^;]*?)\s+)?)GRANT\s+(?:ALL(?:\s+PRIVILEGES)?|EXECUTE)\s+ON\s+(?:FUNCTIONS|ROUTINES)\s+TO\s+([^;]+);/giu
+  for (const match of source.matchAll(pattern)) {
+    const schemas = match[2]
+    const grantees = match[3]
+    const global = !schemas
+    const inPublic = schemas && /(?:^|[\s,])"?public"?(?:$|[\s,])/iu.test(schemas)
+    if (global && /\bPUBLIC\b/iu.test(grantees)) found.push(match[0].trim())
+    else if (inPublic && /\b(?:PUBLIC|anon|authenticated)\b/iu.test(grantees)) found.push(match[0].trim())
+  }
+  return found
 }
 
 /** Functions whose EXECUTE is revoked from PUBLIC in `sql`. */
@@ -103,12 +128,25 @@ export function findViolations(fileName, sql, allowlist, knownDefiners) {
   const regrant = `${leaky}\nREVOKE ALL ON FUNCTION public.leaky(UUID) FROM PUBLIC;\nGRANT EXECUTE ON FUNCTION public.leaky(UUID) TO authenticated;`
   assert.equal(findViolations('x.sql', regrant, allow, new Set()).length, 1)
   assert.equal(findViolations('x.sql', 'GRANT EXECUTE ON FUNCTION public.current_workspace_id() TO authenticated;', allow, new Set(['current_workspace_id'])).length, 0)
+  assert.equal(defaultFunctionGrants('ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC;').length, 1)
+  assert.equal(defaultFunctionGrants('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon;').length, 1)
+  assert.equal(defaultFunctionGrants('ALTER DEFAULT PRIVILEGES IN SCHEMA extensions GRANT EXECUTE ON FUNCTIONS TO PUBLIC;').length, 0)
+  assert.equal(defaultFunctionGrants("EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT EXECUTE ON FUNCTIONS TO PUBLIC', s);").length, 0)
+  assert.equal(defaultFunctionGrants('ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;').length, 0)
 }
 
 const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith('.sql')).sort()
 assert.ok(files.includes(BASELINE), `${BASELINE} must exist`)
 const baselineSql = readFileSync(path.join(migrationsDirectory, BASELINE), 'utf8')
-const allowlist = readAllowlist(baselineSql)
+readAllowlist(baselineSql)
+const allowlistFile = files.filter((name) => name >= BASELINE && ALLOWLIST_MARKER.test(readFileSync(path.join(migrationsDirectory, name), 'utf8'))).at(-1)
+const allowlistSql = readFileSync(path.join(migrationsDirectory, allowlistFile), 'utf8')
+const allowlist = readAllowlist(allowlistSql, allowlistFile)
+if (allowlistFile !== BASELINE) {
+  // A replacement allowlist must re-run the sweep that gives it effect.
+  assert.match(allowlistSql, /WHERE n\.nspname = 'public'\s+AND p\.prosecdef/u, `${allowlistFile} must re-run the SECURITY DEFINER sweep with its allowlist`)
+  assert.match(allowlistSql, /REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated/u)
+}
 
 // The baseline itself must keep doing what the later checks rely on.
 assert.match(baselineSql, /ALTER DEFAULT PRIVILEGES IN SCHEMA public\s+REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;/u)
@@ -116,8 +154,12 @@ assert.match(baselineSql, /ALTER DEFAULT PRIVILEGES\s+REVOKE EXECUTE ON FUNCTION
 assert.match(baselineSql, /WHERE n\.nspname = 'public'\s+AND p\.prosecdef/u)
 assert.match(baselineSql, /REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated/u)
 assert.match(baselineSql, /GRANT EXECUTE ON FUNCTION %s TO service_role/u)
-for (const required of ['current_workspace_id', 'can_access_workspace', 'is_platform_admin', 'get_client_portal_stats']) {
+for (const required of ['current_workspace_id', 'can_access_workspace', 'is_platform_admin']) {
   assert.ok(allowlist.has(required), `the allowlist must keep ${required}`)
+}
+// Service-role only since 20261011000600; nothing in the browser calls them.
+for (const retired of ['cleanup_expired_portal_data', 'get_client_portal_stats']) {
+  assert.ok(!allowlist.has(retired), `${retired} must stay off the allowlist`)
 }
 
 const knownDefiners = new Set()
@@ -127,6 +169,9 @@ for (const name of files) {
   for (const definer of definerFunctions(sql)) knownDefiners.add(definer)
   if (name <= BASELINE) continue
   violations.push(...findViolations(name, sql, allowlist, knownDefiners))
+  for (const statement of defaultFunctionGrants(sql)) {
+    violations.push(`${name}: ${statement.split(/\s+/u).join(' ')} would give every new function in public EXECUTE for the browser roles by default; grant per function instead`)
+  }
 }
 
 if (violations.length) {
@@ -134,4 +179,4 @@ if (violations.length) {
   process.exit(1)
 }
 
-console.log(`SECURITY DEFINER grant check passed; allowlist=${allowlist.size}, later migrations=${files.filter((name) => name > BASELINE).length}`)
+console.log(`SECURITY DEFINER grant check passed; allowlist=${allowlist.size} (${allowlistFile}), later migrations=${files.filter((name) => name > BASELINE).length}`)

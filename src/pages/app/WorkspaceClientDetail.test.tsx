@@ -462,13 +462,42 @@ describe('WorkspaceClientDetail', () => {
    * shows the shortlist row the pipeline pairs it with. The workspace payload
    * is fetched only once that tab is open.
    */
+  // A white-label agency's client must get the agency's own domain, the same
+  // origin the onboarding and portal emails use.
+  it('copies the dashboard link on the agency domain the server resolves', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    mockedDetail.mockResolvedValueOnce({ ...detail, public_base_url: 'https://pods.agency.example' })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://pods.agency.example/client/taylor-client-123'))
+  })
+
+  it('shows the link in a dialog when the clipboard refuses it, so it is never lost', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    mockedDetail.mockResolvedValueOnce({ ...detail, public_base_url: 'https://pods.agency.example' })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText('Link')).toHaveValue('https://pods.agency.example/client/taylor-client-123')
+  })
+
   it('opens the shared opportunity sheet for a placement, loading the rows only when needed', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
     expect(mockedGetSystem).not.toHaveBeenCalled()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Placements' }), { button: 0 })
-    await waitFor(() => expect(mockedGetSystem).toHaveBeenCalledWith(workspaceId))
+    await waitFor(() => expect(mockedGetSystem).toHaveBeenCalledWith(workspaceId, { clientId }))
 
     fireEvent.click(await screen.findByRole('button', { name: 'Details for Founder Stories' }))
     const sheet = await screen.findByRole('dialog')

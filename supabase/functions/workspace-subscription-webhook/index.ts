@@ -107,6 +107,9 @@ serve(async (req) => {
   // workspace's customer — that customer id is recorded the first time the
   // workspace opens billing, so it names the workspace just as well.
   let workspaceId = typeof metadata.workspace_id === 'string' ? metadata.workspace_id : null
+  // Whether our own checkout named the workspace, rather than the customer id
+  // standing in for it. Only the former may displace a stored subscription.
+  const namedByMetadata = workspaceId !== null
   if (!workspaceId) {
     const customer = subscription.customer
     const customerId = typeof customer === 'string'
@@ -135,11 +138,18 @@ serve(async (req) => {
   // Which subscription the workspace is on now. A second subscription — made
   // in the dashboard, or a duplicate checkout — must not be able to cancel or
   // rewrite the one the workspace actually holds, so an update or deletion
-  // for a different subscription is ignored. A creation still lands: it is
-  // how a workspace moves onto a new subscription after the old one ended.
+  // for a different subscription is ignored.
+  //
+  // A creation is how a workspace moves onto a new subscription, but it used
+  // to land unconditionally, so a duplicate checkout or a dashboard-made
+  // subscription on the same customer took over a live one. It now takes over
+  // only when nothing is stored (a deletion clears the stored id), or when our
+  // own checkout named this workspace and the stored subscription is not
+  // active. One resolved only through the customer id never displaces a
+  // stored subscription.
   const { data: current, error: currentError } = await admin
     .from('workspace_billing_profiles')
-    .select('stripe_subscription_id')
+    .select('stripe_subscription_id, billing_status')
     .eq('workspace_id', workspaceId)
     .maybeSingle()
   if (currentError) {
@@ -149,10 +159,21 @@ serve(async (req) => {
   const storedSubscriptionId = typeof current?.stripe_subscription_id === 'string' && current.stripe_subscription_id
     ? current.stripe_subscription_id
     : null
-  const guardsCurrent = event.type !== 'customer.subscription.created'
-  if (guardsCurrent && storedSubscriptionId && storedSubscriptionId !== subscriptionId) {
-    console.warn('[Workspace Subscription Webhook] Event for a subscription the workspace is not on; ignored')
-    return json(200, { received: true, ignored: 'different subscription' })
+  const storedStatus = typeof current?.billing_status === 'string' ? current.billing_status : null
+  const isCreation = event.type === 'customer.subscription.created'
+  if (storedSubscriptionId && storedSubscriptionId !== subscriptionId) {
+    if (!isCreation) {
+      console.warn('[Workspace Subscription Webhook] Event for a subscription the workspace is not on; ignored')
+      return json(200, { received: true, ignored: 'different subscription' })
+    }
+    if (!namedByMetadata) {
+      console.warn('[Workspace Subscription Webhook] Creation resolved by customer while a subscription is stored; ignored')
+      return json(200, { received: true, ignored: 'subscription already stored' })
+    }
+    if (storedStatus === 'active' || storedStatus === 'trialing') {
+      console.warn('[Workspace Subscription Webhook] Creation while the stored subscription is active; ignored')
+      return json(200, { received: true, ignored: 'current subscription active' })
+    }
   }
 
   const stripeStatus = typeof subscription.status === 'string' ? subscription.status : ''
@@ -238,12 +259,12 @@ serve(async (req) => {
     .eq('workspace_id', workspaceId)
     .or(`last_subscription_event_at.is.null,last_subscription_event_at.lte.${eventAt}`)
   // The subscription check above, repeated in the write so a creation landing
-  // between the read and this update cannot be overwritten by the old one.
-  if (guardsCurrent) {
-    write = storedSubscriptionId
-      ? write.eq('stripe_subscription_id', storedSubscriptionId)
-      : write.is('stripe_subscription_id', null)
-  }
+  // between the read and this update cannot be overwritten by the old one —
+  // and, for creations, so two racing creations cannot both take over: the
+  // second finds the stored id changed and its write matches nothing.
+  write = storedSubscriptionId
+    ? write.eq('stripe_subscription_id', storedSubscriptionId)
+    : write.is('stripe_subscription_id', null)
   const { data, error } = await write.select('workspace_id')
   if (error) {
     console.error('[Workspace Subscription Webhook] Billing profile update failed')

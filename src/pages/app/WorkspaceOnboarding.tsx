@@ -447,11 +447,20 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to save the template.'),
   })
 
+  // The draft a failed starter publish left behind, so a retry publishes it
+  // instead of creating another copy.
+  const starterDraftIdRef = useRef<string | null>(null)
   const starterMutation = useMutation({
     mutationFn: async () => {
-      const saved = await saveOnboardingTemplate(workspaceId, starterOnboardingTemplate(data?.workspace.name ?? ''))
+      const pendingId = starterDraftIdRef.current
+      const savedId = pendingId && (data?.templates ?? []).some((template) => template.id === pendingId)
+        ? pendingId
+        : (await saveOnboardingTemplate(workspaceId, starterOnboardingTemplate(data?.workspace.name ?? ''))).id
+      starterDraftIdRef.current = savedId
       try {
-        return await publishOnboardingTemplate(workspaceId, saved.id, publishedTemplates.length === 0)
+        const published = await publishOnboardingTemplate(workspaceId, savedId, publishedTemplates.length === 0)
+        starterDraftIdRef.current = null
+        return published
       } catch {
         await refresh()
         throw new Error('The starter form was saved as a draft, but publishing failed. Open it under Form templates to publish.')

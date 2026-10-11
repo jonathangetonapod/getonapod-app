@@ -1,7 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import {
+  type AuthContext,
   HttpError,
+  parseJsonObject,
   requireAuthenticatedUser,
   requirePlatformAdminOrService,
   requireUuid,
@@ -11,6 +13,9 @@ import { partitionPodcastExports } from '../_shared/podcastExportDedupe.ts'
 
 // A hung Google API call must not hold the request open.
 const GOOGLE_API_TIMEOUT_MS = 30_000
+// 500 podcasts with full descriptions and scoring notes fit well inside this;
+// anything larger is not an export this function should parse.
+const MAX_BODY_BYTES = 2_000_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -43,20 +48,33 @@ serve(async (req) => {
   }
 
   try {
-    const { clientId, podcasts, workspaceId: rawWorkspaceId } = await req.json() as {
-      clientId: string
-      podcasts: PodcastExportData[]
-      workspaceId?: string
+    // Authenticate before the body is read, so an anonymous caller cannot
+    // make this function buffer and parse an arbitrary payload. A signed-in
+    // user is resolved first; a bearer that is not a user must be the
+    // service-role key used by function-to-function calls.
+    let userContext: AuthContext | null = null
+    let serviceCaller = false
+    try {
+      userContext = await requireAuthenticatedUser(req)
+    } catch (error) {
+      if (!(error instanceof HttpError) || error.status !== 401) throw error
+      await requirePlatformAdminOrService(req)
+      serviceCaller = true
     }
+
+    const body = await parseJsonObject(req, MAX_BODY_BYTES)
+    const clientId = body.clientId as string
+    const podcasts = body.podcasts as PodcastExportData[]
+    const rawWorkspaceId = body.workspaceId
     const workspaceId = rawWorkspaceId === undefined
       ? null
       : requireUuid(rawWorkspaceId, 'workspaceId')
 
     if (workspaceId) {
-      const context = await requireAuthenticatedUser(req)
-      await requireWorkspaceFeatureAccess(context, workspaceId)
-    } else {
-      await requirePlatformAdminOrService(req)
+      if (!userContext) throw new HttpError(401, 'INVALID_AUTH', 'Authentication is invalid or expired')
+      await requireWorkspaceFeatureAccess(userContext, workspaceId)
+    } else if (!serviceCaller && !userContext?.platformAdmin) {
+      throw new HttpError(403, 'PLATFORM_ADMIN_REQUIRED', 'Platform administrator access is required')
     }
 
     if (!clientId || !Array.isArray(podcasts) || podcasts.length === 0) {

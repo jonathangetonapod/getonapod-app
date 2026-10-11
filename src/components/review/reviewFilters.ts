@@ -79,7 +79,14 @@ export function filterReviewPodcasts<T extends ReviewPodcast>(
 
   const matches = podcasts.filter((podcast) => {
     if (query) {
-      const haystack = [podcast.podcast_name, podcast.podcast_description, podcast.publisher_name]
+      // What the search box promises: shows, hosts, and topics. The host is
+      // the publisher name on these rows, and topics are the show's categories.
+      const haystack = [
+        podcast.podcast_name,
+        podcast.podcast_description,
+        podcast.publisher_name,
+        ...(podcast.podcast_categories ?? []).map((category) => category.category_name),
+      ]
       if (!haystack.some((field) => field?.toLowerCase().includes(query))) return false
     }
 

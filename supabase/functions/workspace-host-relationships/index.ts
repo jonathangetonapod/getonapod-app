@@ -119,6 +119,7 @@ async function resolveShowByEmail(
   workspaceId: string,
   email: string,
   preferredName: string | null,
+  threadKey: string,
 ): Promise<ResolvedShow | null> {
   // 1. The book itself. An operator-curated row outranks every derived source.
   const { data: known, error: knownError } = await admin.from('workspace_host_relationships')
@@ -164,8 +165,15 @@ async function resolveShowByEmail(
   if (fromTargets) return fromTargets
 
   // 3. The shared catalog. This reads identity only — the show's name and its
-  //    host — for an address the workspace already possesses in its own inbox,
-  //    so no contact data crosses a tenant boundary here.
+  //    host — and only for an address the workspace demonstrably already
+  //    holds: one its own campaigns pitched, or one on a thread its inbox
+  //    read in. The address arrives in the request body, so without that
+  //    check any manager could type an arbitrary email and learn which show
+  //    and host the shared catalog files it under.
+  const linkedByCampaign = (targets ?? []).length > 0
+  if (!linkedByCampaign && !(await emailOnWorkspaceThread(admin, workspaceId, email, threadKey))) {
+    return null
+  }
   const { data: contacts, error: contactsError } = await admin.from('podcast_direct_contacts')
     .select('host_name, podcasts:podcast_id (podscan_id, podcast_name, host_name)')
     .eq('normalized_email', email).limit(50)
@@ -185,6 +193,32 @@ async function resolveShowByEmail(
   }))
 }
 
+
+/**
+ * Whether this workspace's inbox has a thread with this address: the thread
+ * being captured, or any other thread the inbox has read in.
+ */
+async function emailOnWorkspaceThread(
+  admin: SupabaseClient,
+  workspaceId: string,
+  email: string,
+  threadKey: string,
+): Promise<boolean> {
+  const { data: thread, error: threadError } = await admin.from('workspace_inbox_thread_state')
+    .select('lead_email')
+    .eq('workspace_id', workspaceId).eq('thread_key', threadKey).maybeSingle()
+  if (threadError) {
+    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
+  }
+  if (typeof thread?.lead_email === 'string' && thread.lead_email.trim().toLowerCase() === email) return true
+  const { data: others, error: othersError } = await admin.from('workspace_inbox_thread_state')
+    .select('thread_key')
+    .eq('workspace_id', workspaceId).eq('lead_email', email).limit(1)
+  if (othersError) {
+    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
+  }
+  return (others ?? []).length > 0
+}
 
 /**
  * Tell Instantly to stop sending to this address, or to allow it again.
@@ -254,18 +288,49 @@ serve(async (req) => {
     }
 
     if (action === 'list') {
-      requireOnlyKeys(body, ['action', 'workspace_id', 'limit'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'limit', 'offset'])
       const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
         ? Math.max(1, Math.min(body.limit, 500))
         : 500
-      const { data, error } = await admin.rpc('workspace_host_relationship_book_v1', {
+      const offset = typeof body.offset === 'number' && Number.isInteger(body.offset)
+        ? Math.max(0, Math.min(body.offset, 1_000_000))
+        : 0
+      // Paged: a book past one page used to lose the rest without a word, and
+      // the header counted only what arrived. v2 carries whole-book totals.
+      const { data, error } = await admin.rpc('workspace_host_relationship_book_v2', {
         p_workspace_id: workspaceId,
         p_limit: limit,
+        p_offset: offset,
       })
       if (error) {
         throw new HttpError(500, 'RELATIONSHIP_LIST_FAILED', 'The relationship book could not be loaded')
       }
-      const relationships = (data ?? []) as Array<Record<string, unknown>>
+      const pageRows = (data ?? []) as Array<Record<string, unknown>>
+      const firstRow = pageRows[0]
+      let total = typeof firstRow?.total_count === 'number' ? firstRow.total_count : null
+      if (total === null) {
+        // An empty page past the end carries no window counts; the book's own
+        // row count is the same figure, since each show is one row.
+        const { count } = await admin.from('workspace_host_relationships')
+          .select('podcast_id', { count: 'exact', head: true })
+          .eq('workspace_id', workspaceId)
+        total = typeof count === 'number' ? count : offset + pageRows.length
+      }
+      const counts = {
+        in_conversation: typeof firstRow?.in_conversation_count === 'number' ? firstRow.in_conversation_count : 0,
+        booked: typeof firstRow?.booked_count === 'number' ? firstRow.booked_count : 0,
+        engaged: typeof firstRow?.engaged_count === 'number' ? firstRow.engaged_count : 0,
+      }
+      const relationships = pageRows.map((row) => {
+        const {
+          total_count: _total,
+          in_conversation_count: _live,
+          booked_count: _booked,
+          engaged_count: _engaged,
+          ...rest
+        } = row
+        return rest
+      })
       const showIds = relationships.flatMap((row) => typeof row.podcast_id === 'string' ? [row.podcast_id] : [])
       const artworkByShow = new Map<string, string>()
       if (showIds.length > 0) {
@@ -308,6 +373,7 @@ serve(async (req) => {
         }
       }
 
+      const nextOffset = offset + relationships.length
       return jsonResponse(req, METHODS, 200, {
         relationships: relationships.map((row) => {
           const byId = typeof row.podcast_id === 'string' ? artworkByShow.get(row.podcast_id) ?? null : null
@@ -316,6 +382,12 @@ serve(async (req) => {
             : null
           return { ...row, podcast_image_url: byId ?? byName }
         }),
+        total,
+        offset,
+        limit,
+        has_more: nextOffset < total,
+        next_offset: nextOffset < total ? nextOffset : null,
+        counts,
       })
     }
 
@@ -593,7 +665,7 @@ serve(async (req) => {
         ?? (typeof savedThread?.podcast_id === 'string' ? savedThread.podcast_id : null)
       const resolved = showId || !contactEmail
         ? null
-        : await resolveShowByEmail(admin, workspaceId, contactEmail, showName)
+        : await resolveShowByEmail(admin, workspaceId, contactEmail, showName, threadKey)
       showId ??= resolved?.podcastId ?? newManualPodcastId()
       // The caller's own name wins when it has one; the resolver supplies the
       // identity for a reply that arrived with no campaign context at all.

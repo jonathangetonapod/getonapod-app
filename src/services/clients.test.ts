@@ -336,7 +336,12 @@ describe('getWorkspaceClientDetail', () => {
     }
     invoke.mockResolvedValue({ data: detail, error: null })
 
-    await expect(getWorkspaceClientDetail(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual(detail)
+    // An older function build sends no public_base_url; it reads as null and
+    // the page falls back to the app origin.
+    await expect(getWorkspaceClientDetail(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual({
+      ...detail,
+      public_base_url: null,
+    })
     expect(invoke).toHaveBeenCalledWith('workspace-clients', {
       body: {
         action: 'detail-get',
@@ -344,6 +349,13 @@ describe('getWorkspaceClientDetail', () => {
         client_id: clientId,
       },
     })
+
+    // The agency's link origin passes through as an origin; anything that is
+    // not an https origin is dropped rather than used to build a share link.
+    invoke.mockResolvedValue({ data: { ...detail, public_base_url: 'https://pods.agency.example/' }, error: null })
+    expect((await getWorkspaceClientDetail(workspaceId, clientId)).public_base_url).toBe('https://pods.agency.example')
+    invoke.mockResolvedValue({ data: { ...detail, public_base_url: 'javascript:alert(1)' }, error: null })
+    expect((await getWorkspaceClientDetail(workspaceId, clientId)).public_base_url).toBeNull()
   })
 
   it('rejects podcast or onboarding data belonging to another client', async () => {

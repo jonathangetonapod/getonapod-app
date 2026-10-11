@@ -1,6 +1,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
+import {
+  assertPublicWebhookUrl,
+  MAX_STORED_RESPONSE_BYTES,
+  readLimitedText,
+  WebhookTargetError,
+} from './webhookTarget.ts'
+
+const WEBHOOK_TIMEOUT_MS = 10_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -53,6 +61,20 @@ serve(async (req) => {
 
     if (!client.outreach_webhook_url) {
       throw new Error('Webhook URL not configured for this client')
+    }
+    // Public https endpoints only: the URL is fetched from inside our
+    // infrastructure, so loopback, private and link-local targets are refused.
+    let webhookUrl: URL
+    try {
+      webhookUrl = await assertPublicWebhookUrl(client.outreach_webhook_url)
+    } catch (error) {
+      if (error instanceof WebhookTargetError) {
+        return new Response(
+          JSON.stringify({ success: false, error: error.message }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      throw error
     }
 
     console.log('[Send Outreach Webhook] Client webhook configured')
@@ -135,27 +157,31 @@ serve(async (req) => {
 
     console.log('[Send Outreach Webhook] Sending configured client webhook')
 
-    // Send webhook with 10-second timeout
+    // The timeout covers the response body as well as the headers.
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS)
 
     let webhookResponse
     let webhookStatus: number | null = null
     let webhookResponseBody: string | null = null
 
     try {
-      webhookResponse = await fetch(client.outreach_webhook_url, {
+      webhookResponse = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
+        // A redirect could send the request on to a host that was never
+        // checked; a 3xx is recorded as a failed delivery instead.
+        redirect: 'manual',
       })
 
-      clearTimeout(timeoutId)
       webhookStatus = webhookResponse.status
-      webhookResponseBody = await webhookResponse.text()
+      // Stored in the outreach log, so capped rather than kept whole.
+      webhookResponseBody = await readLimitedText(webhookResponse, MAX_STORED_RESPONSE_BYTES)
+      clearTimeout(timeoutId)
 
       console.log('[Send Outreach Webhook] Webhook response:', webhookStatus, webhookResponseBody?.slice(0, 200))
     } catch (webhookError) {
@@ -169,7 +195,7 @@ serve(async (req) => {
         webhookStatus = 408
       } else {
         console.error('[Send Outreach Webhook] Webhook error:', webhookError)
-        webhookResponseBody = webhookErrorMessage
+        webhookResponseBody = webhookErrorMessage.slice(0, MAX_STORED_RESPONSE_BYTES)
         webhookStatus = 0 // Connection failed
       }
     }

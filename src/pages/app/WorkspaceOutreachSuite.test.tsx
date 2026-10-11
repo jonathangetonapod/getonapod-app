@@ -324,12 +324,17 @@ describe('WorkspaceOutreachSuite', () => {
     fireEvent.click(within(assigned).getByLabelText('Connect admin@solaraccountreview.help to a client'))
     fireEvent.click(await screen.findByRole('option', { name: 'Rae Whitfield' }))
 
+    const clientReads = mockedClients.mock.calls.length
+    const mailboxReads = mockedMailboxes.mock.calls.length
     await waitFor(() => expect(vi.mocked(setWorkspaceMailboxClient)).toHaveBeenCalledWith({
       workspaceId: defaultWorkspaceId,
       clientId: 'client-two',
       email: 'admin@solaraccountreview.help',
       assigned: true,
     }))
+    // The mailbox list re-reads; unrelated tenant data (the client list) does not.
+    await waitFor(() => expect(mockedMailboxes.mock.calls.length).toBeGreaterThan(mailboxReads))
+    expect(mockedClients.mock.calls.length).toBe(clientReads)
   })
 
   it('takes a mailbox back off a client from the badge that says it is on them', async () => {
@@ -840,6 +845,8 @@ describe('WorkspaceOutreachSuite', () => {
     // It starts under Other replies, so that is where it has to be found.
     fireEvent.click(await screen.findByRole('radio', { name: /Other replies/ }))
     fireEvent.click(await screen.findByText('Re: Titan bankruptcy'))
+    // Meeting booked is good news too, so the page says where it will go.
+    expect(await screen.findByText(/Only Interested keeps a conversation in Interested only; Meeting booked/u)).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: 'Interested' }))
 
     await waitFor(() => expect(setWorkspaceInboxLeadInterest).toHaveBeenCalledWith(

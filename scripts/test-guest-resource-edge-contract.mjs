@@ -96,3 +96,14 @@ assert.match(config, /\[functions\.get-guest-resources\]\s+verify_jwt = false/u)
 assert.match(config, /\[functions\.workspace-guest-resources\]\s+verify_jwt = true/u)
 
 process.stdout.write('Guest Resource Edge contract checks passed\n')
+
+// A malformed row is skipped and named rather than failing the whole list,
+// so one bad resource never hides every good one from the manager.
+assert.match(
+  management,
+  /for \(const row of data\) \{\s*try \{\s*resources\.push\(resourceDto\(row\)\);\s*\} catch \(error\) \{\s*if \(!\(error instanceof HttpError\)\) throw error;\s*skippedCount \+= 1;/u,
+  'the list must skip malformed rows instead of failing',
+)
+assert.match(management, /skipped_count: skippedCount,\s*skipped_resource_ids: skippedResourceIds,/u)
+assert.doesNotMatch(management, /resources: data\.map\(resourceDto\)/u)
+console.log('guest resource list resilience checks passed')

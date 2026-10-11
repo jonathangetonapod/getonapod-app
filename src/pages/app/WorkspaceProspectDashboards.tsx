@@ -735,11 +735,17 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     },
     onSuccess: async (result) => {
       setProfileDialogOpen(false)
-      if (result.created && result.prospect) setSelectedId(result.prospect.id)
       if (!result.created && result.detail) {
         queryClient.setQueryData(detailQueryKey, result.detail)
       }
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
+      // Selected through the address as well: a ?prospect= left over from the
+      // previous selection would otherwise win and snap the view back to it.
+      if (result.created && result.prospect) {
+        setSelectedId(result.prospect.id)
+        setShortlistView('featured')
+        setSearchParams({ prospect: result.prospect.id, view: 'featured' }, { replace: true })
+      }
       toast.success(result.created ? 'Prospect draft created.' : 'Prospect profile updated.')
     },
     onError: (error) => {

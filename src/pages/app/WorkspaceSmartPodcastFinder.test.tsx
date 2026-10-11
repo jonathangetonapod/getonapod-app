@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
 import WorkspaceSmartPodcastFinder from '@/pages/app/WorkspaceSmartPodcastFinder'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
@@ -30,9 +31,12 @@ vi.mock('@/services/clients', () => ({
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
 vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
 vi.mock('@/services/podscan', () => ({ searchPodcastsWithMeta: vi.fn() }))
-vi.mock('@/services/compatibilityScoring', () => ({ scoreCompatibilityBatch: vi.fn() }))
+vi.mock('@/services/compatibilityScoring', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/compatibilityScoring')>(),
+  scoreCompatibilityBatch: vi.fn(),
+}))
 vi.mock('@/services/clientShortlist', () => ({ addClientShortlistPodcasts: vi.fn(), searchClientPodcastCatalog: vi.fn() }))
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() } }))
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
@@ -295,6 +299,47 @@ describe('WorkspaceSmartPodcastFinder', () => {
     renderFinder(`/app/podcast-finder?client=${clientId}`)
     expect(await screen.findByRole('link', { name: /advanced finder/i }))
       .toHaveAttribute('href', `/app/podcast-finder/advanced?client=${clientId}`)
+  })
+
+  it('says the scan failed when every search failed, instead of reporting nothing new', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockRejectedValue(new Error('catalog down'))
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(new Error('podscan down'))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringMatching(/Every search failed/u)), { timeout: 5_000 })
+    expect(vi.mocked(toast.info)).not.toHaveBeenCalledWith(expect.stringMatching(/No new podcasts/u))
+    expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
+  }, 15_000)
+
+  it('counts failed searches when some of them fail', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockRejectedValue(new Error('catalog down'))
+    vi.mocked(searchPodcastsWithMeta).mockResolvedValue({
+      data: { podcasts: [podcast('pd-existing', 'Already Listed')], pagination: { last_page: '1' } },
+      rateLimit: {},
+    } as never)
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    await waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringMatching(/1 search failed/u)))
+  })
+
+  it('stops a running scan when the page is left, before any paid scoring', async () => {
+    let releaseSearch: () => void = () => undefined
+    vi.mocked(searchPodcastsWithMeta).mockImplementation(() => new Promise((resolve) => {
+      releaseSearch = () => resolve({
+        data: { podcasts: [podcast('pd-high', 'Founder Stories')], pagination: { last_page: '1' } },
+        rateLimit: {},
+      } as never)
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+    await waitFor(() => expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalled())
+
+    cleanup()
+    releaseSearch()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
   })
 
   it('scans, ranks by AI fit, and never rescored podcasts already on the list', async () => {

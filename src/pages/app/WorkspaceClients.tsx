@@ -119,6 +119,23 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
   const refetchClients = isPlatformWorkspace ? platformQuery.refetch : tenantClientsQuery.refetch
   const activeQueryKey = isPlatformWorkspace ? platformQueryKey : tenantQueryKey
   const managementEnabled = isPlatformWorkspace || canWriteClients
+  // A client edit is also what the pipeline and the client record show, so
+  // both are refreshed with the list rather than left serving the old name or
+  // status until their own cache expires.
+  const invalidateClientCaches = async (clientId?: string) => {
+    const scope = isPlatformWorkspace ? 'platform' : 'tenant'
+    const userKey = user?.id || 'unknown'
+    const canonicalWorkspaceId = workspaceId.toLowerCase()
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: activeQueryKey }),
+      queryClient.invalidateQueries({ queryKey: ['workspace-client-podcast-system', userKey, canonicalWorkspaceId] }),
+      clientId
+        ? queryClient.invalidateQueries({
+          queryKey: [scope, userKey, 'workspace', canonicalWorkspaceId, 'client', clientId.toLowerCase()],
+        })
+        : Promise.resolve(),
+    ])
+  }
   const showManagementControls = mode === 'manage' && managementEnabled
   const clientBaseHref = isPlatformWorkspace
     ? selectedWorkspaceBaseHref(selectedWorkspaceId)
@@ -147,7 +164,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
       saveInFlight.current = false
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
+      await invalidateClientCaches(editing?.id)
       setDialogOpen(false)
       setEditing(null)
       setForm(emptyClient)
@@ -165,8 +182,8 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
       if (!workspaceId) throw new Error('Workspace is unavailable.')
       await deleteWorkspaceClient(workspaceId, client.id)
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: activeQueryKey })
+    onSuccess: async (_data, client) => {
+      await invalidateClientCaches(client.id)
       setDeleting(null)
       toast.success('Client removed.')
     },
@@ -304,18 +321,13 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                     {clients.map((client) => {
                       const clientDetailHref = `${clientBaseHref}/clients/${encodeURIComponent(client.id)}`
                       return (
+                      // The name link is the row's one keyboard stop; the row
+                      // itself is a mouse convenience. Focusable rows put two
+                      // stops on every client, both announcing "Open".
                       <TableRow
                         key={client.id}
-                        tabIndex={0}
-                        aria-label={`Open ${client.name}`}
-                        className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        className="group cursor-pointer focus-within:bg-muted/50"
                         onClick={() => navigate(clientDetailHref)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            navigate(clientDetailHref)
-                          }
-                        }}
                       >
                         <TableCell><Link to={clientDetailHref} onClick={(event) => event.stopPropagation()} aria-label={`Open ${client.name}`} className="inline-flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">{client.name}<ArrowUpRight className="h-3.5 w-3.5" /></Link>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{client.website}</p>}</TableCell>
                         <TableCell><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>

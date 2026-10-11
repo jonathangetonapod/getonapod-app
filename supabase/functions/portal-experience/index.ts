@@ -244,21 +244,12 @@ serve(async (req) => {
       if ((priorRequests ?? 0) >= ADDON_REQUEST_LIFETIME_LIMIT) {
         throw new HttpError(409, 'ADDON_REQUEST_LIMIT_REACHED', 'You have reached the limit for add-on requests. Contact your team directly.')
       }
-      let addonAllowed = false
-      try {
-        addonAllowed = await reservePublicRate(admin, [{
-          bucket: `portal-addon:${clientId}`,
-          limit: ADDON_REQUEST_DAILY_LIMIT,
-          windowSeconds: 24 * 60 * 60,
-        }])
-      } catch {
-        throw new HttpError(503, 'ADDON_REQUEST_FAILED', 'Your request could not be recorded — try again')
-      }
-      if (!addonAllowed) {
-        throw new HttpError(429, 'ADDON_REQUEST_RATE_LIMITED', 'You have sent several requests today. Your team has them; try again tomorrow if you need another.')
-      }
-
-      const { error: logError } = await admin
+      // The request is recorded first and the daily slot reserved after.
+      // Reserving first consumed a slot for a request whose insert then
+      // failed, so a database hiccup used up the client's day. A row whose
+      // reservation is refused or errors is removed again, so a refused
+      // request leaves nothing behind.
+      const { data: logRow, error: logError } = await admin
         .from('client_portal_activity_log')
         .insert({
           client_id: clientId,
@@ -268,8 +259,33 @@ serve(async (req) => {
             episode_name: episodeName,
           },
         })
-      if (logError) {
+        .select('id')
+        .single()
+      if (logError || !logRow) {
         throw new HttpError(503, 'ADDON_REQUEST_FAILED', 'Your request could not be recorded — try again')
+      }
+      const withdrawRequest = async () => {
+        const { error: withdrawError } = await admin
+          .from('client_portal_activity_log')
+          .delete()
+          .eq('id', logRow.id)
+          .eq('client_id', clientId)
+        if (withdrawError) console.error('[Portal Experience] Refused add-on request could not be withdrawn')
+      }
+      let addonAllowed = false
+      try {
+        addonAllowed = await reservePublicRate(admin, [{
+          bucket: `portal-addon:${clientId}`,
+          limit: ADDON_REQUEST_DAILY_LIMIT,
+          windowSeconds: 24 * 60 * 60,
+        }])
+      } catch {
+        await withdrawRequest()
+        throw new HttpError(503, 'ADDON_REQUEST_FAILED', 'Your request could not be recorded — try again')
+      }
+      if (!addonAllowed) {
+        await withdrawRequest()
+        throw new HttpError(429, 'ADDON_REQUEST_RATE_LIMITED', 'You have sent several requests today. Your team has them; try again tomorrow if you need another.')
       }
 
       // Best-effort owner notification; the recorded request is the source

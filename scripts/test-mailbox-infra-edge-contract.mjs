@@ -66,8 +66,37 @@ assert.match(orderCreate, /charged_entry_ids: chargedEntryIds,/u)
 assert.match(orderCreate, /winnr_job_id: null,/u)
 assert.match(orderCreate, /winnr_job_id: purchase\.job_id/u)
 assert.match(orderCreate, /await failMailboxOrder\(authContext, workspaceId, trackedOrder,[\s\S]*?throw error/u)
-assert.match(edge, /async function failMailboxOrder\([\s\S]*?\.eq\('status', 'processing'\)\s*\n\s*\.is\('credits_refunded_at', null\)[\s\S]*?refundMailboxCredits\(/u)
-assert.match(edge, /if \(job\.status === 'failed'\) \{[\s\S]*?await failMailboxOrder\(authContext, workspaceId, order, message\)/u)
+assert.match(edge, /async function failMailboxOrder\([\s\S]*?\.eq\('status', 'processing'\)\s*\n\s*\.is\('credits_refunded_at', null\)[\s\S]*?settleMailboxRefund\(/u)
+
+// The claim no longer stamps credits_refunded_at: it is written only after
+// every debit is refunded, and an incomplete refund is retried on later polls.
+const failFn = edge.slice(edge.indexOf('async function failMailboxOrder('), edge.indexOf('async function advanceMailboxOrder('))
+assert.doesNotMatch(failFn.slice(0, failFn.indexOf('.select(')), /credits_refunded_at: now/u)
+const settleFn = edge.slice(edge.indexOf('async function settleMailboxRefund('), edge.indexOf('async function failMailboxOrder('))
+assert.match(settleFn, /const refunded = await refundMailboxCredits\(/u)
+assert.match(settleFn, /refunded\s*\n?\s*\? \{ credits_refunded_at: now, error_message: message, updated_at: now \}\s*\n?\s*: \{ error_message: message, updated_at: now \}/u)
+assert.match(settleFn, /\.is\('credits_refunded_at', null\)/u)
+assert.match(edge, /async function refundMailboxCredits\([\s\S]*?\): Promise<boolean> \{[\s\S]*?if \(!refunded\) failedEntries \+= 1[\s\S]*?return failedEntries === 0/u)
+assert.match(edge, /order\.status === 'failed' &&\s*\n\s*!order\.credits_refunded_at &&[\s\S]*?settleMailboxRefund\(authContext, workspaceId, order,/u)
+assert.match(edge, /function publicOrder[\s\S]*?credits_refunded_at: _creditsRefundedAt/u)
+const billing = readFileSync('supabase/functions/_shared/billing.ts', 'utf8')
+assert.match(billing, /export async function refundCredits\([\s\S]*?\): Promise<boolean> \{/u)
+assert.match(billing, /export async function refundCredits[\s\S]*?console\.error\(`\[billing\] refund of entry \$\{input\.entryId\} failed[\s\S]*?return false[\s\S]*?return true[\s\S]*?return false\s*\n\s*\}\s*\n\}/u)
+
+// A timeout, dropped connection or gateway error may have reached the
+// provider, so it never refunds: the order stays processing with the debit
+// kept and is marked for support. Only a definite refusal fails the order.
+assert.match(edge, /class WinnrOutcomeUnknownError extends HttpError \{\}/u)
+assert.match(edge, /\} catch \(_error\) \{\s*\n\s*throw new WinnrOutcomeUnknownError\(503, 'WINNR_UNAVAILABLE'/u)
+assert.match(edge, /AMBIGUOUS_GATEWAY_STATUSES = new Set\(\[502, 503, 504\]\)/u)
+assert.match(orderCreate, /if \(error instanceof WinnrOutcomeUnknownError\) \{\s*\n\s*await markUnconfirmed\(\)\s*\n\s*throw new HttpError\(504, 'WINNR_UNCONFIRMED', UNCONFIRMED_ORDER_MESSAGE\)\s*\n\s*\}\s*\n\s*await failMailboxOrder\(/u)
+assert.match(orderCreate, /if \(!purchase\?\.job_id\) \{\s*\n\s*await markUnconfirmed\(\)/u)
+assert.doesNotMatch(orderCreate, /if \(!purchase\.job_id\) \{\s*\n\s*await failMailboxOrder/u)
+
+// credits_charged counts fresh debits only, never replays.
+assert.match(orderCreate, /if \(!domainCharge\.replayed\) creditsCharged \+= domainCharge\.charged/u)
+assert.match(orderCreate, /if \(!mailboxCharge\.replayed\) creditsCharged \+= mailboxCharge\.charged/u)
+assert.match(edge, /if \(job\.status === 'failed'\) \{[\s\S]*?await failMailboxOrder\(authContext, workspaceId, order, 'Provisioning failed at the provider\.'\)/u)
 // Ledger ids never reach the browser.
 assert.match(edge, /function publicOrder\(order: MailboxOrderRow\)/u)
 assert.match(edge, /order: publicOrder\(advanced\)/u)

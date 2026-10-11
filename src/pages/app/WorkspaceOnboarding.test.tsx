@@ -147,6 +147,23 @@ describe('WorkspaceOnboarding', () => {
     expect(mockedSave.mock.calls[0][1]).toMatchObject({ name: 'Starter client intake' })
   })
 
+  it('publishes the saved starter draft on retry instead of creating another copy', async () => {
+    const draft = { ...template, status: 'draft' as const, is_default: false }
+    mockedList.mockResolvedValueOnce(listData()).mockResolvedValue(listData({ templates: [draft] }))
+    mockedSave.mockResolvedValue(draft)
+    mockedPublish.mockRejectedValueOnce(new Error('publish failed')).mockResolvedValue(template)
+    renderPage()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Use the starter form/u }))[0])
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockedList.mock.calls.length).toBeGreaterThan(1))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Use the starter form/u }))[0])
+
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledTimes(2))
+    expect(mockedSave).toHaveBeenCalledTimes(1)
+    expect(mockedPublish.mock.calls[1][1]).toBe(template.id)
+  })
+
   it('tells a member with no assignments that nothing has been shared yet', async () => {
     mockedList.mockResolvedValue(listData({ can_manage: false, viewer_role: 'member', templates: [template] }))
     renderPage()

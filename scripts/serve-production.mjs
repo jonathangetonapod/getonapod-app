@@ -9,7 +9,9 @@ import { validateBrowserBundle } from './validate-browser-bundle.mjs'
 
 const MODULE_PATH = fileURLToPath(import.meta.url)
 const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', 'dist')
-const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
+// Every page listed in scripts/generate-sitemap.ts must match this pattern, or
+// it is served noindex and private, no-store.
+const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|platform\/?$|privacy\/?$|terms\/?$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
 const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/([^/]+)\/?$/u
@@ -255,7 +257,8 @@ export function clientDashboardShareShell(source, metadata, assets = {}) {
 }
 
 /**
- * The HTML shell for every route that is not an indexable marketing page.
+ * The HTML shell for every route that is not an indexable marketing page
+ * (those get marketingPageShell, and / is served as built).
  *
  * index.html carries the marketing head for / (title, JSON-LD for the
  * Organization, Service and FAQ) so crawlers read it without running the app.
@@ -283,6 +286,27 @@ export function neutralApplicationShell(source, pathname = '/') {
       .replace('</head>', '  <link rel="icon" href="data:," />\n  </head>')
   }
   return html
+}
+
+/**
+ * The HTML shell for indexable marketing pages other than /.
+ *
+ * The Service and FAQPage structured data in index.html describe the homepage
+ * only; Google treats FAQ markup on a page that does not show those questions
+ * as a structured-data violation, so it is removed here. The Organization
+ * block describes the company and stays. The homepage title is replaced with
+ * the brand name until the page's own PageSEO sets its real title.
+ */
+export function marketingPageShell(source) {
+  return source
+    .replace(/(\s*)<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/giu, (block, _space, json) => {
+      try {
+        return JSON.parse(json)?.['@type'] === 'Organization' ? block : ''
+      } catch {
+        return ''
+      }
+    })
+    .replace(/<title>[\s\S]*?<\/title>/iu, '<title>Get On A Pod</title>')
 }
 
 export function whiteLabelOnboardingShell(source, metadata = DEFAULT_ONBOARDING_METADATA, assets = {}) {
@@ -799,9 +823,12 @@ export function createProductionServer({
         return
       }
 
-      if ((request.method === 'GET' || request.method === 'HEAD') && !INDEXABLE_ROUTE_PATTERN.test(pathname)) {
+      if ((request.method === 'GET' || request.method === 'HEAD') && pathname !== '/') {
+        // Only / may carry the homepage title and structured data.
         const source = await readFile(path.join(publicDirectory, 'index.html'), 'utf8')
-        const html = neutralApplicationShell(source, pathname)
+        const html = INDEXABLE_ROUTE_PATTERN.test(pathname)
+          ? marketingPageShell(source)
+          : neutralApplicationShell(source, pathname)
         response.statusCode = 200
         response.setHeader('Content-Type', 'text/html; charset=utf-8')
         response.setHeader('Content-Length', Buffer.byteLength(html))

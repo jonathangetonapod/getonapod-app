@@ -149,14 +149,18 @@ serve(async (req) => {
     if (attemptError) {
       console.error('[LOGIN] Atomic rate limit reservation failed')
       return new Response(
-        JSON.stringify({ error: 'Login is temporarily unavailable' }),
+        JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
 
+    // One code for the per-address backoff and the hard lock alike. The
+    // reservation runs before any account lookup and counts attempts whether
+    // or not the address has an account, so this answer says nothing about
+    // whether one exists.
     if (!attemptReserved) {
       return new Response(
-        JSON.stringify({ error: 'Too many sign-in attempts. Wait a few minutes, then try again.' }),
+        JSON.stringify({ error: 'Too many sign-in attempts. Wait a few minutes, then try again.', code: 'LOGIN_RATE_LIMITED' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -190,13 +194,13 @@ serve(async (req) => {
 
       if (!logged) {
         return new Response(
-          JSON.stringify({ error: 'Login is temporarily unavailable' }),
+          JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
           { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
       return new Response(
-        JSON.stringify({ error: 'Invalid email or password' }),
+        JSON.stringify({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -215,13 +219,13 @@ serve(async (req) => {
 
       if (!logged) {
         return new Response(
-          JSON.stringify({ error: 'Login is temporarily unavailable' }),
+          JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
           { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
       return new Response(
-        JSON.stringify({ error: 'Invalid email or password' }),
+        JSON.stringify({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -235,7 +239,7 @@ serve(async (req) => {
     if (credentialError) {
       console.error('[LOGIN] Credential lookup failed')
       return new Response(
-        JSON.stringify({ error: 'Login is temporarily unavailable' }),
+        JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -255,13 +259,13 @@ serve(async (req) => {
 
       if (!logged) {
         return new Response(
-          JSON.stringify({ error: 'Login is temporarily unavailable' }),
+          JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
           { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
       return new Response(
-        JSON.stringify({ error: 'Invalid email or password' }),
+        JSON.stringify({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -282,13 +286,13 @@ serve(async (req) => {
 
       if (!logged) {
         return new Response(
-          JSON.stringify({ error: 'Login is temporarily unavailable' }),
+          JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
           { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
       return new Response(
-        JSON.stringify({ error: 'Invalid email or password' }),
+        JSON.stringify({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -317,7 +321,7 @@ serve(async (req) => {
     if (sessionError) {
       console.error('[LOGIN] Atomic session creation failed')
       return new Response(
-        JSON.stringify({ error: 'Login is temporarily unavailable' }),
+        JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -334,13 +338,13 @@ serve(async (req) => {
 
       if (!logged) {
         return new Response(
-          JSON.stringify({ error: 'Login is temporarily unavailable' }),
+          JSON.stringify({ error: 'Login is temporarily unavailable', code: 'LOGIN_UNAVAILABLE' }),
           { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         )
       }
 
       return new Response(
-        JSON.stringify({ error: 'Invalid email or password' }),
+        JSON.stringify({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }

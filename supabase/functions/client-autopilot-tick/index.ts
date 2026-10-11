@@ -21,6 +21,45 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 // Either beats the old behaviour of silently losing the whole week.
 const TRANSIENT_RETRY_MS = 2 * 60 * 60 * 1000
 const ACTION_RETRY_MS = 6 * 60 * 60 * 1000
+// Consecutive failures back off: 2h, 6h, 24h, then autopilot pauses until
+// someone turns it back on. A failure that never clears (a revoked key, a
+// client that will never have a bio) used to retry every few hours for ever.
+const BACKOFF_STEPS_MS = [TRANSIENT_RETRY_MS, ACTION_RETRY_MS, 24 * 60 * 60 * 1000]
+const BACKOFF_TOLERANCE_MS = 15 * 60 * 1000
+
+/**
+ * The retry delay for this failure, or 'pause' once the ladder is used up.
+ *
+ * Read from existing columns rather than a counter: a failed run sets
+ * last_run_error_at and moves next_run_at out by the delay it chose, and a
+ * successful run (or turning autopilot back on) clears the error. So the
+ * claimed due time minus the previous failure's time is the delay the
+ * previous failure chose, which says which rung the streak is on.
+ */
+function backoffFor(
+  failure: { retryMs: number | null },
+  previous: { lastRunError: unknown; lastRunErrorAt: unknown; dueAt: unknown },
+): number | 'pause' | null {
+  if (!failure.retryMs) return null
+  const inStreak = typeof previous.lastRunError === 'string' && previous.lastRunError.length > 0
+    && typeof previous.lastRunErrorAt === 'string' && typeof previous.dueAt === 'string'
+  let rung = 0
+  if (inStreak) {
+    const previousDelay = Date.parse(String(previous.dueAt)) - Date.parse(String(previous.lastRunErrorAt))
+    const top = BACKOFF_STEPS_MS[BACKOFF_STEPS_MS.length - 1]
+    // A gap longer than the top rung is not a backoff retry (a weekly run
+    // after a failure that set no retry), so the streak starts over.
+    if (Number.isFinite(previousDelay) && previousDelay <= top + BACKOFF_TOLERANCE_MS) {
+      let previousRung = -1
+      for (let index = 0; index < BACKOFF_STEPS_MS.length; index += 1) {
+        if (previousDelay >= BACKOFF_STEPS_MS[index] - BACKOFF_TOLERANCE_MS) previousRung = index
+      }
+      rung = previousRung + 1
+    }
+  }
+  if (rung >= BACKOFF_STEPS_MS.length) return 'pause'
+  return Math.max(failure.retryMs, BACKOFF_STEPS_MS[rung])
+}
 
 class AnthropicError extends Error {}
 class CatalogMergeError extends Error {}
@@ -187,7 +226,7 @@ serve(async (req) => {
   // claim safe against overlapping ticks.
   const { data: due } = await admin
     .from('client_autopilot_settings')
-    .select('workspace_id, client_id, max_weekly_adds, min_score, next_run_at')
+    .select('workspace_id, client_id, max_weekly_adds, min_score, next_run_at, last_run_error, last_run_error_at')
     .eq('enabled', true)
     .lte('next_run_at', new Date().toISOString())
     .order('next_run_at', { ascending: true })
@@ -210,16 +249,38 @@ serve(async (req) => {
   // pulls the next attempt back in.
   const recordFailure = async (failure: RunFailure): Promise<void> => {
     const now = Date.now()
+    const delay = backoffFor(failure, {
+      lastRunError: due.last_run_error,
+      lastRunErrorAt: due.last_run_error_at,
+      dueAt: due.next_run_at,
+    })
+    // Paused by switching autopilot off: turning it back on is the settings
+    // save that resumes it, and that save already schedules a run straight
+    // away and clears the error.
+    const paused = delay === 'pause'
+    const pausedMessage =
+      `Autopilot is paused after repeated failures. Last error: ${failure.message} Turn autopilot back on to resume.`.slice(0, 500)
     const { error } = await admin.from('client_autopilot_settings')
       .update({
         last_run_error: failure.message,
         last_run_error_at: new Date(now).toISOString(),
-        ...(failure.retryMs ? { next_run_at: new Date(now + failure.retryMs).toISOString() } : {}),
+        ...(paused ? { enabled: false, last_run_error: pausedMessage } : {}),
+        ...(typeof delay === 'number' ? { next_run_at: new Date(now + delay).toISOString() } : {}),
         updated_at: new Date(now).toISOString(),
       })
       .eq('workspace_id', due.workspace_id)
       .eq('client_id', due.client_id)
     if (error) console.error('[Autopilot] could not record run failure')
+    if (paused && !error) {
+      await writeAudit(admin, {
+        workspaceId: due.workspace_id,
+        actorUserId: null as unknown as string,
+        action: 'workspace.client.autopilot.paused',
+        entityType: 'client',
+        entityId: due.client_id,
+        metadata: { reason: failure.message },
+      }).catch(() => undefined)
+    }
   }
 
   const usage = { input: 0, output: 0 }

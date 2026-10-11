@@ -552,7 +552,8 @@ describe('WorkspaceCampaigns', () => {
     })))
   })
 
-  it('clears the owner API key immediately after connection submission', async () => {
+  it('clears the owner API key once the connection succeeds', async () => {
+    mockedConnectInstantly.mockResolvedValue(undefined as never)
     renderCampaigns()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Connect Instantly' }))
@@ -560,11 +561,26 @@ describe('WorkspaceCampaigns', () => {
     fireEvent.change(input, { target: { value: 'instantly-owner-key-longer-than-20' } })
     fireEvent.click(screen.getByRole('button', { name: /verify & save key/i }))
 
-    expect(input).toHaveValue('')
     await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalledWith(
       workspaceId,
       'instantly-owner-key-longer-than-20',
     ))
+    await waitFor(() => expect(screen.queryByLabelText('Instantly V2 API key')).not.toBeInTheDocument())
+  })
+
+  // Clearing the field on submit meant a rejected key (a typo, the V1 key)
+  // had to be found and pasted again.
+  it('keeps the pasted API key when the connection is rejected', async () => {
+    mockedConnectInstantly.mockRejectedValue(new Error('That key was rejected by Instantly.'))
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Instantly' }))
+    const input = screen.getByLabelText('Instantly V2 API key')
+    fireEvent.change(input, { target: { value: 'instantly-owner-key-longer-than-20' } })
+    fireEvent.click(screen.getByRole('button', { name: /verify & save key/i }))
+
+    await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByLabelText('Instantly V2 API key')).toHaveValue('instantly-owner-key-longer-than-20'))
   })
 
   it('keeps campaign creation and credential controls owner-manager only', async () => {

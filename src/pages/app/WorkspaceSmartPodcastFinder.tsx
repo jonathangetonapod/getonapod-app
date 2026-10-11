@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -78,6 +78,8 @@ const MAX_SCORED = 100
 // Matches the server's per-request cap; anything smaller costs extra credits.
 const SCORING_BATCH_SIZE = 20
 const SEARCH_SPACING_MS = 525
+// The pause scoreCompatibilityBatch used to put between its own batches.
+const SCORING_SPACING_MS = 500
 
 function fromPodscan(podcast: PodcastData): ScanPodcast {
   return {
@@ -269,6 +271,11 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [isAdding, setIsAdding] = useState(false)
   const scanRunId = useRef(0)
+  // Leaving the page cancels a running scan, so it stops searching and never
+  // starts paid scoring for a page nobody is looking at.
+  useEffect(() => () => {
+    scanRunId.current += 1
+  }, [])
 
   const [customKeywords, setCustomKeywords] = useState<string[]>([])
   const [keywordDraft, setKeywordDraft] = useState('')
@@ -365,6 +372,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     // candidates so a scoring failure can still show them instead of throwing
     // the whole run away.
     let discoveredCandidates: ScanPodcast[] = []
+    let scoredSoFar: CompatibilityScore[] = []
     if (!workspaceId || !clientId || !selectedClient || scanning) return
     if (!clientBio) {
       toast.error('Add a client profile (bio) before scanning — the AI needs it to judge relevancy.')
@@ -387,6 +395,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           .map(normalizePodscanQuery)
           .filter(Boolean)
           .slice(0, MAX_QUERIES)
+        if (scanRunId.current !== runId) return
         setAiQueries(strategyQueries)
         setAiStrategyLoaded(true)
       }
@@ -420,6 +429,11 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       // The shared internal database first — instant, free of Podscan rate
       // limits, and already enriched by every workspace on the platform.
       setStatusMessage('Checking the shared podcast database…')
+      // Failed lookups are counted so a scan that could not search is not
+      // reported as one that searched and found nothing new.
+      let catalogFailures = 0
+      let podscanFailures = 0
+      let podscanAttempts = 0
       for (const query of queries) {
         if (scanRunId.current !== runId) return
         try {
@@ -429,6 +443,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
             if (matchesFilters(normalized)) collect(normalized)
           }
         } catch (error) {
+          catalogFailures += 1
           console.error('Smart scan catalog search failed:', error)
         }
       }
@@ -441,6 +456,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       for (const query of queries) {
         for (let page = 1; page <= PAGES_PER_QUERY; page += 1) {
           if (scanRunId.current !== runId) return
+          podscanAttempts += 1
           try {
             const response = await searchPodcastsWithMeta({
               query,
@@ -465,6 +481,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               break
             }
           } catch (error) {
+            podscanFailures += 1
             console.error('Smart scan search page failed:', error)
           }
           completedRequests += 1
@@ -476,6 +493,14 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         }
       }
       if (scanRunId.current !== runId) return
+      const failedSearches = catalogFailures + podscanFailures
+      const everySearchFailed = catalogFailures === queries.length && podscanFailures === podscanAttempts
+      const searchFailureNote = failedSearches > 0
+        ? `${failedSearches} search${failedSearches === 1 ? '' : 'es'} failed, so this may not be everything.`
+        : ''
+      if (everySearchFailed && collected.size === 0) {
+        throw new Error('Every search failed, so nothing could be found. Check your connection and try the scan again.')
+      }
       const fresh = [...collected.values()]
         .filter((podcast) => !existingPodcastIds.has(podcast.podcast_id.toLowerCase()))
       const candidates = fresh.slice(0, MAX_SCORED)
@@ -484,7 +509,15 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       if (candidates.length === 0) {
         setPhase('done')
         setStatusMessage('')
-        toast.info('No new podcasts were found. Everything discovered is already on this client’s list.')
+        if (failedSearches > 0) {
+          toast.warning(collected.size > 0
+            ? `No new podcasts were found. Everything discovered is already on this client’s list, but ${searchFailureNote}`
+            : `No podcasts were found. ${searchFailureNote}`)
+        } else {
+          toast.info(collected.size > 0
+            ? 'No new podcasts were found. Everything discovered is already on this client’s list.'
+            : 'No podcasts matched these searches and filters.')
+        }
         return
       }
 
@@ -493,27 +526,51 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       setStatusMessage(droppedCount > 0
         ? `Comparing the first ${candidates.length} of ${fresh.length} new podcasts against ${selectedClient.name}’s profile…`
         : `Comparing ${candidates.length} podcasts against ${selectedClient.name}’s profile…`)
-      const scores = await scoreCompatibilityBatch(
-        clientBio,
-        candidates.map((podcast) => ({
-          podcast_id: podcast.podcast_id,
-          podcast_name: podcast.podcast_name,
-          podcast_description: podcast.podcast_description ?? undefined,
-          publisher_name: podcast.publisher_name ?? undefined,
-          podcast_categories: podcast.podcast_categories ?? undefined,
-          audience_size: podcast.audience_size ?? undefined,
-          episode_count: podcast.episode_count ?? undefined,
-        })),
-        // The endpoint scores up to 20 per request and charges one credit per
-        // request, so sending tens paid twice for the same work.
-        SCORING_BATCH_SIZE,
-        (completed, total) => {
-          setProgress({ completed, total })
-          setStatusMessage(`Scored ${completed} of ${total} podcasts…`)
-        },
-        false,
-        { workspaceId, clientId },
-      )
+      const forScoring = candidates.map((podcast) => ({
+        podcast_id: podcast.podcast_id,
+        podcast_name: podcast.podcast_name,
+        podcast_description: podcast.podcast_description ?? undefined,
+        publisher_name: podcast.publisher_name ?? undefined,
+        podcast_categories: podcast.podcast_categories ?? undefined,
+        audience_size: podcast.audience_size ?? undefined,
+        episode_count: podcast.episode_count ?? undefined,
+      }))
+      // Sent one paid batch at a time so a cancelled scan (the user left the
+      // page or started another) stops before the next charge. The endpoint
+      // scores up to 20 per request and charges one credit per request.
+      let failedScores = 0
+      for (let start = 0; start < forScoring.length; start += SCORING_BATCH_SIZE) {
+        if (scanRunId.current !== runId) return
+        if (start > 0) await new Promise((resolve) => window.setTimeout(resolve, SCORING_SPACING_MS))
+        if (scanRunId.current !== runId) return
+        const batch = forScoring.slice(start, start + SCORING_BATCH_SIZE)
+        try {
+          scoredSoFar = [...scoredSoFar, ...await scoreCompatibilityBatch(
+            clientBio,
+            batch,
+            SCORING_BATCH_SIZE,
+            undefined,
+            false,
+            { workspaceId, clientId },
+          )]
+        } catch (error) {
+          if (!(error instanceof PartialScoringError)) throw error
+          scoredSoFar = [...scoredSoFar, ...error.scored]
+          failedScores += error.failedCount
+        }
+        const completed = Math.min(start + batch.length, forScoring.length)
+        if (scanRunId.current !== runId) return
+        setProgress({ completed, total: forScoring.length })
+        setStatusMessage(`Scored ${completed} of ${forScoring.length} podcasts…`)
+      }
+      if (failedScores > 0) {
+        throw new PartialScoringError(
+          `${forScoring.length - failedScores} of ${forScoring.length} scored before the rest failed.`,
+          scoredSoFar,
+          failedScores,
+        )
+      }
+      const scores = scoredSoFar
       if (scanRunId.current !== runId) return
       const ranked = rankCandidates(candidates, scores)
       setResults(ranked)
@@ -526,6 +583,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       const notes = [
         unscored > 0 ? `${unscored} could not be scored` : null,
         droppedCount > 0 ? `${droppedCount} more found but not scored` : null,
+        failedSearches > 0 ? `${failedSearches} search${failedSearches === 1 ? '' : 'es'} failed` : null,
       ].filter(Boolean).join(', ')
       if (notes) toast.warning(`${ranked.length - unscored} ranked for ${selectedClient.name} — ${notes}.`)
       else toast.success(`${ranked.length} podcasts ranked for ${selectedClient.name}.`)
@@ -543,7 +601,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         return
       }
       if (error instanceof InsufficientCreditsError && discoveredCandidates.length > 0) {
-        setResults(rankCandidates(discoveredCandidates, []))
+        setResults(rankCandidates(discoveredCandidates, scoredSoFar))
         setPhase('done')
         setStatusMessage('')
         toast.error(`${error.message} The ${discoveredCandidates.length} podcasts found are shown unscored — add credits to score them.`, { duration: 10000 })

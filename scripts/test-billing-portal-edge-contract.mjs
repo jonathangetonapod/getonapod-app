@@ -124,7 +124,17 @@ assert.match(webhook, /\(owners \?\? \[\]\)\.length === 1/u)
 // An update or deletion for a subscription other than the one recorded must
 // not rewrite or cancel the workspace's real plan — checked before the write
 // and again inside it.
-assert.match(webhook, /const guardsCurrent = event\.type !== 'customer\.subscription\.created'/u)
+assert.match(webhook, /const isCreation = event\.type === 'customer\.subscription\.created'/u)
+assert.doesNotMatch(webhook, /guardsCurrent/u)
+// A creation takes over only when nothing is stored, or when our checkout
+// named the workspace and the stored subscription is not active. A creation
+// resolved only through the customer id never displaces a stored one, and the
+// write is guarded on the stored id for creations too.
+assert.match(webhook, /const namedByMetadata = workspaceId !== null/u)
+assert.match(webhook, /if \(!namedByMetadata\) \{[\s\S]*?ignored: 'subscription already stored'/u)
+assert.match(webhook, /if \(storedStatus === 'active' \|\| storedStatus === 'trialing'\) \{[\s\S]*?ignored: 'current subscription active'/u)
+assert.match(webhook, /\.select\('stripe_subscription_id, billing_status'\)/u)
+assert.match(webhook, /\n  write = storedSubscriptionId\n    \? write\.eq\('stripe_subscription_id', storedSubscriptionId\)/u)
 assert.match(webhook, /storedSubscriptionId && storedSubscriptionId !== subscriptionId/u)
 assert.match(webhook, /ignored: 'different subscription'/u)
 assert.match(webhook, /write\.eq\('stripe_subscription_id', storedSubscriptionId\)/u)

@@ -153,7 +153,7 @@ async function stripePost(
   form: URLSearchParams,
   key: string,
   idempotencyKey: string,
-): Promise<{ ok: boolean; body: Record<string, unknown> }> {
+): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
   const response = await fetch(`${STRIPE_API}/${path}`, {
     method: 'POST',
     headers: {
@@ -167,7 +167,7 @@ async function stripePost(
     signal: AbortSignal.timeout(20_000),
   })
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
-  return { ok: response.ok, body }
+  return { ok: response.ok, status: response.status, body }
 }
 
 
@@ -180,16 +180,77 @@ async function stripePost(
  * works — and returning null when there are none is how a workspace that never
  * saved a card is skipped rather than charged at.
  */
-async function savedCardFor(customerId: string, key: string): Promise<string | null> {
+async function savedCardFor(
+  customerId: string,
+  key: string,
+): Promise<{ ok: true; paymentMethodId: string | null } | { ok: false; reason: string }> {
+  /*
+   * A Stripe outage is not the same answer as "no card". Both used to come
+   * back as null, so a Stripe hiccup was recorded as the customer's failure
+   * and three of them paused a workspace whose card was fine.
+   */
   const query = new URLSearchParams({ customer: customerId, type: 'card', limit: '1' })
-  const response = await fetch(`${STRIPE_API}/payment_methods?${query.toString()}`, {
-    headers: { Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(20_000),
-  })
-  if (!response.ok) return null
-  const body = await response.json().catch(() => ({})) as { data?: Array<{ id?: unknown }> }
-  const first = Array.isArray(body.data) ? body.data[0] : null
-  return first && typeof first.id === 'string' ? first.id : null
+  let response: Response
+  try {
+    response = await fetch(`${STRIPE_API}/payment_methods?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch (_error) {
+    return { ok: false, reason: 'Stripe was unreachable' }
+  }
+  if (!response.ok) return { ok: false, reason: `Stripe returned ${response.status}` }
+  const body = await response.json().catch(() => null) as { data?: Array<{ id?: unknown }> } | null
+  if (!body || !Array.isArray(body.data)) return { ok: false, reason: 'Stripe returned an unreadable card list' }
+  const first = body.data[0]
+  return { ok: true, paymentMethodId: first && typeof first.id === 'string' ? first.id : null }
+}
+
+/**
+ * Every eligible workspace's spendable balance, read in a few bulk queries.
+ *
+ * Most profiles on the queue are nowhere near their threshold. Reading each
+ * one's lots separately — and its monthly spend before that — cost two
+ * queries per comfortable workspace every hour. This settles the clear cases
+ * up front; a workspace that looks low is still re-read live before any
+ * charge. Returns null when the bulk read fails, and the loop then falls back
+ * to the per-workspace read.
+ */
+async function bulkBalances(admin: AdminClient, workspaceIds: string[]): Promise<Map<string, number> | null> {
+  const balances = new Map<string, number>()
+  const now = Date.now()
+  const LOT_PAGE = 1_000
+  for (let index = 0; index < workspaceIds.length; index += 100) {
+    const chunk = workspaceIds.slice(index, index + 100)
+    for (let offset = 0; ; offset += LOT_PAGE) {
+      const { data, error } = await admin
+        .from('workspace_credit_lots')
+        .select('id, workspace_id, remaining, expires_at')
+        .in('workspace_id', chunk)
+        .gt('remaining', 0)
+        .order('id', { ascending: true })
+        .range(offset, offset + LOT_PAGE - 1)
+      if (error) return null
+      for (const lot of (data ?? []) as Array<Record<string, unknown>>) {
+        const expires = typeof lot.expires_at === 'string' ? Date.parse(lot.expires_at) : Number.NaN
+        if (!Number.isNaN(expires) && expires <= now) continue
+        const workspaceId = String(lot.workspace_id)
+        balances.set(workspaceId, (balances.get(workspaceId) ?? 0) + (Number(lot.remaining) || 0))
+      }
+      if ((data ?? []).length < LOT_PAGE) break
+    }
+  }
+  return balances
+}
+
+/** Rotates a profile to the back of the queue without counting a failure. */
+async function recordTransientFailure(admin: AdminClient, workspaceId: string, reason: string): Promise<void> {
+  const { error } = await admin
+    .from('workspace_billing_profiles')
+    .update({ last_refill_attempt_at: new Date().toISOString() })
+    .eq('workspace_id', workspaceId)
+  if (error) console.error('[Credit Refill Tick] Attempt could not be recorded on the profile')
+  console.error(`[Credit Refill Tick] Transient Stripe failure for ${workspaceId}: ${reason}`)
 }
 
 serve(async (req) => {
@@ -236,6 +297,7 @@ serve(async (req) => {
   }
 
   const today = new Date().toISOString().slice(0, 10)
+  const precomputedBalances = await bulkBalances(admin, profiles.map((profile) => String(profile.workspace_id)))
   let charged = 0
   let skipped = 0
   // Counted separately from skips: a ceiling doing its job is worth seeing.
@@ -261,6 +323,12 @@ serve(async (req) => {
     const packCredits = Number(profile.refill_pack_credits)
     const customerId = String(profile.stripe_customer_id ?? '')
     const billingStatus = String(profile.billing_status ?? 'trialing')
+
+    // Clearly above its threshold: skipped before any per-workspace query.
+    if (precomputedBalances && (precomputedBalances.get(workspaceId) ?? 0) > threshold) {
+      skipped += 1
+      continue
+    }
 
     // A workspace whose payments are already failing is the last one to charge
     // again automatically.
@@ -349,7 +417,14 @@ serve(async (req) => {
     // Named explicitly rather than left to a default the purchase flow never
     // sets. No saved card means this workspace never consented to being
     // charged again, so it is skipped, not attempted.
-    const paymentMethodId = await savedCardFor(customerId, stripeKey)
+    const card = await savedCardFor(customerId, stripeKey)
+    if (!card.ok) {
+      // Stripe's problem, not the customer's: not counted toward the pause.
+      failures.push({ workspace_id: workspaceId, reason: card.reason })
+      await recordTransientFailure(admin, workspaceId, card.reason)
+      continue
+    }
+    const paymentMethodId = card.paymentMethodId
     if (!paymentMethodId) {
       failures.push({ workspace_id: workspaceId, reason: 'no saved card to charge' })
       await recordFailure(admin, workspaceId, failureCount, 'No saved card to charge')
@@ -375,7 +450,22 @@ serve(async (req) => {
       // Stripe event id were invisible to them.
       'metadata[refill_key]': refillKey,
     })
-    const result = await stripePost('payment_intents', form, stripeKey, refillKey)
+    let result: { ok: boolean; status: number; body: Record<string, unknown> }
+    try {
+      result = await stripePost('payment_intents', form, stripeKey, refillKey)
+    } catch (_error) {
+      // A timeout may still have charged; the Idempotency-Key makes the next
+      // attempt the same charge, and the webhook grants either way. Not the
+      // customer's failure, so not counted toward the pause.
+      failures.push({ workspace_id: workspaceId, reason: 'Stripe was unreachable' })
+      await recordTransientFailure(admin, workspaceId, 'Stripe was unreachable')
+      continue
+    }
+    if (!result.ok && (result.status >= 500 || result.status === 429)) {
+      failures.push({ workspace_id: workspaceId, reason: `Stripe returned ${result.status}` })
+      await recordTransientFailure(admin, workspaceId, `Stripe returned ${result.status}`)
+      continue
+    }
     if (!result.ok) {
       const message = ((result.body.error ?? {}) as { message?: unknown }).message
       const reason = typeof message === 'string' ? message.slice(0, 200) : 'charge refused'

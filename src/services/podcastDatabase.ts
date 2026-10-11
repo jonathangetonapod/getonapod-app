@@ -8,6 +8,38 @@ function postgrestLiteral(value: string): string {
   return `"${value.replace(/["\\]/gu, (char) => `\\${char}`)}"`
 }
 
+/*
+ * The only columns a caller may sort by. sortBy reaches this from the URL
+ * (?sortBy=), so it is mapped through this list rather than passed to
+ * .order() as typed. The column names themselves are accepted too, for
+ * callers that already pass them.
+ */
+const SORT_COLUMNS: Record<string, string> = {
+  name: 'podcast_name',
+  host: 'host_name',
+  audience: 'audience_size',
+  rating: 'itunes_rating',
+  episodes: 'episode_count',
+  dateAdded: 'created_at',
+  prs: 'podcast_reach_score',
+  podcast_name: 'podcast_name',
+  host_name: 'host_name',
+  audience_size: 'audience_size',
+  itunes_rating: 'itunes_rating',
+  episode_count: 'episode_count',
+  created_at: 'created_at',
+  podcast_reach_score: 'podcast_reach_score',
+}
+
+export function podcastSortColumn(sortBy: string | undefined): string {
+  return (sortBy && Object.prototype.hasOwnProperty.call(SORT_COLUMNS, sortBy))
+    ? SORT_COLUMNS[sortBy]
+    : 'podcast_name'
+}
+
+const MAX_CATEGORY_FILTERS = 50
+const MAX_CATEGORY_LENGTH = 200
+
 export interface PodcastFilters {
   search?: string
   category?: string  // Deprecated: use categories instead
@@ -90,10 +122,18 @@ export async function getPodcasts({
   }
 
   // Category filtering (supports both single and multi-select)
-  if (filters.categories && filters.categories.length > 0) {
+  // Category names come from the URL as well as the picker, so each one is
+  // checked and its JSON quoted: a comma or parenthesis in a name would
+  // otherwise be read as .or() syntax and change the filter.
+  const categories = (filters.categories ?? [])
+    .filter((cat): cat is string => typeof cat === 'string')
+    .map((cat) => cat.trim())
+    .filter((cat) => cat.length > 0 && cat.length <= MAX_CATEGORY_LENGTH)
+    .slice(0, MAX_CATEGORY_FILTERS)
+  if (categories.length > 0) {
     // Multi-select: OR logic - match podcasts that have ANY of the selected categories
-    const orConditions = filters.categories.map(cat =>
-      `podcast_categories.cs.${JSON.stringify([{ category_name: cat }])}`
+    const orConditions = categories.map(cat =>
+      `podcast_categories.cs.${postgrestLiteral(JSON.stringify([{ category_name: cat }]))}`
     ).join(',')
     query = query.or(orConditions)
   } else if (filters.category) {
@@ -150,14 +190,7 @@ export async function getPodcasts({
   }
 
   // Apply sorting
-  const sortColumn = sortBy === 'name' ? 'podcast_name' :
-                     sortBy === 'host' ? 'host_name' :
-                     sortBy === 'audience' ? 'audience_size' :
-                     sortBy === 'rating' ? 'itunes_rating' :
-                     sortBy === 'episodes' ? 'episode_count' :
-                     sortBy === 'dateAdded' ? 'created_at' :
-                     sortBy === 'prs' ? 'podcast_reach_score' :
-                     sortBy
+  const sortColumn = podcastSortColumn(sortBy)
 
   query = query.order(sortColumn, { ascending: sortOrder === 'asc', nullsFirst: false })
 

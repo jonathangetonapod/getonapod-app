@@ -35,6 +35,32 @@ const MAX_DRAFTS_PER_WORKSPACE = 3
 const MAX_WORKSPACES_PER_TICK = 3
 const CLAIM_TTL_MS = 10 * 60 * 1000
 const CURSOR_OVERLAP_MS = 5 * 60 * 1000
+// After this many consecutive ticks failing on the same reply, the reply is
+// skipped (and audited) so one poison email cannot hold the cursor for ever.
+const MAX_EMAIL_FAILURES = 3
+const FAILURE_PREFIX = 'Auto-draft'
+const FAILURE_PATTERN = /^Auto-draft stopped at reply (\S+) \((\d+) consecutive failures?\)/u
+
+/*
+ * The failure record lives in the integration row's existing last_error, so
+ * it is visible next to the integration and needs no new column. The format
+ * is fixed so the next tick can read back which reply failed and how often.
+ */
+function parseEmailFailure(lastError: unknown): { emailId: string; count: number } | null {
+  if (typeof lastError !== 'string') return null
+  const match = FAILURE_PATTERN.exec(lastError)
+  if (!match) return null
+  const count = Number.parseInt(match[2], 10)
+  return Number.isFinite(count) && count > 0 ? { emailId: match[1], count } : null
+}
+
+function failureDetail(error: unknown): string {
+  if (error instanceof HttpError) return error.code
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+  const code = typeof record.code === 'string' && record.code ? record.code : null
+  const message = typeof record.message === 'string' ? record.message : error instanceof Error ? error.message : ''
+  return (code ? `${code} ${message}` : message || 'unknown error').trim().slice(0, 300)
+}
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -78,7 +104,7 @@ serve(async (req) => {
 
   const { data: integrations } = await admin
     .from('workspace_instantly_integrations')
-    .select('workspace_id, status, api_key_ciphertext, api_key_iv, auto_draft_cursor_ts')
+    .select('workspace_id, status, api_key_ciphertext, api_key_iv, auto_draft_cursor_ts, last_error')
     .in('workspace_id', [...autoClientIdsByWorkspace.keys()])
     .eq('status', 'connected')
     // Rotation orders by when a workspace was last LOOKED AT, not by its mail
@@ -91,6 +117,20 @@ serve(async (req) => {
   let drafted = 0
   let prefiltered = 0
   let skipped = 0
+  const failures: Array<{ workspace_id: string; email_id: string | null; detail: string }> = []
+  const poisonSkips: Array<{ workspace_id: string; email_id: string }> = []
+
+  // Recorded on the integration row so a stuck workspace is visible rather
+  // than silently re-failing every tick. Clears only a record this tick wrote.
+  const recordIntegrationError = async (workspaceId: string, message: string | null) => {
+    let update = admin
+      .from('workspace_instantly_integrations')
+      .update({ last_error: message === null ? null : message.slice(0, 1000) })
+      .eq('workspace_id', workspaceId)
+    if (message === null) update = update.like('last_error', `${FAILURE_PREFIX}%`)
+    const { error } = await update
+    if (error) console.error('[Inbox Enroll Tick] could not record the integration error', workspaceId)
+  }
 
   for (const integration of (integrations ?? []) as Array<Record<string, unknown>>) {
     const workspaceId = String(integration.workspace_id ?? '')
@@ -201,6 +241,10 @@ serve(async (req) => {
         .maybeSingle()
 
       let creditsExhausted = false
+      // The reply that failed on earlier ticks, and how many times in a row.
+      const previousFailure = parseEmailFailure(integration.last_error)
+      let emailFailure: { emailId: string | null; detail: string } | null = null
+      let poisonSkipped: string | null = null
       /*
        * The cursor may only pass an email once that email is HANDLED —
        * drafted, deterministically filtered, or out of auto-draft scope by
@@ -221,269 +265,340 @@ serve(async (req) => {
         if (!raw || typeof raw !== 'object') continue
         const email = raw as Record<string, unknown>
         const createdAt = typeof email.timestamp_created === 'string' ? email.timestamp_created : null
-        if (drafted >= MAX_DRAFTS_PER_TICK || workspaceDrafts >= MAX_DRAFTS_PER_WORKSPACE || creditsExhausted) {
-          cursorFrozen = true
-          continue
-        }
-
-        // Auto-draft is for interested leads only: Instantly's own interest
-        // flag on the reply decides. A reply marked interested later does NOT
-        // re-enter this scan (the cursor has moved on) — the operator's
-        // "Draft with AI" in the Master Inbox is the recovery path.
-        if (email.i_status !== 1) { advanceCursor(createdAt); continue }
-        const campaignId = typeof email.campaign_id === 'string' ? email.campaign_id : null
-        const clientId = campaignId ? clientByCampaign.get(campaignId) ?? null : null
-        if (!clientId || !autoClientIds.has(clientId)) { advanceCursor(createdAt); continue }
-        const emailId = typeof email.id === 'string' ? email.id : null
-        const threadKey = typeof email.thread_id === 'string' && email.thread_id ? email.thread_id : emailId
-        if (!emailId || !threadKey) { advanceCursor(createdAt); continue }
-        // Identity of the human who wrote, and the show they host. Stamped on
-        // every thread write so a reply lands in the relationship register
-        // immediately instead of waiting on an analytics sync.
-        const leadEmail = (
-          typeof email.lead === 'string'
-            ? email.lead
-            : typeof email.from_address_email === 'string'
-              ? email.from_address_email
-              : ''
-        ).trim().toLowerCase()
-        const attributionKey = `${clientId}:${leadEmail}`
-        const attributionKnown = Boolean(leadEmail) && podcastsByClientContact.has(attributionKey)
-        const resolvedPodcastId = attributionKnown
-          ? podcastByClientContact.get(attributionKey) ?? null
-          : null
-        const leadIdentity = {
-          ...(leadEmail ? { lead_email: leadEmail } : {}),
-          ...(attributionKnown ? { podcast_id: resolvedPodcastId } : {}),
-        }
-
-        const { data: stateRow, error: stateError } = await admin
-          .from('workspace_inbox_thread_state')
-          .select('status, draft, suppressed_at, draft_claim_email_id, draft_claimed_at, lead_email, podcast_id')
-          .eq('workspace_id', workspaceId)
-          .eq('thread_key', threadKey)
-          .maybeSingle()
-        if (stateError) throw stateError
-        if (stateRow) {
-          const identityPatch: Record<string, unknown> = {}
-          if (leadEmail && stateRow.lead_email !== leadEmail) {
-            identityPatch.lead_email = leadEmail
-            // A changed address invalidates the prior show's identity even
-            // when the new address is not present in the bounded target map.
-            identityPatch.podcast_id = resolvedPodcastId
-          } else if (attributionKnown && stateRow.podcast_id !== resolvedPodcastId) {
-            // Explicit null clears a stale guess when one address now maps to
-            // multiple contacted shows for this client.
-            identityPatch.podcast_id = resolvedPodcastId
-          }
-          if (Object.keys(identityPatch).length > 0) {
-            const { error: identityError } = await admin
-              .from('workspace_inbox_thread_state')
-              .update({ ...identityPatch, updated_at: new Date().toISOString() })
-              .eq('workspace_id', workspaceId)
-              .eq('thread_key', threadKey)
-            if (identityError) throw identityError
-          }
-          if (['booked', 'archived'].includes(String(stateRow.status ?? ''))) { advanceCursor(createdAt); continue }
-          if (stateRow.suppressed_at) { advanceCursor(createdAt); continue }
-          const existingDraft = stateRow.draft && typeof stateRow.draft === 'object' && !Array.isArray(stateRow.draft)
-            ? stateRow.draft as Record<string, unknown>
-            : null
-          if (existingDraft?.based_on_email_id === emailId) { advanceCursor(createdAt); continue }
-          const claimFresh = stateRow.draft_claim_email_id === emailId
-            && typeof stateRow.draft_claimed_at === 'string'
-            && Date.now() - Date.parse(stateRow.draft_claimed_at) < CLAIM_TTL_MS
-          // Another invocation is mid-flight on this email. Its outcome is
-          // unknown, so the cursor must not pass it.
-          if (claimFresh) { cursorFrozen = true; continue }
-        }
-
-        const bodyRecord = (email.body ?? {}) as Record<string, unknown>
-        const messageText = (typeof bodyRecord.text === 'string' && bodyRecord.text.trim()
-          ? bodyRecord.text
-          : typeof bodyRecord.html === 'string'
-            ? bodyRecord.html.replace(/<[^>]+>/gu, ' ').replace(/\s+/gu, ' ').trim()
-            : '').slice(0, 8_000)
-        const subject = typeof email.subject === 'string' ? email.subject.slice(0, 300) : '(no subject)'
-        if (!messageText) { advanceCursor(createdAt); continue }
-
-        // Deterministic pre-filter: zero tokens, immediate triage.
-        const deterministic = email.is_auto_reply === 1
-          ? 'auto_reply' as const
-          : detectDeterministicReply(messageText)
-        if (deterministic) {
-          // Both writes are checked. An unseen failure here advanced the
-          // cursor past an opt-out that was never recorded, so the sender
-          // stayed contactable and no later tick would look again; throwing
-          // keeps the cursor where it is and the next tick retries.
-          const { error: prefilterError } = await admin
-            .from('workspace_inbox_thread_state')
-            .upsert({
-              workspace_id: workspaceId,
-              thread_key: threadKey,
-              client_id: clientId,
-              classification: deterministicClassification(deterministic),
-              ...leadIdentity,
-              ...(deterministic === 'opt_out' ? { suppressed_at: new Date().toISOString() } : {}),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'workspace_id,thread_key' })
-          if (prefilterError) throw prefilterError
-          // An opt-out is directed at the sender, not at one client's
-          // campaign. Record it workspace-wide so no other client's outreach
-          // can reach this person again.
-          if (deterministic === 'opt_out' && leadEmail) {
-            const { error: suppressionError } = await admin
-              .from('workspace_outreach_suppressions')
-              .upsert({
-                workspace_id: workspaceId,
-                contact_email: leadEmail,
-                reason: 'opted_out',
-                source: 'inbox_auto',
-                note: `Detected in a reply for client ${clientId}`,
-              }, { onConflict: 'workspace_id,contact_email' })
-            if (suppressionError) throw suppressionError
-          }
-          prefiltered += 1
-          advanceCursor(createdAt)
-          continue
-        }
-
-        // Idempotency claim BEFORE any billing or model work — and taken by
-        // compare-and-set, not blind upsert: two overlapping invocations that
-        // both read a stale row would otherwise both "claim", both bill, and
-        // both call the model. Exactly one writer wins; the loser defers.
-        const claimNow = new Date().toISOString()
-        if (stateRow) {
-          const staleCutoff = new Date(Date.now() - CLAIM_TTL_MS).toISOString()
-          const { data: claimedRows, error: claimError } = await admin
-            .from('workspace_inbox_thread_state')
-            .update({
-              client_id: clientId,
-              ...leadIdentity,
-              draft_claim_email_id: emailId,
-              draft_claimed_at: claimNow,
-              updated_at: claimNow,
-            })
-            .eq('workspace_id', workspaceId)
-            .eq('thread_key', threadKey)
-            .or(`draft_claim_email_id.is.null,draft_claim_email_id.neq.${emailId},draft_claimed_at.lt.${staleCutoff}`)
-            .select('thread_key')
-          if (claimError) throw claimError
-          if (!claimedRows || claimedRows.length !== 1) { cursorFrozen = true; continue }
-        } else {
-          const { error: claimInsertError } = await admin
-            .from('workspace_inbox_thread_state')
-            .insert({
-              workspace_id: workspaceId,
-              thread_key: threadKey,
-              client_id: clientId,
-              ...leadIdentity,
-              draft_claim_email_id: emailId,
-              draft_claimed_at: claimNow,
-              updated_at: claimNow,
-            })
-          // A unique violation means a concurrent invocation created the row
-          // (and holds the claim); defer to it.
-          if (claimInsertError) { cursorFrozen = true; continue }
-        }
-
-        try {
-          const pkg = await generateReplyPackage({
-            admin,
-            workspaceId,
-            clientId,
-            subject,
-            message: messageText,
-            actorUserId: ownerRow?.user_id ?? null,
-            referenceKind: 'inbox_auto_draft',
-            leadEmail: leadEmail || null,
-            threadKey,
-            emailId,
-          })
-          const { error: draftSaveError } = await admin
-            .from('workspace_inbox_thread_state')
-            .upsert({
-              workspace_id: workspaceId,
-              thread_key: threadKey,
-              client_id: clientId,
-              ...leadIdentity,
-              status: 'review',
-              classification: pkg.classification,
-              draft: {
-                subject: pkg.subject,
-                body: pkg.body,
-                nudges: pkg.nudges,
-                based_on_email_id: emailId,
-                generated_at: new Date().toISOString(),
-              },
-              // Automated sending is removed: no package is ever eligible.
-              // Writing null also clears any stamp left from when it existed.
-              auto_send_eligible_at: null,
-              auto_sent_at: null,
-              auto_send_error: null,
-              // A fresh package restarts the nudge plan. Leaving the old
-              // progress in place made a second-round plan start mid-plan —
-              // or read as exhausted and silently never run.
-              nudges_sent: 0,
-              nudge_failure_count: 0,
-              nudges_paused: false,
-              last_nudge_error: null,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'workspace_id,thread_key' })
-          if (draftSaveError) {
-            // The workspace paid for a draft nobody can see. Give the charge
-            // back and fail the email so the frozen cursor retries it.
-            await refundCredits(admin, {
-              workspaceId,
-              entryId: pkg.chargeEntryId,
-              reason: 'inbox auto-draft could not be saved',
-            })
-            throw new HttpError(500, 'DRAFT_SAVE_FAILED', 'The reply draft could not be saved')
-          }
-          drafted += 1
-          workspaceDrafts += 1
-          advanceCursor(createdAt)
+        const loopEmailId = typeof email.id === 'string' ? email.id : null
+        // A reply that has failed MAX_EMAIL_FAILURES ticks running is skipped
+        // so the cursor can pass it. It stays in the Master Inbox for manual
+        // drafting; the skip is audited so nobody wonders where it went.
+        if (
+          loopEmailId &&
+          !cursorFrozen &&
+          previousFailure?.emailId === loopEmailId &&
+          previousFailure.count >= MAX_EMAIL_FAILURES
+        ) {
+          poisonSkipped = loopEmailId
+          poisonSkips.push({ workspace_id: workspaceId, email_id: loopEmailId })
+          console.error('[Inbox Enroll Tick] skipping a reply that keeps failing', workspaceId, loopEmailId)
           await writeAudit(admin, {
             workspaceId,
             actorUserId: ownerRow?.user_id ?? null,
-            action: 'workspace.inbox.auto_drafted',
-            entityType: 'client',
-            entityId: clientId,
-            metadata: { thread_key: threadKey, email_id: emailId },
-          })
-        } catch (error) {
-          if (error instanceof HttpError && error.code === 'INSUFFICIENT_CREDITS') {
-            // Recoverable by topping up: freeze the cursor so every reply
-            // from here on is drafted once the balance allows.
-            creditsExhausted = true
-            cursorFrozen = true
-          } else if (
-            error instanceof HttpError
-            && ['SDR_PROFILE_NOT_READY', 'CLIENT_NOT_FOUND'].includes(error.code)
-          ) {
-            // Out of auto-draft scope until an operator acts (both throw
-            // before any charge). The reply stays visible in the Master
-            // Inbox for manual drafting; holding the cursor here would
-            // head-of-line block the whole workspace behind one client.
-            advanceCursor(createdAt)
-          } else {
-            // DRAFT_FAILED and transient errors: the charge was refunded,
-            // the claim expires, and the frozen cursor retries next tick.
-            cursorFrozen = true
-          }
+            action: 'workspace.inbox.auto_draft_skipped',
+            entityType: 'workspace',
+            entityId: workspaceId,
+            metadata: { email_id: loopEmailId, consecutive_failures: previousFailure.count },
+          }).catch(() => undefined)
+          advanceCursor(createdAt)
           skipped += 1
+          continue
+        }
+        /*
+         * Any throw for this reply stops here rather than escaping to the
+         * workspace catch. Escaping skipped the cursor write, so the replies
+         * already handled earlier in the page were re-read every tick and one
+         * failing reply wedged the workspace. Now the cursor freezes at the
+         * failing reply, the handled prefix is still saved, and the failure is
+         * recorded so the next tick can count it.
+         */
+        try {
+          if (drafted >= MAX_DRAFTS_PER_TICK || workspaceDrafts >= MAX_DRAFTS_PER_WORKSPACE || creditsExhausted) {
+            cursorFrozen = true
+            continue
+          }
+
+          // Auto-draft is for interested leads only: Instantly's own interest
+          // flag on the reply decides. A reply marked interested later does NOT
+          // re-enter this scan (the cursor has moved on) — the operator's
+          // "Draft with AI" in the Master Inbox is the recovery path.
+          if (email.i_status !== 1) { advanceCursor(createdAt); continue }
+          const campaignId = typeof email.campaign_id === 'string' ? email.campaign_id : null
+          const clientId = campaignId ? clientByCampaign.get(campaignId) ?? null : null
+          if (!clientId || !autoClientIds.has(clientId)) { advanceCursor(createdAt); continue }
+          const emailId = typeof email.id === 'string' ? email.id : null
+          const threadKey = typeof email.thread_id === 'string' && email.thread_id ? email.thread_id : emailId
+          if (!emailId || !threadKey) { advanceCursor(createdAt); continue }
+          // Identity of the human who wrote, and the show they host. Stamped on
+          // every thread write so a reply lands in the relationship register
+          // immediately instead of waiting on an analytics sync.
+          const leadEmail = (
+            typeof email.lead === 'string'
+              ? email.lead
+              : typeof email.from_address_email === 'string'
+                ? email.from_address_email
+                : ''
+          ).trim().toLowerCase()
+          const attributionKey = `${clientId}:${leadEmail}`
+          const attributionKnown = Boolean(leadEmail) && podcastsByClientContact.has(attributionKey)
+          const resolvedPodcastId = attributionKnown
+            ? podcastByClientContact.get(attributionKey) ?? null
+            : null
+          const leadIdentity = {
+            ...(leadEmail ? { lead_email: leadEmail } : {}),
+            ...(attributionKnown ? { podcast_id: resolvedPodcastId } : {}),
+          }
+
+          const { data: stateRow, error: stateError } = await admin
+            .from('workspace_inbox_thread_state')
+            .select('status, draft, suppressed_at, draft_claim_email_id, draft_claimed_at, lead_email, podcast_id')
+            .eq('workspace_id', workspaceId)
+            .eq('thread_key', threadKey)
+            .maybeSingle()
+          if (stateError) throw stateError
+          if (stateRow) {
+            const identityPatch: Record<string, unknown> = {}
+            if (leadEmail && stateRow.lead_email !== leadEmail) {
+              identityPatch.lead_email = leadEmail
+              // A changed address invalidates the prior show's identity even
+              // when the new address is not present in the bounded target map.
+              identityPatch.podcast_id = resolvedPodcastId
+            } else if (attributionKnown && stateRow.podcast_id !== resolvedPodcastId) {
+              // Explicit null clears a stale guess when one address now maps to
+              // multiple contacted shows for this client.
+              identityPatch.podcast_id = resolvedPodcastId
+            }
+            if (Object.keys(identityPatch).length > 0) {
+              const { error: identityError } = await admin
+                .from('workspace_inbox_thread_state')
+                .update({ ...identityPatch, updated_at: new Date().toISOString() })
+                .eq('workspace_id', workspaceId)
+                .eq('thread_key', threadKey)
+              if (identityError) throw identityError
+            }
+            if (['booked', 'archived'].includes(String(stateRow.status ?? ''))) { advanceCursor(createdAt); continue }
+            if (stateRow.suppressed_at) { advanceCursor(createdAt); continue }
+            const existingDraft = stateRow.draft && typeof stateRow.draft === 'object' && !Array.isArray(stateRow.draft)
+              ? stateRow.draft as Record<string, unknown>
+              : null
+            if (existingDraft?.based_on_email_id === emailId) { advanceCursor(createdAt); continue }
+            const claimFresh = stateRow.draft_claim_email_id === emailId
+              && typeof stateRow.draft_claimed_at === 'string'
+              && Date.now() - Date.parse(stateRow.draft_claimed_at) < CLAIM_TTL_MS
+            // Another invocation is mid-flight on this email. Its outcome is
+            // unknown, so the cursor must not pass it.
+            if (claimFresh) { cursorFrozen = true; continue }
+          }
+
+          const bodyRecord = (email.body ?? {}) as Record<string, unknown>
+          const messageText = (typeof bodyRecord.text === 'string' && bodyRecord.text.trim()
+            ? bodyRecord.text
+            : typeof bodyRecord.html === 'string'
+              ? bodyRecord.html.replace(/<[^>]+>/gu, ' ').replace(/\s+/gu, ' ').trim()
+              : '').slice(0, 8_000)
+          const subject = typeof email.subject === 'string' ? email.subject.slice(0, 300) : '(no subject)'
+          if (!messageText) { advanceCursor(createdAt); continue }
+
+          // Deterministic pre-filter: zero tokens, immediate triage.
+          const deterministic = email.is_auto_reply === 1
+            ? 'auto_reply' as const
+            : detectDeterministicReply(messageText)
+          if (deterministic) {
+            // Both writes are checked. An unseen failure here advanced the
+            // cursor past an opt-out that was never recorded, so the sender
+            // stayed contactable and no later tick would look again; throwing
+            // keeps the cursor where it is and the next tick retries.
+            const { error: prefilterError } = await admin
+              .from('workspace_inbox_thread_state')
+              .upsert({
+                workspace_id: workspaceId,
+                thread_key: threadKey,
+                client_id: clientId,
+                classification: deterministicClassification(deterministic),
+                ...leadIdentity,
+                ...(deterministic === 'opt_out' ? { suppressed_at: new Date().toISOString() } : {}),
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'workspace_id,thread_key' })
+            if (prefilterError) throw prefilterError
+            // An opt-out is directed at the sender, not at one client's
+            // campaign. Record it workspace-wide so no other client's outreach
+            // can reach this person again.
+            if (deterministic === 'opt_out' && leadEmail) {
+              const { error: suppressionError } = await admin
+                .from('workspace_outreach_suppressions')
+                .upsert({
+                  workspace_id: workspaceId,
+                  contact_email: leadEmail,
+                  reason: 'opted_out',
+                  source: 'inbox_auto',
+                  note: `Detected in a reply for client ${clientId}`,
+                }, { onConflict: 'workspace_id,contact_email' })
+              if (suppressionError) throw suppressionError
+            }
+            prefiltered += 1
+            advanceCursor(createdAt)
+            continue
+          }
+
+          // Idempotency claim BEFORE any billing or model work — and taken by
+          // compare-and-set, not blind upsert: two overlapping invocations that
+          // both read a stale row would otherwise both "claim", both bill, and
+          // both call the model. Exactly one writer wins; the loser defers.
+          const claimNow = new Date().toISOString()
+          if (stateRow) {
+            const staleCutoff = new Date(Date.now() - CLAIM_TTL_MS).toISOString()
+            const { data: claimedRows, error: claimError } = await admin
+              .from('workspace_inbox_thread_state')
+              .update({
+                client_id: clientId,
+                ...leadIdentity,
+                draft_claim_email_id: emailId,
+                draft_claimed_at: claimNow,
+                updated_at: claimNow,
+              })
+              .eq('workspace_id', workspaceId)
+              .eq('thread_key', threadKey)
+              .or(`draft_claim_email_id.is.null,draft_claim_email_id.neq.${emailId},draft_claimed_at.lt.${staleCutoff}`)
+              .select('thread_key')
+            if (claimError) throw claimError
+            if (!claimedRows || claimedRows.length !== 1) { cursorFrozen = true; continue }
+          } else {
+            const { error: claimInsertError } = await admin
+              .from('workspace_inbox_thread_state')
+              .insert({
+                workspace_id: workspaceId,
+                thread_key: threadKey,
+                client_id: clientId,
+                ...leadIdentity,
+                draft_claim_email_id: emailId,
+                draft_claimed_at: claimNow,
+                updated_at: claimNow,
+              })
+            // A unique violation means a concurrent invocation created the row
+            // (and holds the claim); defer to it.
+            if (claimInsertError) { cursorFrozen = true; continue }
+          }
+
+          try {
+            const pkg = await generateReplyPackage({
+              admin,
+              workspaceId,
+              clientId,
+              subject,
+              message: messageText,
+              actorUserId: ownerRow?.user_id ?? null,
+              referenceKind: 'inbox_auto_draft',
+              leadEmail: leadEmail || null,
+              threadKey,
+              emailId,
+            })
+            const { error: draftSaveError } = await admin
+              .from('workspace_inbox_thread_state')
+              .upsert({
+                workspace_id: workspaceId,
+                thread_key: threadKey,
+                client_id: clientId,
+                ...leadIdentity,
+                status: 'review',
+                classification: pkg.classification,
+                draft: {
+                  subject: pkg.subject,
+                  body: pkg.body,
+                  nudges: pkg.nudges,
+                  based_on_email_id: emailId,
+                  generated_at: new Date().toISOString(),
+                },
+                // Automated sending is removed: no package is ever eligible.
+                // Writing null also clears any stamp left from when it existed.
+                auto_send_eligible_at: null,
+                auto_sent_at: null,
+                auto_send_error: null,
+                // A fresh package restarts the nudge plan. Leaving the old
+                // progress in place made a second-round plan start mid-plan —
+                // or read as exhausted and silently never run.
+                nudges_sent: 0,
+                nudge_failure_count: 0,
+                nudges_paused: false,
+                last_nudge_error: null,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'workspace_id,thread_key' })
+            if (draftSaveError) {
+              // The workspace paid for a draft nobody can see. Give the charge
+              // back and fail the email so the frozen cursor retries it.
+              await refundCredits(admin, {
+                workspaceId,
+                entryId: pkg.chargeEntryId,
+                reason: 'inbox auto-draft could not be saved',
+              })
+              throw new HttpError(500, 'DRAFT_SAVE_FAILED', 'The reply draft could not be saved')
+            }
+            drafted += 1
+            workspaceDrafts += 1
+            advanceCursor(createdAt)
+            await writeAudit(admin, {
+              workspaceId,
+              actorUserId: ownerRow?.user_id ?? null,
+              action: 'workspace.inbox.auto_drafted',
+              entityType: 'client',
+              entityId: clientId,
+              metadata: { thread_key: threadKey, email_id: emailId },
+            })
+          } catch (error) {
+            if (error instanceof HttpError && error.code === 'INSUFFICIENT_CREDITS') {
+              // Recoverable by topping up: freeze the cursor so every reply
+              // from here on is drafted once the balance allows.
+              creditsExhausted = true
+              cursorFrozen = true
+            } else if (
+              error instanceof HttpError
+              && ['SDR_PROFILE_NOT_READY', 'CLIENT_NOT_FOUND'].includes(error.code)
+            ) {
+              // Out of auto-draft scope until an operator acts (both throw
+              // before any charge). The reply stays visible in the Master
+              // Inbox for manual drafting; holding the cursor here would
+              // head-of-line block the whole workspace behind one client.
+              advanceCursor(createdAt)
+            } else {
+              // DRAFT_FAILED and transient errors: the charge was refunded,
+              // the claim expires, and the frozen cursor retries next tick.
+              // Counted against the reply only when it is the one holding the
+              // cursor, so a reply that always fails is eventually skipped.
+              if (!cursorFrozen && !emailFailure) emailFailure = { emailId, detail: failureDetail(error) }
+              cursorFrozen = true
+            }
+            skipped += 1
+          }
+        } catch (error) {
+          cursorFrozen = true
+          if (!emailFailure) emailFailure = { emailId: loopEmailId, detail: failureDetail(error) }
+          skipped += 1
+          break
         }
       }
 
       if (cursorHigh && cursorHigh !== integration.auto_draft_cursor_ts) {
-        await admin
+        const { error: cursorError } = await admin
           .from('workspace_instantly_integrations')
           .update({ auto_draft_cursor_ts: cursorHigh })
           .eq('workspace_id', workspaceId)
+        if (cursorError) {
+          console.error('[Inbox Enroll Tick] cursor write failed', workspaceId)
+          failures.push({ workspace_id: workspaceId, email_id: null, detail: 'cursor write failed' })
+        }
       }
-    } catch (_error) {
-      // One broken workspace never stops the sweep.
+
+      if (emailFailure) {
+        const count = emailFailure.emailId && previousFailure?.emailId === emailFailure.emailId
+          ? previousFailure.count + 1
+          : 1
+        const message = emailFailure.emailId
+          ? `${FAILURE_PREFIX} stopped at reply ${emailFailure.emailId} (${count} consecutive failure${count === 1 ? '' : 's'}): ${emailFailure.detail}`
+          : `${FAILURE_PREFIX} stopped at a reply with no id: ${emailFailure.detail}`
+        console.error('[Inbox Enroll Tick]', workspaceId, message)
+        failures.push({ workspace_id: workspaceId, email_id: emailFailure.emailId, detail: emailFailure.detail })
+        await recordIntegrationError(workspaceId, message)
+      } else if (poisonSkipped || (!cursorFrozen && previousFailure)) {
+        // The failing reply was passed (handled or skipped): clear the record.
+        await recordIntegrationError(workspaceId, null)
+      }
+    } catch (error) {
+      // One broken workspace never stops the sweep. A failure before any
+      // reply is read (key, attribution, provider) is recorded too, without
+      // touching the cursor, which nothing has moved. An existing per-reply
+      // record is kept so its failure count is not reset.
       skipped += 1
+      const detail = failureDetail(error)
+      console.error('[Inbox Enroll Tick] workspace failed', workspaceId, detail)
+      failures.push({ workspace_id: workspaceId, email_id: null, detail })
+      if (!parseEmailFailure(integration.last_error)) {
+        await recordIntegrationError(workspaceId, `${FAILURE_PREFIX} could not run: ${detail}`)
+      }
     }
   }
 
@@ -492,5 +607,7 @@ serve(async (req) => {
     prefiltered,
     skipped,
     workspaces: (integrations ?? []).length,
+    failures,
+    poison_skips: poisonSkips,
   })
 })

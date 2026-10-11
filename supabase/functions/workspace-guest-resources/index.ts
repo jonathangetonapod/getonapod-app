@@ -510,8 +510,37 @@ serve(async (req) => {
     if (error) rpcError(error);
     if (action === "list") {
       if (!Array.isArray(data)) invalidRpcResponse();
+      // One malformed row (a legacy URL, a published article whose content
+      // was emptied) used to fail the whole list, hiding every good resource
+      // and leaving the manager no way to reach the bad one. It is skipped
+      // and named instead, so the rest loads and the row can be repaired.
+      const resources: GuestResourceDto[] = [];
+      const skippedResourceIds: string[] = [];
+      let skippedCount = 0;
+      for (const row of data) {
+        try {
+          resources.push(resourceDto(row));
+        } catch (error) {
+          if (!(error instanceof HttpError)) throw error;
+          skippedCount += 1;
+          const id = row && typeof row === "object"
+            ? (row as Record<string, unknown>).id
+            : null;
+          if (typeof id === "string" && UUID_PATTERN.test(id)) {
+            skippedResourceIds.push(id.toLowerCase());
+          }
+        }
+      }
+      if (skippedCount > 0) {
+        console.warn(
+          `[workspace-guest-resources] skipped ${skippedCount} malformed resource row(s)`,
+          { workspace_id: workspaceId, resource_ids: skippedResourceIds },
+        );
+      }
       return jsonResponse(req, METHODS, 200, {
-        resources: data.map(resourceDto),
+        resources,
+        skipped_count: skippedCount,
+        skipped_resource_ids: skippedResourceIds,
       });
     }
 

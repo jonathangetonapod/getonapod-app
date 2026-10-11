@@ -1,7 +1,7 @@
 import { BarChart3, CalendarCheck, Check, Globe, Info, Sparkles, Star, Target, TrendingUp, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useReviewBrandStyle } from '@/components/review/reviewBrand'
 
 interface AudienceEstimatesSheetProps {
@@ -28,7 +28,6 @@ const USES = [
   'Identify high-reach podcast opportunities',
   'Compare shows within similar categories',
   'Balance audience relevance with potential reach',
-  'Track growth trends over time',
 ]
 
 /** What the listener numbers mean, where they come from, and how to use them. */
@@ -45,8 +44,10 @@ export const AudienceEstimatesSheet = ({ open, onOpenChange }: AudienceEstimates
                 <BarChart3 className="h-5 w-5 text-[var(--campaign-accent)]" />
                 Understanding the estimates
               </SheetTitle>
+              <SheetDescription className="mt-2 text-sm text-[var(--campaign-primary-foreground)] opacity-70">
+                What the numbers mean, where they come from, and how to use them.
+              </SheetDescription>
             </SheetHeader>
-            <p className="mt-2 text-sm opacity-70">What the numbers mean, where they come from, and how to use them.</p>
           </div>
 
           <ScrollArea className="flex-1">

@@ -79,6 +79,17 @@ assert.match(webhook, /p_refunded_cents: refunded/u)
 assert.match(webhook, /p_reference_kind: dispute \? 'stripe_dispute' : 'stripe_refund'/u)
 assert.match(webhook, /p_idempotency_key: `stripe:\$\{event\.id\}`,\n\s+\}\)\n\s+if \(error\) \{\n\s+console\.error\('\[Stripe Credit Webhook\] Credit reversal failed'\)/u)
 assert.match(webhook, /console\.warn\(/u)
+// A refund or dispute that finds no lot for a recent credit-pack payment is
+// handed back to Stripe for retry (bounded by the retry window); a won
+// dispute grants back what the dispute removed, once per dispute.
+assert.match(webhook, /const MISSING_LOT_RETRY_SECONDS = 3 \* 24 \* 60 \* 60/u)
+assert.match(webhook, /const pack = await creditPackPayment\(object, paymentRef\)/u)
+assert.match(webhook, /if \(ageSeconds < MISSING_LOT_RETRY_SECONDS\) \{[\s\S]{0,200}return json\(500, \{ error: 'LOT_NOT_FOUND_YET' \}\)/u)
+assert.match(webhook, /\$\{STRIPE_API\}\/payment_intents\/\$\{encodeURIComponent\(paymentRef\)\}/u)
+assert.match(webhook, /charge\.dispute\.closed/u)
+assert.match(webhook, /if \(object\.status !== 'won'\)/u)
+assert.match(webhook, /\.eq\('reference_kind', 'stripe_dispute'\)\s*\n\s*\.eq\('reference_id', disputeId\)/u)
+assert.match(webhook, /p_idempotency_key: `stripe-dispute-won:\$\{disputeId\}`/u)
 
 const reversal = readFileSync('supabase/migrations/20261011000200_billing_refunds_and_refill_failures.sql', 'utf8')
 assert.match(reversal, /CREATE OR REPLACE FUNCTION public\.reverse_workspace_credit_lot_v1/u)
@@ -157,4 +168,4 @@ assert.match(workspaceLayout, /item\.id !== 'billing'/u)
 // balance that never moves. Saying so beats letting somebody pay twice.
 assert.match(billingPage, /setAwaitingCredits\(true\)/u)
 assert.match(billingPage, /refetchInterval: awaitingCredits/u)
-assert.match(billingPage, /the payment went through/u)
+assert.match(billingPage, /contact support rather than paying again/u)

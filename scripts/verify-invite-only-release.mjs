@@ -49,13 +49,15 @@ const EXPECTED_COUNTS = Object.freeze({
   // serve), and the tick's own test surface.
   // 169 with _shared/publicRateLimit.ts and its test: throttling for the public
   // client and prospect capability pages (2026-10-08).
+  // 171 with send-outreach-webhook/webhookTarget.ts and its test: the outbound
+  // webhook refuses non-https and private-network targets (2026-10-11).
   // 167 with platform-university, the training-lesson library (2026-08-07).
   // 166 with the purge tick, which finishes those deletions on a schedule
   // rather than in a request.
   // 165 with workspace deletion: one entrypoint. It reuses the Instantly and
   // domain-provider helpers rather than adding its own, because tearing a
   // workspace down has to stop sending exactly the way pausing does.
-  edgeTypeScriptFiles: 169,
+  edgeTypeScriptFiles: 171,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

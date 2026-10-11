@@ -539,12 +539,17 @@ const WorkspaceCampaigns = ({
   const saveInstantlyConnection = async () => {
     let apiKey = apiKeyDraft.trim()
     if (apiKey.length < 20 || connectionSaving) return
-    setApiKeyDraft('')
     setConnectionSaving(true)
     try {
       await connectWorkspaceInstantly(workspaceId, apiKey)
+      // Cleared only once it worked: a rejected key stays in the field so a
+      // typo can be fixed without pasting it again.
+      setApiKeyDraft('')
       setConnectionOpen(false)
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
+      ])
       toast.success('Instantly connected. You can create and launch campaigns.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Instantly could not be connected.')

@@ -310,6 +310,47 @@ describe('OnboardingTemplateBuilder', () => {
     expect(questions.find((question: { id: string }) => question.id === 'booking_link')).toMatchObject({ mapping: 'client.calendar_link' })
   })
 
+  it('keeps the typed name and team note when the starter form is applied', () => {
+    const onSave = vi.fn()
+    render(
+      <OnboardingTemplateBuilder
+        open
+        template={null}
+        workspaceName="Acme Agency"
+        workspaceLogoUrl={null}
+        saving={false}
+        onOpenChange={vi.fn()}
+        onSave={onSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Founder intake' } })
+    fireEvent.change(screen.getByLabelText('Team note'), { target: { value: 'Use for SaaS founders.' } })
+    fireEvent.click(screen.getByRole('button', { name: /Use the starter form/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Save draft/u }))
+
+    const [savedDraft] = onSave.mock.calls[0]
+    expect(savedDraft).toMatchObject({ name: 'Founder intake', description: 'Use for SaaS founders.' })
+    expect(savedDraft.definition.sections[0].questions[0].id).toBe('full_name')
+  })
+
+  it('keeps in-progress edits when the template or workspace props refresh', () => {
+    const props = {
+      open: true,
+      workspaceLogoUrl: null,
+      saving: false,
+      onOpenChange: vi.fn(),
+      onSave: vi.fn(),
+    }
+    const { rerender } = render(<OnboardingTemplateBuilder {...props} template={template} workspaceName="Acme Agency" />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Settings' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Renamed while typing' } })
+
+    rerender(<OnboardingTemplateBuilder {...props} template={{ ...template }} workspaceName="Acme Agency Ltd" workspaceLogoUrl="https://cdn.example.com/logo.webp" />)
+    expect(screen.getByLabelText('Template name')).toHaveValue('Renamed while typing')
+  })
+
   it('does not offer to replace a saved template with the starter form', () => {
     render(
       <OnboardingTemplateBuilder

@@ -48,6 +48,11 @@ describe('filterReviewPodcasts', () => {
     expect(ids(filterReviewPodcasts(list, { ...EMPTY_REVIEW_FILTERS, search: '  trust ' }, feedback))).toEqual(['founder'])
   })
 
+  // The box says "Search shows, hosts, or topics"; topics are the categories.
+  it('searches topics as the placeholder promises', () => {
+    expect(ids(filterReviewPodcasts(list, { ...EMPTY_REVIEW_FILTERS, search: 'leadership' }, feedback))).toEqual(['lead'])
+  })
+
   it('filters by the decision made on each show', () => {
     expect(ids(filterReviewPodcasts(list, { ...EMPTY_REVIEW_FILTERS, decision: 'not_reviewed' }, feedback))).toEqual(['founder'])
     expect(ids(filterReviewPodcasts(list, { ...EMPTY_REVIEW_FILTERS, decision: 'approved' }, feedback))).toEqual(['lead'])

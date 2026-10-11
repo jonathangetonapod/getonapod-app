@@ -677,6 +677,31 @@ function withStagedLead() {
     expect(screen.getByText(/The sending schedule is not valid/)).toBeInTheDocument()
   })
 
+  // The create dialog refuses an out-of-range limit; this page used to coerce
+  // 0, 2.5 or 5000 to something else and save it without saying so.
+  it('refuses a daily limit or follow-up wait outside its range instead of coercing it', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
+    const limit = await screen.findByLabelText('Daily lead limit')
+    for (const value of ['0', '2.5', '1001', '']) {
+      fireEvent.change(limit, { target: { value } })
+      expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled()
+      expect(screen.getByText('Enter a whole number between 1 and 1000.')).toBeInTheDocument()
+      expect(limit).toHaveAttribute('aria-invalid', 'true')
+    }
+    fireEvent.change(limit, { target: { value: '1000' } })
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeEnabled()
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sequences' }), { button: 0 })
+    const waits = await screen.findAllByRole('spinbutton')
+    fireEvent.change(waits[1], { target: { value: '61' } })
+    expect(screen.getByRole('button', { name: 'Save cadence' })).toBeDisabled()
+    expect(screen.getByText(/Each wait must be a whole number of days between 1 and 60/)).toBeInTheDocument()
+    expect(updateWorkspaceCampaignSettings).not.toHaveBeenCalled()
+  })
+
   // The wait belongs on the connector between two steps, where the delay
   // happens, rather than in a settings block that made the reader map a number
   // back onto a step.

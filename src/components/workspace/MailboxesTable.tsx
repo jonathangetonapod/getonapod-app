@@ -130,9 +130,23 @@ export const MailboxesTable = ({
   const assignMutation = useMutation({
     mutationFn: setWorkspaceMailboxClient,
     onSuccess: async (_result, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ['tenant'] })
-      await queryClient.invalidateQueries({ queryKey: ['platform'] })
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      // Only what an assignment changes: this workspace's mailbox list (keyed
+      // [tenant|platform, user, 'workspace', id, 'mailboxes']), its campaigns,
+      // and the setup checklist's mailbox step. Invalidating the whole tenant
+      // and platform prefixes refetched every module's data on each click.
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const [scope, , kind, keyWorkspaceId, module] = query.queryKey as unknown[]
+            return (scope === 'tenant' || scope === 'platform')
+              && kind === 'workspace'
+              && keyWorkspaceId === workspaceId
+              && module === 'mailboxes'
+          },
+        }),
+        queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
+      ])
       toast.success(variables.assigned
         ? 'Mailbox connected. It sends that client’s outreach whenever their campaign is active.'
         : 'Mailbox removed from that client’s campaign.')

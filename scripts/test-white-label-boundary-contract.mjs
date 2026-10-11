@@ -24,7 +24,9 @@ assert.match(notFound, /This link is not valid\./u)
 
 // The production shell drops the marketing head off every non-marketing route.
 const server = read('scripts/serve-production.mjs')
-assert.match(server, /!INDEXABLE_ROUTE_PATTERN\.test\(pathname\)\) \{\s*const source = await readFile[\s\S]*?neutralApplicationShell\(source, pathname\)/u)
+// Indexable marketing pages keep the Organization block; every other route
+// gets the neutral shell.
+assert.match(server, /pathname !== '\/'\) \{\s*\/\/[^\n]*\n\s*const source = await readFile[\s\S]*?INDEXABLE_ROUTE_PATTERN\.test\(pathname\)\s*\? marketingPageShell\(source\)\s*: neutralApplicationShell\(source, pathname\)/u)
 
 // The portal invitation email speaks in the workspace's name.
 const template = read('supabase/functions/_shared/email-templates.ts')

@@ -99,6 +99,34 @@ assert.match(billing, /export async function refundCredits/u)
 assert.match(billing, /export async function refundCredits[\s\S]*?catch \(_error\)/u)
 // The unattended tick is where a swallowed charge would never be noticed.
 assert.match(autopilot, /await refundCredits\(admin, \{[\s\S]{0,200}reason: 'autopilot run failed'/u)
+// Consecutive failures back off 2h, 6h, 24h, then pause (autopilot switched
+// off with the reason) until someone turns it back on; read from the existing
+// last_run_error/last_run_error_at columns, no counter.
+assert.match(autopilot, /const BACKOFF_STEPS_MS = \[TRANSIENT_RETRY_MS, ACTION_RETRY_MS, 24 \* 60 \* 60 \* 1000\]/u)
+assert.match(autopilot, /\.select\('workspace_id, client_id, max_weekly_adds, min_score, next_run_at, last_run_error, last_run_error_at'\)/u)
+assert.match(autopilot, /if \(rung >= BACKOFF_STEPS_MS\.length\) return 'pause'/u)
+assert.match(autopilot, /\.\.\.\(paused \? \{ enabled: false, last_run_error: pausedMessage \} : \{\}\)/u)
+assert.match(autopilot, /action: 'workspace\.client\.autopilot\.paused'/u)
+{
+  // Behaviour of the ladder, run against the function's own source.
+  const start = autopilot.indexOf('function backoffFor(')
+  const end = autopilot.indexOf('\n}\n', start) + 2
+  const constants = autopilot.slice(autopilot.indexOf('const TRANSIENT_RETRY_MS'), autopilot.indexOf('/**', autopilot.indexOf('const BACKOFF_TOLERANCE_MS')))
+  const fnSource = autopilot.slice(start, end)
+    .replace(/: \{ retryMs: number \| null \}/u, '')
+    .replace(/: \{ lastRunError: unknown; lastRunErrorAt: unknown; dueAt: unknown \}/u, '')
+    .replace(/\): number \| 'pause' \| null \{/u, ') {')
+  const backoffFor = new Function(`${constants}\n${fnSource}\nreturn backoffFor`)()
+  const hour = 60 * 60 * 1000
+  const at = (ms) => new Date(Date.UTC(2026, 0, 1) + ms).toISOString()
+  const failure = { retryMs: 2 * hour }
+  assert.equal(backoffFor(failure, { lastRunError: null, lastRunErrorAt: null, dueAt: at(0) }), 2 * hour)
+  assert.equal(backoffFor(failure, { lastRunError: 'x', lastRunErrorAt: at(0), dueAt: at(2 * hour) }), 6 * hour)
+  assert.equal(backoffFor(failure, { lastRunError: 'x', lastRunErrorAt: at(0), dueAt: at(6 * hour) }), 24 * hour)
+  assert.equal(backoffFor(failure, { lastRunError: 'x', lastRunErrorAt: at(0), dueAt: at(24 * hour) }), 'pause')
+  assert.equal(backoffFor(failure, { lastRunError: 'x', lastRunErrorAt: at(0), dueAt: at(7 * 24 * hour) }), 2 * hour)
+  assert.equal(backoffFor({ retryMs: null }, { lastRunError: 'x', lastRunErrorAt: at(0), dueAt: at(24 * hour) }), null)
+}
 
 // An idempotency key keyed on the thing acted upon would make every later
 // repeat free. The window distinguishes a retry from a decision.
@@ -168,6 +196,19 @@ assert.match(refill, /if \(lastFailedDay === today\)/u)
 assert.match(refill, /\.eq\('role', 'owner'\)/u)
 // The Stripe idempotency key is still the day's refill key.
 assert.match(refill, /stripePost\('payment_intents', form, stripeKey, refillKey\)/u)
+// A Stripe API error is not an empty card list: it rotates the profile
+// without counting toward the pause. Profiles clearly above their threshold
+// are skipped from one bulk balance read before any per-workspace query.
+assert.match(refill, /if \(!response\.ok\) return \{ ok: false, reason: `Stripe returned \$\{response\.status\}` \}/u)
+assert.match(refill, /if \(!card\.ok\) \{[\s\S]{0,200}await recordTransientFailure\(admin, workspaceId, card\.reason\)\s*\n\s*continue/u)
+assert.match(refill, /async function recordTransientFailure\([\s\S]*?\.update\(\{ last_refill_attempt_at: new Date\(\)\.toISOString\(\) \}\)/u)
+assert.doesNotMatch(refill.slice(refill.indexOf('async function recordTransientFailure('), refill.indexOf('serve(')), /refill_failure_count/u)
+assert.match(refill, /if \(!result\.ok && \(result\.status >= 500 \|\| result\.status === 429\)\) \{/u)
+assert.match(refill, /const precomputedBalances = await bulkBalances\(admin,/u)
+assert.ok(
+  refill.indexOf('precomputedBalances.get(workspaceId)') < refill.indexOf("const monthPrefix = `auto-refill:"),
+  'the cheap balance skip must run before the monthly-spend ledger read',
+)
 
 // The start write after the build charge sits before the failure boundary, so
 // it refunds on its own when it fails.

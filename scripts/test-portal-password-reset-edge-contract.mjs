@@ -19,7 +19,10 @@ assert.match(issueReset, /\.from\('clients'\)[\s\S]*?workspace\?\.status !== 'ac
 // Timing: the match-dependent work runs after the response (EdgeRuntime
 // .waitUntil), or is awaited and padded to a fixed floor without it.
 assert.match(edge, /EdgeRuntime\?: \{ waitUntil\?/u)
-assert.match(requestPath, /if \(!runInBackground\(work\)\) \{\s*await work\s*await padToFloor\(startedAt, RESET_REQUEST_RESPONSE_FLOOR_MS\)/u)
+// Without a background runtime the response waits exactly the floor and the
+// work is never awaited, so a slow match cannot push the response past it.
+assert.match(requestPath, /if \(!runInBackground\(work\)\) \{\s*await padToFloor\(startedAt, RESET_REQUEST_RESPONSE_FLOOR_MS\)\s*\}/u)
+assert.doesNotMatch(requestPath, /await work\b/u)
 const quotaMigration = readFileSync('supabase/migrations/20261011000400_portal_reset_quota_and_login_backoff.sql', 'utf8')
 assert.match(quotaMigration, /FUNCTION public\.reserve_client_portal_reset_ip_v1[\s\S]*?recent_ip_requests >= 10/u)
 assert.match(quotaMigration, /FUNCTION public\.reserve_client_portal_reset_email_v1[\s\S]*?client\.portal_access_enabled\s+AND client\.portal_email_normalized = normalized_email[\s\S]*?recent_client_sends >= 3/u)

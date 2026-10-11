@@ -140,10 +140,16 @@ assert.match(
 // A filtered table says how much it is hiding.
 assert.match(onboardingPage, /\{tableInstances\.length\} of \{visibleInstances\.length\} shown/u)
 
-// A missing or empty Content-Length is refused. Number('') is 0, so the old
-// finite check let a body with no declared length through as a tiny one.
+// A declared Content-Length over the cap is refused up front (Number('') is 0,
+// so only a real integer counts as declared). A body with no length is not
+// refused with 411, since the gateway and tenant worker may forward it
+// chunked: it is read with a streaming byte cap instead.
 assert.match(client, /\/\^\\d\+\$\/u\.test\(lengthHeader\)/u)
-assert.match(client, /throw new HttpError\(411, 'LENGTH_REQUIRED'/u)
+assert.doesNotMatch(client, /HttpError\(411, 'LENGTH_REQUIRED'/u)
+assert.match(client, /if \(Number\.isSafeInteger\(declaredLength\) && declaredLength > MAX_BODY_BYTES\) \{\s*throw new HttpError\(413, 'PAYLOAD_TOO_LARGE'/u)
+assert.match(client, /const body = await parseCappedJsonObject\(req, MAX_BODY_BYTES\)/u)
+assert.match(client, /total \+= value\.byteLength\s*\n\s*if \(total > maxBytes\) \{\s*\n\s*await reader\.cancel\(\)/u)
+assert.doesNotMatch(client, /parseJsonObject\(req/u)
 // Writes through a link are throttled per instance, failing open.
 assert.match(client, /reservePublicRate\(admin, \[\{\s*bucket: `onboarding-\$\{action\}:\$\{capability\.instanceId\}`/u)
 assert.match(client, /save: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
@@ -164,6 +170,18 @@ assert.doesNotMatch(staff, /\.in\('kind', \[[^\]]*'change_request'/u)
 assert.match(staff, /if \(error \|\| data !== true\) \{\s*console\.error\('\[workspace-onboarding\] Invitation delivery could not be recorded'/u)
 // Resend emails the current link; rotate honours send_email.
 assert.match(staff, /action === 'resend_invitation'/u)
+// One delivered resend per onboarding per ten minutes, with a coded error the
+// page shows; checked before anything is sent.
+assert.match(staff, /const RESEND_COOLDOWN_MS = 10 \* 60 \* 1000/u)
+{
+  const resendBranch = staff.slice(staff.indexOf("if (action === 'resend_invitation')"), staff.indexOf("if (action === 'approve_answers')"))
+  assert.match(resendBranch, /\.not\('sent_at', 'is', null\)\s*\n\s*\.order\('sent_at', \{ ascending: false \}\)/u)
+  assert.match(resendBranch, /throw new HttpError\(\s*429,\s*'ONBOARDING_RESEND_COOLDOWN',/u)
+  assert.ok(
+    resendBranch.indexOf("'ONBOARDING_RESEND_COOLDOWN'") < resendBranch.indexOf('await sendOnboardingEmail('),
+    'the resend cooldown must be checked before the email is sent',
+  )
+}
 assert.match(staff, /rotateSendEmail = booleanValue\(body\.send_email, 'send_email'\)/u)
 assert.match(onboardingPage, /resendOnboardingInvitation\(workspaceId, instance\.id\)/u)
 // Start is idempotent on a browser-minted key.

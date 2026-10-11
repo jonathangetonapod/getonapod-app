@@ -11,7 +11,11 @@ interface PodcastArtworkProps {
 }
 
 export const PodcastArtwork = ({ podcast, className, decorative = false }: PodcastArtworkProps) => {
-  const [imageFailed, setImageFailed] = useState(false)
+  // Remembers which URL failed rather than a bare flag: the same instance is
+  // reused when the focused review moves to the next show, and a sticky flag
+  // kept every later cover on the placeholder after one broken image.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const imageFailed = failedUrl !== null && failedUrl === podcast.podcast_image_url
 
   return (
     <div className={cn('relative overflow-hidden bg-[#e8e0d3]', className)}>
@@ -21,7 +25,7 @@ export const PodcastArtwork = ({ podcast, className, decorative = false }: Podca
           alt={decorative ? '' : `${podcast.podcast_name} cover`}
           className="h-full w-full object-cover"
           loading="lazy"
-          onError={() => setImageFailed(true)}
+          onError={() => setFailedUrl(podcast.podcast_image_url)}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_20%,#f7f1e8,transparent_36%),linear-gradient(145deg,#d8c6af,#8ca096)]">

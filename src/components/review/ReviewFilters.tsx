@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Search, SlidersHorizontal, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { useReviewBrandStyle } from '@/components/review/reviewBrand'
 import {
@@ -112,7 +112,7 @@ export const ReviewFilters = ({ value, onChange, categories, counts, resultCount
         <SheetContent side="right" className="w-full overflow-y-auto border-l-[#ded5ca] bg-[#fbf8f3] sm:max-w-md" style={brandStyle}>
           <SheetHeader className="text-left">
             <SheetTitle className="font-editorial text-3xl text-[#102033]">Refine the list</SheetTitle>
-            <p className="text-sm leading-6 text-[#66727c]">Use only what helps. Your top matches remain the recommended place to begin.</p>
+            <SheetDescription className="text-sm leading-6 text-[#66727c]">Use only what helps. Your top matches remain the recommended place to begin.</SheetDescription>
           </SheetHeader>
 
           <div className="mt-7 space-y-7">

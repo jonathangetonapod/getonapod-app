@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Circle, ListChecks } from 'lucide-react'
+import { CheckCircle2, Circle, CircleHelp, ListChecks } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,8 @@ export interface SetupStep {
   href: string
   required: boolean
   done: boolean
+  /** Its source could not be read, so whether it is done is not known. */
+  unknown: boolean
 }
 
 export interface SetupProgress {
@@ -32,6 +34,8 @@ export interface SetupProgress {
   requiredTotal: number
   /** Every required step is done. */
   complete: boolean
+  /** Required steps whose source could not be read. */
+  requiredUnknown: number
   /** Nothing has answered yet, so the steps are not known either way. */
   loading: boolean
   /** The Instantly connection, for pages that show its status beside the steps. */
@@ -50,9 +54,11 @@ interface UseSetupProgressOptions {
 }
 
 /*
- * Every read below swallows its own failure. A step whose source cannot be
- * read is simply shown as not done: the checklist is a nudge, and a red banner
- * on a page that otherwise works would be louder than the thing it reports.
+ * Every read below swallows its own failure and resolves to null. A step whose
+ * source cannot be read is shown as unknown rather than not done (telling an
+ * agency to connect Instantly when it already has is wrong in a way they act
+ * on), and without a red banner: the checklist is a nudge, and an error on a
+ * page that otherwise works would be louder than the thing it reports.
  */
 const quietly = <T,>(read: () => Promise<T>) => async (): Promise<T | null> => {
   try {
@@ -72,7 +78,11 @@ export function useSetupProgress({
   staffView,
 }: UseSetupProgressOptions): SetupProgress {
   const active = enabled && Boolean(workspaceId)
-  const common = { enabled: active, retry: false as const, staleTime: 60_000 }
+  // Short-lived and refreshed on focus: most steps are finished on another
+  // page, and a checklist that still says "not done" on the way back reads as
+  // if the work did not take. Mutations that finish a step also invalidate
+  // ['setup-checklist', workspaceId] directly.
+  const common = { enabled: active, retry: false as const, staleTime: 10_000, refetchOnWindowFocus: true }
 
   const clientsQuery = useQuery({
     queryKey: ['setup-checklist', workspaceId, 'clients'],
@@ -109,6 +119,8 @@ export function useSetupProgress({
   const staff = staffView === undefined ? staffQuery.data ?? null : staffView
   const integration = campaignsQuery.data?.integration ?? null
   const members = (staff?.members ?? []).filter((member) => member.status !== 'revoked')
+  // null is a failed read (see quietly); undefined is one still pending.
+  const staffUnknown = staff === null
 
   const steps: SetupStep[] = [
     {
@@ -117,6 +129,7 @@ export function useSetupProgress({
       href: `${baseHref}/settings#client-branding`,
       required: false,
       done: Boolean(staff?.workspace.client_brand_name?.trim()),
+      unknown: staffUnknown,
     },
     {
       key: 'instantly',
@@ -124,6 +137,7 @@ export function useSetupProgress({
       href: `${baseHref}/client-campaigns`,
       required: true,
       done: integration?.connected === true,
+      unknown: campaignsQuery.data === null,
     },
     {
       key: 'mailbox',
@@ -131,6 +145,7 @@ export function useSetupProgress({
       href: `${baseHref}/mailboxes`,
       required: true,
       done: (mailboxesQuery.data?.accounts ?? []).some((account) => (account.campaigns?.length ?? 0) > 0),
+      unknown: mailboxesQuery.data === null,
     },
     {
       key: 'client',
@@ -138,6 +153,7 @@ export function useSetupProgress({
       href: `${baseHref}/clients`,
       required: true,
       done: (clientsQuery.data?.length ?? 0) > 0,
+      unknown: clientsQuery.data === null,
     },
     {
       key: 'onboarding',
@@ -145,6 +161,7 @@ export function useSetupProgress({
       href: `${baseHref}/onboarding`,
       required: false,
       done: (onboardingQuery.data?.templates ?? []).some((template) => template.status === 'published'),
+      unknown: onboardingQuery.data === null,
     },
     {
       key: 'billing',
@@ -152,6 +169,7 @@ export function useSetupProgress({
       href: `${baseHref}/settings/billing`,
       required: true,
       done: billingQuery.data?.has_subscription === true || (billingQuery.data?.balance ?? 0) > 0,
+      unknown: billingQuery.data === null,
     },
     {
       key: 'team',
@@ -159,19 +177,30 @@ export function useSetupProgress({
       href: `${baseHref}/settings#workspace-access`,
       required: false,
       done: members.length > 1,
+      unknown: staffUnknown,
     },
   ]
 
   const required = steps.filter((step) => step.required)
-  const requiredDone = required.filter((step) => step.done).length
-  const loading = active && [clientsQuery, campaignsQuery, mailboxesQuery, onboardingQuery, billingQuery]
-    .every((query) => query.isPending)
+  const requiredDone = required.filter((step) => step.done && !step.unknown).length
+  const requiredUnknown = required.filter((step) => step.unknown).length
+  // Waits for every read, so the card does not appear half-filled and then
+  // reshuffle as the rest arrive.
+  const loading = active && [
+    clientsQuery,
+    campaignsQuery,
+    mailboxesQuery,
+    onboardingQuery,
+    billingQuery,
+    ...(staffView === undefined ? [staffQuery] : []),
+  ].some((query) => query.isPending)
 
   return {
     steps,
     requiredDone,
     requiredTotal: required.length,
     complete: requiredDone === required.length,
+    requiredUnknown,
     loading,
     integration,
   }
@@ -235,6 +264,7 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
         <div className="flex shrink-0 items-center gap-3">
           <p className="text-sm text-muted-foreground">
             {progress.requiredDone} of {progress.requiredTotal} required steps done
+            {progress.requiredUnknown > 0 && ` (${progress.requiredUnknown} could not be checked)`}
           </p>
           {progress.complete && (
             <Button type="button" size="sm" variant="outline" onClick={dismiss}>Dismiss</Button>
@@ -247,15 +277,18 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
             <li
               key={step.key}
               data-step={step.key}
-              data-done={step.done ? 'true' : 'false'}
+              data-done={step.unknown ? 'unknown' : step.done ? 'true' : 'false'}
               className="flex items-center gap-3 py-2.5"
             >
-              {step.done
-                ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
-                : <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />}
-              <span className="sr-only">{step.done ? 'Done:' : 'Not done:'}</span>
-              <span className={step.done ? 'min-w-0 flex-1 text-sm text-muted-foreground line-through' : 'min-w-0 flex-1 text-sm font-medium'}>
+              {step.unknown
+                ? <CircleHelp className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                : step.done
+                  ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+                  : <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />}
+              <span className="sr-only">{step.unknown ? 'Could not check:' : step.done ? 'Done:' : 'Not done:'}</span>
+              <span className={step.done && !step.unknown ? 'min-w-0 flex-1 text-sm text-muted-foreground line-through' : 'min-w-0 flex-1 text-sm font-medium'}>
                 {step.label}
+                {step.unknown && <span className="ml-2 text-xs font-normal text-muted-foreground">Could not be checked right now</span>}
               </span>
               <Badge variant={step.required ? 'outline' : 'secondary'} className="shrink-0 rounded-full font-normal">
                 {step.required ? 'Required' : 'Optional'}

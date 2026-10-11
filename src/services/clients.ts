@@ -245,6 +245,12 @@ export interface WorkspaceClientDetail {
   outreach: WorkspaceClientOutreachSummary
   bookings: WorkspaceClientBooking[]
   onboarding: WorkspaceClientOnboardingSummary | null
+  /**
+   * Origin for the client's share links: the agency's serving primary domain
+   * when it has one, otherwise the platform. Null from older function builds
+   * or when the server could not resolve one; callers fall back to the app URL.
+   */
+  public_base_url?: string | null
 }
 
 export interface WorkspaceClientInput {
@@ -502,6 +508,7 @@ export async function getWorkspaceClientDetail(
 
   return {
     ...detail,
+    public_base_url: linkOrigin(detail.public_base_url),
     client: {
       ...detail.client,
       ai_sdr_profile: sdrProfile,
@@ -509,6 +516,19 @@ export async function getWorkspaceClientDetail(
     },
     outreach,
   }
+}
+
+/** An https origin (or http on localhost), else null. Links are never built on anything else. */
+function linkOrigin(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const parsed = new URL(value)
+    const local = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
+    if (parsed.protocol === 'https:' || (local && parsed.protocol === 'http:')) return parsed.origin
+  } catch {
+    // Not a URL: fall through to null.
+  }
+  return null
 }
 
 export async function createWorkspaceClient(workspaceId: string, input: WorkspaceClientInput): Promise<WorkspaceClient> {

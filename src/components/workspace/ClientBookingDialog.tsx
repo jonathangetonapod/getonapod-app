@@ -82,6 +82,9 @@ interface BookingForm {
   // Set when the show came from this client's shortlist, so the placement
   // stays joinable to its research, campaign and portal artwork.
   shortlist_podcast_id: string | null
+  // The outreach this placement came from. Never edited here, only carried
+  // through so a save cannot erase the link.
+  campaign_target_id: string | null
 }
 
 const emptyForm: BookingForm = {
@@ -96,6 +99,7 @@ const emptyForm: BookingForm = {
   notes: '',
   prep_sent: false,
   shortlist_podcast_id: null,
+  campaign_target_id: null,
 }
 
 interface ClientBookingDialogProps {
@@ -166,6 +170,7 @@ export const ClientBookingDialog = ({
         notes: booking.notes || '',
         prep_sent: booking.prep_sent,
         shortlist_podcast_id: booking.shortlist_podcast_id ?? null,
+        campaign_target_id: booking.campaign_target_id ?? null,
       }
       : emptyForm)
   }, [open, booking])
@@ -194,6 +199,7 @@ export const ClientBookingDialog = ({
           notes: form.notes.trim() || null,
           prep_sent: form.prep_sent,
           shortlist_podcast_id: form.shortlist_podcast_id,
+          campaign_target_id: form.campaign_target_id,
         },
         booking?.id,
       )
@@ -204,6 +210,12 @@ export const ClientBookingDialog = ({
       onOpenChange(false)
     },
     onError: (error) => {
+      if ((error as { code?: string | null })?.code === 'BOOKING_NOT_FOUND') {
+        toast.error('This placement was removed elsewhere. The list has been refreshed.')
+        onSaved()
+        onOpenChange(false)
+        return
+      }
       toast.error(error instanceof Error ? error.message : 'The placement could not be saved.')
     },
   })
@@ -216,6 +228,13 @@ export const ClientBookingDialog = ({
       onOpenChange(false)
     },
     onError: (error) => {
+      // Already gone (removed in another tab): the outcome the user wanted.
+      if ((error as { code?: string | null })?.code === 'BOOKING_NOT_FOUND') {
+        toast.success('Placement removed.')
+        onSaved()
+        onOpenChange(false)
+        return
+      }
       toast.error(error instanceof Error ? error.message : 'The placement could not be removed.')
     },
   })

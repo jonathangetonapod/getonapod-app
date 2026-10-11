@@ -327,7 +327,13 @@ assert.doesNotMatch(shortlistEdge, /'hidden'/u)
 assert.doesNotMatch(publicDashboardEdge, /dashboard_enabled/u)
 assert.doesNotMatch(clientPodcastsEdge, /dashboard_enabled/u)
 
-assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
+assert.match(exportEdge, /await requireWorkspaceFeatureAccess\(userContext, workspaceId\)/u)
+// Authenticated before the body is read, and the body is size-capped.
+assert.ok(
+  exportEdge.indexOf('await requireAuthenticatedUser(req)') < exportEdge.indexOf('await parseJsonObject(req, MAX_BODY_BYTES)'),
+  'export-to-google-sheets must authenticate before reading the body',
+)
+assert.doesNotMatch(exportEdge, /await req\.json\(\)/u)
 assert.match(exportEdge, /fields=sheets\.properties/u)
 assert.match(exportEdge, /const quotedFirstSheetName = `'/u)
 assert.match(exportEdge, /const existingIdsRange = encodeURIComponent\(`\$\{quotedFirstSheetName\}!E2:E`\)/u)
@@ -367,20 +373,45 @@ assert.match(
 )
 assert.match(clientsEdge, /action: prospectSlug \? 'client\.prospect_page\.linked' : 'client\.prospect_page\.unlinked'/u)
 
-// The plan's client allowance is enforced on the server. included_active_clients
-// has existed since billing was first sketched and nothing ever read it, so the
-// cap was only a number in a column.
-assert.match(
-  clientsEdge,
-  /if \(action === 'create'\)[\s\S]*?workspace_client_allowance_v1[\s\S]*?CLIENT_LIMIT_REACHED/u,
+// The plan's client allowance is enforced on the server, inside
+// workspace_client_operation_v2 (20261011000800), so the count and the write
+// share one transaction under a workspace row lock. A read in the edge
+// function first let two concurrent creates both take the last seat, and only
+// gated creation, so a paused client could be moved to active past the cap.
+const clientCapMigration = readFileSync('supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql', 'utf8')
+assert.ok(
+  !/workspace_client_allowance_v1/u.test(clientsEdge),
+  'the edge function must not pre-check the allowance; the RPC enforces it atomically',
 )
-// Only creation is gated: a limit changed after signup must never block editing
-// or reactivating a client the customer already has.
-const createGate = clientsEdge.match(/\/\/ Plan limit, checked here[\s\S]*?\n    \}\n/u)
-assert.ok(createGate, 'the plan limit gate must exist')
-assert.match(createGate[0], /if \(action === 'create'\)/u)
-// A failed limit check refuses rather than silently allowing an extra client.
-assert.match(createGate[0], /PLAN_LIMIT_UNCHECKED/u)
+assert.match(clientsEdge, /workspace client limit reached[\s\S]*?CLIENT_LIMIT_REACHED/u)
+assert.match(clientCapMigration, /CREATE OR REPLACE FUNCTION public\.workspace_client_operation_v2\(/u)
+// Locked before the role check's FOR SHARE, so no share-to-update upgrade.
+assert.match(
+  clientCapMigration,
+  /IF normalized_action IN \('create', 'update'\) THEN\s*PERFORM 1\s*FROM public\.workspaces AS locked_workspace[\s\S]*?FOR NO KEY UPDATE;[\s\S]*?FOR SHARE OF membership, workspace;/u,
+)
+// Only a client becoming active takes a seat; paused and churned creates and
+// edits of an already-active client are never blocked.
+assert.match(clientCapMigration, /requested_status = 'active'[\s\S]*?current_status IS DISTINCT FROM 'active'/u)
+assert.match(clientCapMigration, /COALESCE\(profile\.included_active_clients, 3\)/u)
+assert.match(clientCapMigration, /RAISE EXCEPTION 'workspace client limit reached'[\s\S]*?RETURN public\.workspace_client_operation\(/u)
+assert.match(clientCapMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;/u)
+
+// Booking edits only write the journey links when the request names them, so
+// a form that never shows them cannot erase them.
+assert.match(clientsEdge, /hasOwnProperty\.call\(input, 'shortlist_podcast_id'\)/u)
+assert.match(clientsEdge, /hasOwnProperty\.call\(input, 'campaign_target_id'\)/u)
+// Editing or removing a placement that no longer exists is a 404, not a 500
+// or a silent success.
+assert.match(clientsEdge, /action === 'booking-delete'[\s\S]*?\.select\('id'\)[\s\S]*?BOOKING_NOT_FOUND/u)
+assert.match(clientsEdge, /if \(action === 'booking-update'\) \{[\s\S]*?BOOKING_NOT_FOUND/u)
+// The AI draft's whole response handling sits inside the refund path, and an
+// empty draft is a failure that gives the credits back.
+const draftAction = clientsEdge.slice(
+  clientsEdge.indexOf("if (action === 'sdr-profile-draft') {\n      const access"),
+  clientsEdge.indexOf("if (action === 'dashboard-slug-rotate') {\n      const access"),
+)
+assert.match(draftAction, /try \{\s*const response = await fetch\([\s\S]*?await response\.json\(\)[\s\S]*?came back empty[\s\S]*?\} catch \(error\) \{\s*await refundDraft\(\)/u)
 
 // Feed markup is decoded in one place, the prompt-variable registry, and the
 // pitch stage does not get its own decoder. It had one: a sequential replacer
