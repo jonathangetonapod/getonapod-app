@@ -206,7 +206,7 @@ export default function BlogPost() {
                 </span>
               </div>
               <p className="dfy-small">
-                Get On A Pod books founders, executives, authors and coaches on podcasts their customers already listen to.
+                Get On A Pod books tech founders and SaaS owners on podcasts their buyers already listen to.
               </p>
             </div>
 

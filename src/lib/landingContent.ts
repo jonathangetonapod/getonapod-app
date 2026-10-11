@@ -108,9 +108,9 @@ export interface Hero {
 }
 
 export const HERO: Hero = {
-  kicker: 'Done-for-you podcast guesting and clips for founders, executives, authors and coaches',
-  title: ['Get booked on the podcasts', 'your customers already listen to.'],
-  lead: 'Get On A Pod pitches you to active shows in your niche, puts confirmed recordings on your calendar and sends a prep brief before each one. Then every episode comes back as 5 captioned vertical clips, ready to post on LinkedIn, Instagram, TikTok and YouTube Shorts. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
+  kicker: 'Done-for-you podcast guesting and clips for tech founders and SaaS owners',
+  title: ['Get booked on the podcasts', 'your buyers already listen to.'],
+  lead: 'Get On A Pod pitches you to the SaaS, startup, AI and B2B shows your buyers, investors and future hires listen to, puts confirmed recordings on your calendar and sends a prep brief before each one. Then every episode comes back as 5 captioned vertical clips, ready to post on LinkedIn, Instagram, TikTok and YouTube Shorts. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
 }
 
 export const HERO_SECONDARY = 'See how it works'
@@ -136,41 +136,41 @@ export interface ShowCategory {
 }
 
 export const PODCAST_CATALOG: ShowCategory[] = [
-  { name: 'SaaS & Tech', shows: [
+  { name: 'SaaS & Startups', shows: [
     { name: 'The SaaS Podcast', about: 'Founder interviews on growth and funding', reach: '494 episodes', art: '/shows/the-saas-podcast.webp' },
+    { name: 'The Official SaaStr Podcast', about: 'SaaS founders, operators and investors', reach: '888 episodes', art: '/shows/saastr.webp' },
+    { name: 'Startups For the Rest of Us', about: 'Bootstrapped and mostly bootstrapped SaaS, with Rob Walling', reach: '329 episodes', art: '/shows/startups-for-the-rest-of-us.webp' },
     { name: 'Indie Hackers', about: 'Bootstrappers and small bets', reach: '290 episodes', art: '/shows/indie-hackers.webp' },
+  ] },
+  { name: 'AI', shows: [
+    { name: 'Latent Space', about: 'The AI engineer podcast', reach: '233 episodes', art: '/shows/latent-space.webp' },
+    { name: 'Practical AI', about: 'Making AI work in real products', reach: '377 episodes', art: '/shows/practical-ai.webp' },
+    { name: 'The TWIML AI Podcast', about: 'Machine learning research and practice', reach: '797 episodes', art: '/shows/twiml-ai.webp' },
+    { name: 'Eye On A.I.', about: 'Builders and researchers, with Craig S. Smith', reach: '386 episodes', art: '/shows/eye-on-ai.webp' },
+  ] },
+  { name: 'Product & Engineering', shows: [
     { name: 'Lenny\'s Podcast', about: 'Product, growth and career interviews', reach: '361 episodes', art: '/shows/lennys-podcast.webp' },
     { name: 'The Changelog', about: 'Software development and open source', reach: '1,014 episodes', art: '/shows/the-changelog.webp' },
+    { name: 'The Product Podcast', about: 'Product leaders, from Product School', reach: '854 episodes', art: '/shows/the-product-podcast.webp' },
+    { name: 'Product Thinking', about: 'Product management, with Melissa Perri', reach: '265 episodes', art: '/shows/product-thinking.webp' },
   ] },
-  { name: 'Marketing', shows: [
-    { name: 'Marketing School', about: 'Daily tactics, huge back catalog', reach: '2,000 episodes', art: '/shows/marketing-school.webp' },
-    { name: 'Everyone Hates Marketers', about: 'Positioning, argued plainly', reach: '310 episodes', art: '/shows/everyone-hates-marketers.webp' },
+  { name: 'Growth & GTM', shows: [
     { name: 'Marketing Against the Grain', about: 'HubSpot\'s growth and marketing show', reach: '458 episodes', art: '/shows/marketing-against-the-grain.webp' },
-    { name: 'Uncensored CMO', about: 'Interviews with marketing leaders', reach: '286 episodes', art: '/shows/uncensored-cmo.webp' },
+    { name: 'The Dave Gerhardt Show', about: 'B2B marketing, from Exit Five', reach: '412 episodes', art: '/shows/the-dave-gerhardt-show.webp' },
+    { name: 'Everyone Hates Marketers', about: 'Positioning, argued plainly', reach: '310 episodes', art: '/shows/everyone-hates-marketers.webp' },
+    { name: 'Revenue Builders', about: 'Sales leaders on building revenue teams', reach: '383 episodes', art: '/shows/revenue-builders.webp' },
   ] },
-  { name: 'Finance', shows: [
-    { name: 'Animal Spirits', about: 'Markets with a practitioner audience', reach: '817 episodes', art: '/shows/animal-spirits.webp' },
-    { name: 'Financial Advisor Success', about: 'Advisor practice management, with Michael Kitces', reach: '506 episodes', art: '/shows/financial-advisor-success.webp' },
-    { name: 'Fintech Insider', about: 'Fintech operators and news, from 11:FS', reach: '1,134 episodes', art: '/shows/fintech-insider.webp' },
-    { name: 'Afford Anything', about: 'Money, work and life, with Paula Pant', reach: '795 episodes', art: '/shows/afford-anything.webp' },
-  ] },
-  { name: 'Health & Wellness', shows: [
-    { name: 'The Dr. Hyman Show', about: 'Functional medicine with Dr. Mark Hyman', reach: '1,273 episodes', art: '/shows/the-dr-hyman-show.webp' },
-    { name: 'The Genius Life', about: 'Health, performance and longevity', reach: '598 episodes', art: '/shows/the-genius-life.webp' },
-    { name: 'Well Made', about: 'Building consumer brands, from Lumi', reach: '152 episodes', art: '/shows/well-made.webp' },
-    { name: 'Therapy Chat', about: 'Trauma-informed therapists and coaches', reach: '545 episodes', art: '/shows/therapy-chat.webp' },
-  ] },
-  { name: 'Leadership', shows: [
-    { name: 'Coaching for Leaders', about: 'Management practice, loyal audience', reach: '807 episodes', art: '/shows/coaching-for-leaders.webp' },
-    { name: 'Redefining Work', about: 'HR and people leaders, with Lars Schmidt', reach: '144 episodes', art: '/shows/redefining-work.webp' },
+  { name: 'Founders & Funding', shows: [
+    { name: 'The Twenty Minute VC', about: 'Venture capital and startup funding, with Harry Stebbings', reach: '1,519 episodes', art: '/shows/twenty-minute-vc.webp' },
     { name: 'How I Built This', about: 'Founders on how they built it, with Guy Raz', reach: '868 episodes', art: '/shows/how-i-built-this.webp' },
-    { name: 'The Next Big Idea', about: 'Authors on the year\'s big nonfiction', reach: '372 episodes', art: '/shows/the-next-big-idea.webp' },
+    { name: 'Masters of Scale', about: 'How companies grow, from WaitWhat', reach: '747 episodes', art: '/shows/masters-of-scale.webp' },
+    { name: 'Acquired', about: 'The stories behind great tech companies', reach: '217 episodes', art: '/shows/acquired.webp' },
   ] },
 ]
 
 export const PLAN_INCLUDES = [
-  'Targeted outreach to vetted shows in your niche, every week',
-  'Speaker one-sheet, positioning, and pitch angles written for you',
+  'Targeted outreach to vetted SaaS, startup, AI and B2B shows, every week',
+  'Speaker one-sheet, positioning and pitch angles written around your product and market',
   'You approve every show before we confirm the booking',
   'Prep brief and talking points before every recording',
   '5 captioned vertical clips from every episode, sized for LinkedIn, Reels, TikTok and Shorts — the files are yours',
@@ -184,7 +184,8 @@ export interface Faq {
 
 export const FAQ: Faq[] = [
   { q: 'How many shows will I get booked on?', a: "It depends on your niche and how bookable your story is, but most clients see 2–4 confirmed bookings a month once outreach ramps up (usually by week three). We tell you the honest number for your niche on the first call — including if it's lower." },
-  { q: 'What kinds of podcasts do you pitch?', a: 'Vetted, active shows with real audiences in your space — not pay-to-play placements or dormant feeds. You see every show before we pitch it, and you approve every booking before we confirm.' },
+  { q: 'Who is this for?', a: 'Founders and executives at software, SaaS and tech companies, from bootstrapped to venture-backed. It works best when you sell to businesses, have a story about the problem your product solves, and want your buyers, investors and future hires to hear it from you.' },
+  { q: 'What kinds of podcasts do you pitch?', a: 'Vetted, active SaaS, startup, AI, product and B2B shows with real audiences — not pay-to-play placements or dormant feeds. You see every show before we pitch it, and you approve every booking before we confirm.' },
   { q: 'When do I record my first episode?', a: 'Pitches go out in week one. Most clients have their first recording on the calendar within 3–5 weeks, and episodes typically publish 2–8 weeks after recording, depending on the show.' },
   { q: 'Do I get clips from my episodes?', a: 'Yes, clipping is included. When an episode publishes, we get the full recording from the host and cut 5 vertical clips from its strongest moments, captioned so they work with the sound off and sized for LinkedIn, Instagram Reels, TikTok and YouTube Shorts. At 2–4 bookings a month, that is roughly 10–20 clips a month to post. The files are yours to keep and reuse.' },
   { q: 'Is there a contract?', a: "A 3-month minimum to start — that's how long it takes outreach to ramp and bookings to land. After that it's month to month, cancel anytime. If we're not putting you on shows worth your time, you shouldn't be paying us." },

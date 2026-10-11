@@ -32,7 +32,7 @@ function renderPage(path = '/') {
 describe('Landing', () => {
   it('opens on the podcast offer and books calls where the rest of the site does', () => {
     renderPage()
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/get booked on the podcasts\s*your customers already listen to/iu)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/get booked on the podcasts\s*your buyers already listen to/iu)
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#main')
     // Two doors, named for who walks through them.
     expect(screen.getAllByRole('link', { name: 'Client sign-in' })[0]).toHaveAttribute('href', '/portal/login')
@@ -85,27 +85,27 @@ describe('Landing', () => {
   it('lets the reader browse sample shows by niche', () => {
     renderPage()
     const tabs = screen.getByRole('tablist', { name: 'Niche' })
-    expect(within(tabs).getByRole('tab', { name: 'SaaS & Tech' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(tabs).getByRole('tab', { name: 'SaaS & Startups' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('The SaaS Podcast')).toBeInTheDocument()
     // Every podcast is a real show with its artwork; no initials plates remain.
     expect(screen.getByRole('img', { name: 'The SaaS Podcast artwork' })).toHaveAttribute('src', '/shows/the-saas-podcast.webp')
     expect(screen.getAllByRole('img', { name: /artwork$/u })).toHaveLength(4)
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Finance' }))
-    expect(screen.getByText('Animal Spirits')).toBeInTheDocument()
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'AI' }))
+    expect(screen.getByText('Latent Space')).toBeInTheDocument()
     expect(screen.queryByText('The SaaS Podcast')).not.toBeInTheDocument()
   })
 
   it('walks the niches with the arrow keys, one tab stop for the strip', () => {
     renderPage()
     const tabs = screen.getByRole('tablist', { name: 'Niche' })
-    const first = within(tabs).getByRole('tab', { name: 'SaaS & Tech' })
+    const first = within(tabs).getByRole('tab', { name: 'SaaS & Startups' })
     expect(first).toHaveAttribute('tabindex', '0')
-    expect(within(tabs).getByRole('tab', { name: 'Marketing' })).toHaveAttribute('tabindex', '-1')
+    expect(within(tabs).getByRole('tab', { name: 'AI' })).toHaveAttribute('tabindex', '-1')
     fireEvent.keyDown(tabs, { key: 'ArrowRight' })
-    expect(within(tabs).getByRole('tab', { name: 'Marketing' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Marketing School')).toBeInTheDocument()
+    expect(within(tabs).getByRole('tab', { name: 'AI' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Latent Space')).toBeInTheDocument()
     fireEvent.keyDown(tabs, { key: 'End' })
-    expect(within(tabs).getByRole('tab', { name: 'Leadership' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(tabs).getByRole('tab', { name: 'Founders & Funding' })).toHaveAttribute('aria-selected', 'true')
     fireEvent.keyDown(tabs, { key: 'ArrowRight' })
     expect(first).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', first.id)

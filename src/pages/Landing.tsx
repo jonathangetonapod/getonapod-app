@@ -94,17 +94,17 @@ const PodcastsHow = () => (
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">01</p>
       <h2 className="dfy-how-title">We craft your story</h2>
-      <p className="dfy-how-copy">A one-hour positioning interview in week one. From it we write your positioning, a speaker one-sheet and three angles a host can put in front of their audience.</p>
+      <p className="dfy-how-copy">A one-hour positioning interview in week one. From it we write your positioning, a speaker one-sheet and three angles a host can put in front of their audience: how you built the company, the problem your product solves and your view on where your market is going.</p>
     </div>
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">02</p>
       <h2 className="dfy-how-title">We pitch the right shows</h2>
-      <p className="dfy-how-copy">Pitches go out in week one, each written for that show, with researched follow-ups. We pitch active podcasts with real audiences in your niche, never paid placements, and you approve every show before we confirm.</p>
+      <p className="dfy-how-copy">Pitches go out in week one, each written for that show, with researched follow-ups. We pitch active SaaS, startup, AI and B2B podcasts with real audiences, never paid placements, and you approve every show before we confirm.</p>
     </div>
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">03</p>
       <h2 className="dfy-how-title">You show up and talk</h2>
-      <p className="dfy-how-copy">Most clients record their first episode within 3–5 weeks. Every booking lands on your calendar with a prep brief: the host, the audience, the angle and the one thing to plug.</p>
+      <p className="dfy-how-copy">Most clients record their first episode within 3–5 weeks. Every booking lands on your calendar with a prep brief: the host, the audience, the angle and the one thing to plug, whether that is a trial, a demo or a job opening.</p>
     </div>
     <div className="dfy-how-row">
       <p className="dfy-how-n dfy-tnum">04</p>
@@ -388,10 +388,10 @@ const Landing = () => {
   return (
     <div className="dfy-page">
       <PageSEO
-        title="Get booked on podcasts your customers listen to | Get On A Pod"
+        title="Podcast booking for tech founders and SaaS owners | Get On A Pod"
         description={HERO.lead}
         path="/"
-        keywords="podcast guesting service, done-for-you podcast booking, podcast guest booking, thought leadership, founder marketing"
+        keywords="podcast booking for SaaS founders, tech founder podcast guesting, B2B SaaS podcast marketing, done-for-you podcast booking, founder-led marketing"
       />
       <a className="dfy-skip" href="#main">Skip to content</a>
 
@@ -437,7 +437,7 @@ const Landing = () => {
         <div className="dfy-footer-grid">
           <div>
             <span className="dfy-brand"><Brand /></span>
-            <p className="dfy-footer-tagline">Done-for-you podcast guesting. You bring the story — we get you on the show.</p>
+            <p className="dfy-footer-tagline">Done-for-you podcast guesting for tech founders and SaaS owners. You bring the story — we get you on the show.</p>
           </div>
           <div className="dfy-footer-col">
             <span className="dfy-footer-head">Explore</span>
