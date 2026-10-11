@@ -477,7 +477,7 @@ export async function notifyWorkspaceOfApprovals(
   const origin = appOrigin()
   const url = origin ? `${origin}/app/clients/${input.clientId}` : null
   const { html, text } = renderEmail({
-    workspaceName: String(workspace?.name || 'Get On A Pod'),
+    workspaceName: String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team',
     heading: `${clientName} is approving shows`,
     greetingName: 'team',
     body: [
@@ -494,7 +494,7 @@ export async function notifyWorkspaceOfApprovals(
     kind: 'client_approved',
     eventKey: `approvals:${input.day}`,
     recipients: emails,
-    workspaceName: String(workspace?.name || 'Get On A Pod'),
+    workspaceName: String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team',
     subject: `${clientName} approved a podcast`,
     html,
     text,

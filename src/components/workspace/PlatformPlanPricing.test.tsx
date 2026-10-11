@@ -74,7 +74,7 @@ describe('PlatformPlanPricing', () => {
     expect(save).toBeEnabled()
     fireEvent.click(save)
 
-    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('founding_member', 4950, 100))
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('founding_member', 4950, 100, { applyToExistingSubscribers: false }))
   })
 
   // Standard is seeded at 9900 with no Stripe Price. Comparing only the number
@@ -90,7 +90,7 @@ describe('PlatformPlanPricing', () => {
     expect(save).toBeEnabled()
 
     fireEvent.click(save)
-    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('standard', 9900, 100))
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('standard', 9900, 100, { applyToExistingSubscribers: false }))
   })
 
   // Once a plan has a Price, saving the same number again is churn.
@@ -117,7 +117,27 @@ describe('PlatformPlanPricing', () => {
     expect(save).toBeEnabled()
     fireEvent.click(save)
 
-    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('founding_member', 3900, 250))
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('founding_member', 3900, 250, { applyToExistingSubscribers: false }))
+  })
+
+  // An allowance edit reaches existing subscribers only when asked: the
+  // screen says so, and the opt-in is sent with the save.
+  it('says existing subscribers keep their allowance unless the backfill is ticked', async () => {
+    mockedList.mockResolvedValue(plans as never)
+    mockedUpdate.mockResolvedValue(plans as never)
+    renderPanel()
+
+    await screen.findByText('price_founding')
+    expect(screen.getByTestId('allowance-note')).toHaveTextContent('Existing subscribers keep their current allowance')
+
+    const credits = screen.getByLabelText('Credits/month', { selector: '#plan-credits-founding_member' })
+    fireEvent.change(credits, { target: { value: '250' } })
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Apply to existing subscribers' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
+
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith(
+      'founding_member', 3900, 250, { applyToExistingSubscribers: true },
+    ))
   })
 
   it('refuses an amount that is not money', async () => {

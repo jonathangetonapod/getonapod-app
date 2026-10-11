@@ -2328,7 +2328,7 @@ export default function ClientDetail() {
                         <Input
                           type={showPassword ? 'text' : 'password'}
                           aria-label="Portal password"
-                          placeholder={client.password_set_at ? 'Enter a new password' : 'Enter password'}
+                          placeholder={client.password_set_at ? 'New password, 12+ characters' : 'Password, 12+ characters'}
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           className="flex-1"
@@ -2355,7 +2355,7 @@ export default function ClientDetail() {
                         <Button
                           size="sm"
                           onClick={handleSetPassword}
-                          disabled={newPassword.length < 8 || settingPassword}
+                          disabled={newPassword.length < 12 || settingPassword}
                           className="flex-1"
                         >
                           {settingPassword ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Key className="mr-2 h-3 w-3" />}

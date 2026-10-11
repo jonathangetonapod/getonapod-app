@@ -154,7 +154,11 @@ async function handlePlanAdministration(
     return jsonResponse(req, METHODS, 200, { success: true, plans: await loadPlans(admin) })
   }
 
-  requireOnlyKeys(body, ['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance'])
+  requireOnlyKeys(body, ['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers'])
+  if (body.apply_to_existing_subscribers !== undefined && typeof body.apply_to_existing_subscribers !== 'boolean') {
+    throw new HttpError(400, 'INVALID_FIELD', 'apply_to_existing_subscribers must be true or false')
+  }
+  const applyToExisting = body.apply_to_existing_subscribers === true
   const planKey = requireString(body.plan_key, 'plan_key', { max: 40 })
   const amount = typeof body.base_price_cents === 'number' && Number.isSafeInteger(body.base_price_cents)
     ? body.base_price_cents
@@ -193,7 +197,8 @@ async function handlePlanAdministration(
   if (allowanceChanged) {
     // Recorded on the plan, and applied to a workspace when its subscription
     // next moves onto the plan. Existing subscribers keep what they have until
-    // then, the same way Stripe leaves them on the price they signed up at.
+    // then, the same way Stripe leaves them on the price they signed up at —
+    // unless the admin asked for apply_to_existing_subscribers below.
     const { error: allowanceError } = await admin
       .from('billing_plans')
       .update({ monthly_credit_allowance: allowance, updated_at: new Date().toISOString() })
@@ -201,6 +206,37 @@ async function handlePlanAdministration(
     if (allowanceError) {
       throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The allowance could not be recorded')
     }
+  }
+
+  // Opt-in, because it changes what workspaces that already pay are given:
+  // without it an allowance edit reaches a workspace only when its
+  // subscription next moves onto the plan. Comped and other plans are left
+  // alone — only rows on this plan take this plan's allowance.
+  let backfilledWorkspaces: number | null = null
+  if (applyToExisting) {
+    const targetAllowance = allowance ?? plan.monthly_credit_allowance
+    const { data: backfilled, error: backfillError } = await admin
+      .from('workspace_billing_profiles')
+      .update({ monthly_credit_allowance: targetAllowance, updated_at: new Date().toISOString() })
+      .eq('plan_key', planKey)
+      .neq('monthly_credit_allowance', targetAllowance)
+      .select('workspace_id')
+    if (backfillError) {
+      throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The allowance could not be applied to existing subscribers')
+    }
+    backfilledWorkspaces = (backfilled ?? []).length
+    await writeAudit(admin, {
+      workspaceId: null,
+      actorUserId: authContext.user.id,
+      action: 'billing_plan_allowance_backfilled',
+      entityType: 'billing_plan',
+      entityId: null,
+      metadata: {
+        plan_key: planKey,
+        to_credits: targetAllowance,
+        workspaces: backfilledWorkspaces,
+      },
+    })
   }
 
   let priceId = plan.stripe_price_id ?? ''
@@ -271,8 +307,9 @@ async function handlePlanAdministration(
     return jsonResponse(req, METHODS, 200, {
       success: true,
       plans: updated,
-      unchanged: !allowanceChanged,
+      unchanged: !allowanceChanged && backfilledWorkspaces === null,
       portal_configuration_id: configurationId,
+      backfilled_workspaces: backfilledWorkspaces,
     })
   }
 
@@ -291,7 +328,7 @@ async function handlePlanAdministration(
     },
   })
 
-  return jsonResponse(req, METHODS, 200, { success: true, plans: updated })
+  return jsonResponse(req, METHODS, 200, { success: true, plans: updated, backfilled_workspaces: backfilledWorkspaces })
 }
 
 serve(async (req) => {
@@ -337,11 +374,22 @@ serve(async (req) => {
     const admin = createAdminClient()
     const { data: profile, error: profileError } = await admin
       .from('workspace_billing_profiles')
-      .select('stripe_customer_id, stripe_subscription_id, plan_key')
+      .select('stripe_customer_id, stripe_subscription_id, plan_key, billing_status')
       .eq('workspace_id', workspaceId)
       .maybeSingle()
     if (profileError) {
       throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Billing data could not be read')
+    }
+
+    // A second checkout for a workspace that already subscribes is a second
+    // subscription, billed in full alongside the first. Changing plans is the
+    // portal's job, so the caller is sent there instead. A suspended row is a
+    // subscription that has ended, which is exactly when a new one is right.
+    const alreadySubscribed = typeof profile?.stripe_subscription_id === 'string'
+      && profile.stripe_subscription_id.length > 0
+      && profile.billing_status !== 'suspended'
+    if (action === 'subscription-create' && alreadySubscribed) {
+      throw new HttpError(409, 'SUBSCRIPTION_EXISTS', 'This workspace already has a plan. Change it from the billing portal')
     }
 
     // A customer is created once and reused. Without this the portal would open
@@ -408,6 +456,21 @@ serve(async (req) => {
     const priceId = plan.stripe_price_id?.trim()
     if (!priceId) {
       throw new HttpError(500, 'PLAN_NOT_CONFIGURED', 'This plan cannot be bought yet. Contact support')
+    }
+
+    // The row above only knows what the webhook has recorded so far. A
+    // checkout finished a moment ago — or a subscription made in the Stripe
+    // dashboard — can be live on the customer before that lands, so Stripe is
+    // asked too.
+    const existing = await stripeGet(
+      `subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`,
+      stripeKey,
+    )
+    const ENDED = new Set(['canceled', 'incomplete_expired'])
+    const live = ((existing.data as Array<Record<string, unknown>> | undefined) ?? [])
+      .some((candidate) => typeof candidate.status === 'string' && !ENDED.has(candidate.status))
+    if (live) {
+      throw new HttpError(409, 'SUBSCRIPTION_EXISTS', 'This workspace already has a plan. Change it from the billing portal')
     }
 
     const session = await stripePost('checkout/sessions', new URLSearchParams({

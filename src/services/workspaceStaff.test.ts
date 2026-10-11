@@ -7,6 +7,7 @@ import {
   resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
+  updateBillingPlanPrice,
   updateWorkspaceClientBranding,
   updateWorkspaceLogo,
   updateWorkspaceName,
@@ -612,5 +613,30 @@ describe('workspaceStaff', () => {
       'Staff action is invalid.',
     )
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateBillingPlanPrice', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('sends the backfill opt-in only when asked, and returns the plans', async () => {
+    const plans = [{ plan_key: 'standard', display_name: 'Standard', base_price_cents: 9900, monthly_credit_allowance: 300, stripe_price_id: 'price_x', is_purchasable: true }]
+    invoke.mockResolvedValue({ data: { success: true, plans, backfilled_workspaces: 4 }, error: null })
+
+    await expect(updateBillingPlanPrice('standard', 9900, 300, { applyToExistingSubscribers: true })).resolves.toEqual(plans)
+    expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
+      body: {
+        action: 'plans-update',
+        plan_key: 'standard',
+        base_price_cents: 9900,
+        monthly_credit_allowance: 300,
+        apply_to_existing_subscribers: true,
+      },
+    })
+
+    await updateBillingPlanPrice('standard', 9900, 300)
+    expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
+      body: { action: 'plans-update', plan_key: 'standard', base_price_cents: 9900, monthly_credit_allowance: 300 },
+    })
   })
 })

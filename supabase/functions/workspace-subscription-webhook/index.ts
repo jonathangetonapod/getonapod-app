@@ -99,10 +99,60 @@ serve(async (req) => {
 
   const subscription = event.data?.object ?? {}
   const metadata = (subscription.metadata ?? {}) as Record<string, unknown>
-  const workspaceId = typeof metadata.workspace_id === 'string' ? metadata.workspace_id : null
+  const subscriptionId = typeof subscription.id === 'string' ? subscription.id : null
+  const admin = createAdminClient()
+
+  // Our checkout stamps workspace_id on the subscription. One created in the
+  // Stripe dashboard carries nothing of ours, but it is still on the
+  // workspace's customer — that customer id is recorded the first time the
+  // workspace opens billing, so it names the workspace just as well.
+  let workspaceId = typeof metadata.workspace_id === 'string' ? metadata.workspace_id : null
   if (!workspaceId) {
-    console.error('[Workspace Subscription Webhook] Subscription missing workspace_id metadata')
+    const customer = subscription.customer
+    const customerId = typeof customer === 'string'
+      ? customer
+      : (customer && typeof (customer as { id?: unknown }).id === 'string' ? (customer as { id: string }).id : null)
+    if (customerId) {
+      const { data: owners, error: ownerError } = await admin
+        .from('workspace_billing_profiles')
+        .select('workspace_id')
+        .eq('stripe_customer_id', customerId)
+        .limit(2)
+      if (ownerError) {
+        console.error('[Workspace Subscription Webhook] Customer lookup failed')
+        return json(500, { error: 'LOOKUP_FAILED' })
+      }
+      // Exactly one, or none: a customer shared by two workspaces cannot say
+      // which of them subscribed, and guessing would bill the wrong one.
+      if ((owners ?? []).length === 1) workspaceId = String(owners[0].workspace_id)
+    }
+  }
+  if (!workspaceId) {
+    console.error('[Workspace Subscription Webhook] Subscription has no workspace_id metadata and no known customer')
     return json(200, { received: true, ignored: 'missing metadata' })
+  }
+
+  // Which subscription the workspace is on now. A second subscription — made
+  // in the dashboard, or a duplicate checkout — must not be able to cancel or
+  // rewrite the one the workspace actually holds, so an update or deletion
+  // for a different subscription is ignored. A creation still lands: it is
+  // how a workspace moves onto a new subscription after the old one ended.
+  const { data: current, error: currentError } = await admin
+    .from('workspace_billing_profiles')
+    .select('stripe_subscription_id')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+  if (currentError) {
+    console.error('[Workspace Subscription Webhook] Billing profile read failed')
+    return json(500, { error: 'PROFILE_UNAVAILABLE' })
+  }
+  const storedSubscriptionId = typeof current?.stripe_subscription_id === 'string' && current.stripe_subscription_id
+    ? current.stripe_subscription_id
+    : null
+  const guardsCurrent = event.type !== 'customer.subscription.created'
+  if (guardsCurrent && storedSubscriptionId && storedSubscriptionId !== subscriptionId) {
+    console.warn('[Workspace Subscription Webhook] Event for a subscription the workspace is not on; ignored')
+    return json(200, { received: true, ignored: 'different subscription' })
   }
 
   const stripeStatus = typeof subscription.status === 'string' ? subscription.status : ''
@@ -123,7 +173,6 @@ serve(async (req) => {
     ? new Date(event.created * 1000).toISOString()
     : new Date().toISOString()
 
-  const admin = createAdminClient()
   const update: Record<string, unknown> = {
     billing_status: billingStatus,
     last_subscription_event_at: eventAt,
@@ -135,7 +184,7 @@ serve(async (req) => {
     update.cancel_at_period_end = false
     update.current_period_end = null
   } else {
-    update.stripe_subscription_id = typeof subscription.id === 'string' ? subscription.id : null
+    update.stripe_subscription_id = subscriptionId
 
     // A portal cancellation takes effect at period end, and arrives as an
     // update with the subscription still active. Recorded, or a plan on its way
@@ -183,12 +232,19 @@ serve(async (req) => {
   // The comparison is part of the write, not a read before it: two deliveries
   // racing would both pass a separate check and the later-arriving one would
   // still win. Postgres settles it on the row.
-  const { data, error } = await admin
+  let write = admin
     .from('workspace_billing_profiles')
     .update(update)
     .eq('workspace_id', workspaceId)
     .or(`last_subscription_event_at.is.null,last_subscription_event_at.lte.${eventAt}`)
-    .select('workspace_id')
+  // The subscription check above, repeated in the write so a creation landing
+  // between the read and this update cannot be overwritten by the old one.
+  if (guardsCurrent) {
+    write = storedSubscriptionId
+      ? write.eq('stripe_subscription_id', storedSubscriptionId)
+      : write.is('stripe_subscription_id', null)
+  }
+  const { data, error } = await write.select('workspace_id')
   if (error) {
     console.error('[Workspace Subscription Webhook] Billing profile update failed')
     // Non-200 makes Stripe retry. The update is idempotent — it sets state

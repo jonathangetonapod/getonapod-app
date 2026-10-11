@@ -9,6 +9,7 @@ import {
   generateOnboardingPreviewPng,
   loadClientDashboardShareMetadata,
   loadOnboardingShareMetadata,
+  neutralApplicationShell,
   whiteLabelOnboardingShell,
 } from './serve-production.mjs'
 
@@ -128,6 +129,27 @@ assert.match(clientShell, /name="robots" content="noindex, nofollow, noarchive"/
 assert.match(clientShell, /rel="icon" href="https:\/\/project\.supabase\.co\/storage\/v1\/object\/public\/workspace-logos\/northstar\/logo\.webp"/u)
 assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"|Get On A Pod|site\.webmanifest|favicon\.svg/iu)
 
+{
+  const marketingSource = '<!doctype html><html><head><meta name="application-name" content="Get On A Pod" /><meta name="apple-mobile-web-app-title" content="Get On A Pod" /><link rel="icon" type="image/svg+xml" href="/favicon.svg" /><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" /><link rel="manifest" href="/site.webmanifest" /><title>Podcast booking | Get On A Pod</title><!-- Structured Data --><script type="application/ld+json">{"@type":"Organization","name":"Get On A Pod"}</script><script type="application/ld+json">{"@type":"FAQPage"}</script></head><body></body></html>'
+  for (const route of ['/portal/login', '/portal/dashboard', '/prospect/private-capability']) {
+    const shell = neutralApplicationShell(marketingSource, route)
+    assert.doesNotMatch(shell, /Get On A Pod|application\/ld\+json|favicon\.svg|apple-touch-icon\.png|site\.webmanifest/iu, route)
+    assert.match(shell, /<link rel="icon" href="data:," \/>/u, route)
+  }
+  assert.match(neutralApplicationShell(marketingSource, '/portal/login'), /<title>Client portal<\/title>/u)
+  const agencyShell = neutralApplicationShell(marketingSource, '/app/clients')
+  assert.doesNotMatch(agencyShell, /application\/ld\+json|Podcast booking/iu, 'the agency app drops the marketing head')
+  assert.match(agencyShell, /<title>Get On A Pod<\/title>/u)
+  assert.match(agencyShell, /favicon\.svg/u, 'the agency app keeps the platform icon')
+
+  const builtIndex = readFileSync('index.html', 'utf8')
+  for (const type of ['Organization', 'Service', 'FAQPage']) {
+    assert.match(builtIndex, new RegExp(`"@type": "${type}"`, 'u'), `index.html must keep the ${type} JSON-LD for /`)
+  }
+  assert.doesNotMatch(neutralApplicationShell(builtIndex, '/portal/login'), /Get On A Pod|application\/ld\+json/iu)
+  assert.doesNotMatch(neutralApplicationShell(builtIndex, '/prospect/abc'), /Get On A Pod|application\/ld\+json/iu)
+}
+
 const generatedPreview = generateOnboardingPreviewPng('#BE185D')
 assert.deepEqual([...generatedPreview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
 assert.equal(generatedPreview.readUInt32BE(16), 1200)
@@ -210,6 +232,15 @@ try {
   assert.doesNotMatch(onboardingHtml, /Get On A Pod|getonapod\.com/iu)
   assert.doesNotMatch(onboardingHtml, /application\/ld\+json|property="og:url"|name="twitter:url"/iu)
 
+  for (const route of ['/portal/login', '/portal/dashboard', '/prospect/private-capability']) {
+    const html = await (await fetch(`${origin}${route}`)).text()
+    assert.doesNotMatch(html, /Get On A Pod|getonapod\.com|application\/ld\+json|site\.webmanifest/iu, route)
+  }
+  {
+    const html = await (await fetch(`${origin}/app/clients`)).text()
+    assert.doesNotMatch(html, /application\/ld\+json/iu, '/app/clients must not carry the marketing structured data')
+  }
+
   const previewImage = await fetch(`${origin}/onboarding-link-preview.png?accent=BE185D`)
   assert.equal(previewImage.status, 200)
   assertSecurityHeaders(previewImage, '/onboarding-link-preview.png')
@@ -243,6 +274,8 @@ try {
     assert.equal(response.headers.get('x-robots-tag'), null, route)
     if (route === '/') indexHtml = await response.text()
   }
+  assert.match(indexHtml, /application\/ld\+json/u, '/ must keep its structured data for crawlers')
+  assert.match(indexHtml, /"@type": "FAQPage"/u, '/ must keep its FAQ structured data')
 
   const assetPath = indexHtml.match(/src="(\/assets\/[^"]+\.js)"/u)?.[1]
   assert.ok(assetPath, 'built index must reference a hashed JavaScript asset')

@@ -154,4 +154,24 @@ assert.match(refill, /\['past_due', 'suspended'\]\.includes\(billingStatus\)/u)
 // The Stripe status names never appear in billing_status, so matching on them
 // skipped nobody.
 assert.doesNotMatch(refill, /'canceled', 'cancelled'/u)
+// Every eligible profile, in a fair order: a bare .limit(200) with no order let
+// the same rows win every hour and starved the rest.
+assert.doesNotMatch(refill, /\.limit\(200\)/u)
+assert.match(refill, /\.order\('last_refill_attempt_at', \{ ascending: true, nullsFirst: true \}\)/u)
+assert.match(refill, /\.range\(offset, offset \+ PAGE_SIZE - 1\)/u)
+// Failures persist on the profile; three in a row pause the workspace and
+// tell its owner, and a failed day is not retried within the same day.
+assert.match(refill, /const MAX_CONSECUTIVE_FAILURES = 3/u)
+assert.match(refill, /\.lt\('refill_failure_count', MAX_CONSECUTIVE_FAILURES\)/u)
+assert.match(refill, /if \(count === MAX_CONSECUTIVE_FAILURES\) \{\n\s+await notifyOwnerRefillPaused/u)
+assert.match(refill, /if \(lastFailedDay === today\)/u)
+assert.match(refill, /\.eq\('role', 'owner'\)/u)
+// The Stripe idempotency key is still the day's refill key.
+assert.match(refill, /stripePost\('payment_intents', form, stripeKey, refillKey\)/u)
 
+// The start write after the build charge sits before the failure boundary, so
+// it refunds on its own when it fails.
+assert.match(
+  prospectBuild,
+  /if \(startError\) \{[\s\S]{0,400}await refundCredits\(context\.admin, \{[\s\S]{0,200}reason: 'prospect dashboard build could not be started'/u,
+)

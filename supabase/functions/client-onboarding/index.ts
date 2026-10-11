@@ -14,6 +14,7 @@ import {
 import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { requestHostname, requireServedByHost, resolveHostWorkspaceId } from '../_shared/workspaceDomain.ts'
 import { logOperationCost } from '../_shared/billing.ts'
+import { reservePublicRate } from '../_shared/publicRateLimit.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
   generatePitchProfile,
@@ -28,6 +29,19 @@ const METHODS = ['POST'] as const
 const BUCKET = 'workspace-onboarding-assets'
 const MAX_BODY_BYTES = 15_000_000
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+/*
+ * Per-link write limits. Anyone holding the link can write, and the token is
+ * the only credential, so a leaked or scripted link could otherwise drive
+ * unbounded autosaves and multi-megabyte uploads into storage. Autosave fires
+ * about a second after typing stops, so the save ceiling sits well above a
+ * fast typist; uploads are the expensive writes and get the tightest one.
+ */
+const CLIENT_WRITE_LIMITS: Record<string, { limit: number; windowSeconds: number }> = {
+  save: { limit: 600, windowSeconds: 10 * 60 },
+  upload: { limit: 60, windowSeconds: 60 * 60 },
+  delete_upload: { limit: 120, windowSeconds: 60 * 60 },
+}
 
 function capabilitySecret(): string {
   const value = Deno.env.get('ONBOARDING_CAPABILITY_SECRET')?.trim()
@@ -285,8 +299,11 @@ serve(async (req) => {
      * buffer fills is the declared size. A chunked request with no length is
      * refused outright rather than trusted to be small.
      */
-    const declaredLength = Number(req.headers.get('content-length') ?? '')
-    if (!Number.isFinite(declaredLength)) {
+    // Number('') is 0, so a missing or empty header used to pass as a tiny
+    // body. Only a non-negative integer counts as declared.
+    const lengthHeader = req.headers.get('content-length')?.trim() ?? ''
+    const declaredLength = /^\d+$/u.test(lengthHeader) ? Number(lengthHeader) : Number.NaN
+    if (!Number.isSafeInteger(declaredLength)) {
       throw new HttpError(411, 'LENGTH_REQUIRED', 'Requests must declare a Content-Length')
     }
     if (declaredLength > MAX_BODY_BYTES) {
@@ -306,6 +323,26 @@ serve(async (req) => {
     const token = body.token
     const capability = await verifyOnboardingCapability(token, capabilitySecret())
     const admin = createAdminClient()
+
+    const writeLimit = CLIENT_WRITE_LIMITS[action]
+    if (writeLimit) {
+      // A broken limiter must not lose a client's answers: if the reservation
+      // itself fails, the write goes ahead. The limiter is abuse protection,
+      // not a correctness guarantee.
+      let allowed = true
+      try {
+        allowed = await reservePublicRate(admin, [{
+          bucket: `onboarding-${action}:${capability.instanceId}`,
+          limit: writeLimit.limit,
+          windowSeconds: writeLimit.windowSeconds,
+        }])
+      } catch {
+        allowed = true
+      }
+      if (!allowed) {
+        throw new HttpError(429, 'RATE_LIMITED', 'Too many changes in a short time. Wait a few minutes, then try again. Everything already saved is safe.')
+      }
+    }
 
     const initial = await admin.rpc('workspace_onboarding_client_operation_v1', {
       p_action: 'get',

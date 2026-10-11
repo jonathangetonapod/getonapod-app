@@ -44,6 +44,9 @@ serve(async (req) => {
 
     if (error) {
       const message = error.message.toLowerCase()
+      if (message.includes('confirmed sign-in')) {
+        throw new HttpError(403, 'EMAIL_UNCONFIRMED', 'Confirm your email address before accepting this invitation')
+      }
       if (message.includes('expired')) {
         throw new HttpError(410, 'INVITE_EXPIRED', 'This invitation has expired')
       }

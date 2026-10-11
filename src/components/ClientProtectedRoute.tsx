@@ -4,6 +4,7 @@ import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Loader2, ShieldX } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { portalLoginPath } from '@/components/portal/portalBrandMemory'
 
 interface ClientProtectedRouteProps {
   children: React.ReactNode
@@ -30,8 +31,9 @@ export const ClientProtectedRoute = ({ children }: ClientProtectedRouteProps) =>
 
   // Allow access if client exists (either authenticated or admin impersonating)
   if (!client) {
-    // Redirect to portal login, preserving the attempted URL
-    return <Navigate to="/portal/login" state={{ from: location, sessionExpired: hadClient.current }} replace />
+    // Redirect to portal login, preserving the attempted URL and the agency
+    // this tab arrived through, so the sign-in stays white-labelled.
+    return <Navigate to={portalLoginPath()} state={{ from: location, sessionExpired: hadClient.current }} replace />
   }
 
   return <>{children}</>
@@ -50,7 +52,7 @@ export const PortalAccessDenied = ({ message, onRetry }: { message?: string, onR
           </div>
           <CardTitle className="text-2xl">Access Denied</CardTitle>
           <CardDescription>
-            {message || 'You do not have access to the client portal. Please contact support for assistance.'}
+            {message || 'You do not have access to the client portal. Contact the team that invited you.'}
           </CardDescription>
         </CardHeader>
         {onRetry && (

@@ -193,4 +193,50 @@ describe('OnboardingReviewDialog', () => {
     renderDialog()
     expect(screen.getByRole('button', { name: 'Approve onboarding' })).toBeDisabled()
   })
+
+  it('lists every file uploaded for a question', () => {
+    render(
+      <OnboardingReviewDialog
+        open
+        detail={{
+          ...detail,
+          assets: [
+            ...detail.assets,
+            { ...detail.assets[0], id: '88888888-8888-4888-8888-888888888888', original_name: 'headshot-alt.png', signed_url: null },
+          ],
+        }}
+        canManage
+        busy={false}
+        onOpenChange={vi.fn()}
+        onApprove={vi.fn()}
+        onRequestChanges={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('link', { name: /headshot.webp/u })).toBeInTheDocument()
+    expect(screen.getByText(/headshot-alt.png · preview unavailable/u)).toBeInTheDocument()
+  })
+
+  it('lets a manager change which teammates can view the onboarding', () => {
+    const onUpdateAssignments = vi.fn()
+    const memberId = '99999999-9999-4999-8999-999999999999'
+    render(
+      <OnboardingReviewDialog
+        open
+        detail={detail}
+        canManage
+        busy={false}
+        onOpenChange={vi.fn()}
+        onApprove={vi.fn()}
+        onRequestChanges={vi.fn()}
+        assignableMembers={[{ id: memberId, full_name: 'Riley Teammate', email: 'riley@example.com' }]}
+        onUpdateAssignments={onUpdateAssignments}
+      />,
+    )
+    expect(screen.getByRole('group', { name: /Teammates who can view this onboarding/u })).toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Save access' })
+    expect(save).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Riley Teammate' }))
+    fireEvent.click(save)
+    expect(onUpdateAssignments).toHaveBeenCalledWith([memberId])
+  })
 })

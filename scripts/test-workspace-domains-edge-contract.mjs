@@ -324,7 +324,29 @@ assert.doesNotMatch(providers, /const nextStatus = serving \? 'active' : 'awaiti
 assert.match(check, /const serving = nextStatus === 'active'/u)
 // A domain still has to be genuinely serving before links can be built from
 // it — provisioning is progress, not a green light.
-assert.match(admin, /domain\.status !== 'active'[\s\S]{0,200}DOMAIN_NOT_SERVING/u)
+// The switch is one database transaction (20261011000300): clearing the old
+// primary and setting the new one as two edge writes left the workspace with
+// no primary whenever the second write failed.
+const primaryMigration = readFileSync(
+  'supabase/migrations/20261011000300_review_fixes_refunds_autopilot_primary_domain.sql',
+  'utf8',
+)
+assert.match(admin, /\.rpc\('set_workspace_primary_domain_v1', \{ p_domain_id: domainId \}\)/u)
+assert.match(admin, /DOMAIN_NOT_SERVING/u)
+const setPrimaryBlock = admin.slice(admin.indexOf("if (action === 'set_primary')"), admin.indexOf("if (action !== 'remove')"))
+assert.doesNotMatch(setPrimaryBlock, /\.update\(\{ is_primary/u, 'set_primary must not write is_primary outside the RPC')
+const primaryFn = primaryMigration.slice(primaryMigration.indexOf('CREATE OR REPLACE FUNCTION public.set_workspace_primary_domain_v1('))
+assert.match(primaryFn, /SECURITY DEFINER\s+SET search_path = ''/u)
+assert.match(primaryFn, /IF target\.status <> 'active' THEN\s+RAISE EXCEPTION 'DOMAIN_NOT_SERVING'/u)
+assert.match(primaryFn, /FOR UPDATE/u)
+assert.ok(
+  primaryMigration.includes('REVOKE ALL ON FUNCTION public.set_workspace_primary_domain_v1(UUID)\n  FROM PUBLIC, anon, authenticated;'),
+  'set_workspace_primary_domain_v1 must be revoked from PUBLIC, anon and authenticated',
+)
+assert.ok(
+  primaryMigration.includes('GRANT EXECUTE ON FUNCTION public.set_workspace_primary_domain_v1(UUID)\n  TO service_role;'),
+  'set_workspace_primary_domain_v1 must be granted to service_role only',
+)
 
 // Client-facing links carry the agency's hostname; the agency's own /app does
 // not, because a client is never meant to open it.

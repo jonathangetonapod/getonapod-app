@@ -97,7 +97,7 @@ export function useSetupProgress({
   })
   const onboardingQuery = useQuery({
     queryKey: ['setup-checklist', workspaceId, 'onboarding'],
-    queryFn: quietly(() => listWorkspaceOnboarding(workspaceId)),
+    queryFn: quietly(() => listWorkspaceOnboarding(workspaceId, ['templates'])),
     ...common,
   })
   const billingQuery = useQuery({

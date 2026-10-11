@@ -359,7 +359,7 @@ const ClientOnboarding = () => {
     const content = view.status === 'submitted'
       ? { title: 'Onboarding submitted', body: renderOnboardingBrandText(view.completion_message || `Your answers are now with ${workspaceName} for review.`, workspaceName), icon: <CheckCircle2 className="h-9 w-9 text-emerald-600" /> }
       : view.status === 'approved'
-        ? { title: 'Your profile is approved', body: `${workspaceName} finalized your podcast guest profile. No further action is needed here.`, icon: <CheckCircle2 className="h-9 w-9 text-emerald-600" /> }
+        ? { title: 'Your answers are approved', body: `${workspaceName} has approved your answers. No further action is needed here.`, icon: <CheckCircle2 className="h-9 w-9 text-emerald-600" /> }
         : view.status === 'expired'
           ? { title: 'This secure link has expired', body: `Your saved draft is retained. Contact ${workspaceName} for a new link so you can continue.`, icon: <Clock3 className="h-9 w-9 text-amber-600" /> }
           : { title: 'This secure link was revoked', body: `Contact ${workspaceName} if you still need to complete onboarding.`, icon: <LockKeyhole className="h-9 w-9 text-red-600" /> }

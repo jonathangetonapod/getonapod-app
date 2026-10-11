@@ -14,6 +14,9 @@ const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-da
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/([^/]+)\/?$/u
 const CLIENT_DASHBOARD_ROUTE_PATTERN = /^\/client\/([^/]+)\/?$/u
+// Pages an agency's own clients and prospects open. They must never carry the
+// platform's name, icons or manifest, even before the app boots.
+const CLIENT_FACING_ROUTE_PATTERN = /^\/(?:portal|client|prospect|onboarding)(?:\/|$)/u
 const ONBOARDING_TOKEN_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([1-9][0-9]{0,9})\.([A-Za-z0-9_-]{43})$/iu
 const CLIENT_DASHBOARD_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/iu
 const ONBOARDING_PREVIEW_PATH = '/onboarding-link-preview.png'
@@ -249,6 +252,37 @@ export function clientDashboardShareShell(source, metadata, assets = {}) {
     <link rel="icon" href="${escapeHtml(iconUrl)}" />
     <link rel="apple-touch-icon" sizes="180x180" href="${escapeHtml(iconUrl)}" />`
   return withoutMarketingMeta.replace('</head>', `${privateMetadata}\n  </head>`)
+}
+
+/**
+ * The HTML shell for every route that is not an indexable marketing page.
+ *
+ * index.html carries the marketing head for / (title, JSON-LD for the
+ * Organization, Service and FAQ) so crawlers read it without running the app.
+ * Everywhere else that head is wrong: the structured data and the marketing
+ * title are removed, and on pages an agency's clients open (portal, prospect,
+ * client, onboarding) the platform's app name, icons and manifest go too, with
+ * an empty icon so the browser does not fall back to /favicon.ico. The app's
+ * own PageSEO then sets the real title, branded or neutral.
+ */
+export function neutralApplicationShell(source, pathname = '/') {
+  const clientFacing = CLIENT_FACING_ROUTE_PATTERN.test(pathname)
+  const title = pathname.startsWith('/portal')
+    ? 'Client portal'
+    : pathname.startsWith('/prospect')
+      ? 'Podcast opportunities'
+      : clientFacing ? 'Loading' : 'Get On A Pod'
+  let html = source
+    .replace(/\s*<!--\s*Structured Data\s*-->/giu, '')
+    .replace(/\s*<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/giu, '')
+    .replace(/<title>[\s\S]*?<\/title>/iu, `<title>${escapeHtml(title)}</title>`)
+  if (clientFacing) {
+    html = html
+      .replace(/\s*<meta\s+name=["'](?:application-name|apple-mobile-web-app-title|description|keywords|author)["'][^>]*\/?>/giu, '')
+      .replace(/\s*<link\s+rel=["'](?:canonical|manifest|icon|apple-touch-icon)["'][^>]*\/?>/giu, '')
+      .replace('</head>', '  <link rel="icon" href="data:," />\n  </head>')
+  }
+  return html
 }
 
 export function whiteLabelOnboardingShell(source, metadata = DEFAULT_ONBOARDING_METADATA, assets = {}) {
@@ -757,6 +791,17 @@ export function createProductionServer({
           previewImageUrl: onboardingAssetUrl(origin, ONBOARDING_PREVIEW_PATH, accentColor),
           fallbackIconUrl: onboardingAssetUrl(origin, ONBOARDING_ICON_PATH, accentColor),
         })
+        response.statusCode = 200
+        response.setHeader('Content-Type', 'text/html; charset=utf-8')
+        response.setHeader('Content-Length', Buffer.byteLength(html))
+        if (request.method === 'HEAD') response.end()
+        else response.end(html)
+        return
+      }
+
+      if ((request.method === 'GET' || request.method === 'HEAD') && !INDEXABLE_ROUTE_PATTERN.test(pathname)) {
+        const source = await readFile(path.join(publicDirectory, 'index.html'), 'utf8')
+        const html = neutralApplicationShell(source, pathname)
         response.statusCode = 200
         response.setHeader('Content-Type', 'text/html; charset=utf-8')
         response.setHeader('Content-Length', Buffer.byteLength(html))

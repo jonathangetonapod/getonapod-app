@@ -14,6 +14,13 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
 
+    <!--
+      The marketing head below (title and structured data) is for / and the
+      other indexable marketing pages. scripts/serve-production.mjs strips it
+      from every other route, and on pages an agency's clients open (portal,
+      prospect, client, onboarding) it also strips the app name, icons and
+      manifest, so those pages never name the platform.
+    -->
     <title>Podcast booking for tech founders and SaaS owners | Get On A Pod</title>
     <!-- Structured Data -->
     <script type="application/ld+json">

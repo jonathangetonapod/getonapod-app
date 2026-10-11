@@ -15,12 +15,23 @@ import {
 import { generatePodcastSearchEmbedding } from '../_shared/podcastSearch.ts'
 import { logOperationCost } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { reservePublicRate } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
 const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_plus'])
 const SORT_OPTIONS = new Set(['audience', 'name', 'recent', 'community'])
+// Semantic search embeds every search box change on the platform OpenAI key.
+// Charging credits per keystroke would punish ordinary typing, so instead
+// each workspace (and each member) gets a generous embedding allowance; past
+// it the search quietly runs as keyword-only until the window rolls over.
+// Workspaces on their own OpenAI key pay for their own embeddings and are not
+// limited.
+const CATALOG_EMBEDDING_LIMITS = {
+  perWorkspace: { limit: 300, windowSeconds: 60 * 60 },
+  perUser: { limit: 60, windowSeconds: 10 * 60 },
+} as const
 
 function optionalChoice(
   value: unknown,
@@ -85,7 +96,31 @@ serve(async (req) => {
     const context = await requireAuthenticatedUser(req)
     const access = await requireWorkspaceFeatureAccess(context, workspaceId)
     const openaiKey = await resolveAiKey(context.admin, workspaceId, 'openai')
-    const searchEmbedding = await generatePodcastSearchEmbedding(search, openaiKey)
+    let embeddingAllowed = true
+    if (search && search.length >= 3 && openaiKey && openaiKey.source !== 'workspace') {
+      try {
+        embeddingAllowed = await reservePublicRate(context.admin, [
+          {
+            bucket: `catalog-embed:${workspaceId}`,
+            limit: CATALOG_EMBEDDING_LIMITS.perWorkspace.limit,
+            windowSeconds: CATALOG_EMBEDDING_LIMITS.perWorkspace.windowSeconds,
+          },
+          {
+            bucket: `catalog-embed-user:${context.user.id}`,
+            limit: CATALOG_EMBEDDING_LIMITS.perUser.limit,
+            windowSeconds: CATALOG_EMBEDDING_LIMITS.perUser.windowSeconds,
+          },
+        ])
+      } catch {
+        // Keyword search still answers, so a broken limiter costs relevance,
+        // never platform spend.
+        console.error('[Podcast Catalog] Embedding rate limit unavailable; using keyword search')
+        embeddingAllowed = false
+      }
+    }
+    const searchEmbedding = embeddingAllowed
+      ? await generatePodcastSearchEmbedding(search, openaiKey)
+      : null
     if (searchEmbedding) {
       await logOperationCost(context.admin, {
         workspaceId,

@@ -2989,7 +2989,7 @@ serve(async (req) => {
 
       const [profileResult, lotsResult, ledgerResult, spentResult, usageResult, pricesResult, cardProofResult] = await Promise.all([
         admin.from("workspace_billing_profiles")
-          .select("plan_key, billing_status, base_price_cents, per_client_price_cents, included_active_clients, monthly_credit_allowance, stripe_subscription_id, stripe_customer_id, cancel_at_period_end, current_period_end, refill_threshold_credits, refill_pack_credits, refill_monthly_cap_cents")
+          .select("plan_key, billing_status, base_price_cents, per_client_price_cents, included_active_clients, monthly_credit_allowance, stripe_subscription_id, stripe_customer_id, cancel_at_period_end, current_period_end, refill_threshold_credits, refill_pack_credits, refill_monthly_cap_cents, refill_failure_count, refill_last_error, refill_last_failed_at")
           .eq("workspace_id", workspaceId)
           .maybeSingle(),
         admin.from("workspace_credit_lots")
@@ -3097,6 +3097,11 @@ serve(async (req) => {
           refill_threshold_credits: profileResult.data?.refill_threshold_credits ?? null,
           refill_pack_credits: profileResult.data?.refill_pack_credits ?? null,
           refill_monthly_cap_cents: profileResult.data?.refill_monthly_cap_cents ?? null,
+          // Consecutive automatic top-up failures; the tick pauses at 3 until
+          // the settings are saved again.
+          refill_failure_count: Number(profileResult.data?.refill_failure_count) || 0,
+          refill_last_error: profileResult.data?.refill_last_error ?? null,
+          refill_last_failed_at: profileResult.data?.refill_last_failed_at ?? null,
           // Whether there is anything to charge. A Stripe customer row is
           // created the moment a checkout session opens — before any payment —
           // so "has a customer" was true for anyone who clicked Buy and then
@@ -3232,6 +3237,11 @@ serve(async (req) => {
           // Disabling clears the cap; enabling writes it when supplied and
           // leaves it as-is otherwise (absent key => no change).
           ...(off ? { refill_monthly_cap_cents: null } : hasCap ? { refill_monthly_cap_cents: capCents } : {}),
+          // Saving is the person's answer to a pause: the run of failures
+          // starts again from nothing, so the next tick tries once more.
+          refill_failure_count: 0,
+          refill_last_error: null,
+          refill_last_failed_at: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: "workspace_id" });
       if (refillError) {

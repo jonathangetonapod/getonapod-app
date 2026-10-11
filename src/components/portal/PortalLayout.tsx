@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -15,6 +16,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { cn } from '@/lib/utils'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { portalLoginPath, rememberPortalBrand } from '@/components/portal/portalBrandMemory'
 
 interface PortalLayoutProps {
   children: React.ReactNode
@@ -35,9 +37,21 @@ export function PortalLayout({ children }: PortalLayoutProps) {
     ? branding.accent_color
     : null
 
+  // Remember the agency for this tab so the sign-in after signing out or a
+  // session ending wears the same brand. An admin preview renders the neutral
+  // shell and must not overwrite what the client's own tab remembers.
+  useEffect(() => {
+    if (isImpersonating || !branding?.name) return
+    rememberPortalBrand({
+      name: branding.name,
+      logo_url: branding.logo_url,
+      primary_color: primaryColor,
+    })
+  }, [branding?.name, branding?.logo_url, isImpersonating, primaryColor])
+
   const handleLogout = async () => {
     await logout()
-    navigate('/portal/login')
+    navigate(portalLoginPath())
   }
 
   const handleExitImpersonation = () => {

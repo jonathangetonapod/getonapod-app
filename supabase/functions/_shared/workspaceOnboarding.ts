@@ -460,6 +460,28 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
+/**
+ * Whether invitation emails can leave at all. A missing key or sender used to
+ * surface only as a quiet 'skipped' on each invitation, so an agency learned
+ * that nothing was being emailed one confused client at a time. The list
+ * action reports this up front so the page can say so before the first send.
+ */
+export function onboardingEmailConfigured(): boolean {
+  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
+  return Boolean(apiKey && whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), 'Check'))
+}
+
+const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u
+
+function paragraphsHtml(value: string): string {
+  return value
+    .split(/\n{2,}/u)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p style="line-height:1.65;color:#514d68">${escapeHtml(paragraph).replaceAll('\n', '<br>')}</p>`)
+    .join('')
+}
+
 export async function sendOnboardingEmail(input: {
   kind: 'invitation' | 'changes_requested'
   workspaceName: string
@@ -468,11 +490,21 @@ export async function sendOnboardingEmail(input: {
   url: string
   expiresAt: string
   accentColor?: string
-}): Promise<{ status: 'sent' | 'failed' | 'skipped'; providerMessageId: string | null; error: string | null }> {
+  /** The agency's own mailbox, so a client who replies reaches a person. */
+  replyTo?: string | null
+  /** The welcome title and message chosen for this client's link. */
+  experienceTitle?: string | null
+  experienceBody?: string | null
+}): Promise<{
+  status: 'sent' | 'failed' | 'skipped'
+  providerMessageId: string | null
+  error: string | null
+  reason?: 'not_configured'
+}> {
   const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  if (!apiKey) return { status: 'skipped', providerMessageId: null, error: null }
+  if (!apiKey) return { status: 'skipped', providerMessageId: null, error: null, reason: 'not_configured' }
   const from = whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), input.workspaceName)
-  if (!from) return { status: 'skipped', providerMessageId: null, error: null }
+  if (!from) return { status: 'skipped', providerMessageId: null, error: null, reason: 'not_configured' }
   const workspaceName = escapeHtml(input.workspaceName)
   const recipientName = escapeHtml(input.recipientName)
   const url = escapeHtml(input.url)
@@ -486,27 +518,51 @@ export async function sendOnboardingEmail(input: {
     timeZone: 'UTC',
   })
   const changesRequested = input.kind === 'changes_requested'
+  // The invitation speaks in the agency's own words when it has them: the
+  // welcome on the form is what they chose to say to this client, and an
+  // email that talks about a podcast profile is wrong for any agency whose
+  // form is about something else. The fixed text remains the fallback.
+  const customTitle = changesRequested ? '' : (input.experienceTitle ?? '').replace(/[\r\n]+/gu, ' ').trim().slice(0, 300)
+  const customBody = changesRequested ? '' : (input.experienceBody ?? '').trim().slice(0, 3000)
   const subject = changesRequested
     ? `${input.workspaceName} requested onboarding updates`
-    : `${input.workspaceName} invited you to complete onboarding`
+    : customTitle
+      ? `${customTitle} | ${input.workspaceName}`
+      : `${input.workspaceName} invited you to complete onboarding`
   const heading = changesRequested
     ? 'A few onboarding updates are needed'
-    : 'Let’s build your podcast profile'
-  const lead = changesRequested
-    ? `${workspaceName} left question-level notes for you. Open your secure form to review them and submit a new revision.`
-    : `${workspaceName} has invited you to complete a secure podcast guest onboarding.`
+    : customTitle ? escapeHtml(customTitle) : 'Let’s build your podcast profile'
+  const leadHtml = changesRequested
+    ? paragraphsHtml(`${input.workspaceName} left question-level notes for you. Open your secure form to review them and submit a new revision.`)
+    : customBody
+      ? paragraphsHtml(customBody)
+      : paragraphsHtml(`${input.workspaceName} has invited you to complete a secure podcast guest onboarding.`)
   const button = changesRequested ? 'Review requested changes' : 'Start onboarding'
   const textLead = changesRequested
     ? `${input.workspaceName} requested updates to your onboarding.`
-    : `${input.workspaceName} invited you to complete onboarding.`
+    : customBody
+      ? `${customTitle ? `${customTitle}\n\n` : ''}${customBody}`
+      : `${input.workspaceName} invited you to complete onboarding.`
   const text = `${textLead}\n\nContinue securely: ${input.url}\n\nThis private link expires ${expiry}. Do not forward it.`
-  const html = `<!doctype html><html><body style="margin:0;background:#f5f6f8;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:linear-gradient(135deg,#171827,${accentColor});border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:28px">${heading}</h1></div><div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px">Hi ${recipientName},</p><p style="line-height:1.65;color:#514d68">${lead}</p><div style="padding:20px 0;text-align:center"><a href="${url}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${button}</a></div><p style="font-size:13px;color:#77728e">This private link expires ${escapeHtml(expiry)}. Please do not forward it.</p></div></div></body></html>`
+  const html = `<!doctype html><html><body style="margin:0;background:#f5f6f8;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:linear-gradient(135deg,#171827,${accentColor});border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:28px">${heading}</h1></div><div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px">Hi ${recipientName},</p>${leadHtml}<div style="padding:20px 0;text-align:center"><a href="${url}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${button}</a></div><p style="font-size:13px;color:#77728e">This private link expires ${escapeHtml(expiry)}. Please do not forward it.</p></div></div></body></html>`
+  // The sender is the platform's address under the agency's name, so without
+  // a reply-to a client's reply went to a mailbox the agency never reads.
+  const replyTo = typeof input.replyTo === 'string' && EMAIL_PATTERN.test(input.replyTo.trim()) && input.replyTo.trim().length <= 254
+    ? input.replyTo.trim()
+    : null
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: [input.recipientEmail], subject, html, text }),
+      body: JSON.stringify({
+        from,
+        to: [input.recipientEmail],
+        ...(replyTo ? { reply_to: replyTo } : {}),
+        subject,
+        html,
+        text,
+      }),
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) return { status: 'failed', providerMessageId: null, error: 'Email provider rejected the message' }

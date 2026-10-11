@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { listBillingPlans, updateBillingPlanPrice, type BillingPlan } from '@/services/workspaceStaff'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,10 +30,17 @@ export function PlatformPlanPricing() {
   })
 
   const [allowanceDrafts, setAllowanceDrafts] = useState<Record<string, string>>({})
+  // Per plan, off by default: applying an allowance to workspaces that already
+  // pay changes what they are given, so it is never a side effect of a save.
+  const [applyToExisting, setApplyToExisting] = useState<Record<string, boolean>>({})
 
   const saveMutation = useMutation({
-    mutationFn: ({ planKey, cents, allowance }: { planKey: string; cents: number; allowance: number }) =>
-      updateBillingPlanPrice(planKey, cents, allowance),
+    mutationFn: ({ planKey, cents, allowance, applyExisting }: {
+      planKey: string
+      cents: number
+      allowance: number
+      applyExisting: boolean
+    }) => updateBillingPlanPrice(planKey, cents, allowance, { applyToExistingSubscribers: applyExisting }),
     onSuccess: (plans, variables) => {
       queryClient.setQueryData(['platform-billing-plans'], plans)
       setDrafts((current) => {
@@ -45,7 +53,14 @@ export function PlatformPlanPricing() {
         delete next[variables.planKey]
         return next
       })
-      toast.success('Plan updated. Workspaces take it on when their subscription next moves.')
+      setApplyToExisting((current) => {
+        const next = { ...current }
+        delete next[variables.planKey]
+        return next
+      })
+      toast.success(variables.applyExisting
+        ? 'Plan updated, and the allowance applied to every workspace already on it.'
+        : 'Plan updated. Workspaces take it on when their subscription next moves.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The price could not be updated.')
@@ -79,6 +94,11 @@ export function PlatformPlanPricing() {
             What each plan costs, for every workspace. Saving creates a new Stripe price and points
             the plan at it — anyone already subscribed stays on the price they signed up at.
           </CardDescription>
+          <p className="text-sm text-muted-foreground" data-testid="allowance-note">
+            Credit allowance changes only apply to new subscribers and to workspaces whose
+            subscription next changes plan. Existing subscribers keep their current allowance
+            unless you tick &ldquo;Apply to existing subscribers&rdquo; when you save.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           {plansQuery.isLoading ? (
@@ -102,10 +122,12 @@ export function PlatformPlanPricing() {
               // amount it already shows. Comparing only the number disabled the
               // button in the one state where pressing it is the whole point:
               // the seeded amount is right, but no Stripe Price exists for it.
+              const applyExisting = applyToExisting[plan.plan_key] === true
               const changed = cents !== null && credits !== null
                 && (cents !== plan.base_price_cents
                   || credits !== plan.monthly_credit_allowance
-                  || !plan.stripe_price_id)
+                  || !plan.stripe_price_id
+                  || applyExisting)
               const saving = saveMutation.isPending && saveMutation.variables?.planKey === plan.plan_key
               return (
                 <div key={plan.plan_key} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-end sm:justify-between">
@@ -127,43 +149,58 @@ export function PlatformPlanPricing() {
                   </div>
 
                   {plan.is_purchasable && (
-                    <div className="flex items-end gap-2">
-                      <div className="space-y-1">
-                        <Label htmlFor={`plan-price-${plan.plan_key}`} className="text-xs">Per month (USD)</Label>
-                        <Input
-                          id={`plan-price-${plan.plan_key}`}
-                          inputMode="decimal"
-                          className="w-32"
-                          value={draft}
-                          onChange={(event) => setDrafts((current) => ({
+                    <div className="flex flex-col gap-2 sm:items-end">
+                      <div className="flex items-end gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor={`plan-price-${plan.plan_key}`} className="text-xs">Per month (USD)</Label>
+                          <Input
+                            id={`plan-price-${plan.plan_key}`}
+                            inputMode="decimal"
+                            className="w-32"
+                            value={draft}
+                            onChange={(event) => setDrafts((current) => ({
+                              ...current,
+                              [plan.plan_key]: event.target.value,
+                            }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`plan-credits-${plan.plan_key}`} className="text-xs">Credits/month</Label>
+                          <Input
+                            id={`plan-credits-${plan.plan_key}`}
+                            inputMode="numeric"
+                            className="w-28"
+                            value={allowanceDraft}
+                            onChange={(event) => setAllowanceDrafts((current) => ({
+                              ...current,
+                              [plan.plan_key]: event.target.value,
+                            }))}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={!changed || saving}
+                          onClick={() => cents !== null && credits !== null
+                            && saveMutation.mutate({ planKey: plan.plan_key, cents, allowance: credits, applyExisting })}
+                        >
+                          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                          Save
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id={`plan-apply-existing-${plan.plan_key}`}
+                          checked={applyExisting}
+                          onCheckedChange={(checked) => setApplyToExisting((current) => ({
                             ...current,
-                            [plan.plan_key]: event.target.value,
+                            [plan.plan_key]: checked === true,
                           }))}
                         />
+                        <Label htmlFor={`plan-apply-existing-${plan.plan_key}`} className="text-xs font-normal">
+                          Apply to existing subscribers
+                        </Label>
                       </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`plan-credits-${plan.plan_key}`} className="text-xs">Credits/month</Label>
-                        <Input
-                          id={`plan-credits-${plan.plan_key}`}
-                          inputMode="numeric"
-                          className="w-28"
-                          value={allowanceDraft}
-                          onChange={(event) => setAllowanceDrafts((current) => ({
-                            ...current,
-                            [plan.plan_key]: event.target.value,
-                          }))}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={!changed || saving}
-                        onClick={() => cents !== null && credits !== null
-                          && saveMutation.mutate({ planKey: plan.plan_key, cents, allowance: credits })}
-                      >
-                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        Save
-                      </Button>
                     </div>
                   )}
                 </div>

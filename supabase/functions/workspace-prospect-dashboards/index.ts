@@ -815,7 +815,19 @@ async function buildProspect(
     })
     .eq('id', dashboardId)
     .eq('workspace_id', workspaceId)
-  if (startError) throw new HttpError(500, 'BUILD_START_FAILED', 'The prospect build could not be started')
+  if (startError) {
+    // The charge is already taken and this write sits before the failure
+    // boundary below, so without this the workspace paid for a build that
+    // never started.
+    if (!buildCharge.replayed) {
+      await refundCredits(context.admin, {
+        workspaceId,
+        entryId: buildCharge.entryId,
+        reason: 'prospect dashboard build could not be started',
+      })
+    }
+    throw new HttpError(500, 'BUILD_START_FAILED', 'The prospect build could not be started')
+  }
 
   try {
     const { data: existingCandidates, error: existingCandidatesError } = await context.admin

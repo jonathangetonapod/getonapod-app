@@ -912,7 +912,24 @@ assert.match(masterInbox, /Showing the most recent replies only/u)
 // Inbox replies: both provider-facing inputs arrive from the browser, so both
 // are bounded before anything is sent.
 assert.match(edge, /INBOX_SENDER_NOT_CONNECTED/u)
-assert.match(edge, /connectedAccounts\.size > 0 && !connectedAccounts\.has\(eaccount\.toLowerCase\(\)\)/u)
+// Fails closed: an empty mailbox snapshot refuses rather than skipping the
+// allowlist, and a reply_to_id Instantly cannot find is not attributable.
+assert.match(edge, /if \(connectedAccounts\.size === 0\) \{\s+throw new HttpError\(\s+409,\s+"INBOX_SENDERS_UNKNOWN"/u)
+assert.match(edge, /if \(!connectedAccounts\.has\(eaccount\.toLowerCase\(\)\)\)/u)
+assert.doesNotMatch(edge, /connectedAccounts\.size > 0 &&/u)
+assert.match(replyAction[0], /if \(error\.status === 404\) \{\s+throw new HttpError\(\s+403,\s+"INBOX_MESSAGE_NOT_ATTRIBUTED"/u)
+// inbox-draft refuses suppressed threads before any charge, and never reopens
+// a booked or archived conversation.
+const draftAction = edge.match(/action === "inbox-draft"[\s\S]*?action === "inbox-reply"/u)
+assert.ok(draftAction, 'inbox-draft action must exist')
+assert.ok(
+  draftAction[0].indexOf('INBOX_CONTACT_SUPPRESSED') > 0
+    && draftAction[0].indexOf('INBOX_CONTACT_SUPPRESSED') < draftAction[0].indexOf('generateReplyPackage('),
+  'inbox-draft must refuse suppressed contacts before generating (and charging)',
+)
+assert.match(draftAction[0], /from\("workspace_outreach_suppressions"\)/u)
+assert.match(draftAction[0], /status: preservedStatus \?\? "review"/u)
+assert.match(draftAction[0], /\["booked", "archived"\]\.includes/u)
 assert.match(edge, /INBOX_MESSAGE_NOT_ATTRIBUTED/u)
 assert.ok(
   replyAction[0].indexOf('INBOX_SENDER_NOT_CONNECTED') < replyAction[0].indexOf('"/emails/reply"')
@@ -1067,7 +1084,7 @@ assert.match(mailboxInfra, /async function refundMailboxCredits\(/u)
 assert.match(mailboxInfra, /await refundCredits\(authContext\.admin, \{\s*\n\s*workspaceId,\s*\n\s*entryId,/u)
 assert.match(mailboxInfra, /await refundMailboxCredits\(authContext, workspaceId, orders, chargedEntryIds\)\s*\n\s*throw error/u)
 assert.match(mailboxInfra, /async function advanceMailboxOrder\(/u)
-assert.match(mailboxInfra, /advanceMailboxOrder\(authContext, winnrKey\.apiKey, order\)\s*\n\s*\.catch/u)
+assert.match(mailboxInfra, /advanceMailboxOrder\(authContext, workspaceId, winnrKey\.apiKey, order\)\s*\n\s*\.catch/u)
 assert.match(mailboxInfra, /warmingError = 'Mailboxes were created but warmup could not be started/u)
 assert.match(mailboxInfra, /warming_enabled_at: warmingError \? null : warmingEnabledAt/u)
 assert.match(mailboxInfra, /action === 'warming-retry'/u)
@@ -1743,3 +1760,21 @@ for (const webhook of ['campaign-reply-webhook', 'create-outreach-message']) {
   assert.match(source, /status: inputError \? 400 : 500/u, webhook)
   assert.doesNotMatch(source, /error instanceof Error \? error\.message/u, webhook)
 }
+
+// Inbox auto-draft writes are checked: an opt-out the tick could not record,
+// or a draft it could not save, must not let the cursor pass the email — and
+// a draft that could not be saved gives its charge back.
+assert.match(enrollTick, /const \{ error: prefilterError \} = await admin[\s\S]*?if \(prefilterError\) throw prefilterError/u)
+assert.match(enrollTick, /const \{ error: suppressionError \} = await admin[\s\S]*?if \(suppressionError\) throw suppressionError/u)
+assert.match(
+  enrollTick,
+  /if \(draftSaveError\) \{[\s\S]*?await refundCredits\(admin, \{[\s\S]*?entryId: pkg\.chargeEntryId,[\s\S]*?throw new HttpError\(500, 'DRAFT_SAVE_FAILED'/u,
+)
+assert.match(enrollTick, /threadKey,\s+emailId,\s+\}\)/u)
+// The reply-package charge is keyed to the exact reply, with one spelling of
+// the host address.
+assert.match(sdrShared, /input\.leadEmail\.trim\(\)\.toLowerCase\(\)/u)
+assert.match(sdrShared, /'inbox_reply_package',\s+workspaceId,\s+clientId,\s+input\.referenceKind,\s+leadEmail,\s+input\.threadKey \?\? null,\s+input\.emailId \?\? null,/u)
+assert.match(sdrShared, /chargeEntryId: charge\.replayed \? null : charge\.entryId/u)
+
+console.log('Workspace Client Campaign inbox write-safety checks passed')

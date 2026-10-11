@@ -13,6 +13,7 @@ import {
   requireUuid,
 } from '../_shared/workspaceAuth.ts'
 import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
+import { reservePublicRate } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
 
@@ -38,8 +39,29 @@ const PORTAL_BOOKING_FIELDS = [
   'shortlist_podcast_id',
 ].join(',')
 
+// Each add-on request emails the workspace owner, so a portal session must not
+// be able to turn it into a mail cannon or an unbounded log.
+const ADDON_REQUEST_DAILY_LIMIT = 5
+const ADDON_REQUEST_LIFETIME_LIMIT = 200
+
 function clampText(value: unknown, max: number): string | null {
   return typeof value === 'string' && value.trim() ? value.slice(0, max) : null
+}
+
+/** An http(s) URL, or null. Anything else (javascript:, data:) is refused. */
+function httpUrlOrNull(value: unknown, field: string): string | null {
+  const text = clampText(value, 2_000)
+  if (!text) return null
+  let parsed: URL
+  try {
+    parsed = new URL(text.trim())
+  } catch {
+    throw new HttpError(400, 'INVALID_FIELD', `${field} must be an http or https link`)
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new HttpError(400, 'INVALID_FIELD', `${field} must be an http or https link`)
+  }
+  return parsed.toString()
 }
 
 function clampCount(value: unknown): number {
@@ -167,8 +189,8 @@ serve(async (req) => {
           client_id: clientId,
           podcast_name: podcastName,
           host_name: clampText(event.host_name, 200),
-          podcast_url: clampText(event.podcast_url, 2_000),
-          episode_url: kind === 'release' ? clampText(event.episode_url, 2_000) : null,
+          podcast_url: httpUrlOrNull(event.podcast_url, 'podcast_url'),
+          episode_url: kind === 'release' ? httpUrlOrNull(event.episode_url, 'episode_url') : null,
           notes: clampText(event.notes, 2_000),
           // A recording the client arranged is a confirmed booking; an
           // episode they know is going live is a scheduled release.
@@ -208,6 +230,34 @@ serve(async (req) => {
       if (clientLookupError || !clientRecord) {
         throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Client not found')
       }
+
+      // Lifetime ceiling on stored requests, then a per-client daily limit.
+      // The limiter fails closed: every accepted request sends an email.
+      const { count: priorRequests, error: countError } = await admin
+        .from('client_portal_activity_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', clientId)
+        .eq('action', 'addon_request')
+      if (countError) {
+        throw new HttpError(503, 'ADDON_REQUEST_FAILED', 'Your request could not be recorded — try again')
+      }
+      if ((priorRequests ?? 0) >= ADDON_REQUEST_LIFETIME_LIMIT) {
+        throw new HttpError(409, 'ADDON_REQUEST_LIMIT_REACHED', 'You have reached the limit for add-on requests. Contact your team directly.')
+      }
+      let addonAllowed = false
+      try {
+        addonAllowed = await reservePublicRate(admin, [{
+          bucket: `portal-addon:${clientId}`,
+          limit: ADDON_REQUEST_DAILY_LIMIT,
+          windowSeconds: 24 * 60 * 60,
+        }])
+      } catch {
+        throw new HttpError(503, 'ADDON_REQUEST_FAILED', 'Your request could not be recorded — try again')
+      }
+      if (!addonAllowed) {
+        throw new HttpError(429, 'ADDON_REQUEST_RATE_LIMITED', 'You have sent several requests today. Your team has them; try again tomorrow if you need another.')
+      }
+
       const { error: logError } = await admin
         .from('client_portal_activity_log')
         .insert({

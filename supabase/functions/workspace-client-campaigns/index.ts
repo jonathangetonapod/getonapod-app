@@ -4391,15 +4391,54 @@ serve(async (req) => {
         ? null
         : requireString(body.lead_email, "lead_email", { max: 320 });
 
-      // Idempotency: a fresh persisted package for this exact message is
-      // returned free — Redraft passes force to spend a new model call.
-      if (threadKey && emailId && !force) {
-        const { data: existing } = await context.admin
+      // The thread's own state decides two things before any spend: a thread
+      // marked opted-out (or an address on the do-not-contact list) is never
+      // drafted for, and a booked or archived thread keeps its status when a
+      // draft is saved onto it.
+      let draftThreadState: Record<string, unknown> | null = null;
+      if (threadKey) {
+        const { data: stateData, error: stateError } = await context.admin
           .from("workspace_inbox_thread_state")
-          .select("classification, draft")
+          .select("classification, draft, status, suppressed_at, lead_email")
           .eq("workspace_id", workspaceId)
           .eq("thread_key", threadKey)
           .maybeSingle();
+        if (stateError) {
+          throw new HttpError(503, "INBOX_STATE_UNAVAILABLE", "The conversation could not be loaded. Try again shortly");
+        }
+        draftThreadState = (stateData ?? null) as Record<string, unknown> | null;
+      }
+      const draftGateAddresses = [...new Set([
+        (draftLeadEmail ?? "").trim().toLowerCase(),
+        typeof draftThreadState?.lead_email === "string" ? draftThreadState.lead_email.trim().toLowerCase() : "",
+      ].filter(Boolean))];
+      let draftSuppressed = Boolean(draftThreadState?.suppressed_at);
+      if (!draftSuppressed && draftGateAddresses.length > 0) {
+        const { data: draftSuppressions, error: suppressionLookupError } = await context.admin
+          .from("workspace_outreach_suppressions")
+          .select("contact_email")
+          .eq("workspace_id", workspaceId)
+          .in("contact_email", draftGateAddresses);
+        if (suppressionLookupError) {
+          throw new HttpError(503, "INBOX_STATE_UNAVAILABLE", "The do-not-contact list could not be checked. Try again shortly");
+        }
+        draftSuppressed = (draftSuppressions ?? []).length > 0;
+      }
+      if (draftSuppressed) {
+        throw new HttpError(
+          409,
+          "INBOX_CONTACT_SUPPRESSED",
+          "This contact opted out. Remove the address from the do-not-contact list in Relationships before drafting a reply.",
+        );
+      }
+      const preservedStatus = ["booked", "archived"].includes(String(draftThreadState?.status ?? ""))
+        ? String(draftThreadState?.status)
+        : null;
+
+      // Idempotency: a fresh persisted package for this exact message is
+      // returned free — Redraft passes force to spend a new model call.
+      if (threadKey && emailId && !force) {
+        const existing = draftThreadState;
         const existingDraft = existing?.draft && typeof existing.draft === "object" && !Array.isArray(existing.draft)
           ? existing.draft as Record<string, unknown>
           : null;
@@ -4466,6 +4505,8 @@ serve(async (req) => {
         actorUserId: context.user.id,
         referenceKind: "inbox_draft",
         leadEmail: draftLeadEmail,
+        threadKey,
+        emailId,
       });
       let persisted = true;
       if (threadKey) {
@@ -4477,7 +4518,8 @@ serve(async (req) => {
             workspace_id: workspaceId,
             thread_key: threadKey,
             client_id: clientId,
-            status: "review",
+            // Drafting on a booked or archived conversation must not reopen it.
+            status: preservedStatus ?? "review",
             classification: pkg.classification,
             draft: {
               subject: pkg.subject,
@@ -4544,7 +4586,16 @@ serve(async (req) => {
       const connectedAccounts = new Set(
         accountsFromSnapshot(connection.accounts_snapshot).map((account) => account.email.toLowerCase()),
       );
-      if (connectedAccounts.size > 0 && !connectedAccounts.has(eaccount.toLowerCase())) {
+      // Fails closed: an empty snapshot (never synced, or a sync that saved
+      // nothing) used to skip the check entirely and let any address through.
+      if (connectedAccounts.size === 0) {
+        throw new HttpError(
+          409,
+          "INBOX_SENDERS_UNKNOWN",
+          "No sending mailboxes are on record for this workspace yet. Refresh the Instantly connection, then reply again.",
+        );
+      }
+      if (!connectedAccounts.has(eaccount.toLowerCase())) {
         throw new HttpError(
           403,
           "INBOX_SENDER_NOT_CONNECTED",
@@ -4644,10 +4695,19 @@ serve(async (req) => {
         }
       } catch (error) {
         if (error instanceof HttpError) throw error;
+        if (!(error instanceof InstantlyApiError)) throw error;
+        // Not found is an answer, not a hiccup: the message does not exist in
+        // this Instantly workspace, so nothing proves it belongs to us.
+        if (error.status === 404) {
+          throw new HttpError(
+            403,
+            "INBOX_MESSAGE_NOT_ATTRIBUTED",
+            "That message does not belong to a campaign this workspace manages",
+          );
+        }
         // A provider hiccup reading one email must not strand an operator who
         // is answering a reply the inbox already showed them. The mailbox
         // allowlist above still bounds what can be sent from.
-        if (!(error instanceof InstantlyApiError)) throw error;
       }
 
       // Send-time gate (server-owned): if the host has said something newer

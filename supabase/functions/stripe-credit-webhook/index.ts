@@ -2,6 +2,10 @@
 // HMAC-SHA256 over the v1 scheme), then checkout.session.completed grants the
 // purchased credits idempotently via grant_workspace_credits_v1 keyed on the
 // Stripe event id — replays and retries can never double-grant.
+//
+// Events this endpoint must be subscribed to in the Stripe dashboard:
+// checkout.session.completed, payment_intent.succeeded, charge.refunded and
+// charge.dispute.created.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -101,6 +105,13 @@ serve(async (req) => {
   if (typeof event.id !== 'string' || !event.id) {
     return json(400, { error: 'INVALID_PAYLOAD' })
   }
+  // Money going back is the other half. A refund or a dispute names the
+  // payment, not the workspace, so it is matched to the lot that payment
+  // bought (stripe_payment_ref, written when the lot is granted).
+  if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+    return await reverseCredits(event as { id: string; type: string; data?: { object?: Record<string, unknown> } })
+  }
+
   // Two ways credits are bought, and they are different Stripe events. A
   // person at a checkout page completes a session; an automatic top-up has
   // nobody present, so it is a payment intent charged off-session against a
@@ -122,16 +133,23 @@ serve(async (req) => {
     ? (typeof session.status === 'string' ? session.status : null)
     : (typeof session.payment_status === 'string' ? session.payment_status : null)
   const paidValue = event.type === AUTOMATIC ? 'succeeded' : 'paid'
+  // A 100%-off promotion code completes the session with nothing to collect.
+  // The pack was still bought — the code is how it was paid for — so it
+  // grants like any other purchase. Only a genuinely zero total counts:
+  // no_payment_required with an amount due would be something else entirely.
+  const freeCheckout = event.type === 'checkout.session.completed'
+    && paymentStatus === 'no_payment_required'
+    && session.amount_total === 0
   if (!workspaceId || !Number.isInteger(credits) || credits <= 0 || credits > 100_000) {
     console.error('[Stripe Credit Webhook] Completed session missing grant metadata')
     return json(200, { received: true, ignored: 'missing metadata' })
   }
-  if (paymentStatus !== paidValue) {
+  if (paymentStatus !== paidValue && !freeCheckout) {
     return json(200, { received: true, ignored: `payment_status ${paymentStatus ?? 'unknown'}` })
   }
 
   const admin = createAdminClient()
-  const { error } = await admin.rpc('grant_workspace_credits_v1', {
+  const { data: grant, error } = await admin.rpc('grant_workspace_credits_v1', {
     p_workspace_id: workspaceId,
     p_source: 'purchase',
     p_amount: credits,
@@ -158,5 +176,98 @@ serve(async (req) => {
     return json(500, { error: 'GRANT_FAILED' })
   }
 
+  // Which payment bought this lot, so a refund or dispute can find it. A
+  // payment intent is its own reference; a checkout session points at one
+  // (and a free checkout has none, because nothing was paid to take back).
+  const paymentRef = event.type === AUTOMATIC
+    ? (typeof session.id === 'string' ? session.id : null)
+    : (typeof session.payment_intent === 'string' ? session.payment_intent : null)
+  const lotId = typeof (grant as { lot_id?: unknown } | null)?.lot_id === 'string'
+    ? (grant as { lot_id: string }).lot_id
+    : null
+  if (paymentRef && lotId) {
+    // A replayed grant returns the original lot, so a retry after this write
+    // failed fills it in rather than skipping it.
+    const { error: refError } = await admin
+      .from('workspace_credit_lots')
+      .update({ stripe_payment_ref: paymentRef })
+      .eq('id', lotId)
+      .eq('workspace_id', workspaceId)
+      .is('stripe_payment_ref', null)
+    if (refError) {
+      console.error('[Stripe Credit Webhook] Payment reference could not be recorded on the lot')
+      // Retried: the grant is idempotent, and a lot nobody can find is a
+      // refund that can never take its credits back.
+      return json(500, { error: 'PAYMENT_REF_FAILED' })
+    }
+  }
+
   return json(200, { received: true, granted: credits, workspace_id: workspaceId })
 })
+
+/**
+ * charge.refunded and charge.dispute.created: remove the unspent part of the
+ * lot the payment bought.
+ *
+ * A refund's charge carries amount_refunded as a running total, so the RPC
+ * works from the cumulative figure and subtracts what earlier refunds on the
+ * same lot already removed — two partial refunds land as two adjustments that
+ * add up to the right share, and a replay of either is a no-op on its event id.
+ * A dispute withdraws the payment, so it takes back the whole lot.
+ *
+ * Credits already spent are not clawed from other purchases, and the balance
+ * never goes below zero; the shortfall is logged so someone can follow up.
+ */
+async function reverseCredits(event: {
+  id: string
+  type: string
+  data?: { object?: Record<string, unknown> }
+}): Promise<Response> {
+  const object = event.data?.object ?? {}
+  const dispute = event.type === 'charge.dispute.created'
+  const paymentRef = typeof object.payment_intent === 'string' ? object.payment_intent : null
+  if (!paymentRef) {
+    return json(200, { received: true, ignored: 'no payment intent' })
+  }
+  const refunded = !dispute && typeof object.amount_refunded === 'number' ? object.amount_refunded : null
+  const charged = !dispute && typeof object.amount === 'number' ? object.amount : null
+  if (!dispute && (refunded === null || refunded <= 0)) {
+    return json(200, { received: true, ignored: 'nothing refunded' })
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('reverse_workspace_credit_lot_v1', {
+    p_payment_ref: paymentRef,
+    p_refunded_cents: refunded,
+    p_charged_cents: charged,
+    p_reference_kind: dispute ? 'stripe_dispute' : 'stripe_refund',
+    p_reference_id: typeof object.id === 'string' ? object.id : null,
+    p_idempotency_key: `stripe:${event.id}`,
+  })
+  if (error) {
+    console.error('[Stripe Credit Webhook] Credit reversal failed')
+    return json(500, { error: 'REVERSAL_FAILED' })
+  }
+  const result = (data ?? {}) as {
+    found?: boolean
+    workspace_id?: string
+    removed?: number
+    already_spent?: number
+  }
+  if (result.found !== true) {
+    // Most charges are not credit purchases — subscription invoices refund
+    // through here too — so an unmatched payment is expected, not an error.
+    return json(200, { received: true, ignored: 'no credit lot for this payment' })
+  }
+  if ((result.already_spent ?? 0) > 0) {
+    console.warn(
+      `[Stripe Credit Webhook] ${dispute ? 'Dispute' : 'Refund'} for workspace ${result.workspace_id}: ${result.already_spent} credits were already spent and could not be taken back`,
+    )
+  }
+  return json(200, {
+    received: true,
+    removed: result.removed ?? 0,
+    already_spent: result.already_spent ?? 0,
+    workspace_id: result.workspace_id ?? null,
+  })
+}

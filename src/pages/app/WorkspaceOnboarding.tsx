@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, MoreHorizontal, Palette, Plus, RefreshCw, Search, Send, Share2, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, LogOut, Mail, MailWarning, MoreHorizontal, Palette, Plus, RefreshCw, Search, Send, Share2, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
 import OnboardingReviewDialog, { type OnboardingReviewComment } from '@/components/onboarding/OnboardingReviewDialog'
 import OnboardingTemplateBuilder, { type OnboardingTemplateDraft } from '@/components/onboarding/OnboardingTemplateBuilder'
+import { starterOnboardingTemplate } from '@/components/onboarding/starterTemplate'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
@@ -39,16 +40,19 @@ import {
   listWorkspaceOnboarding,
   publishOnboardingTemplate,
   purgeOnboardingInstance,
+  resendOnboardingInvitation,
   revokeOnboardingLink,
   rotateOnboardingLink,
   saveOnboardingTemplate,
   setDefaultOnboardingTemplate,
   startWorkspaceOnboarding,
+  updateOnboardingAssignments,
   type OnboardingInstanceDetail,
   type OnboardingInstanceSummary,
   type OnboardingInvitationResult,
   type OnboardingTemplate,
   type StartOnboardingInput,
+  type WorkspaceOnboardingData,
 } from '@/services/workspaceOnboarding'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -75,6 +79,7 @@ interface StartForm {
 }
 
 type ConfirmationAction = 'revoke' | 'archive' | 'purge'
+type TemplateConfirmationAction = 'default' | 'archive'
 
 const blankStartForm: StartForm = {
   template_id: '',
@@ -93,9 +98,25 @@ const blankStartForm: StartForm = {
   logo_file: null,
 }
 
-const ACCENT_PRESETS = ['#665CF2', '#2563EB', '#0F766E', '#C2410C', '#BE185D', '#334155'] as const
+// Named so a screen reader announces a colour rather than a hex code.
+const ACCENT_PRESETS = [
+  { color: '#665CF2', name: 'Violet' },
+  { color: '#2563EB', name: 'Blue' },
+  { color: '#0F766E', name: 'Teal' },
+  { color: '#C2410C', name: 'Orange' },
+  { color: '#BE185D', name: 'Pink' },
+  { color: '#334155', name: 'Slate' },
+] as const
 
-function experienceFromTemplate(template: OnboardingTemplate | undefined, workspaceName: string) {
+const linkIsLive = (instance: OnboardingInstanceSummary) => instance.status !== 'expired'
+  && new Date(instance.capability_expires_at).valueOf() > Date.now()
+
+/*
+ * The agency's own accent from Settings when it has one. Every template
+ * change used to reset this to the platform violet, so an agency that had
+ * already chosen its colour had to pick it again for every client.
+ */
+function experienceFromTemplate(template: OnboardingTemplate | undefined, workspaceName: string, agencyAccent: string | null) {
   return {
     experience_title: renderOnboardingBrandText(template?.definition.intro_title ?? 'Welcome', workspaceName),
     experience_body: renderOnboardingBrandText(
@@ -106,7 +127,7 @@ function experienceFromTemplate(template: OnboardingTemplate | undefined, worksp
       template?.definition.completion_message ?? `Thank you. ${workspaceName || 'Our team'} will review your answers and follow up.`,
       workspaceName,
     ),
-    accent_color: DEFAULT_ONBOARDING_ACCENT,
+    accent_color: agencyAccent ?? DEFAULT_ONBOARDING_ACCENT,
   }
 }
 
@@ -163,8 +184,12 @@ function OnboardingActivity({ instance }: { instance: OnboardingInstanceSummary 
             {instance.delivery.status === 'failed' ? 'Email failed' : 'Email not sent'}{' '}
             <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time>
           </p>
+        ) : instance.delivery?.status === 'sent' ? (
+          <p>Sent <time dateTime={instance.delivery.sent_at ?? instance.invited_at}>{activityDate(instance.delivery.sent_at ?? instance.invited_at)}</time></p>
         ) : (
-          <p>Sent <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time></p>
+          // No readable record of the send, or one still pending: "Sent"
+          // would be a guess.
+          <p>Delivery unknown <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time></p>
         )}
       </div>
     </div>
@@ -181,7 +206,7 @@ function OnboardingAge({ instance }: { instance: OnboardingInstanceSummary }) {
     <div className="min-w-32 space-y-1 text-xs text-muted-foreground">
       <p>{(() => {
         // "Sent" is a lie when the delivery record says the email never left.
-        const verb = !instance.viewed_at && (instance.delivery?.status === 'failed' || instance.delivery?.status === 'skipped') ? 'Created' : 'Sent'
+        const verb = instance.viewed_at || instance.delivery?.status === 'sent' ? 'Sent' : 'Created'
         return state.ageDays === 0 ? `${verb} today` : `${verb} ${state.ageDays} day${state.ageDays === 1 ? '' : 's'} ago`
       })()}</p>
       {!settled && state.expiresInDays !== null && (
@@ -210,7 +235,7 @@ function nextCopyName(template: OnboardingTemplate, templates: OnboardingTemplat
 }
 
 const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
-  const { user, workspace } = useAuth()
+  const { user, workspace, signOut } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
@@ -232,12 +257,34 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
   const openedRequestedInstanceRef = useRef<string | null>(null)
   const [confirmation, setConfirmation] = useState<{ action: ConfirmationAction; instance: OnboardingInstanceSummary } | null>(null)
+  const [templateConfirmation, setTemplateConfirmation] = useState<{ action: TemplateConfirmationAction; template: OnboardingTemplate } | null>(null)
+  // One per opening of the Start dialog, sent with every attempt from it, so
+  // a retry after a lost response cannot create a second onboarding.
+  const startKeyRef = useRef('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<OnboardingTableFilter>('all')
 
+  /*
+   * The 30-second poll used to carry every client and every template
+   * definition, data that changes only when someone edits it. Now the first
+   * load and every explicit refresh read templates and instances; the poll in
+   * between reads instances only and keeps the templates it already has.
+   * Clients are needed only to start an onboarding, so they load when the
+   * Start dialog opens.
+   */
+  const fullListRef = useRef(true)
   const onboardingQuery = useQuery({
     queryKey,
-    queryFn: () => listWorkspaceOnboarding(workspaceId),
+    queryFn: async () => {
+      const previous = queryClient.getQueryData<WorkspaceOnboardingData>(queryKey)
+      if (fullListRef.current || !previous) {
+        const full = await listWorkspaceOnboarding(workspaceId, ['templates', 'instances'])
+        fullListRef.current = false
+        return full
+      }
+      const latest = await listWorkspaceOnboarding(workspaceId, ['instances'])
+      return { ...latest, templates: previous.templates }
+    },
     enabled: validWorkspaceId,
     retry: false,
     gcTime: isPlatformWorkspace ? 0 : undefined,
@@ -247,12 +294,22 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const requestedClientId = (searchParams.get('client') || '').toLowerCase()
   const requestedInstanceId = (searchParams.get('instance') || '').toLowerCase()
   const clientFilter = UUID_PATTERN.test(requestedClientId) ? requestedClientId : null
+  const clientsQuery = useQuery({
+    queryKey: [...queryKey, 'clients'],
+    queryFn: () => listWorkspaceOnboarding(workspaceId, ['clients']),
+    enabled: validWorkspaceId && (startOpen || Boolean(clientFilter)),
+    staleTime: 60_000,
+    retry: false,
+    gcTime: isPlatformWorkspace ? 0 : undefined,
+  })
+  const clients = useMemo(() => clientsQuery.data?.clients ?? [], [clientsQuery.data?.clients])
   const visibleInstances = useMemo(
     () => data?.instances.filter((instance) => !clientFilter || instance.client_id === clientFilter) ?? [],
     [clientFilter, data?.instances],
   )
   const filteredClient = clientFilter
-    ? data?.clients.find((client) => client.id === clientFilter) || null
+    ? clients.find((client) => client.id === clientFilter)
+      || (visibleInstances[0] ? { id: clientFilter, name: visibleInstances[0].client_name } : null)
     : null
   const canManage = data?.can_manage === true
   const publishedTemplates = useMemo(
@@ -269,22 +326,26 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     data?.workspace.logo_updated_at,
   )
   const activePreviewLogoUrl = logoPreviewUrl || agencyLogoUrl
+  const agencyAccent = data?.workspace.client_brand_accent_color ?? null
+  const emailConfigured = data?.email_delivery.configured !== false
 
   // The reset reads the list through refs so a background refetch while the
   // dialog is open (focus, invalidation) cannot wipe what the operator typed.
-  const startDataRef = useRef({ data, publishedTemplates })
-  startDataRef.current = { data, publishedTemplates }
+  const startDataRef = useRef({ data, publishedTemplates, clients })
+  startDataRef.current = { data, publishedTemplates, clients }
   useEffect(() => {
-    const { data, publishedTemplates } = startDataRef.current
+    const { data, publishedTemplates, clients } = startDataRef.current
     if (!startOpen || !data) return
+    startKeyRef.current = crypto.randomUUID()
     const defaultTemplate = publishedTemplates.find((template) => template.is_default) ?? publishedTemplates[0]
     const requestedClient = clientFilter
-      ? data.clients.find((client) => client.id === clientFilter)
+      ? clients.find((client) => client.id === clientFilter)
       : undefined
     setLogoPreviewUrl(null)
     setStartForm({
       ...blankStartForm,
       template_id: defaultTemplate?.id ?? '',
+      send_email: data.email_delivery.configured !== false,
       ...(requestedClient ? {
         client_choice: requestedClient.id,
         client_name: requestedClient.name,
@@ -292,9 +353,29 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         recipient_name: requestedClient.contact_person || requestedClient.name,
         recipient_email: requestedClient.email || '',
       } : {}),
-      ...experienceFromTemplate(defaultTemplate, data.workspace.name),
+      ...experienceFromTemplate(defaultTemplate, data.workspace.name, data.workspace.client_brand_accent_color),
     })
   }, [clientFilter, startOpen])
+
+  // Clients load when the dialog opens, so a client-scoped page may open it
+  // before they arrive. Fill the requested client in once they do, unless the
+  // operator has already started typing a new one.
+  const clientsLoaded = clientsQuery.isSuccess
+  useEffect(() => {
+    if (!startOpen || !clientsLoaded || !clientFilter) return
+    const client = startDataRef.current.clients.find((candidate) => candidate.id === clientFilter)
+    if (!client) return
+    setStartForm((current) => current.client_choice !== 'new' || current.client_name.trim() || current.recipient_email.trim()
+      ? current
+      : {
+          ...current,
+          client_choice: client.id,
+          client_name: client.name,
+          contact_person: client.contact_person || '',
+          recipient_name: client.contact_person || client.name,
+          recipient_email: client.email || '',
+        })
+  }, [clientFilter, clientsLoaded, startOpen])
 
   const detailQuery = useQuery({
     queryKey: [...queryKey, 'detail', selectedInstanceId || 'none'],
@@ -322,6 +403,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   }, [requestedInstanceId, visibleInstances])
 
   const refresh = async () => {
+    fullListRef.current = true
     await queryClient.invalidateQueries({ queryKey })
   }
 
@@ -332,7 +414,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       setStartOpen(false)
       setInvitationEmailRequested(Boolean(variables.send_email))
       setInvitation(result)
-      toast.success(result.delivery.status === 'sent' ? 'Onboarding invitation sent.' : 'Onboarding link created.')
+      toast.success(result.replayed
+        ? 'This onboarding was already created. Here is its link.'
+        : result.delivery.status === 'sent' ? 'Onboarding invitation sent.' : 'Onboarding link created.')
+      if (result.duplicate_client) {
+        toast.warning(`${result.duplicate_client.name || 'Another client'} already uses this email. Check that you did not create a duplicate client.`)
+      }
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to start onboarding.'),
   })
@@ -360,6 +447,23 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to save the template.'),
   })
 
+  const starterMutation = useMutation({
+    mutationFn: async () => {
+      const saved = await saveOnboardingTemplate(workspaceId, starterOnboardingTemplate(data?.workspace.name ?? ''))
+      try {
+        return await publishOnboardingTemplate(workspaceId, saved.id, publishedTemplates.length === 0)
+      } catch {
+        await refresh()
+        throw new Error('The starter form was saved as a draft, but publishing failed. Open it under Form templates to publish.')
+      }
+    },
+    onSuccess: async () => {
+      await refresh()
+      toast.success('Starter form published. Edit it anytime under Form templates.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to create the starter form.'),
+  })
+
   const templateActionMutation = useMutation({
     mutationFn: async ({ action, template }: { action: 'duplicate' | 'default' | 'archive'; template: OnboardingTemplate }) => {
       if (action === 'duplicate') return duplicateOnboardingTemplate(workspaceId, template.id, nextCopyName(template, data?.templates ?? []))
@@ -368,6 +472,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     },
     onSuccess: async (_, variables) => {
       await refresh()
+      setTemplateConfirmation(null)
       toast.success(variables.action === 'duplicate' ? 'Template duplicated.' : variables.action === 'default' ? 'Default template updated.' : 'Template archived.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the template.'),
@@ -396,16 +501,34 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       await detailQuery.refetch()
       setSelectedInstanceId(null)
       // The client is emailed here, so a failed send has to be said out loud:
-      // the link reopened either way and they are not expecting it.
+      // the link reopened either way and they are not expecting it. The link
+      // is put in front of the operator rather than left in a row menu.
       if (result.delivery?.status === 'sent') toast.success('Changes requested. The client has been emailed their reopened link.')
-      else toast.warning('Changes recorded and the link reopened, but the email did not send. Share the link from the onboarding row.')
+      else {
+        toast.warning('Changes recorded and the link reopened, but the email did not send. Share the link below with the client.')
+        if (result.onboarding_url && result.instance) {
+          setInvitationEmailRequested(true)
+          setInvitation({
+            instance: result.instance,
+            onboarding_url: result.onboarding_url,
+            delivery: result.delivery ?? { status: 'unknown' },
+          })
+        }
+      }
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to request changes.'),
   })
 
   const linkMutation = useMutation({
-    mutationFn: async ({ action, instance }: { action: 'get_link' | 'rotate' | 'extend'; instance: OnboardingInstanceSummary }) => {
+    mutationFn: async ({ action, instance }: { action: 'get_link' | 'rotate' | 'extend' | 'resend'; instance: OnboardingInstanceSummary }) => {
       if (action === 'get_link') return getOnboardingLink(workspaceId, instance.id)
+      // A lapsed link is never emailed as-is: resending it rotates to a fresh
+      // 14-day link and emails that one.
+      if (action === 'resend') {
+        return linkIsLive(instance)
+          ? resendOnboardingInvitation(workspaceId, instance.id)
+          : rotateOnboardingLink(workspaceId, instance.id, 14, true)
+      }
       return action === 'rotate'
         ? rotateOnboardingLink(workspaceId, instance.id, 14)
         : extendOnboardingLink(workspaceId, instance.id, 14)
@@ -418,10 +541,18 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           onboarding_url: result.onboarding_url,
           delivery: result.delivery ?? { status: 'skipped' as const },
         }
+        // Only a resend asked for an email; the other actions must not leave
+        // a warning about one behind from an earlier invitation.
+        setInvitationEmailRequested(variables.action === 'resend')
         setInvitation((current) => current?.instance.id === nextInvitation.instance.id
           && current.instance.capability_generation > nextInvitation.instance.capability_generation
           ? current
           : nextInvitation)
+      }
+      if (variables.action === 'resend') {
+        if (result.delivery?.status === 'sent') toast.success(`Invitation emailed to ${variables.instance.recipient_name}.`)
+        else toast.warning('The invitation email did not send. Share the link below with the client.')
+        return
       }
       toast.success(variables.action === 'get_link'
         ? 'Current secure link is ready.'
@@ -430,6 +561,18 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           : 'Link extended by 14 days.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the secure link.'),
+  })
+
+  const assignmentsMutation = useMutation({
+    mutationFn: async (membershipIds: string[]) => {
+      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
+      return updateOnboardingAssignments(workspaceId, selectedInstanceId, membershipIds)
+    },
+    onSuccess: async () => {
+      await detailQuery.refetch()
+      toast.success('Access updated.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update who can view this onboarding.'),
   })
 
   const lifecycleMutation = useMutation({
@@ -454,8 +597,10 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     return new Map(visibleInstances.map((instance) => [instance.id, onboardingChaseState(instance, now)]))
   }, [visibleInstances])
 
+  // Archived rows are finished work; the cards count only what is live, the
+  // same rows their filters show.
   const counts = useMemo(() => {
-    const instances = visibleInstances
+    const instances = visibleInstances.filter((instance) => !instance.archived_at)
     return {
       chasing: instances.filter((instance) => chaseByInstance.get(instance.id)?.needsChasing).length,
       active: instances.filter((instance) => ['invited', 'in_progress', 'changes_requested'].includes(instance.status)).length,
@@ -500,7 +645,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       }))
       return
     }
-    const client = data?.clients.find((candidate) => candidate.id === choice)
+    const client = clients.find((candidate) => candidate.id === choice)
     if (!client) return
     setLogoPreviewUrl(null)
     setStartForm((current) => ({
@@ -519,7 +664,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     setStartForm((current) => ({
       ...current,
       template_id: templateId,
-      ...experienceFromTemplate(template, data?.workspace.name ?? ''),
+      ...experienceFromTemplate(template, data?.workspace.name ?? '', agencyAccent),
     }))
   }
 
@@ -571,7 +716,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       recipient_email: startForm.recipient_email,
       expires_in_days: expiry,
       assigned_membership_ids: startForm.assigned_membership_ids,
-      send_email: startForm.send_email,
+      send_email: startForm.send_email && emailConfigured,
+      idempotency_key: startKeyRef.current || undefined,
       experience: {
         intro_title: startForm.experience_title,
         intro_body: startForm.experience_body,
@@ -581,6 +727,14 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       },
     })
   }
+
+  const accentSwatches = agencyAccent && !ACCENT_PRESETS.some((preset) => preset.color === agencyAccent)
+    ? [{ color: agencyAccent, name: 'Your brand' }, ...ACCENT_PRESETS]
+    : ACCENT_PRESETS
+  const typedEmail = startForm.recipient_email.trim().toLowerCase()
+  const duplicateClient = startForm.client_choice === 'new' && typedEmail
+    ? clients.find((client) => client.email?.trim().toLowerCase() === typedEmail) ?? null
+    : null
 
   const copyLink = async (link: string) => {
     try {
@@ -628,7 +782,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">{filteredClient ? `${filteredClient.name} onboarding` : 'Client Onboarding'}</h1><p className="mt-1 text-muted-foreground">{filteredClient ? 'Review this client’s intake, answers, and approved profile.' : 'Create branded intake forms, invite clients, and review their completed answers.'}</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">{filteredClient ? `${filteredClient.name} onboarding` : 'Client Onboarding'}</h1><p className="mt-1 text-muted-foreground">{filteredClient ? 'Review this client’s intake and answers.' : 'Create branded intake forms, invite clients, and review their completed answers.'}</p></div>
           <div className="flex flex-wrap gap-2">
             {filteredClient && <Button asChild variant="outline"><Link to={`${workspaceBaseHref}/clients/${filteredClient.id}`}>Back to client</Link></Button>}
             {canManage && (publishedTemplates.length > 0
@@ -642,10 +796,24 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         ) : onboardingQuery.isLoading ? (
           <div className="flex min-h-72 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : onboardingQuery.error ? (
-          <Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : 'Try again.'}</CardDescription></CardHeader><CardContent><Button variant="outline" onClick={() => void onboardingQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Try again</Button></CardContent></Card>
+          <Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : 'Try again.'}</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2">
+            {/* A stale sign-in will not fix itself on retry; the way out is
+                signing in again, so offer it directly. */}
+            {(onboardingQuery.error as { code?: unknown }).code === 'REAUTHENTICATION_REQUIRED' && (
+              <Button onClick={() => void signOut()}><LogOut className="mr-2 h-4 w-4" />Sign out and sign in again</Button>
+            )}
+            <Button variant="outline" onClick={() => void onboardingQuery.refetch()}><RefreshCw className="mr-2 h-4 w-4" />Try again</Button>
+          </CardContent></Card>
         ) : data ? (
           <>
             {!canManage && <Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Assigned onboarding access</AlertTitle><AlertDescription>You can review only the onboarding records assigned to you. Owners and admins manage templates and invitations.</AlertDescription></Alert>}
+            {canManage && !emailConfigured && (
+              <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                <MailWarning className="h-4 w-4" />
+                <AlertTitle>Invitation emails are not set up</AlertTitle>
+                <AlertDescription>Email sending is not configured on this platform yet, so no invitation will be emailed. You can still create each secure link and share it from your own inbox. Contact support to turn sending on.</AlertDescription>
+              </Alert>
+            )}
 
             {/* Each card selects the rows it counts. A number you cannot open
                 is a number you have to go looking for. */}
@@ -657,22 +825,17 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                 { key: 'approved', label: 'Approved', value: counts.approved, icon: Sparkles, tone: 'text-emerald-500' },
                 { key: 'expired', label: 'Expired', value: counts.expired, icon: Link2, tone: 'text-slate-500' },
               ] as const).map(({ key, label, value, icon: Icon, tone }) => (
-                <Card
+                <button
                   key={key}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
                   aria-pressed={statusFilter === key}
                   onClick={() => setStatusFilter((current) => (current === key ? 'all' : key))}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return
-                    event.preventDefault()
-                    setStatusFilter((current) => (current === key ? 'all' : key))
-                  }}
-                  className={`cursor-pointer transition-colors hover:bg-muted/30 ${statusFilter === key ? 'border-primary ring-1 ring-primary' : ''}`}
+                  className={`flex flex-col gap-2 rounded-lg border bg-card p-6 text-left text-card-foreground shadow-sm transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${statusFilter === key ? 'border-primary ring-1 ring-primary' : ''}`}
                 >
-                  <CardHeader className="pb-2"><CardDescription>{label}</CardDescription><CardTitle className="text-3xl">{value}</CardTitle></CardHeader>
-                  <CardContent><Icon className={`h-5 w-5 ${tone}`} /></CardContent>
-                </Card>
+                  <span className="text-sm text-muted-foreground">{label}</span>
+                  <span className="text-3xl font-semibold leading-none tracking-tight">{value}</span>
+                  <Icon className={`mt-3 h-5 w-5 ${tone}`} aria-hidden="true" />
+                </button>
               ))}
             </div>
 
@@ -710,7 +873,15 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                   </CardHeader>
                   <CardContent>
                     {visibleInstances.length === 0 ? (
-                      <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No onboarding invitations yet</p><p className="text-sm text-muted-foreground">Start with an existing client or create a minimal client while inviting them.</p></div>{canManage && <Button variant="outline" onClick={() => setStartOpen(true)}><Plus className="mr-2 h-4 w-4" />Start onboarding</Button>}</div>
+                      !canManage ? (
+                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Nothing has been shared with you yet</p><p className="text-sm text-muted-foreground">When an owner or admin gives you access to a client’s onboarding, it appears here.</p></div></div>
+                      ) : publishedTemplates.length > 0 ? (
+                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No onboarding invitations yet</p><p className="text-sm text-muted-foreground">Start with an existing client or create a minimal client while inviting them.</p></div><Button variant="outline" onClick={() => setStartOpen(true)}><Plus className="mr-2 h-4 w-4" />Start onboarding</Button></div>
+                      ) : (
+                        // No published form means Start onboarding has nothing to
+                        // send, so the empty state offers the form first.
+                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Set up your intake form first</p><p className="max-w-md text-sm text-muted-foreground">Use the starter form (name, bio, links, headshot, and speaking topics) and edit it later, or build your own.</p></div><div className="flex flex-wrap justify-center gap-2"><Button disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Use the starter form</Button><Button variant="outline" onClick={() => { setEditingTemplate(data.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Build your own</Button></div></div>
+                      )
                     ) : (
                       <div className="overflow-x-auto">
                         {filtering && (
@@ -737,6 +908,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                               <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{onboardingStatusLabel(instance.status)}</Badge></TableCell>
                               <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                                 {!['approved', 'revoked', 'submitted', 'expired'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'get_link', instance })}><ExternalLink className="mr-2 h-4 w-4" />Open or copy current link</DropdownMenuItem>}
+                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && !instance.archived_at && <DropdownMenuItem disabled={linkMutation.isPending || !emailConfigured} title={emailConfigured ? undefined : 'Email sending is not set up'} onClick={() => linkMutation.mutate({ action: 'resend', instance })}><Mail className="mr-2 h-4 w-4" />{linkIsLive(instance) ? 'Resend invitation' : 'Email a new 14-day link'}</DropdownMenuItem>}
                                 {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
                                 {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}
                                 {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'revoke', instance })}>Revoke link</DropdownMenuItem>}
@@ -755,11 +927,11 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               </TabsContent>
 
               {canManage && <TabsContent value="templates">
-                <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Editing never changes a form a client already has. Publishing creates the next version for new links.</p></div><Button variant="outline" onClick={() => { setEditingTemplate(null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />New template</Button></div>
+                <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Editing never changes a form a client already has. Publishing creates the next version for new links.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Use the starter form</Button><Button variant="outline" onClick={() => { setEditingTemplate(null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />New template</Button></div></div>
                 <div className="grid gap-4 lg:grid-cols-2">{data.templates.map((template) => (
                   <Card key={template.id} className={template.status === 'archived' ? 'opacity-60' : undefined}>
                     <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{template.name}</CardTitle>{template.is_default && <Badge>Default</Badge>}<Badge variant="outline" className="capitalize">{template.status}</Badge></div><CardDescription className="mt-2">{template.description || 'No internal description'}</CardDescription></div></div></CardHeader>
-                    <CardContent><div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{(template.published_definition ?? template.definition).sections.length} sections</span><span>{(template.published_definition ?? template.definition).sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span>{template.has_unpublished_changes && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Unpublished changes</Badge>}</div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingTemplate(template); setBuilderOpen(true) }}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'default', template })}>Make default</Button>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => templateActionMutation.mutate({ action: 'archive', template })}>Archive</Button></div>}</CardContent>
+                    <CardContent><div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{(template.published_definition ?? template.definition).sections.length} sections</span><span>{(template.published_definition ?? template.definition).sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span>{template.has_unpublished_changes && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Unpublished changes</Badge>}</div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingTemplate(template); setBuilderOpen(true) }}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => setTemplateConfirmation({ action: 'default', template })}>Make default</Button>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => setTemplateConfirmation({ action: 'archive', template })}>Archive</Button></div>}</CardContent>
                   </Card>
                 ))}</div>
               </TabsContent>}
@@ -789,14 +961,28 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
             <div className="min-w-0 space-y-6 lg:w-[45%] lg:overflow-y-auto lg:pr-1">
               <section className="space-y-4">
                 <div><h3 className="font-semibold">Client and form</h3><p className="text-sm text-muted-foreground">Create one private intake link for this client. The questions stay pinned to this published template version.</p></div>
+                {/* What the client will see is decided in Settings; a missing
+                    logo is easy to miss until the client points it out. */}
+                {!data?.workspace.logo_path && !startForm.logo_file && (
+                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    Your clients will see {data?.workspace.name || 'your workspace name'} with no logo. <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-branding`}>Add your logo and client-facing name in Settings</Link>, or upload a logo for this link below.
+                  </p>
+                )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-template">Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger id="start-template"><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-client">Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger id="start-client"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{data?.clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-client">Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger id="start-client"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
                   {startForm.client_choice === 'new' ? <>
                     <div className="space-y-2"><Label htmlFor="new-client-name">Client or company name</Label><Input id="new-client-name" placeholder="Acme Company" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div>
                     <div className="space-y-2"><Label htmlFor="new-contact">Contact name</Label><Input id="new-contact" placeholder="Jane Smith" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div>
                   </> : <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-name">Contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>}
                   <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-email">Contact email</Label><Input id="recipient-email" type="email" placeholder="jane@example.com" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
+                  {clientsQuery.isLoading && <p className="text-xs text-muted-foreground sm:col-span-2">Loading your clients…</p>}
+                  {duplicateClient && (
+                    <p className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:col-span-2" role="status">
+                      {duplicateClient.name} already uses this email.
+                      <button type="button" className="font-medium underline underline-offset-2" onClick={() => handleClientChoice(duplicateClient.id)}>Use {duplicateClient.name} instead</button>
+                    </p>
+                  )}
                 </div>
               </section>
 
@@ -807,15 +993,22 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                 <div className="space-y-2"><Label htmlFor="experience-completion">Completion message</Label><Textarea id="experience-completion" rows={3} maxLength={2000} value={startForm.experience_completion_message} onChange={(event) => setStartForm((current) => ({ ...current, experience_completion_message: event.target.value }))} /></div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Accent color</Label><div className="flex flex-wrap items-center gap-2">{ACCENT_PRESETS.map((color) => <button key={color} type="button" aria-label={`Use accent ${color}`} aria-pressed={startForm.accent_color === color} className="h-8 w-8 rounded-full border-2 border-background shadow ring-offset-2 transition focus-visible:outline-none focus-visible:ring-2" style={{ backgroundColor: color, boxShadow: startForm.accent_color === color ? `0 0 0 2px ${color}` : undefined }} onClick={() => setStartForm((current) => ({ ...current, accent_color: color }))} />)}<Input aria-label="Custom accent color" type="color" value={startForm.accent_color} className="h-9 w-12 cursor-pointer p-1" onChange={(event) => setStartForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))} /></div></div>
-                  <div className="space-y-2"><Label htmlFor="client-onboarding-logo">Client logo override</Label><div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" size="sm" asChild><label htmlFor="client-onboarding-logo" className="cursor-pointer"><ImagePlus className="mr-2 h-4 w-4" />{startForm.logo_file ? 'Replace logo' : 'Upload logo'}</label></Button>{startForm.logo_file && <Button type="button" variant="ghost" size="sm" onClick={() => { setLogoPreviewUrl(null); setStartForm((current) => ({ ...current, logo_file: null })) }}><X className="mr-1 h-4 w-4" />Use agency logo</Button>}</div><input id="client-onboarding-logo" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { handleLogoChoice(event.target.files?.[0]); event.currentTarget.value = '' }} /><p className="text-xs text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Leave empty to use {data?.workspace.name}’s logo.</p></div>
+                  <fieldset className="space-y-2"><legend className="text-sm font-medium leading-none">Accent color</legend><div className="flex flex-wrap items-center gap-2">{accentSwatches.map(({ color, name }) => <button key={color} type="button" aria-label={`${name} accent`} title={`${name} (${color})`} aria-pressed={startForm.accent_color === color} className="h-8 w-8 rounded-full border-2 border-background shadow ring-ring ring-offset-2 transition focus-visible:outline-none focus-visible:ring-2" style={{ backgroundColor: color, boxShadow: startForm.accent_color === color ? `0 0 0 2px ${color}` : undefined }} onClick={() => setStartForm((current) => ({ ...current, accent_color: color }))} />)}<Input aria-label="Custom accent color" type="color" value={startForm.accent_color} className="h-9 w-12 cursor-pointer p-1" onChange={(event) => setStartForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))} /></div></fieldset>
+                  {/* The file input is visually hidden, so its focus is shown
+                      on the button-styled label that follows it. */}
+                  <div className="space-y-2"><Label htmlFor="client-onboarding-logo">Client logo override</Label><div className="flex flex-wrap items-center gap-2"><input id="client-onboarding-logo" type="file" accept="image/png,image/jpeg,image/webp" className="peer sr-only" onChange={(event) => { handleLogoChoice(event.target.files?.[0]); event.currentTarget.value = '' }} /><Button type="button" variant="outline" size="sm" asChild><label htmlFor="client-onboarding-logo" className="cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"><ImagePlus className="mr-2 h-4 w-4" />{startForm.logo_file ? 'Replace logo' : 'Upload logo'}</label></Button>{startForm.logo_file && <Button type="button" variant="ghost" size="sm" onClick={() => { setLogoPreviewUrl(null); setStartForm((current) => ({ ...current, logo_file: null })) }}><X className="mr-1 h-4 w-4" />Use agency logo</Button>}</div><p className="text-xs text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Leave empty to use {data?.workspace.name}’s logo.</p></div>
                 </div>
               </section>
 
               <section className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
-                <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={startForm.send_email} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span>Email this invitation to the client</span></label>
-                {data?.assignable_members.length ? <div className="space-y-2 sm:col-span-2"><Label>Let these teammates view it</Label><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></div> : null}
+                <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={startForm.send_email && emailConfigured} disabled={!emailConfigured} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span>Email this invitation to the client</span></label>
+                {!emailConfigured ? (
+                  <p className="text-xs text-amber-800 sm:col-span-2">Email sending is not set up on this platform, so you will share the link yourself after creating it.</p>
+                ) : startForm.send_email && !data?.workspace.client_contact_email ? (
+                  <p className="text-xs text-muted-foreground sm:col-span-2">Replies to this email will not reach you until you set an address clients reply to. <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-branding`}>Set it in Settings</Link>.</p>
+                ) : null}
+                {data?.assignable_members.length ? <fieldset className="space-y-2 sm:col-span-2"><legend className="text-sm font-medium leading-none">Let these teammates view it</legend><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></fieldset> : null}
               </section>
             </div>
 
@@ -859,10 +1052,17 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           )}
           {invitation && invitation.delivery.status === 'skipped' && invitationEmailRequested && (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-              Email sending is not available right now, so no invitation was emailed — share the link below yourself.
+              {invitation.delivery.reason === 'not_configured'
+                ? 'Email sending is not set up on this platform, so nothing was emailed. Share the link below yourself.'
+                : 'No email was sent. Share the link below yourself.'}
             </p>
           )}
-          {invitation && <div className="space-y-4"><div className="overflow-hidden rounded-2xl border bg-muted/20"><div className="h-1.5 bg-gradient-to-r from-primary via-violet-500 to-fuchsia-400" /><div className="p-5"><div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Share2 className="h-5 w-5" /></div><div><p className="font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">When shared in Messages, the link can display your agency name and logo as a polished preview.</p></div></div></div></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}><Share2 className="mr-2 h-4 w-4" />Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
+          {invitation && invitation.delivery.status === 'unknown' && invitationEmailRequested && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+              We could not confirm whether the email was sent. Share the link below to be sure the client has it.
+            </p>
+          )}
+          {invitation && <div className="space-y-4"><div className="overflow-hidden rounded-2xl border bg-muted/20"><div className="h-1.5 bg-gradient-to-r from-primary via-violet-500 to-fuchsia-400" /><div className="p-5"><div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Share2 className="h-5 w-5" /></div><div><p className="font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">When shared in a messaging app, the link preview can show your agency name and logo.</p></div></div></div></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}><Share2 className="mr-2 h-4 w-4" />Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
           <DialogFooter>{invitation && <Button variant="outline" asChild><a href={`${invitation.onboarding_url}${invitation.onboarding_url.includes('?') ? '&' : '?'}preview=staff`} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open client form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -877,9 +1077,24 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         onOpenChange={(open) => { if (!open) setSelectedInstanceId(null) }}
         onApprove={() => approveMutation.mutate()}
         onRequestChanges={(comments) => requestChangesMutation.mutate(comments)}
+        assignableMembers={data?.assignable_members ?? []}
+        assignmentsSaving={assignmentsMutation.isPending}
+        onUpdateAssignments={(membershipIds) => assignmentsMutation.mutate(membershipIds)}
       />
 
-      {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" /></div></div>}
+      {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20" role="status" aria-label="Loading onboarding details"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden="true" /><span className="sr-only">Loading onboarding details</span></div></div>}
+
+      <AlertDialog open={Boolean(templateConfirmation)} onOpenChange={(open) => { if (!open && !templateActionMutation.isPending) setTemplateConfirmation(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{templateConfirmation?.action === 'archive' ? `Archive ${templateConfirmation.template.name}?` : `Make ${templateConfirmation?.template.name} the default?`}</AlertDialogTitle>
+            <AlertDialogDescription>{templateConfirmation?.action === 'archive'
+              ? 'It can no longer be chosen for new onboarding. Clients who already have a link keep their form.'
+              : 'New onboarding will start with this form selected. Links already sent are not changed.'}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel disabled={templateActionMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction className={templateConfirmation?.action === 'archive' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined} disabled={templateActionMutation.isPending} onClick={(event) => { event.preventDefault(); if (templateConfirmation) templateActionMutation.mutate(templateConfirmation) }}>{templateActionMutation.isPending ? 'Working…' : templateConfirmation?.action === 'archive' ? 'Archive template' : 'Make default'}</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !lifecycleMutation.isPending) setConfirmation(null) }}>
         <AlertDialogContent>

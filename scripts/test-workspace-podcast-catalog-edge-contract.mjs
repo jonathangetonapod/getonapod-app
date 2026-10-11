@@ -61,4 +61,14 @@ assert.match(layout, /id: 'podcast-database'[\s\S]+enabled: true/u)
 assert.match(routes, /path="\/app\/podcast-database"/u)
 assert.match(routes, /path="\/app\/workspaces\/:workspaceId\/podcast-database"/u)
 
+// Search embeddings on the platform OpenAI key are rate limited per workspace
+// and per member (shared limiter); past the limit, or if the limiter fails,
+// the search runs keyword-only rather than spending more.
+assert.match(edge, /reservePublicRate\(context\.admin, \[/u)
+assert.match(edge, /bucket: `catalog-embed:\$\{workspaceId\}`/u)
+assert.match(edge, /bucket: `catalog-embed-user:\$\{context\.user\.id\}`/u)
+assert.match(edge, /openaiKey\.source !== 'workspace'/u)
+assert.match(edge, /embeddingAllowed = false/u)
+assert.match(edge, /const searchEmbedding = embeddingAllowed\s+\? await generatePodcastSearchEmbedding\(search, openaiKey\)\s+: null/u)
+
 console.log('workspace podcast catalog Edge contract passed')

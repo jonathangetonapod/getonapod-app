@@ -556,6 +556,9 @@ export interface ClientAutopilotSettings {
   last_run_at: string | null
   last_run_added: number
   next_run_at: string | null
+  /** Why the most recent run did not finish; null once a run succeeds. */
+  last_run_error?: string | null
+  last_run_error_at?: string | null
 }
 
 export async function getClientAutopilot(

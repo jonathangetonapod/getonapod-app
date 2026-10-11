@@ -6,13 +6,13 @@ import PageSEO from '@/components/seo/PageSEO'
 import { supabase } from '@/lib/supabase'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { currentHostname } from '@/lib/workspaceHost'
+import { isPortalBrandSlug, readPortalBrand, rememberPortalBrand } from '@/components/portal/portalBrandMemory'
 import '@/styles/agencyLanding.css'
-
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
 
 interface LoginBranding {
   name: string
   logo_url: string | null
+  primary_color: string | null
 }
 
 /**
@@ -21,7 +21,10 @@ interface LoginBranding {
  * It wears the same frame as the workspace sign-in, so the two doors read as
  * one product, but it stands alone: no dark panel selling the workspace, and
  * under an agency's link (?b=slug) the agency's own logo and name, never ours.
- * The auth itself is the portal's own session, not Supabase Auth.
+ * Without a known agency it stays neutral: a client of an agency must never
+ * land on a door that names the platform behind it. The agency is remembered
+ * for the tab (portalBrandMemory), so the sign-in after a session ends keeps
+ * the same brand. The auth itself is the portal's own session, not Supabase Auth.
  */
 export default function PortalLogin() {
   const [email, setEmail] = useState('')
@@ -29,19 +32,21 @@ export default function PortalLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<'empty' | 'mismatch' | 'offline' | null>(null)
+  const [rememberedBrand] = useState(() => readPortalBrand())
   const [linkBranding, setLinkBranding] = useState<LoginBranding | null>(null)
 
   const { loginWithPassword, client, branding, loading: portalLoading } = useClientPortal()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const brandingSlug = searchParams.get('b') || ''
+  const requestedSlug = searchParams.get('b') || ''
+  const brandingSlug = isPortalBrandSlug(requestedSlug) ? requestedSlug : rememberedBrand?.slug || ''
   const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true
   const sessionExpired = (location.state as { sessionExpired?: boolean } | null)?.sessionExpired === true
   const forgotHref = brandingSlug ? `/portal/forgot?b=${encodeURIComponent(brandingSlug)}` : '/portal/forgot'
 
   useEffect(() => {
-    if (!brandingSlug || !SLUG_PATTERN.test(brandingSlug) || brandingSlug.length > 180) return
+    if (!isPortalBrandSlug(brandingSlug)) return
     let cancelled = false
     supabase.functions
       .invoke('public-client-dashboard', { body: { action: 'metadata', slug: brandingSlug.toLowerCase(), hostname: currentHostname() } })
@@ -49,10 +54,15 @@ export default function PortalLogin() {
         if (cancelled || metadataError) return
         const workspace = data?.metadata?.workspace
         if (workspace && typeof workspace.name === 'string' && workspace.name.trim()) {
-          setLinkBranding({
+          const resolved: LoginBranding = {
             name: workspace.name.trim(),
             logo_url: typeof workspace.logo_url === 'string' ? workspace.logo_url : null,
-          })
+            primary_color: typeof workspace.primary_color === 'string' && /^#[0-9a-f]{6}$/iu.test(workspace.primary_color)
+              ? workspace.primary_color
+              : null,
+          }
+          setLinkBranding(resolved)
+          rememberPortalBrand({ slug: brandingSlug, ...resolved })
         }
       })
       .catch(() => {
@@ -107,8 +117,15 @@ export default function PortalLogin() {
     }
   }
 
-  const agencyName = linkBranding?.name || branding?.name || null
-  const agencyLogoUrl = linkBranding?.logo_url ? safeExternalUrl(linkBranding.logo_url) : null
+  // The slug's own lookup wins; until it answers (or when it cannot), the
+  // brand remembered for this tab keeps the door wearing the same agency.
+  const remembered = rememberedBrand && (!rememberedBrand.slug || rememberedBrand.slug === brandingSlug.toLowerCase() || !brandingSlug)
+    ? rememberedBrand
+    : null
+  const agencyName = linkBranding?.name || branding?.name || remembered?.name || null
+  const agencyLogoSource = linkBranding?.logo_url || (!linkBranding ? remembered?.logo_url : null) || null
+  const agencyLogoUrl = agencyLogoSource ? safeExternalUrl(agencyLogoSource) : null
+  const agencyColor = linkBranding?.primary_color || remembered?.primary_color || undefined
 
   return (
     <div className="gp-page gp-auth-split gp-auth-solo">
@@ -117,6 +134,10 @@ export default function PortalLogin() {
         description="Sign in to your client portal to review approvals, outreach activity, bookings, and live episodes."
         path="/portal/login"
         noindex
+        whiteLabel
+        brandName={agencyName || 'Client portal'}
+        favicon={agencyLogoUrl}
+        themeColor={agencyColor}
       />
 
       <div className="gp-auth-col">
@@ -132,10 +153,12 @@ export default function PortalLogin() {
             {agencyName}
           </span>
         ) : (
-          <Link className="gp-mark" to="/">
+          // No known agency: a neutral mark that names no one and links
+          // nowhere, so an agency's client never sees the platform behind it.
+          <span className="gp-mark">
             <span className="gp-mark-dot" aria-hidden="true"><i /></span>
-            Get On A Pod
-          </Link>
+            Client portal
+          </span>
         )}
 
         <main className="gp-auth-main">
@@ -216,11 +239,13 @@ export default function PortalLogin() {
           <p className="gp-auth-foot">
             {agencyName
               ? <>Need help? Contact your {agencyName} team.</>
-              : <>Need help? <a href="mailto:jonathan@getonapod.com">jonathan@getonapod.com</a></>}
+              : <>Need help? Contact the team that invited you.</>}
           </p>
         </main>
 
-        <p className="gp-auth-copyright">© {new Date().getFullYear()} {agencyName || 'Get On A Pod'}</p>
+        {agencyName ? (
+          <p className="gp-auth-copyright">© {new Date().getFullYear()} {agencyName}</p>
+        ) : null}
       </div>
     </div>
   )

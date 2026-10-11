@@ -45,6 +45,23 @@ describe('AgencyRelationshipNotice', () => {
     expect(screen.getByText(/Met the producer at Podcast Movement/i)).toBeInTheDocument()
   })
 
+  it('links a booked episode only when the address is http or https', () => {
+    const { unmount } = render(<AgencyRelationshipNotice relationship={relationship({
+      state: 'booked',
+      booked_client_name: 'Dallas Fontaine',
+      booked_episode_url: 'javascript:alert(1)',
+    })} />)
+    expect(screen.queryByText('Listen to that episode')).not.toBeInTheDocument()
+    unmount()
+
+    render(<AgencyRelationshipNotice relationship={relationship({
+      state: 'booked',
+      booked_client_name: 'Dallas Fontaine',
+      booked_episode_url: 'https://example.com/episode-12',
+    })} />)
+    expect(screen.getByText('Listen to that episode').closest('a')).toHaveAttribute('href', 'https://example.com/episode-12')
+  })
+
   it('stays hidden for a genuinely unknown show', () => {
     const { container } = render(<AgencyRelationshipNotice relationship={relationship()} />)
     expect(container).toBeEmptyDOMElement()

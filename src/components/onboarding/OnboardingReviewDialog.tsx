@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ExternalLink, Loader2, MessageSquareWarning } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Loader2, MessageSquareWarning, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { onboardingStatusLabel } from '@/lib/onboardingActivity'
-import type { OnboardingInstanceDetail, OnboardingQuestion } from '@/services/workspaceOnboarding'
+import type {
+  OnboardingAsset,
+  OnboardingAssignableMember,
+  OnboardingInstanceDetail,
+  OnboardingQuestion,
+} from '@/services/workspaceOnboarding'
 
 export interface OnboardingReviewComment {
   question_id: string
@@ -20,6 +26,10 @@ interface Props {
   onOpenChange: (open: boolean) => void
   onApprove: () => void
   onRequestChanges: (comments: OnboardingReviewComment[]) => void
+  /** Teammates a manager can let view this onboarding. */
+  assignableMembers?: OnboardingAssignableMember[]
+  assignmentsSaving?: boolean
+  onUpdateAssignments?: (membershipIds: string[]) => void
 }
 
 function emptyAnswer(answer: unknown): boolean {
@@ -42,13 +52,31 @@ function displayAnswer(question: OnboardingQuestion, answer: unknown): string {
   return String(answer)
 }
 
-const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, onApprove, onRequestChanges }: Props) => {
-  const assetByQuestion = useMemo(
-    () => new Map(detail?.assets.map((asset) => [asset.question_id, asset]) ?? []),
-    [detail?.assets],
-  )
+const OnboardingReviewDialog = ({
+  open,
+  detail,
+  canManage,
+  busy,
+  onOpenChange,
+  onApprove,
+  onRequestChanges,
+  assignableMembers = [],
+  assignmentsSaving = false,
+  onUpdateAssignments,
+}: Props) => {
+  // A question can hold more than one file (earlier uploads survive a
+  // replacement until purge), and keeping only the last one per question hid
+  // the rest from the reviewer.
+  const assetsByQuestion = useMemo(() => {
+    const result = new Map<string, OnboardingAsset[]>()
+    for (const asset of detail?.assets ?? []) {
+      result.set(asset.question_id, [...(result.get(asset.question_id) ?? []), asset])
+    }
+    return result
+  }, [detail?.assets])
   const [reviewing, setReviewing] = useState(false)
   const [notes, setNotes] = useState<Record<string, string>>({})
+  const [assigned, setAssigned] = useState<string[]>([])
 
   // Notes belong to the submission that was open, never to the next one.
   // Keyed on the instance as well as the dialog: templates are reused, so the
@@ -59,6 +87,11 @@ const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, o
     setReviewing(false)
     setNotes({})
   }, [open, detailId])
+
+  const savedAssignments = detail?.assigned_membership_ids
+  useEffect(() => {
+    setAssigned(savedAssignments ?? [])
+  }, [open, detailId, savedAssignments])
 
   const comments = Object.entries(notes)
     .map(([question_id, body]) => ({ question_id, body: body.trim() }))
@@ -79,6 +112,8 @@ const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, o
   const submittedLabel = showingSubmission && detail.submitted_at
     ? new Date(detail.submitted_at).toLocaleString()
     : null
+  const assignmentsChanged = [...assigned].sort().join(',') !== [...detail.assigned_membership_ids].sort().join(',')
+  const showAssignments = canManage && Boolean(onUpdateAssignments) && assignableMembers.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,6 +144,40 @@ const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, o
           <Badge variant="secondary">{answeredCount} of {questions.length} answered</Badge>
         </div>
 
+        {showAssignments && !reviewing && (
+          <fieldset className="rounded-xl border px-4 py-3">
+            <legend className="flex items-center gap-2 px-1 text-sm font-semibold">
+              <Users className="h-4 w-4" />Teammates who can view this onboarding
+            </legend>
+            <p className="text-xs text-muted-foreground">Owners and admins always have access. Members see only what is shared with them.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {assignableMembers.map((member) => (
+                <label key={member.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={assigned.includes(member.id)}
+                    disabled={assignmentsSaving}
+                    onCheckedChange={(checked) => setAssigned((current) => checked === true
+                      ? [...new Set([...current, member.id])]
+                      : current.filter((id) => id !== member.id))}
+                  />
+                  <span>{member.full_name || member.email}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!assignmentsChanged || assignmentsSaving}
+                onClick={() => onUpdateAssignments?.(assigned)}
+              >
+                {assignmentsSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save access
+              </Button>
+            </div>
+          </fieldset>
+        )}
+
         {reviewing && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
             Sending these notes emails {detail.recipient_name} and reopens their onboarding link so they can edit and
@@ -124,18 +193,26 @@ const OnboardingReviewDialog = ({ open, detail, canManage, busy, onOpenChange, o
               <dl className="mt-5 grid gap-3">
                 {section.questions.map((question) => {
                   const answer = detail.answers[question.id]
-                  const asset = assetByQuestion.get(question.id)
-                  const unanswered = emptyAnswer(answer)
+                  const assets = assetsByQuestion.get(question.id) ?? []
+                  const unanswered = emptyAnswer(answer) && assets.length === 0
                   return (
                     <div key={question.id} className="rounded-xl border bg-muted/20 px-4 py-4 sm:px-5">
                       <dt className="text-sm font-semibold text-foreground">{question.label}</dt>
                       <dd className={unanswered ? 'mt-2 text-sm italic text-muted-foreground' : 'mt-2 whitespace-pre-wrap text-base leading-7 text-foreground'}>
-                        {asset ? asset.signed_url ? (
-                          <a className="inline-flex items-center gap-2 font-medium text-primary hover:underline" href={asset.signed_url} target="_blank" rel="noreferrer">
-                            {asset.original_name}<ExternalLink className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground">{asset.original_name} · preview unavailable</span>
+                        {assets.length > 0 ? (
+                          <ul className="space-y-1">
+                            {assets.map((asset) => (
+                              <li key={asset.id}>
+                                {asset.signed_url ? (
+                                  <a className="inline-flex items-center gap-2 font-medium text-primary hover:underline" href={asset.signed_url} target="_blank" rel="noreferrer">
+                                    {asset.original_name}<ExternalLink className="h-4 w-4" />
+                                  </a>
+                                ) : (
+                                  <span className="text-muted-foreground">{asset.original_name} · preview unavailable</span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
                         ) : displayAnswer(question, answer)}
                       </dd>
                       {reviewing && (

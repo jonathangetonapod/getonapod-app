@@ -70,3 +70,48 @@ describe('AutoRefillCard monthly cap', () => {
     expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
   })
 })
+
+describe('AutoRefillCard failure state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedSet.mockResolvedValue({ threshold: 50, pack: 300, monthlyCapCents: null })
+  })
+
+  it('says a single failed top-up will be retried, with the reason', () => {
+    renderCard(overview({
+      refill_failure_count: 1,
+      refill_last_error: 'Your card was declined.',
+      refill_last_failed_at: '2026-10-10T12:00:00Z',
+    }))
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('failed. We will try again tomorrow.')
+    expect(alert).toHaveTextContent('Reason: Your card was declined.')
+    // Nothing changed on the form, so there is nothing to save yet.
+    expect(screen.getByRole('button', { name: 'Save automatic top-ups' })).toBeDisabled()
+  })
+
+  it('shows a paused state after three failures and lets the same settings be saved to resume', async () => {
+    renderCard(overview({
+      refill_failure_count: 3,
+      refill_last_error: 'Your card was declined.',
+      refill_last_failed_at: '2026-10-10T12:00:00Z',
+    }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('paused after 3 failed attempts in a row')
+    const resume = screen.getByRole('button', { name: 'Resume automatic top-ups' })
+    expect(resume).toBeEnabled()
+    fireEvent.click(resume)
+
+    await waitFor(() => expect(mockedSet).toHaveBeenCalledWith(workspaceId, {
+      thresholdCredits: 50,
+      packCredits: 300,
+      monthlyCapCents: null,
+    }))
+  })
+
+  it('shows no failure notice while top-ups are healthy', () => {
+    renderCard(overview({ refill_failure_count: 0 }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

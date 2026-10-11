@@ -20,6 +20,7 @@ import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
   createOnboardingCapability,
   generatePitchProfile,
+  onboardingEmailConfigured,
   onboardingUrl,
   sendOnboardingEmail,
   validateOnboardingDefinition,
@@ -227,30 +228,109 @@ async function listPrivateOnboardingFiles(
   throw new HttpError(503, 'ONBOARDING_STORAGE_PURGE_FAILED', 'Private onboarding files exceeded the safe purge limit. No database records were deleted')
 }
 
+type Delivery = Awaited<ReturnType<typeof sendOnboardingEmail>>
+
+/*
+ * The delivery record is what the list reads back as "Sent" or "Email
+ * failed", so a write that silently failed left the row claiming whatever
+ * the last successful write said. Both writers now report whether the record
+ * landed; the caller passes that on so the page can say the outcome is
+ * unknown instead of trusting a stale row.
+ */
 async function recordDelivery(
   admin: AdminClient,
   instanceId: string,
-  delivery: Awaited<ReturnType<typeof sendOnboardingEmail>>,
-): Promise<void> {
-  await admin.rpc('record_workspace_onboarding_invitation_v1', {
+  delivery: Delivery,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('record_workspace_onboarding_invitation_v1', {
     p_instance_id: instanceId,
     p_status: delivery.status,
     p_provider_message_id: delivery.providerMessageId,
     p_error: delivery.error,
   })
+  if (error || data !== true) {
+    console.error('[workspace-onboarding] Invitation delivery could not be recorded', error?.code ?? 'no row')
+    return false
+  }
+  return true
 }
 
 async function recordChangeRequestDelivery(
   admin: AdminClient,
   instanceId: string,
-  delivery: Awaited<ReturnType<typeof sendOnboardingEmail>>,
-): Promise<void> {
-  await admin.rpc('record_workspace_onboarding_change_request_v1', {
+  delivery: Delivery,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc('record_workspace_onboarding_change_request_v1', {
     p_instance_id: instanceId,
     p_status: delivery.status,
     p_provider_message_id: delivery.providerMessageId,
     p_error: delivery.error,
   })
+  if (error || data !== true) {
+    console.error('[workspace-onboarding] Change-request delivery could not be recorded', error?.code ?? 'no row')
+    return false
+  }
+  return true
+}
+
+function deliveryResponse(delivery: Delivery, recorded: boolean): Record<string, unknown> {
+  return {
+    status: delivery.status,
+    ...(delivery.reason ? { reason: delivery.reason } : {}),
+    ...(recorded ? {} : { recorded: false }),
+  }
+}
+
+/*
+ * The agency's own contact address, for reply-to. It lives on the workspace
+ * (set under Settings, "Email clients reply to") and the milestone emails in
+ * clientNotify.ts already use it; onboarding invitations went out without it.
+ */
+async function workspaceReplyTo(admin: AdminClient, workspaceId: string): Promise<string | null> {
+  const { data, error } = await admin
+    .from('workspaces')
+    .select('client_contact_email')
+    .eq('id', workspaceId)
+    .maybeSingle()
+  if (error) {
+    console.error('[workspace-onboarding] Workspace reply-to could not be read', error.code ?? '')
+    return null
+  }
+  const value = typeof data?.client_contact_email === 'string' ? data.client_contact_email.trim() : ''
+  return value.includes('@') ? value : null
+}
+
+async function staffWorkspace(
+  admin: AdminClient,
+  workspaceId: string,
+  userId: string,
+  tokenIssuedAt: unknown,
+  requireManager: boolean,
+): Promise<Record<string, unknown>> {
+  const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
+    p_workspace_id: workspaceId,
+    p_actor_user_id: userId,
+    p_token_issued_at: tokenIssuedAt,
+  })
+  if (listResult.error) rpcError(listResult.error)
+  const listResponse = responseRecord(listResult.data, 'workspace list')
+  const workspace = responseRecord(listResponse.workspace, 'workspace')
+  if (workspace.id !== workspaceId || (requireManager && listResponse.can_manage !== true)) {
+    throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
+  }
+  return workspace
+}
+
+const LIST_SECTIONS = ['templates', 'clients', 'instances'] as const
+type ListSection = typeof LIST_SECTIONS[number]
+
+function listSections(value: unknown): Set<ListSection> {
+  if (value === undefined || value === null) return new Set(LIST_SECTIONS)
+  if (!Array.isArray(value) || value.length < 1 || value.length > LIST_SECTIONS.length
+    || value.some((entry) => !LIST_SECTIONS.includes(entry as ListSection))) {
+    throw new HttpError(400, 'INVALID_FIELD', 'include must list templates, clients, or instances')
+  }
+  return new Set(value as ListSection[])
 }
 
 serve(async (req) => {
@@ -274,7 +354,8 @@ serve(async (req) => {
     const linkOrigin = await workspaceLinkOrigin(admin, workspaceId)
 
     if (action === 'list') {
-      requireOnlyKeys(body, ['action', 'workspace_id'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'include'])
+      const sections = listSections(body.include)
       const { data, error } = await admin.rpc('workspace_onboarding_staff_list_v1', {
         p_workspace_id: workspaceId,
         p_actor_user_id: user.id,
@@ -286,6 +367,34 @@ serve(async (req) => {
       if (workspace.id !== workspaceId || !Array.isArray(result.instances) || !Array.isArray(result.templates)) {
         throw new HttpError(500, 'INVALID_ONBOARDING_RESPONSE', 'The onboarding response did not match the workspace')
       }
+      /*
+       * Sections the caller did not ask for are dropped. The page polls the
+       * instance list every 30 seconds; it used to receive every client and
+       * every template definition with each poll, data that changes only
+       * when someone edits it.
+       */
+      if (!sections.has('clients')) result.clients = []
+      if (!sections.has('templates')) result.templates = []
+      if (!sections.has('instances')) result.instances = []
+      /*
+       * What the page needs to warn about before the first invite: whether
+       * email can leave at all, and the agency's client-facing settings that
+       * shape it (reply-to, accent).
+       */
+      const { data: brandRow, error: brandError } = await admin
+        .from('workspaces')
+        .select('client_contact_email, client_brand_accent_color')
+        .eq('id', workspaceId)
+        .maybeSingle()
+      if (brandError) console.error('[workspace-onboarding] Workspace brand settings could not be read', brandError.code ?? '')
+      workspace.client_contact_email = typeof brandRow?.client_contact_email === 'string' && brandRow.client_contact_email.includes('@')
+        ? brandRow.client_contact_email
+        : null
+      workspace.client_brand_accent_color = typeof brandRow?.client_brand_accent_color === 'string'
+        && /^#[0-9A-F]{6}$/iu.test(brandRow.client_brand_accent_color)
+        ? brandRow.client_brand_accent_color.toUpperCase()
+        : null
+      result.email_delivery = { configured: onboardingEmailConfigured() }
       /*
        * Delivery truth for every listed instance, from the notifications
        * table nothing else reads. The list said "Sent <date>" from
@@ -300,13 +409,21 @@ serve(async (req) => {
         .map((instance) => instance.id)
         .filter((id): id is string => typeof id === 'string')
       if (instanceIds.length > 0) {
-        const { data: notificationRows } = await admin
+        // 'changes_requested' is the stored kind; this filter used to ask for
+        // 'change_request', which matched nothing, so a failed change-request
+        // email never showed. Latest attempt wins, since a resend updates the
+        // original invitation row rather than adding one.
+        const { data: notificationRows, error: notificationError } = await admin
           .from('workspace_onboarding_notifications')
           .select('instance_id, kind, status, last_error, attempted_at, sent_at, created_at')
           .eq('workspace_id', workspaceId)
           .in('instance_id', instanceIds)
-          .in('kind', ['invitation', 'change_request'])
+          .in('kind', ['invitation', 'changes_requested'])
+          .order('attempted_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
+        if (notificationError) {
+          console.error('[workspace-onboarding] Delivery records could not be read', notificationError.code ?? '')
+        }
         const deliveryByInstance = new Map<string, Record<string, unknown>>()
         for (const row of (notificationRows ?? []) as Array<Record<string, unknown>>) {
           const instanceId = String(row.instance_id)
@@ -320,7 +437,10 @@ serve(async (req) => {
           })
         }
         for (const instance of instanceRows) {
-          instance.delivery = deliveryByInstance.get(String(instance.id)) ?? null
+          // Unreadable is not the same as "nothing was sent": say unknown.
+          instance.delivery = notificationError
+            ? { kind: 'invitation', status: 'unknown', last_error: null, attempted_at: null, sent_at: null }
+            : deliveryByInstance.get(String(instance.id)) ?? null
         }
       }
       /*
@@ -338,11 +458,16 @@ serve(async (req) => {
         .filter((template) => typeof template.id === 'string' && Number.isInteger(template.published_version))
         .map((template) => ({ id: template.id as string, version: template.published_version as number }))
       if (versionKeys.length > 0) {
-        const { data: versions } = await admin
+        const { data: versions, error: versionsError } = await admin
           .from('workspace_onboarding_template_versions')
           .select('template_id, version, definition')
           .eq('workspace_id', workspaceId)
           .in('template_id', versionKeys.map((key) => key.id))
+        // Unreadable versions leave published_definition null, which the page
+        // treats as "draft only"; logged so the gap is visible.
+        if (versionsError) {
+          console.error('[workspace-onboarding] Published template versions could not be read', versionsError.code ?? '')
+        }
         const publishedByTemplate = new Map(
           ((versions ?? []) as Array<Record<string, unknown>>)
             .filter((row) => versionKeys.some((key) => key.id === row.template_id && key.version === row.version))
@@ -476,6 +601,7 @@ serve(async (req) => {
         'assigned_membership_ids',
         'send_email',
         'experience',
+        'idempotency_key',
       ])
       const templateId = requireUuid(body.template_id, 'template_id')
       const clientId = optionalUuid(body.client_id, 'client_id')
@@ -502,18 +628,73 @@ serve(async (req) => {
         throw new HttpError(400, 'INVALID_FIELD', 'new_client must be empty when an existing client is selected')
       }
 
-      const listResult = await admin.rpc('workspace_onboarding_staff_list_v1', {
-        p_workspace_id: workspaceId,
-        p_actor_user_id: user.id,
-        p_token_issued_at: tokenIssuedAt,
-      })
-      if (listResult.error) rpcError(listResult.error)
-      const listResponse = responseRecord(listResult.data, 'workspace list')
-      const workspace = responseRecord(listResponse.workspace, 'workspace')
-      if (workspace.id !== workspaceId || listResponse.can_manage !== true) {
-        throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
+      const workspace = await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, true)
+      /*
+       * The browser mints the instance id and sends it as idempotency_key, so
+       * a retry after a lost response (timeout, double click, flaky network)
+       * finds the onboarding it already created instead of creating a second
+       * one with a second client and a second email. A replay returns the
+       * existing link and never emails again.
+       */
+      const instanceId = optionalUuid(body.idempotency_key, 'idempotency_key') ?? crypto.randomUUID()
+      const replayStart = async (): Promise<Response | null> => {
+        const { data: existing, error: existingError } = await admin
+          .from('workspace_onboarding_instances')
+          .select('id, workspace_id')
+          .eq('id', instanceId)
+          .maybeSingle()
+        if (existingError) rpcError(existingError)
+        if (!existing) return null
+        if (existing.workspace_id !== workspaceId) {
+          throw new HttpError(409, 'ONBOARDING_CONFLICT', 'An onboarding record with these details already exists')
+        }
+        const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
+          p_workspace_id: workspaceId,
+          p_instance_id: instanceId,
+          p_actor_user_id: user.id,
+          p_token_issued_at: tokenIssuedAt,
+        })
+        if (detailResult.error) rpcError(detailResult.error)
+        const existingInstance = ensureWorkspaceResponse(detailResult.data, workspaceId)
+        const existingGeneration = integerValue(existingInstance.capability_generation, 'capability generation', 1, 2_147_483_646)
+        const existingCapability = await createOnboardingCapability(instanceId, existingGeneration, capabilitySecret())
+        const { data: notification } = await admin
+          .from('workspace_onboarding_notifications')
+          .select('status')
+          .eq('instance_id', instanceId)
+          .eq('kind', 'invitation')
+          .maybeSingle()
+        const status = ['sent', 'failed', 'skipped'].includes(String(notification?.status))
+          ? String(notification?.status)
+          : 'unknown'
+        return jsonResponse(req, METHODS, 200, {
+          instance: await addSignedAssetUrls(admin, existingInstance),
+          onboarding_url: onboardingUrl(existingCapability.token, linkOrigin),
+          delivery: { status },
+          replayed: true,
+        })
       }
-      const instanceId = crypto.randomUUID()
+      const replayed = await replayStart()
+      if (replayed) return replayed
+      /*
+       * A new client with an email the workspace already uses is allowed
+       * (two people can share an inbox) but almost always a mistake, so the
+       * response names the existing client for the page to warn about.
+       */
+      let duplicateClient: { id: string; name: string } | null = null
+      if (newClient) {
+        const { data: matchingClients, error: duplicateLookupError } = await admin
+          .from('clients')
+          .select('id, name')
+          .eq('workspace_id', workspaceId)
+          .ilike('email', String(newClient.email).replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_'))
+          .limit(1)
+        if (duplicateLookupError) {
+          console.error('[workspace-onboarding] Duplicate client check failed', duplicateLookupError.code ?? '')
+        } else if (matchingClients?.[0]) {
+          duplicateClient = { id: String(matchingClients[0].id), name: String(matchingClients[0].name ?? '') }
+        }
+      }
       const generation = 1
       const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
       const expiresAt = new Date(Date.now() + expiresInDays * 86_400_000).toISOString()
@@ -554,11 +735,17 @@ serve(async (req) => {
       })
       if (error) {
         if (brandLogoPath) await admin.storage.from(BUCKET).remove([brandLogoPath])
+        // Two retries racing past the replay check: the loser finds the
+        // winner's row and returns it.
+        if (error.code === '23505') {
+          const raced = await replayStart()
+          if (raced) return raced
+        }
         rpcError(error)
       }
       const instance = ensureWorkspaceResponse(data, workspaceId)
       const link = onboardingUrl(capability.token, linkOrigin)
-      const delivery = sendEmail
+      const delivery: Delivery = sendEmail
         ? await sendOnboardingEmail({
           kind: 'invitation',
           workspaceName: typeof workspace.name === 'string' ? workspace.name : 'Your agency',
@@ -567,13 +754,17 @@ serve(async (req) => {
           url: link,
           expiresAt,
           accentColor: experience.accentColor ?? undefined,
+          replyTo: await workspaceReplyTo(admin, workspaceId),
+          experienceTitle: experience.introTitle,
+          experienceBody: experience.introBody,
         })
         : { status: 'skipped' as const, providerMessageId: null, error: null }
-      await recordDelivery(admin, instanceId, delivery)
+      const recorded = await recordDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 201, {
         instance,
         onboarding_url: link,
-        delivery: { status: delivery.status },
+        delivery: deliveryResponse(delivery, recorded),
+        ...(duplicateClient ? { duplicate_client: duplicateClient } : {}),
       })
     }
 
@@ -673,6 +864,70 @@ serve(async (req) => {
       })
     }
 
+    if (action === 'resend_invitation') {
+      /*
+       * Email the client their current link again. Before this the only way
+       * to chase a client was to copy the link into a personal inbox: rotate
+       * accepted send_email and ignored it, and nothing else sent anything.
+       * A link that has expired is not resent here; the page rotates it with
+       * send_email instead, so the client never receives a dead link.
+       */
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
+      const workspace = await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, true)
+      const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
+        p_workspace_id: workspaceId,
+        p_instance_id: instanceId,
+        p_actor_user_id: user.id,
+        p_token_issued_at: tokenIssuedAt,
+      })
+      if (detailResult.error) rpcError(detailResult.error)
+      const instance = ensureWorkspaceResponse(detailResult.data, workspaceId)
+      if (!['invited', 'in_progress', 'changes_requested'].includes(String(instance.status)) || instance.archived_at) {
+        throw new HttpError(409, 'ONBOARDING_LINK_UNAVAILABLE', 'This onboarding does not have an active client link')
+      }
+      const expiresAt = responseString(instance.capability_expires_at, 'capability expiry', 64)
+      if (!(new Date(expiresAt).valueOf() > Date.now())) {
+        throw new HttpError(409, 'ONBOARDING_LINK_EXPIRED', 'This link has expired. Rotate it to send the client a new one')
+      }
+      const generation = integerValue(instance.capability_generation, 'capability generation', 1, 2_147_483_646)
+      const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
+      const capabilityCheck = await admin.rpc('workspace_onboarding_client_operation_v1', {
+        p_action: 'get',
+        p_instance_id: instanceId,
+        p_capability_hash: capability.verifierHash,
+        p_payload: {},
+      })
+      if (capabilityCheck.error) {
+        const message = (capabilityCheck.error.message ?? '').toLowerCase()
+        if (capabilityCheck.error.code === 'P0002' || message.includes('not found')) {
+          throw new HttpError(409, 'ONBOARDING_LINK_CHANGED', 'This onboarding link can no longer be opened. Create a new link and send it to the client')
+        }
+        rpcError(capabilityCheck.error)
+      }
+      const link = onboardingUrl(capability.token, linkOrigin)
+      const changesRequested = instance.status === 'changes_requested'
+      const delivery = await sendOnboardingEmail({
+        kind: changesRequested ? 'changes_requested' : 'invitation',
+        workspaceName: responseString(workspace.name, 'workspace name', 200),
+        recipientName: responseString(instance.recipient_name, 'recipient name', 200),
+        recipientEmail: normalizeEmail(responseString(instance.recipient_email, 'recipient email', 254)),
+        url: link,
+        expiresAt,
+        accentColor: typeof instance.accent_color === 'string' ? instance.accent_color : undefined,
+        replyTo: await workspaceReplyTo(admin, workspaceId),
+        experienceTitle: typeof instance.experience_title === 'string' ? instance.experience_title : null,
+        experienceBody: typeof instance.experience_body === 'string' ? instance.experience_body : null,
+      })
+      const recorded = changesRequested
+        ? await recordChangeRequestDelivery(admin, instanceId, delivery)
+        : await recordDelivery(admin, instanceId, delivery)
+      return jsonResponse(req, METHODS, 200, {
+        instance: await addSignedAssetUrls(admin, instance),
+        onboarding_url: link,
+        delivery: deliveryResponse(delivery, recorded),
+      })
+    }
+
     if (action === 'approve_answers') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
       const { data, error } = await admin.rpc('workspace_onboarding_approve_answers_v1', {
@@ -690,6 +945,7 @@ serve(async (req) => {
     const operation = action
     let payload: Record<string, unknown> = {}
     let link: string | null = null
+    let rotateSendEmail = false
     if (action === 'request_changes') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'comments'])
       if (!Array.isArray(body.comments) || body.comments.length < 1 || body.comments.length > 100) {
@@ -712,7 +968,7 @@ serve(async (req) => {
     } else if (action === 'rotate') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'expires_in_days', 'send_email'])
       const expiresInDays = integerValue(body.expires_in_days, 'expires_in_days', 1, 90)
-      booleanValue(body.send_email, 'send_email')
+      rotateSendEmail = booleanValue(body.send_email, 'send_email')
       const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
         p_workspace_id: workspaceId,
         p_instance_id: instanceId,
@@ -755,7 +1011,9 @@ serve(async (req) => {
        * has nothing to grant.
        */
       const ceiling = Date.now() + 90 * 86_400_000
-      const requested = currentExpiry + extensionDays * 86_400_000
+      // From today when the link has already lapsed: extending a link that
+      // expired a month ago by 14 days from its old expiry left it expired.
+      const requested = Math.max(Date.now(), currentExpiry) + extensionDays * 86_400_000
       const nextExpiry = new Date(Math.min(requested, ceiling))
       if (nextExpiry.valueOf() <= currentExpiry) {
         throw new HttpError(400, 'INVALID_FIELD', 'This link is already at the 90-day maximum and cannot be extended further')
@@ -862,25 +1120,49 @@ serve(async (req) => {
         url: link,
         expiresAt: responseString(instance.capability_expires_at, 'capability expiry', 64),
         accentColor: responseString(instance.accent_color, 'accent color', 7),
+        replyTo: await workspaceReplyTo(admin, workspaceId),
       })
-      await recordChangeRequestDelivery(admin, instanceId, delivery)
+      const recorded = await recordChangeRequestDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 200, {
         instance,
         onboarding_url: link,
-        delivery: { status: delivery.status },
+        delivery: deliveryResponse(delivery, recorded),
       })
     }
     if (action === 'rotate' && link) {
       /*
-       * Rotate accepted a send_email flag it never honored, then recorded a
-       * 'skipped' delivery over the invitation row — overwriting the
-       * failed/last_error evidence from the real send attempt. Rotate does
-       * not send email; it also no longer pretends to, and it leaves the
-       * delivery record telling the truth about the send that did happen.
+       * Rotate emails the new link only when asked. Without send_email it
+       * records nothing, so the delivery record keeps telling the truth about
+       * the last send that did happen instead of being overwritten with a
+       * 'skipped' nobody attempted.
        */
+      if (!rotateSendEmail) {
+        return jsonResponse(req, METHODS, 200, {
+          instance,
+          onboarding_url: link,
+        })
+      }
+      const workspace = await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, false)
+      const changesRequested = instance.status === 'changes_requested'
+      const delivery = await sendOnboardingEmail({
+        kind: changesRequested ? 'changes_requested' : 'invitation',
+        workspaceName: responseString(workspace.name, 'workspace name', 200),
+        recipientName: responseString(instance.recipient_name, 'recipient name', 200),
+        recipientEmail: normalizeEmail(responseString(instance.recipient_email, 'recipient email', 254)),
+        url: link,
+        expiresAt: responseString(instance.capability_expires_at, 'capability expiry', 64),
+        accentColor: typeof instance.accent_color === 'string' ? instance.accent_color : undefined,
+        replyTo: await workspaceReplyTo(admin, workspaceId),
+        experienceTitle: typeof instance.experience_title === 'string' ? instance.experience_title : null,
+        experienceBody: typeof instance.experience_body === 'string' ? instance.experience_body : null,
+      })
+      const recorded = changesRequested
+        ? await recordChangeRequestDelivery(admin, instanceId, delivery)
+        : await recordDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 200, {
         instance,
         onboarding_url: link,
+        delivery: deliveryResponse(delivery, recorded),
       })
     }
     return jsonResponse(req, METHODS, 200, {

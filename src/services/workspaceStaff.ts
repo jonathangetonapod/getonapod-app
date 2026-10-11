@@ -961,6 +961,13 @@ export interface WorkspaceBillingOverview {
   refill_pack_credits?: number | null
   /** Monthly auto-refill spend ceiling in cents; null means no cap. */
   refill_monthly_cap_cents?: number | null
+  /**
+   * Consecutive automatic top-up failures. At 3 the tick stops trying until
+   * the settings are saved again.
+   */
+  refill_failure_count?: number
+  refill_last_error?: string | null
+  refill_last_failed_at?: string | null
   /** Whether Stripe has a card for this workspace to charge. */
   has_saved_card?: boolean
   balance: number
@@ -1189,12 +1196,16 @@ export async function listBillingPlans(): Promise<BillingPlan[]> {
 /**
  * Platform-admin only. Stripe Prices are immutable, so this creates a new one
  * and repoints the plan at it; existing subscribers stay on the price they
- * signed up at until they move themselves.
+ * signed up at until they move themselves. The allowance likewise reaches a
+ * workspace only when its subscription next moves, unless
+ * applyToExistingSubscribers is set, which writes it onto every workspace
+ * already on the plan.
  */
 export async function updateBillingPlanPrice(
   planKey: string,
   baseCents: number,
   monthlyCreditAllowance?: number,
+  options: { applyToExistingSubscribers?: boolean } = {},
 ): Promise<BillingPlan[]> {
   const { data, error } = await supabase.functions.invoke('workspace-billing-portal', {
     body: {
@@ -1202,6 +1213,7 @@ export async function updateBillingPlanPrice(
       plan_key: planKey,
       base_price_cents: baseCents,
       ...(monthlyCreditAllowance === undefined ? {} : { monthly_credit_allowance: monthlyCreditAllowance }),
+      ...(options.applyToExistingSubscribers ? { apply_to_existing_subscribers: true } : {}),
     },
   })
   if (error) throw await toFunctionError(error, 'The price could not be updated.')

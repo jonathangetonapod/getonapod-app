@@ -69,7 +69,7 @@ describe('WorkspaceDomainsCard', () => {
     expect(await screen.findByText('How this works')).toBeInTheDocument()
     expect(screen.getByText(/Use a subdomain, not their root domain/i)).toBeInTheDocument()
     expect(screen.getByText(/Proxy status must be DNS only/i)).toBeInTheDocument()
-    expect(screen.getByText(/Every workspace serves from getonapod.com/i)).toBeInTheDocument()
+    expect(screen.getByText(/until one is added and serving, an agency.s dashboards, onboarding forms, and emailed links use the platform domain/i)).toBeInTheDocument()
   })
 
   // The mistake is caught in the field, not by the server after a round trip.
@@ -201,7 +201,7 @@ describe('WorkspaceDomainsCard', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Remove podcasts.theiragency.com/i }))
     const dialog = within(await screen.findByRole('alertdialog'))
     expect(dialog.getByText(/Any link already sent on this address stops working/i)).toBeInTheDocument()
-    expect(dialog.getByText(/new links will go out on getonapod.com instead/i)).toBeInTheDocument()
+    expect(dialog.getByText(/new links will use the platform domain instead/i)).toBeInTheDocument()
 
     fireEvent.click(dialog.getByRole('button', { name: 'Keep it' }))
     await waitFor(() => expect(removeWorkspaceDomain).not.toHaveBeenCalled())

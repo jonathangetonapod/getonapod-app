@@ -4,6 +4,8 @@ import {
   getClientOnboarding,
   getOnboardingLink,
   listWorkspaceOnboarding,
+  resendOnboardingInvitation,
+  rotateOnboardingLink,
   saveClientOnboarding,
   startWorkspaceOnboarding,
   type OnboardingDefinition,
@@ -166,6 +168,85 @@ describe('workspaceOnboarding service', () => {
           brand_logo: null,
         },
       },
+    })
+  })
+
+  it('asks only for the sections a caller needs and reads the email setup', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        ...listResponse,
+        workspace: { ...listResponse.workspace, client_contact_email: 'hello@agency.test', client_brand_accent_color: '#c7794f' },
+        templates: [],
+        clients: [],
+        email_delivery: { configured: false },
+        instances: [{ ...summary, delivery: { kind: 'invitation', status: 'unknown', last_error: null, attempted_at: null, sent_at: null } }],
+      },
+      error: null,
+    })
+    await expect(listWorkspaceOnboarding(workspaceId, ['instances'])).resolves.toMatchObject({
+      workspace: { client_contact_email: 'hello@agency.test', client_brand_accent_color: '#C7794F' },
+      email_delivery: { configured: false },
+      instances: [{ delivery: { status: 'unknown' } }],
+    })
+    expect(invoke).toHaveBeenCalledWith('workspace-onboarding', {
+      body: { action: 'list', workspace_id: workspaceId, include: ['instances'] },
+    })
+  })
+
+  it('sends the idempotency key with a start and reports a replay and a duplicate client', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        instance: detail,
+        onboarding_url: 'https://getonapod.com/onboarding/redacted-test-token',
+        delivery: { status: 'skipped', reason: 'not_configured' },
+        replayed: true,
+        duplicate_client: { id: clientId, name: 'Client One' },
+      },
+      error: null,
+    })
+    const key = '77777777-7777-4777-8777-777777777777'
+    await expect(startWorkspaceOnboarding(workspaceId, {
+      template_id: templateId,
+      client_id: null,
+      new_client: { name: 'Client Two', email: 'casey@example.com' },
+      recipient_name: 'Casey Client',
+      recipient_email: 'casey@example.com',
+      expires_in_days: 14,
+      assigned_membership_ids: [],
+      send_email: true,
+      idempotency_key: key.toUpperCase(),
+      experience: {
+        intro_title: 'Welcome',
+        intro_body: 'Hello.',
+        completion_message: 'Thanks.',
+        accent_color: '#0F766E',
+      },
+    })).resolves.toMatchObject({
+      replayed: true,
+      delivery: { status: 'skipped', reason: 'not_configured' },
+      duplicate_client: { id: clientId, name: 'Client One' },
+    })
+    expect(invoke.mock.calls[0][1].body).toMatchObject({ action: 'start', idempotency_key: key, send_email: true })
+  })
+
+  it('resends the current link and rotates with an email only when asked', async () => {
+    invoke
+      .mockResolvedValueOnce({ data: { instance: detail, onboarding_url: 'https://getonapod.com/onboarding/a', delivery: { status: 'sent' } }, error: null })
+      .mockResolvedValueOnce({ data: { instance: detail, onboarding_url: 'https://getonapod.com/onboarding/b', delivery: { status: 'failed' } }, error: null })
+      .mockResolvedValueOnce({ data: { instance: detail, onboarding_url: 'https://getonapod.com/onboarding/c' }, error: null })
+
+    await expect(resendOnboardingInvitation(workspaceId, instanceId)).resolves.toMatchObject({ delivery: { status: 'sent' } })
+    await expect(rotateOnboardingLink(workspaceId, instanceId, 14, true)).resolves.toMatchObject({ delivery: { status: 'failed' } })
+    await rotateOnboardingLink(workspaceId, instanceId, 14)
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-onboarding', {
+      body: { action: 'resend_invitation', workspace_id: workspaceId, instance_id: instanceId },
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-onboarding', {
+      body: { action: 'rotate', workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: true },
+    })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'workspace-onboarding', {
+      body: { action: 'rotate', workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: false },
     })
   })
 

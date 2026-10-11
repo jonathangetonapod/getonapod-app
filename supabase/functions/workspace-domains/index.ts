@@ -171,27 +171,26 @@ serve(async (req) => {
     if (action === 'set_primary') {
       requireOnlyKeys(body, ['action', 'domain_id'])
       const domainId = requireUuid(body.domain_id, 'domain_id')
-      const { data: domain } = await admin
-        .from('workspace_domains')
-        .select('id,workspace_id,hostname,status')
-        .eq('id', domainId)
-        .maybeSingle()
-      if (!domain) throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is not set up for this workspace')
-      if (domain.status !== 'active') {
-        throw new HttpError(409, 'DOMAIN_NOT_SERVING', 'A domain must be serving before it can be the primary one')
+      // One transaction in the database: clearing the old primary and setting
+      // the new one as two separate writes left the workspace with no primary
+      // at all — client links silently back on the platform domain — whenever
+      // the second write failed.
+      const { data: primaryResult, error: primaryError } = await admin
+        .rpc('set_workspace_primary_domain_v1', { p_domain_id: domainId })
+      if (primaryError) {
+        const message = primaryError.message ?? ''
+        if (message.includes('DOMAIN_NOT_FOUND')) {
+          throw new HttpError(404, 'DOMAIN_NOT_FOUND', 'That domain is not set up for this workspace')
+        }
+        if (message.includes('DOMAIN_NOT_SERVING')) {
+          throw new HttpError(409, 'DOMAIN_NOT_SERVING', 'A domain must be serving before it can be the primary one')
+        }
+        throw new HttpError(500, 'DOMAIN_PRIMARY_FAILED', 'The primary domain could not be set')
       }
-      // Clear first: the partial unique index allows exactly one primary per
-      // workspace, so setting before clearing would collide with itself.
-      await admin
-        .from('workspace_domains')
-        .update({ is_primary: false })
-        .eq('workspace_id', domain.workspace_id)
-        .eq('is_primary', true)
-      const { error: primaryError } = await admin
-        .from('workspace_domains')
-        .update({ is_primary: true })
-        .eq('id', domainId)
-      if (primaryError) throw new HttpError(500, 'DOMAIN_PRIMARY_FAILED', 'The primary domain could not be set')
+      const domain = primaryResult as { id: string; workspace_id: string; hostname: string } | null
+      if (!domain?.workspace_id) {
+        throw new HttpError(500, 'DOMAIN_PRIMARY_FAILED', 'The primary domain could not be set')
+      }
 
       await writeAudit(admin, {
         workspaceId: domain.workspace_id,

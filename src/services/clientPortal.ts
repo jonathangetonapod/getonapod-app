@@ -55,8 +55,14 @@ export async function loginWithPassword(email: string, password: string): Promis
     throw await toFunctionError(error, 'Login failed.')
   }
 
+  // A 2xx with an error body, or no usable body at all, is still a failed
+  // sign-in; reading fields off a missing body would crash instead.
+  if (!data || typeof data !== 'object') throw new Error('Login failed.')
   if (data.error) {
-    throw new Error(data.error)
+    throw new Error(typeof data.error === 'string' ? data.error : 'Login failed.')
+  }
+  if (typeof data.session_token !== 'string' || !data.client || typeof data.client.id !== 'string') {
+    throw new Error('Login failed.')
   }
 
   return {
@@ -83,8 +89,12 @@ export async function validateSession(sessionToken: string): Promise<ClientPorta
     throw await toFunctionError(error, 'Your portal session has ended. Sign in again to continue.')
   }
 
-  if (!data.success) {
-    throw new Error(data.error || 'Your portal session has ended. Sign in again to continue')
+  if (!data?.success || !data.client) {
+    throw new Error(
+      typeof data?.error === 'string' && data.error
+        ? data.error
+        : 'Your portal session has ended. Sign in again to continue',
+    )
   }
 
   return { client: data.client, branding: parsePortalBranding(data.branding) }
@@ -264,7 +274,17 @@ export async function getPortalExperience(clientId: string): Promise<PortalExper
   })
   if (error) throw await toFunctionError(error, 'Your portal overview could not be loaded.')
 
-  return data as PortalExperienceOverview
+  // A 2xx with an error body, or no body at all, is still a failed load.
+  if (!data || typeof data !== 'object') throw new Error('Your portal overview could not be loaded.')
+  if (data.error) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Your portal overview could not be loaded.')
+  }
+  if (!data.profile || !data.review) throw new Error('Your portal overview could not be loaded.')
+
+  return {
+    ...data,
+    bookings: Array.isArray(data.bookings) ? data.bookings : [],
+  } as PortalExperienceOverview
 }
 
 export interface PortalCalendarEventInput {

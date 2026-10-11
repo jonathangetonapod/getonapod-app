@@ -1,6 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-import { hashPortalPassword, hashPortalSessionToken } from '../_shared/portalSecurity.ts'
+import {
+  hashPortalPassword,
+  hashPortalSessionToken,
+  isAcceptableNewPortalPassword,
+  MAX_PORTAL_PASSWORD_LENGTH,
+  MIN_PORTAL_PASSWORD_LENGTH,
+} from '../_shared/portalSecurity.ts'
 import {
   errorResponse,
   HttpError,
@@ -25,13 +31,12 @@ const PASSWORD_MANAGER_ROLES = new Set(['owner', 'platform_admin'])
 const INVITE_TOKEN_TTL_DAYS = 7
 
 function requirePassword(value: unknown): string {
-  if (
-    typeof value !== 'string'
-    || value.length < 8
-    || value.length > 256
-    || value.trim().length === 0
-  ) {
-    throw new HttpError(400, 'INVALID_PASSWORD', 'password must be between 8 and 256 characters')
+  if (!isAcceptableNewPortalPassword(value)) {
+    throw new HttpError(
+      400,
+      'INVALID_PASSWORD',
+      `password must be between ${MIN_PORTAL_PASSWORD_LENGTH} and ${MAX_PORTAL_PASSWORD_LENGTH} characters`,
+    )
   }
   // Passwords are opaque credentials. Preserve intentional leading/trailing
   // spaces instead of applying the trimming used for ordinary text fields.

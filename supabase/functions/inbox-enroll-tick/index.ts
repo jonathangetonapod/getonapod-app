@@ -19,6 +19,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { createAdminClient, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { HttpError } from '../_shared/httpError.ts'
+import { refundCredits } from '../_shared/billing.ts'
 import {
   decryptInstantlyApiKey,
   instantlyRequest,
@@ -311,7 +312,11 @@ serve(async (req) => {
           ? 'auto_reply' as const
           : detectDeterministicReply(messageText)
         if (deterministic) {
-          await admin
+          // Both writes are checked. An unseen failure here advanced the
+          // cursor past an opt-out that was never recorded, so the sender
+          // stayed contactable and no later tick would look again; throwing
+          // keeps the cursor where it is and the next tick retries.
+          const { error: prefilterError } = await admin
             .from('workspace_inbox_thread_state')
             .upsert({
               workspace_id: workspaceId,
@@ -322,11 +327,12 @@ serve(async (req) => {
               ...(deterministic === 'opt_out' ? { suppressed_at: new Date().toISOString() } : {}),
               updated_at: new Date().toISOString(),
             }, { onConflict: 'workspace_id,thread_key' })
+          if (prefilterError) throw prefilterError
           // An opt-out is directed at the sender, not at one client's
           // campaign. Record it workspace-wide so no other client's outreach
           // can reach this person again.
           if (deterministic === 'opt_out' && leadEmail) {
-            await admin
+            const { error: suppressionError } = await admin
               .from('workspace_outreach_suppressions')
               .upsert({
                 workspace_id: workspaceId,
@@ -335,6 +341,7 @@ serve(async (req) => {
                 source: 'inbox_auto',
                 note: `Detected in a reply for client ${clientId}`,
               }, { onConflict: 'workspace_id,contact_email' })
+            if (suppressionError) throw suppressionError
           }
           prefiltered += 1
           advanceCursor(createdAt)
@@ -389,9 +396,11 @@ serve(async (req) => {
             message: messageText,
             actorUserId: ownerRow?.user_id ?? null,
             referenceKind: 'inbox_auto_draft',
-            leadEmail: typeof email.lead === 'string' ? email.lead : null,
+            leadEmail: leadEmail || null,
+            threadKey,
+            emailId,
           })
-          await admin
+          const { error: draftSaveError } = await admin
             .from('workspace_inbox_thread_state')
             .upsert({
               workspace_id: workspaceId,
@@ -421,6 +430,16 @@ serve(async (req) => {
               last_nudge_error: null,
               updated_at: new Date().toISOString(),
             }, { onConflict: 'workspace_id,thread_key' })
+          if (draftSaveError) {
+            // The workspace paid for a draft nobody can see. Give the charge
+            // back and fail the email so the frozen cursor retries it.
+            await refundCredits(admin, {
+              workspaceId,
+              entryId: pkg.chargeEntryId,
+              reason: 'inbox auto-draft could not be saved',
+            })
+            throw new HttpError(500, 'DRAFT_SAVE_FAILED', 'The reply draft could not be saved')
+          }
           drafted += 1
           workspaceDrafts += 1
           advanceCursor(createdAt)

@@ -144,6 +144,20 @@ const WorkspaceBilling = () => {
         : await createWorkspaceSubscriptionCheckout(workspaceId, 'founding_member')
       window.location.assign(url)
     } catch (error) {
+      // The page thought there was no plan, but the server found one (the
+      // webhook can land after this page loaded). A second checkout would be
+      // a second subscription, so the portal is opened instead.
+      if (!hasSubscription && (error as { code?: unknown } | null)?.code === 'SUBSCRIPTION_EXISTS') {
+        toast.info('This workspace already has a plan. Opening the billing portal to manage it.')
+        try {
+          window.location.assign(await createWorkspaceBillingPortal(workspaceId))
+          return
+        } catch (portalError) {
+          toast.error(portalError instanceof Error ? portalError.message : 'The billing portal could not be opened.')
+          setOpeningPlan(false)
+          return
+        }
+      }
       toast.error(error instanceof Error ? error.message : 'Plan management could not be opened.')
       setOpeningPlan(false)
     }

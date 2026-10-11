@@ -56,6 +56,23 @@ async function derivePassword(
   return new Uint8Array(bits)
 }
 
+/**
+ * Every newly chosen portal password, wherever it is set (owner, platform
+ * admin, API, self-serve reset), needs at least this many characters.
+ * Existing shorter credentials keep working at sign-in; only the password
+ * being set is held to the floor.
+ */
+export const MIN_PORTAL_PASSWORD_LENGTH = 12
+export const MAX_PORTAL_PASSWORD_LENGTH = 256
+
+/** True when `value` may be stored as a new portal password. */
+export function isAcceptableNewPortalPassword(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length >= MIN_PORTAL_PASSWORD_LENGTH
+    && value.length <= MAX_PORTAL_PASSWORD_LENGTH
+    && value.trim().length > 0
+}
+
 async function performDummyPasswordWork(password: string, seed: string): Promise<void> {
   const saltMaterial = await sha256(seed)
   await derivePassword(password, saltMaterial.slice(0, 16), PASSWORD_ITERATIONS)

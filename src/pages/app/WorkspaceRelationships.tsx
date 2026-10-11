@@ -1154,7 +1154,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
               <DialogHeader>
                 <DialogTitle>Add a relationship</DialogTitle>
                 <DialogDescription>
-                  Add a host before outreach exists. Their email lets Get On A Pod connect this context to a future canonical show when the match is unambiguous.
+                  Add a host before outreach exists. Their email lets the platform connect this context to a future canonical show when the match is unambiguous.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">

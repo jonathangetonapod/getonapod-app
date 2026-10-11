@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,18 @@ const CAP_OPTIONS: Array<{ value: string; label: string }> = [
 
 const capLabel = (cents: number | null): string =>
   cents === null ? 'no monthly limit' : `$${(cents / 100).toLocaleString()} a month`
+
+// Matches MAX_CONSECUTIVE_FAILURES in the refill tick: after this many failed
+// attempts in a row it stops charging until the settings are saved again.
+const PAUSE_AFTER_FAILURES = 3
+
+const failedOn = (value: string | null | undefined): string | null => {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 /**
  * Let a workspace agree to being topped up without being present.
@@ -97,7 +109,14 @@ export function AutoRefillCard({ workspaceId, overview, onSaved }: AutoRefillCar
   const overviewCapValue = typeof overview?.refill_monthly_cap_cents === 'number'
     ? String(overview.refill_monthly_cap_cents)
     : 'none'
-  const dirty = enabled !== configured
+  const failureCount = configured ? (overview?.refill_failure_count ?? 0) : 0
+  const paused = failureCount >= PAUSE_AFTER_FAILURES
+  const lastError = overview?.refill_last_error ?? null
+  const lastFailedOn = failedOn(overview?.refill_last_failed_at)
+  // A paused workspace resumes by saving, so Save stays available even when
+  // nothing on the form changed.
+  const dirty = (enabled && paused)
+    || enabled !== configured
     || (enabled && (
       Number(threshold) !== overview?.refill_threshold_credits
       || Number(pack) !== overview?.refill_pack_credits
@@ -121,6 +140,29 @@ export function AutoRefillCard({ workspaceId, overview, onSaved }: AutoRefillCar
           </p>
         ) : (
           <>
+            {failureCount > 0 && (
+              <div
+                role="alert"
+                className={paused
+                  ? 'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-900'
+                  : 'rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-900'}
+              >
+                <p className="flex items-center gap-2 font-medium">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {paused
+                    ? `Automatic top-ups are paused after ${failureCount} failed attempts in a row.`
+                    : `The last automatic top-up${lastFailedOn ? ` on ${lastFailedOn}` : ''} failed. We will try again tomorrow.`}
+                </p>
+                {lastError && <p className="mt-1">Reason: {lastError}</p>}
+                {paused && (
+                  <p className="mt-1">
+                    Nothing more will be charged automatically. Check the card on file in the billing portal, then save
+                    below to resume.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="auto-refill-enabled" className="text-sm font-medium">
                 Buy credits automatically when I run low
@@ -186,7 +228,7 @@ export function AutoRefillCard({ workspaceId, overview, onSaved }: AutoRefillCar
               onClick={() => saveMutation.mutate()}
             >
               {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {enabled ? 'Save automatic top-ups' : 'Turn off automatic top-ups'}
+              {enabled ? (paused ? 'Resume automatic top-ups' : 'Save automatic top-ups') : 'Turn off automatic top-ups'}
             </Button>
           </>
         )}

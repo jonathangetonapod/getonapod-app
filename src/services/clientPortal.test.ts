@@ -64,6 +64,19 @@ describe('clientPortal branding', () => {
     expect(result.branding).toBeNull()
   })
 
+  it('fails cleanly when login returns no body at all', async () => {
+    mockedInvoke.mockResolvedValue({ data: null, error: null } as never)
+
+    await expect(loginWithPassword('t@example.com', 'password-123456')).rejects.toThrow('Login failed.')
+  })
+
+  it('fails cleanly when session validation returns no body at all', async () => {
+    mockedInvoke.mockResolvedValue({ data: null, error: null } as never)
+
+    await expect(validateSession('11111111-1111-4111-8111-111111111111'))
+      .rejects.toThrow('Your portal session has ended. Sign in again to continue')
+  })
+
   it('returns client and branding from session validation', async () => {
     mockedInvoke.mockResolvedValue({
       data: {
@@ -156,6 +169,16 @@ describe('clientPortal experience overview', () => {
       body: { clientId: client.id, sessionToken: session.session_token },
     })
     expect(result).toEqual(overview)
+  })
+
+  it('fails cleanly when the overview comes back empty or as an error body', async () => {
+    mockedInvoke.mockResolvedValueOnce({ data: null, error: null } as never)
+    await expect(getPortalExperience('22222222-2222-4222-8222-222222222222'))
+      .rejects.toThrow('Your portal overview could not be loaded.')
+
+    mockedInvoke.mockResolvedValueOnce({ data: { error: 'Session expired' }, error: null } as never)
+    await expect(getPortalExperience('22222222-2222-4222-8222-222222222222'))
+      .rejects.toThrow('Session expired')
   })
 
   it('refuses to load an overview for a different client than the session', async () => {

@@ -136,12 +136,13 @@ export interface OnboardingInstanceSummary {
   /**
    * Outcome of the most recent invitation or change-request email, read from
    * the delivery record the send actually wrote. Null when no send has been
-   * attempted or the record is unavailable. invited_at alone cannot answer
-   * "did the email leave" — it is stamped either way.
+   * attempted. 'unknown' when the record could not be read, which the page
+   * must not present as "Sent". invited_at alone cannot answer "did the
+   * email leave" — it is stamped either way.
    */
   delivery?: {
     kind: string
-    status: 'sent' | 'failed' | 'skipped' | 'pending' | string
+    status: 'sent' | 'failed' | 'skipped' | 'pending' | 'unknown' | string
     last_error: string | null
     attempted_at: string | null
     sent_at: string | null
@@ -227,7 +228,13 @@ export interface WorkspaceOnboardingData {
     name: string
     logo_path: string | null
     logo_updated_at: string | null
+    /** The agency's reply-to address for client emails, set in Settings. */
+    client_contact_email: string | null
+    /** The agency's client-facing accent, set in Settings. */
+    client_brand_accent_color: string | null
   }
+  /** Whether invitation emails can be sent at all on this platform. */
+  email_delivery: { configured: boolean }
   viewer_role: 'owner' | 'admin' | 'member' | 'platform_admin'
   can_manage: boolean
   templates: OnboardingTemplate[]
@@ -236,10 +243,22 @@ export interface WorkspaceOnboardingData {
   instances: OnboardingInstanceSummary[]
 }
 
+export interface OnboardingDelivery {
+  status: 'sent' | 'failed' | 'skipped' | 'unknown'
+  /** Set when the email was skipped because sending is not configured. */
+  reason?: 'not_configured'
+  /** False when the email outcome could not be written to the delivery record. */
+  recorded?: boolean
+}
+
 export interface OnboardingInvitationResult {
   instance: OnboardingInstanceDetail
   onboarding_url: string
-  delivery: { status: 'sent' | 'failed' | 'skipped' }
+  delivery: OnboardingDelivery
+  /** True when a retried start returned the onboarding it already created. */
+  replayed?: boolean
+  /** An existing client that already uses the invited email. */
+  duplicate_client?: { id: string; name: string } | null
 }
 
 export interface ClientOnboardingView {
@@ -370,9 +389,35 @@ async function staffInvoke<T>(body: Record<string, unknown>, fallback: string): 
   return data as T
 }
 
-export async function listWorkspaceOnboarding(workspaceId: string): Promise<WorkspaceOnboardingData> {
+export type OnboardingListSection = 'templates' | 'clients' | 'instances'
+
+function deliveryValue(value: unknown): OnboardingDelivery {
+  const source = record(value)
+  const status = ['sent', 'failed', 'skipped'].includes(String(source.status))
+    ? source.status as OnboardingDelivery['status']
+    : 'unknown'
+  return {
+    status,
+    ...(source.reason === 'not_configured' ? { reason: 'not_configured' as const } : {}),
+    ...(source.recorded === false ? { recorded: false } : {}),
+  }
+}
+
+/**
+ * `include` narrows the response to the sections a caller needs. Omitted, it
+ * returns everything, which is what one-off readers (the setup checklist)
+ * want; the onboarding page polls only the instances.
+ */
+export async function listWorkspaceOnboarding(
+  workspaceId: string,
+  include?: OnboardingListSection[],
+): Promise<WorkspaceOnboardingData> {
   const canonicalWorkspaceId = uuid(workspaceId)
-  const data = record(await staffInvoke<unknown>({ action: 'list', workspace_id: canonicalWorkspaceId }, 'Onboarding could not be loaded.'))
+  const data = record(await staffInvoke<unknown>({
+    action: 'list',
+    workspace_id: canonicalWorkspaceId,
+    ...(include ? { include } : {}),
+  }, 'Onboarding could not be loaded.'))
   const workspace = record(data.workspace)
   if (uuid(workspace.id) !== canonicalWorkspaceId || !Array.isArray(data.instances) || !Array.isArray(data.templates)) {
     throw new Error('The onboarding response did not match the selected workspace.')
@@ -383,7 +428,17 @@ export async function listWorkspaceOnboarding(workspaceId: string): Promise<Work
       name: stringValue(workspace.name) as string,
       logo_path: stringValue(workspace.logo_path, true),
       logo_updated_at: stringValue(workspace.logo_updated_at, true),
+      client_contact_email: typeof workspace.client_contact_email === 'string' && workspace.client_contact_email.includes('@')
+        ? workspace.client_contact_email
+        : null,
+      client_brand_accent_color: typeof workspace.client_brand_accent_color === 'string'
+        && /^#[0-9a-f]{6}$/iu.test(workspace.client_brand_accent_color)
+        ? workspace.client_brand_accent_color.toUpperCase()
+        : null,
     },
+    // Absent means an older function; assume sending works rather than warn
+    // about a problem nobody has confirmed.
+    email_delivery: { configured: record(data.email_delivery ?? { configured: true }).configured !== false },
     viewer_role: data.viewer_role as WorkspaceOnboardingData['viewer_role'],
     can_manage: data.can_manage === true,
     templates: data.templates.map((template) => templateValue(template, canonicalWorkspaceId)),
@@ -478,6 +533,11 @@ export interface StartOnboardingInput {
   expires_in_days: number
   assigned_membership_ids: string[]
   send_email?: boolean
+  /**
+   * Minted once per Start dialog and resent on retry, so a retried request
+   * returns the onboarding it already created instead of making another.
+   */
+  idempotency_key?: string
   experience: {
     intro_title: string
     intro_body: string
@@ -492,7 +552,7 @@ export async function startWorkspaceOnboarding(
   input: StartOnboardingInput,
 ): Promise<OnboardingInvitationResult> {
   const canonicalWorkspaceId = uuid(workspaceId)
-  const { experience, send_email, ...invitation } = input
+  const { experience, send_email, idempotency_key, ...invitation } = input
   const logoFile = experience.logo_file
   if (logoFile && (
     !['image/jpeg', 'image/png', 'image/webp'].includes(logoFile.type)
@@ -506,6 +566,7 @@ export async function startWorkspaceOnboarding(
     workspace_id: canonicalWorkspaceId,
     ...invitation,
     send_email: send_email === true,
+    ...(idempotency_key ? { idempotency_key: uuid(idempotency_key) } : {}),
     experience: {
       intro_title: experience.intro_title,
       intro_body: experience.intro_body,
@@ -521,7 +582,14 @@ export async function startWorkspaceOnboarding(
   return {
     instance: detailValue(data.instance, canonicalWorkspaceId),
     onboarding_url: stringValue(data.onboarding_url) as string,
-    delivery: record(data.delivery) as OnboardingInvitationResult['delivery'],
+    delivery: deliveryValue(data.delivery),
+    ...(data.replayed === true ? { replayed: true } : {}),
+    duplicate_client: data.duplicate_client && typeof data.duplicate_client === 'object'
+      ? {
+        id: uuid((data.duplicate_client as Record<string, unknown>).id),
+        name: String((data.duplicate_client as Record<string, unknown>).name ?? ''),
+      }
+      : null,
   }
 }
 
@@ -546,7 +614,7 @@ async function instanceAction(
   return {
     ...(data.instance ? { instance: detailValue(data.instance, canonicalWorkspaceId) } : {}),
     ...(typeof data.onboarding_url === 'string' ? { onboarding_url: data.onboarding_url } : {}),
-    ...(data.delivery ? { delivery: record(data.delivery) as OnboardingInvitationResult['delivery'] } : {}),
+    ...(data.delivery ? { delivery: deliveryValue(data.delivery) } : {}),
     ...(data.purged === true ? { purged: true } : {}),
   }
 }
@@ -579,10 +647,15 @@ export const rotateOnboardingLink = (
   workspaceId: string,
   instanceId: string,
   expiresInDays: number,
+  sendEmail = false,
 ) => instanceAction(workspaceId, instanceId, 'rotate', {
   expires_in_days: expiresInDays,
-  send_email: false,
+  send_email: sendEmail,
 })
+
+/** Emails the client their current, still-valid link again. */
+export const resendOnboardingInvitation = (workspaceId: string, instanceId: string) =>
+  instanceAction(workspaceId, instanceId, 'resend_invitation')
 
 export const getOnboardingLink = (workspaceId: string, instanceId: string) =>
   instanceAction(workspaceId, instanceId, 'get_link')

@@ -124,6 +124,8 @@ const PITCH_CATALOG_COLUMNS = `${PODCAST_VARIABLE_COLUMNS.join(', ')}, recent_ep
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+const AUTOPILOT_COLUMNS =
+  'enabled, max_weekly_adds, min_score, last_run_at, last_run_added, next_run_at, last_run_error, last_run_error_at'
 const SHORTLIST_FIELDS = [
   'id',
   'client_id',
@@ -2720,7 +2722,7 @@ serve(async (req) => {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
       const { data: settings } = await authContext.admin
         .from('client_autopilot_settings')
-        .select('enabled, max_weekly_adds, min_score, last_run_at, last_run_added, next_run_at')
+        .select(AUTOPILOT_COLUMNS)
         .eq('workspace_id', workspaceId)
         .eq('client_id', clientId)
         .maybeSingle()
@@ -2740,6 +2742,20 @@ serve(async (req) => {
       if (typeof minScore !== 'number' || !Number.isInteger(minScore) || minScore < 0 || minScore > 100) {
         throw new HttpError(400, 'INVALID_FIELD', 'min_score must be between 0 and 100')
       }
+      const { data: existingSettings, error: existingError } = await authContext.admin
+        .from('client_autopilot_settings')
+        .select('enabled')
+        .eq('workspace_id', workspaceId)
+        .eq('client_id', clientId)
+        .maybeSingle()
+      if (existingError) {
+        throw new HttpError(500, 'AUTOPILOT_SAVE_FAILED', 'Autopilot settings could not be saved')
+      }
+      // Turning autopilot on schedules the first run immediately; the tick
+      // picks it up within ten minutes. Any other save (a new score floor, a
+      // different weekly cap) keeps the schedule it already has — resetting it
+      // on every save ran a fresh, charged discovery each time a setting moved.
+      const startsNow = body.enabled && (!existingSettings || existingSettings.enabled !== true)
       const { data: settings, error: settingsError } = await authContext.admin
         .from('client_autopilot_settings')
         .upsert({
@@ -2748,12 +2764,10 @@ serve(async (req) => {
           enabled: body.enabled,
           max_weekly_adds: maxWeeklyAdds,
           min_score: minScore,
-          // Enabling schedules the first run immediately; the tick picks it up
-          // within ten minutes.
-          next_run_at: new Date().toISOString(),
+          ...(startsNow ? { next_run_at: new Date().toISOString(), last_run_error: null } : {}),
           updated_at: new Date().toISOString(),
         }, { onConflict: 'workspace_id,client_id' })
-        .select('enabled, max_weekly_adds, min_score, last_run_at, last_run_added, next_run_at')
+        .select(AUTOPILOT_COLUMNS)
         .maybeSingle()
       if (settingsError || !settings) {
         throw new HttpError(500, 'AUTOPILOT_SAVE_FAILED', 'Autopilot settings could not be saved')

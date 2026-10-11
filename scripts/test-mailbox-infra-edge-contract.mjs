@@ -51,4 +51,32 @@ for (const call of mailboxEdgeSource.matchAll(/(\w+(?:\.\w+)?)\s*\.from\('worksp
   assert.equal(call[1], 'authContext.admin', 'workspace_mailbox_orders must be accessed with the service-role client')
 }
 
+// 20261011000300: the order row carries its exact debits and is written
+// BEFORE the provider is called, so a failed insert never strands a provider
+// job, and a provider job that fails later refunds exactly once.
+const reviewFixMigration = readFileSync('supabase/migrations/20261011000300_review_fixes_refunds_autopilot_primary_domain.sql', 'utf8')
+assert.match(reviewFixMigration, /ADD COLUMN IF NOT EXISTS charged_entry_ids UUID\[\] NOT NULL DEFAULT/u)
+assert.match(reviewFixMigration, /ADD COLUMN IF NOT EXISTS credits_refunded_at TIMESTAMPTZ/u)
+const orderCreate = edge.slice(edge.indexOf("if (action === 'order-create')"), edge.indexOf("if (action === 'order-status')"))
+assert.ok(
+  orderCreate.indexOf(".from('workspace_mailbox_orders')\n        .insert(") < orderCreate.indexOf("'/domains/purchase'"),
+  'the order row must be recorded before the provider purchase',
+)
+assert.match(orderCreate, /charged_entry_ids: chargedEntryIds,/u)
+assert.match(orderCreate, /winnr_job_id: null,/u)
+assert.match(orderCreate, /winnr_job_id: purchase\.job_id/u)
+assert.match(orderCreate, /await failMailboxOrder\(authContext, workspaceId, trackedOrder,[\s\S]*?throw error/u)
+assert.match(edge, /async function failMailboxOrder\([\s\S]*?\.eq\('status', 'processing'\)\s*\n\s*\.is\('credits_refunded_at', null\)[\s\S]*?refundMailboxCredits\(/u)
+assert.match(edge, /if \(job\.status === 'failed'\) \{[\s\S]*?await failMailboxOrder\(authContext, workspaceId, order, message\)/u)
+// Ledger ids never reach the browser.
+assert.match(edge, /function publicOrder\(order: MailboxOrderRow\)/u)
+assert.match(edge, /order: publicOrder\(advanced\)/u)
+// Every page of the shared provider account is read before the workspace-tag
+// filter, for domains and for warming.
+assert.match(edge, /async function winnrListAll<T>\(/u)
+assert.match(edge, /MAX_LIST_PAGES = 20/u)
+assert.match(edge, /winnrListAll<WinnrDomain>\(token, '\/domains'/u)
+assert.match(edge, /winnrListAll<Record<string, unknown>>\(winnrKey\.apiKey, '\/warming'/u)
+assert.doesNotMatch(edge, /a single\s*\n?\s*\/\/ page covers the current account scale/u)
+
 process.stdout.write('Mailbox infra edge contract checks passed\n')

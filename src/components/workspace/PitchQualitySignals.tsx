@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Clock, Handshake, MessageSquare, ShieldCheck, Ban } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { safeExternalUrl } from '@/lib/externalUrl'
 import type { ClientShortlistAgencyRelationship } from '@/services/clientShortlist'
 
 /**
@@ -11,6 +12,9 @@ import type { ClientShortlistAgencyRelationship } from '@/services/clientShortli
 export const AgencyRelationshipNotice = ({ relationship }: { relationship?: ClientShortlistAgencyRelationship | null }) => {
   if (!relationship) return null
   const hasCuratedContext = Boolean(relationship.manual_stage || relationship.summary?.trim())
+  // The episode link was typed in by a client or an operator; only http(s)
+  // ever becomes an href.
+  const bookedEpisodeUrl = relationship.booked_episode_url ? safeExternalUrl(relationship.booked_episode_url) : null
   if (relationship.state === 'none' && !hasCuratedContext) return null
   const contactedOn = relationship.last_contacted_at
     ? new Date(relationship.last_contacted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -112,9 +116,9 @@ export const AgencyRelationshipNotice = ({ relationship }: { relationship?: Clie
               The same contact also hosts another show you have emailed — this is the same person, not a new introduction.
             </p>
           )}
-          {relationship.booked_episode_url && (
+          {bookedEpisodeUrl && (
             <a
-              href={relationship.booked_episode_url}
+              href={bookedEpisodeUrl}
               target="_blank"
               rel="noreferrer"
               className="mt-1 inline-block text-[11px] font-semibold underline underline-offset-2"

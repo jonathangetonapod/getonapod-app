@@ -156,7 +156,7 @@ serve(async (req) => {
 
     if (!attemptReserved) {
       return new Response(
-        JSON.stringify({ error: 'Too many login attempts. Please try again in 15 minutes.' }),
+        JSON.stringify({ error: 'Too many sign-in attempts. Wait a few minutes, then try again.' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

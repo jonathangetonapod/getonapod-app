@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
@@ -188,6 +188,23 @@ describe('WorkspaceBilling', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Start the Founding member plan · $39/month' }))
     expect(mockedSubscribe).toHaveBeenCalledWith(workspaceId, 'founding_member')
     expect(mockedPortal).not.toHaveBeenCalled()
+  })
+
+  // The page can be behind the webhook: it offers checkout, the server finds
+  // a live subscription and refuses with 409. The portal opens instead of a
+  // second, separately billed subscription.
+  it('opens the portal when checkout reports the workspace already subscribes', async () => {
+    asOwner()
+    mockedOverview.mockResolvedValue(overviewFixture as never)
+    mockedSubscribe.mockRejectedValue(Object.assign(new Error('This workspace already has a plan.'), {
+      code: 'SUBSCRIPTION_EXISTS',
+      status: 409,
+    }))
+    mockedPortal.mockResolvedValue('https://billing.stripe.com/session/test')
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start the Founding member plan · $39/month' }))
+    await waitFor(() => expect(mockedPortal).toHaveBeenCalledWith(workspaceId))
   })
 
   // Nobody could find out what a credit was for, or what anything cost,

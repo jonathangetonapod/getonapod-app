@@ -186,6 +186,22 @@ assert.match(autopilotEdge, /entry\.score >= due\.min_score/u)
 assert.match(autopilotEdge, /\.slice\(0, due\.max_weekly_adds\)/u)
 assert.match(autopilotEdge, /onConflict: 'client_id,podcast_id', ignoreDuplicates: true/u)
 assert.match(autopilotEdge, /merge_global_podcast_catalog_batch_v1/u)
+// Saving settings reschedules only when autopilot is switched on; any other
+// save keeps the existing schedule instead of buying a fresh run.
+assert.match(shortlistEdge, /const startsNow = body\.enabled && \(!existingSettings \|\| existingSettings\.enabled !== true\)/u)
+assert.match(shortlistEdge, /\.\.\.\(startsNow \? \{ next_run_at: new Date\(\)\.toISOString\(\), last_run_error: null \} : \{\}\)/u)
+// A failed run records why and retries soon instead of losing the week, and a
+// failed catalog merge is a failure rather than silence (20261011000300).
+assert.match(autopilotEdge, /const \{ error: mergeError \} = await admin\.rpc\('merge_global_podcast_catalog_batch_v1'/u)
+assert.match(autopilotEdge, /if \(mergeError\) throw new CatalogMergeError/u)
+assert.match(autopilotEdge, /await recordFailure\(classifyFailure\(error\)\)/u)
+assert.match(autopilotEdge, /error\.code === 'INSUFFICIENT_CREDITS'[\s\S]*?retryMs: ACTION_RETRY_MS/u)
+assert.match(autopilotEdge, /error\.code === 'BILLING_UNAVAILABLE'[\s\S]*?retryMs: TRANSIENT_RETRY_MS/u)
+assert.match(autopilotEdge, /error instanceof AnthropicError[\s\S]*?retryMs: TRANSIENT_RETRY_MS/u)
+assert.match(autopilotEdge, /if \(!anthropicKey\) \{\s+await recordFailure\(/u)
+assert.match(autopilotEdge, /last_run_error: failure\.message/u)
+const reviewFixMigration = readFileSync('supabase/migrations/20261011000300_review_fixes_refunds_autopilot_primary_domain.sql', 'utf8')
+assert.match(reviewFixMigration, /ALTER TABLE public\.client_autopilot_settings\s+ADD COLUMN IF NOT EXISTS last_run_error TEXT;/u)
 const autopilotMigration = readFileSync('supabase/migrations/20260726000700_client_autopilot.sql', 'utf8')
 assert.match(autopilotMigration, /REFERENCES public\.clients\(workspace_id, id\) ON DELETE CASCADE/u)
 assert.match(autopilotMigration, /ENABLE ROW LEVEL SECURITY/u)

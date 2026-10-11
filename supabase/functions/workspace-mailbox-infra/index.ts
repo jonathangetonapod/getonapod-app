@@ -38,11 +38,11 @@ function requireManager(access: WorkspaceFeatureAccess): void {
   }
 }
 
-async function winnrRequest<T>(
+async function winnrRequestRaw(
   token: string,
   path: string,
   options: { method?: 'GET' | 'POST'; body?: Record<string, unknown>; query?: URLSearchParams } = {},
-): Promise<T> {
+): Promise<unknown> {
   const url = new URL(`${WINNR_BASE}${path}`)
   if (options.query) url.search = options.query.toString()
   let response: Response
@@ -71,7 +71,94 @@ async function winnrRequest<T>(
     }
     throw new HttpError(502, 'WINNR_ERROR', 'The mailbox provider rejected the request')
   }
+  return payload
+}
+
+async function winnrRequest<T>(
+  token: string,
+  path: string,
+  options: { method?: 'GET' | 'POST'; body?: Record<string, unknown>; query?: URLSearchParams } = {},
+): Promise<T> {
+  const payload = await winnrRequestRaw(token, path, options) as { data?: unknown } | null
   return (payload?.data ?? payload) as T
+}
+
+const MAX_LIST_PAGES = 20
+
+function listRows<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[]
+  const data = (payload as { data?: unknown } | null)?.data
+  if (Array.isArray(data)) return data as T[]
+  const nested = (data as { data?: unknown } | null)?.data
+  return Array.isArray(nested) ? nested as T[] : []
+}
+
+function pageInfo(payload: unknown): { cursor: string | null; hasMore: boolean | null } {
+  const root = (payload && typeof payload === 'object' && !Array.isArray(payload))
+    ? payload as Record<string, unknown>
+    : {}
+  const candidates = [root, root.pagination, root.meta, root.data]
+    .filter((value): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value))
+  let cursor: string | null = null
+  let hasMore: boolean | null = null
+  for (const candidate of candidates) {
+    const next = candidate.next_cursor ?? candidate.nextCursor ?? candidate.cursor_next
+    if (!cursor && typeof next === 'string' && next) cursor = next
+    if (hasMore === null && typeof candidate.has_more === 'boolean') hasMore = candidate.has_more
+    if (
+      hasMore === null &&
+      typeof candidate.current_page === 'number' &&
+      typeof candidate.last_page === 'number'
+    ) {
+      hasMore = candidate.current_page < candidate.last_page
+    }
+  }
+  return { cursor, hasMore }
+}
+
+/**
+ * Read every page of a Winnr list.
+ *
+ * The platform account is shared by every workspace, and rows are filtered by
+ * workspace tag only after they arrive. Reading one page meant a workspace
+ * whose domains sat past the first hundred saw an empty card and exported
+ * nothing. The envelope's cursor is followed when there is one, page numbers
+ * otherwise, and a page that adds nothing new ends the walk so an API that
+ * ignores the paging parameter cannot loop.
+ */
+async function winnrListAll<T>(
+  token: string,
+  path: string,
+  options: { query?: Record<string, string>; sizeParam: 'limit' | 'per_page'; pageSize: number; key: (row: T) => string },
+): Promise<T[]> {
+  const rows: T[] = []
+  const seen = new Set<string>()
+  let cursor: string | null = null
+  for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
+    const query = new URLSearchParams({ ...(options.query ?? {}), [options.sizeParam]: String(options.pageSize) })
+    if (cursor) query.set('cursor', cursor)
+    else if (page > 1) query.set('page', String(page))
+    const payload = await winnrRequestRaw(token, path, { query })
+    const pageRows = listRows<T>(payload)
+    let added = 0
+    for (const row of pageRows) {
+      const key = options.key(row)
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push(row)
+      added += 1
+    }
+    if (added === 0) break
+    const info = pageInfo(payload)
+    if (info.cursor) {
+      cursor = info.cursor
+      continue
+    }
+    cursor = null
+    if (info.hasMore === false) break
+    if (info.hasMore === null && pageRows.length < options.pageSize) break
+  }
+  return rows
 }
 
 function workspaceTag(workspaceId: string): string {
@@ -115,28 +202,30 @@ interface MailboxOrderRow {
   warming_enabled_at: string | null
   error_message: string | null
   created_at: string
+  charged_entry_ids?: string[] | null
 }
 
 const ORDER_COLUMNS =
-  'id, winnr_job_id, status, domains, mailbox_count, credits_charged, warming_enabled_at, error_message, created_at'
+  'id, winnr_job_id, status, domains, mailbox_count, credits_charged, warming_enabled_at, error_message, created_at, charged_entry_ids'
+
+// An order row with no provider job after this long never got the provider's
+// confirmation recorded; it is surfaced instead of polling forever in silence.
+const UNCONFIRMED_ORDER_MS = 30 * 60_000
+
+/** Ledger entry ids stay server-side; the browser never needs them. */
+function publicOrder(order: MailboxOrderRow): Omit<MailboxOrderRow, 'charged_entry_ids'> {
+  const { charged_entry_ids: _chargedEntryIds, ...rest } = order
+  return rest
+}
 
 async function listWorkspaceDomains(token: string, workspaceId: string, scopeToTag: boolean): Promise<WinnrDomain[]> {
   const tag = workspaceTag(workspaceId)
-  const domains: WinnrDomain[] = []
-  let cursor: string | null = null
-  for (let page = 0; page < 5; page += 1) {
-    const query = new URLSearchParams({ limit: '100' })
-    if (cursor) query.set('cursor', cursor)
-    const result = await winnrRequest<WinnrDomain[] | { data?: WinnrDomain[] }>(token, '/domains', { query })
-    const rows = Array.isArray(result) ? result : (result as { data?: WinnrDomain[] }).data ?? []
-    domains.push(...rows.filter((domain) => !scopeToTag || (Array.isArray(domain.tags) && domain.tags.includes(tag))))
-    // The list envelope's pagination is stripped by the data unwrap; a single
-    // page covers the current account scale, so stop unless a full page came back.
-    if (rows.length < 100) break
-    cursor = null
-    break
-  }
-  return domains
+  const domains = await winnrListAll<WinnrDomain>(token, '/domains', {
+    sizeParam: 'limit',
+    pageSize: 100,
+    key: (domain) => String(domain.id ?? domain.name),
+  })
+  return domains.filter((domain) => !scopeToTag || (Array.isArray(domain.tags) && domain.tags.includes(tag)))
 }
 
 async function mailboxUserIds(apiKey: string, domainNames: string[]): Promise<string[]> {
@@ -190,6 +279,42 @@ async function refundMailboxCredits(
 }
 
 /**
+ * Fail an order and give back its credits, once.
+ *
+ * The conditional update is the claim: only the caller that flips the row from
+ * processing to failed refunds, so two status polls racing over the same
+ * failed job cannot both reach the ledger (the refund RPC is idempotent per
+ * debit as well). A refunded debit reopens its idempotency key, so retrying
+ * the same domain charges afresh instead of replaying the refunded debit.
+ */
+async function failMailboxOrder(
+  authContext: AuthContext,
+  workspaceId: string,
+  order: Pick<MailboxOrderRow, 'id' | 'domains' | 'charged_entry_ids'>,
+  message: string,
+): Promise<void> {
+  const now = new Date().toISOString()
+  const { data: claimed, error } = await authContext.admin.from('workspace_mailbox_orders')
+    .update({ status: 'failed', error_message: message, credits_refunded_at: now, updated_at: now })
+    .eq('workspace_id', workspaceId)
+    .eq('id', order.id)
+    .eq('status', 'processing')
+    .is('credits_refunded_at', null)
+    .select('id')
+  if (error) {
+    console.error('[Mailbox Infra] could not mark order failed', order.id)
+    return
+  }
+  if (!claimed || claimed.length === 0) return
+  await refundMailboxCredits(
+    authContext,
+    workspaceId,
+    (Array.isArray(order.domains) ? order.domains : []) as Array<{ domain: string }>,
+    Array.isArray(order.charged_entry_ids) ? order.charged_entry_ids : [],
+  )
+}
+
+/**
  * Move a processing order forward: check the provider job, and on completion
  * turn warming on for the mailboxes it created.
  *
@@ -200,19 +325,29 @@ async function refundMailboxCredits(
  */
 async function advanceMailboxOrder(
   authContext: AuthContext,
+  workspaceId: string,
   apiKey: string,
   order: MailboxOrderRow,
 ): Promise<MailboxOrderRow> {
-  if (order.status !== 'processing' || !order.winnr_job_id) return order
+  if (order.status !== 'processing') return order
+  if (!order.winnr_job_id) {
+    if (Date.now() - new Date(order.created_at).getTime() > UNCONFIRMED_ORDER_MS) {
+      return {
+        ...order,
+        error_message: order.error_message ??
+          'The provider confirmation for this order was not recorded. Contact support before ordering these domains again.',
+      }
+    }
+    return order
+  }
   const job = await winnrRequest<{ status?: string; progress?: Record<string, unknown> }>(
     apiKey,
     `/jobs/${encodeURIComponent(order.winnr_job_id)}`,
   )
   if (job.status === 'failed') {
-    await authContext.admin.from('workspace_mailbox_orders')
-      .update({ status: 'failed', error_message: 'Provisioning failed at the provider', updated_at: new Date().toISOString() })
-      .eq('id', order.id)
-    return { ...order, status: 'failed', error_message: 'Provisioning failed at the provider' }
+    const message = 'Provisioning failed at the provider. The credits for this order were returned.'
+    await failMailboxOrder(authContext, workspaceId, order, message)
+    return { ...order, status: 'failed', error_message: message }
   }
   if (job.status !== 'completed') return order
 
@@ -380,11 +515,34 @@ serve(async (req) => {
         throw error
       }
 
+      // The order is recorded BEFORE the provider is called. Recording it
+      // afterwards meant a failed insert left the provider building domains
+      // and the workspace charged with nothing tracking either: no status
+      // poll, no warmup, no refund path. The row carries the exact debits so
+      // a provider failure — now or when the job later fails — reverses them.
+      const { data: orderRow, error: orderError } = await authContext.admin
+        .from('workspace_mailbox_orders')
+        .insert({
+          workspace_id: workspaceId,
+          winnr_job_id: null,
+          status: 'processing',
+          domains: orders,
+          mailbox_count: mailboxCount,
+          credits_charged: creditsCharged,
+          charged_entry_ids: chargedEntryIds,
+          created_by: authContext.user.id,
+        })
+        .select('id, status, domains, mailbox_count, credits_charged, created_at')
+        .single()
+      if (orderError || !orderRow) {
+        await refundMailboxCredits(authContext, workspaceId, orders, chargedEntryIds)
+        throw new HttpError(500, 'ORDER_SAVE_FAILED', 'The order could not be recorded')
+      }
+      const trackedOrder = { id: orderRow.id as string, domains: orders, charged_entry_ids: chargedEntryIds }
+
       // Credits are spent before the provider is called, so an order the
       // provider never accepted has to give them back. Without this, a Winnr
-      // outage charges for infrastructure that does not exist, and picking a
-      // different domain on the retry charges again — the idempotency keys
-      // above only protect a retry of the very same domain.
+      // outage charges for infrastructure that does not exist.
       let purchase: { job_id?: string; status?: string }
       try {
         purchase = await winnrRequest<{ job_id?: string; status?: string }>(winnrKey.apiKey, '/domains/purchase', {
@@ -402,29 +560,26 @@ serve(async (req) => {
           },
         })
       } catch (error) {
-        await refundMailboxCredits(authContext, workspaceId, orders, chargedEntryIds)
+        await failMailboxOrder(authContext, workspaceId, trackedOrder, 'The provider did not accept the order. The credits were returned.')
         throw error
       }
       if (!purchase.job_id) {
-        await refundMailboxCredits(authContext, workspaceId, orders, chargedEntryIds)
+        await failMailboxOrder(authContext, workspaceId, trackedOrder, 'The provider did not accept the order. The credits were returned.')
         throw new HttpError(502, 'WINNR_ERROR', 'The provider did not accept the order')
       }
 
-      const { data: orderRow, error: orderError } = await authContext.admin
-        .from('workspace_mailbox_orders')
-        .insert({
-          workspace_id: workspaceId,
-          winnr_job_id: purchase.job_id,
-          status: 'processing',
-          domains: orders,
-          mailbox_count: mailboxCount,
-          credits_charged: creditsCharged,
-          created_by: authContext.user.id,
-        })
-        .select('id, status, domains, mailbox_count, credits_charged, created_at')
-        .single()
-      if (orderError || !orderRow) {
-        throw new HttpError(500, 'ORDER_SAVE_FAILED', 'The order could not be recorded')
+      // The provider has accepted and is spending real money, so the job id
+      // is retried onto the row rather than dropped on one failed write.
+      let jobRecorded = false
+      for (let attempt = 0; attempt < 3 && !jobRecorded; attempt += 1) {
+        const { error: jobError } = await authContext.admin.from('workspace_mailbox_orders')
+          .update({ winnr_job_id: purchase.job_id, updated_at: new Date().toISOString() })
+          .eq('workspace_id', workspaceId)
+          .eq('id', orderRow.id)
+        jobRecorded = !jobError
+      }
+      if (!jobRecorded) {
+        console.error('[Mailbox Infra] provider job id not recorded', orderRow.id, purchase.job_id)
       }
       await writeAudit(authContext.admin, {
         workspaceId,
@@ -458,10 +613,11 @@ serve(async (req) => {
 
       const advanced = await advanceMailboxOrder(
         authContext,
+        workspaceId,
         winnrKey.apiKey,
         order as unknown as MailboxOrderRow,
       )
-      return jsonResponse(req, METHODS, 200, { order: advanced, progress: null })
+      return jsonResponse(req, METHODS, 200, { order: publicOrder(advanced), progress: null })
     }
 
     if (action === 'warming-retry') {
@@ -509,7 +665,11 @@ serve(async (req) => {
         metadata: { mailboxes: userIds.length },
       })
       return jsonResponse(req, METHODS, 200, {
-        order: { ...order, warming_enabled_at: warmingEnabledAt, error_message: null },
+        order: publicOrder({
+          ...(order as unknown as MailboxOrderRow),
+          warming_enabled_at: warmingEnabledAt,
+          error_message: null,
+        }),
       })
     }
 
@@ -528,14 +688,15 @@ serve(async (req) => {
       // during an order no longer strands its mailboxes unwarmed.
       const orders = await Promise.all(
         ((ordersResult.data ?? []) as unknown as MailboxOrderRow[]).map((order) => (
-          advanceMailboxOrder(authContext, winnrKey.apiKey, order)
+          advanceMailboxOrder(authContext, workspaceId, winnrKey.apiKey, order)
             .catch(() => order)
         )),
-      )
-      const warming = await winnrRequest<{ data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>(winnrKey.apiKey, '/warming', {
-        query: new URLSearchParams({ per_page: '200' }),
-      }).catch(() => [])
-      const warmingRows = Array.isArray(warming) ? warming : (warming as { data?: Array<Record<string, unknown>> }).data ?? []
+      ).then((rows) => rows.map(publicOrder))
+      const warmingRows = await winnrListAll<Record<string, unknown>>(winnrKey.apiKey, '/warming', {
+        sizeParam: 'per_page',
+        pageSize: 200,
+        key: (row) => String(row.id ?? row.full_address),
+      }).catch(() => [] as Array<Record<string, unknown>>)
       const domainNames = new Set(domains.map((domain) => domain.name))
       const warmingByAddress = new Map(
         warmingRows

@@ -10,9 +10,11 @@ import {
   Plus,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
+import { starterOnboardingTemplate } from '@/components/onboarding/starterTemplate'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -262,6 +264,18 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
     }))
   }
 
+  // Only offered on a new template: replacing a saved template's questions
+  // with one click would throw away work.
+  const applyStarterForm = () => {
+    const starter = starterOnboardingTemplate(brandedWorkspaceName)
+    const firstSection = starter.definition.sections[0]
+    setDraft(starter)
+    setActiveSectionId(firstSection.id)
+    setActiveQuestionId(firstSection.questions[0]?.id ?? null)
+    setBuilderError(null)
+    setMode('build')
+  }
+
   const updateSection = (sectionIndex: number, updates: Partial<OnboardingSection>) => {
     setDefinition((definition) => ({
       ...definition,
@@ -443,6 +457,14 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                 <DialogDescription>
                   Organize the client experience by section, then preview exactly what they will receive.
                 </DialogDescription>
+                {!template && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Button type="button" size="sm" variant="outline" onClick={applyStarterForm}>
+                      <Sparkles className="mr-2 h-4 w-4" />Use the starter form
+                    </Button>
+                    <span>Name, bio, links, headshot, and speaking topics, ready to edit.</span>
+                  </div>
+                )}
                 {publishedVersion > 0 && (
                   <p className="text-sm text-muted-foreground" data-testid="template-version-status">
                     Clients currently receive version {publishedVersion}. Save draft keeps them on it; Save and publish creates version {publishedVersion + 1}.

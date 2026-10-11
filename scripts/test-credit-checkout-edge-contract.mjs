@@ -61,6 +61,33 @@ assert.match(webhook, /p_source: 'purchase'/u)
 // retries still deduplicate either way — redeliveries carry the same metadata.
 assert.match(webhook, /event\.type === AUTOMATIC && typeof metadata\.refill_key === 'string' && metadata\.refill_key\.startsWith\('auto-refill:'\)\s*\n\s*\? metadata\.refill_key\s*\n\s*: `stripe:\$\{event\.id\}`/u)
 
+// A 100%-off promotion code completes with nothing to collect. It is still a
+// purchase, so it grants — but only at a true zero total.
+assert.match(webhook, /paymentStatus === 'no_payment_required'\s*\n\s*&& session\.amount_total === 0/u)
+assert.match(webhook, /paymentStatus !== paidValue && !freeCheckout/u)
+// The lot remembers which payment bought it, so a refund can find it; a retry
+// after that write failed is a 500, and the idempotent grant fills it in.
+assert.match(webhook, /\.update\(\{ stripe_payment_ref: paymentRef \}\)/u)
+assert.match(webhook, /typeof session\.payment_intent === 'string' \? session\.payment_intent : null/u)
+assert.match(webhook, /return json\(500, \{ error: 'PAYMENT_REF_FAILED' \}\)/u)
+// Refunds and disputes take back the unspent part of that lot, through one
+// RPC, idempotent on the Stripe event id. A refund carries a cumulative
+// amount_refunded; a dispute takes the whole lot.
+assert.match(webhook, /event\.type === 'charge\.refunded' \|\| event\.type === 'charge\.dispute\.created'/u)
+assert.match(webhook, /reverse_workspace_credit_lot_v1/u)
+assert.match(webhook, /p_refunded_cents: refunded/u)
+assert.match(webhook, /p_reference_kind: dispute \? 'stripe_dispute' : 'stripe_refund'/u)
+assert.match(webhook, /p_idempotency_key: `stripe:\$\{event\.id\}`,\n\s+\}\)\n\s+if \(error\) \{\n\s+console\.error\('\[Stripe Credit Webhook\] Credit reversal failed'\)/u)
+assert.match(webhook, /console\.warn\(/u)
+
+const reversal = readFileSync('supabase/migrations/20261011000200_billing_refunds_and_refill_failures.sql', 'utf8')
+assert.match(reversal, /CREATE OR REPLACE FUNCTION public\.reverse_workspace_credit_lot_v1/u)
+assert.match(reversal, /SECURITY DEFINER\nSET search_path = ''/u)
+assert.match(reversal, /REVOKE ALL ON FUNCTION public\.reverse_workspace_credit_lot_v1\(TEXT, BIGINT, BIGINT, TEXT, TEXT, TEXT\)\n\s+FROM PUBLIC, anon, authenticated;/u)
+// Only the lot's own remainder: never below zero, never from another purchase.
+assert.match(reversal, /taken := LEAST\(wanted, lot\.remaining\)/u)
+assert.match(reversal, /CREATE UNIQUE INDEX IF NOT EXISTS workspace_credit_lots_stripe_payment_ref_uidx/u)
+
 const config = readFileSync('supabase/config.toml', 'utf8')
 const billingPage = readFileSync('src/pages/app/WorkspaceBilling.tsx', 'utf8')
 assert.match(config, /\[functions\.workspace-credit-checkout\]\nverify_jwt = true/u)

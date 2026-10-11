@@ -87,4 +87,18 @@ assert.doesNotMatch(portalLayout, /Add-ons/u)
 assert.doesNotMatch(portalService, /requestPortalAddon/u, 'the portal must not be able to request an upsell')
 assert.match(app, /path="\/portal\/addons"[\s\S]{0,400}Navigate to="\/portal\/dashboard"/u)
 
+// Add-on requests email the workspace owner, so they are rate limited per
+// client (failing closed) and capped over the client's lifetime, before the
+// request is recorded.
+const addonBranch = edge.slice(edge.indexOf('if (body.addon_request !== undefined)'))
+assert.match(edge, /const ADDON_REQUEST_DAILY_LIMIT = 5/u)
+assert.match(edge, /import \{ reservePublicRate \} from '\.\.\/_shared\/publicRateLimit\.ts'/u)
+assert.match(addonBranch, /ADDON_REQUEST_LIFETIME_LIMIT[\s\S]*?reservePublicRate\(admin, \[\{\s*bucket: `portal-addon:\$\{clientId\}`[\s\S]*?ADDON_REQUEST_RATE_LIMITED[\s\S]*?from\('client_portal_activity_log'\)\s*\.insert/u)
+assert.match(addonBranch, /catch \{\s*throw new HttpError\(503, 'ADDON_REQUEST_FAILED'/u)
+
+// Client-entered links are http(s) only, checked at write time.
+assert.match(edge, /parsed\.protocol !== 'http:' && parsed\.protocol !== 'https:'/u)
+assert.match(edge, /episode_url: kind === 'release' \? httpUrlOrNull\(event\.episode_url, 'episode_url'\) : null/u)
+assert.match(edge, /podcast_url: httpUrlOrNull\(event\.podcast_url, 'podcast_url'\)/u)
+
 console.log('Portal Experience Edge contract checks passed')

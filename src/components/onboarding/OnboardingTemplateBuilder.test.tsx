@@ -281,4 +281,47 @@ describe('OnboardingTemplateBuilder', () => {
     expect(savedDraft.definition.sections[0].questions[0].options.map((option: { label: string }) => option.label))
       .toEqual(['Interview', 'Panel'])
   })
+
+  it('fills a new template with the starter form, ready to publish', () => {
+    const onSave = vi.fn()
+    render(
+      <OnboardingTemplateBuilder
+        open
+        template={null}
+        workspaceName="Acme Agency"
+        workspaceLogoUrl={null}
+        saving={false}
+        onOpenChange={vi.fn()}
+        onSave={onSave}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Use the starter form/u }))
+    fireEvent.click(screen.getByRole('button', { name: /Save and publish/u }))
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    const [savedDraft, publish] = onSave.mock.calls[0]
+    expect(publish).toBe(true)
+    const questions = savedDraft.definition.sections.flatMap((section: { questions: Array<{ id: string; type: string; mapping: string | null }> }) => section.questions)
+    expect(questions.map((question: { id: string }) => question.id)).toEqual([
+      'full_name', 'short_bio', 'headshot', 'website', 'linkedin', 'booking_link', 'speaking_topics',
+    ])
+    expect(questions.find((question: { id: string }) => question.id === 'headshot')).toMatchObject({ type: 'image_upload' })
+    expect(questions.find((question: { id: string }) => question.id === 'booking_link')).toMatchObject({ mapping: 'client.calendar_link' })
+  })
+
+  it('does not offer to replace a saved template with the starter form', () => {
+    render(
+      <OnboardingTemplateBuilder
+        open
+        template={template}
+        workspaceName="Acme Agency"
+        workspaceLogoUrl={null}
+        saving={false}
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Use the starter form/u })).not.toBeInTheDocument()
+  })
 })

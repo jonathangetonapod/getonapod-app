@@ -139,3 +139,40 @@ assert.match(
 )
 // A filtered table says how much it is hiding.
 assert.match(onboardingPage, /\{tableInstances\.length\} of \{visibleInstances\.length\} shown/u)
+
+// A missing or empty Content-Length is refused. Number('') is 0, so the old
+// finite check let a body with no declared length through as a tiny one.
+assert.match(client, /\/\^\\d\+\$\/u\.test\(lengthHeader\)/u)
+assert.match(client, /throw new HttpError\(411, 'LENGTH_REQUIRED'/u)
+// Writes through a link are throttled per instance, failing open.
+assert.match(client, /reservePublicRate\(admin, \[\{\s*bucket: `onboarding-\$\{action\}:\$\{capability\.instanceId\}`/u)
+assert.match(client, /save: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
+assert.match(client, /upload: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
+assert.match(client, /delete_upload: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
+
+// Invitations reply to the agency and speak in the link's own welcome.
+assert.match(shared, /reply_to: replyTo/u)
+assert.match(shared, /experienceTitle\?: string \| null/u)
+assert.match(shared, /reason: 'not_configured'/u)
+assert.match(staff, /select\('client_contact_email'\)/u)
+assert.match(staff, /email_delivery = \{ configured: onboardingEmailConfigured\(\) \}/u)
+// The stored kind is 'changes_requested'; asking for 'change_request'
+// matched nothing.
+assert.match(staff, /\.in\('kind', \['invitation', 'changes_requested'\]\)/u)
+assert.doesNotMatch(staff, /\.in\('kind', \[[^\]]*'change_request'/u)
+// Delivery records report whether they landed.
+assert.match(staff, /if \(error \|\| data !== true\) \{\s*console\.error\('\[workspace-onboarding\] Invitation delivery could not be recorded'/u)
+// Resend emails the current link; rotate honours send_email.
+assert.match(staff, /action === 'resend_invitation'/u)
+assert.match(staff, /rotateSendEmail = booleanValue\(body\.send_email, 'send_email'\)/u)
+assert.match(onboardingPage, /resendOnboardingInvitation\(workspaceId, instance\.id\)/u)
+// Start is idempotent on a browser-minted key.
+assert.match(staff, /optionalUuid\(body\.idempotency_key, 'idempotency_key'\) \?\? crypto\.randomUUID\(\)/u)
+assert.match(onboardingPage, /idempotency_key: startKeyRef\.current/u)
+// Extending a lapsed link counts from today.
+assert.match(staff, /Math\.max\(Date\.now\(\), currentExpiry\) \+ extensionDays \* 86_400_000/u)
+// Approval covers answers only, and the client is told exactly that.
+assert.match(publicPage, /has approved your answers/u)
+assert.doesNotMatch(publicPage, /finalized your podcast guest profile/u)
+
+console.log('Workspace onboarding delivery and throttling contracts passed')

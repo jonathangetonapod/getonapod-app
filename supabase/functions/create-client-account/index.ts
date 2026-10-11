@@ -2,7 +2,13 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getPortalInvitationEmail } from '../_shared/email-templates.ts'
 import { errorResponse, requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
-import { hashPortalPassword } from '../_shared/portalSecurity.ts'
+import {
+  hashPortalPassword,
+  isAcceptableNewPortalPassword,
+  MAX_PORTAL_PASSWORD_LENGTH,
+  MIN_PORTAL_PASSWORD_LENGTH,
+} from '../_shared/portalSecurity.ts'
+import { whiteLabelOnboardingSender } from '../_shared/workspaceOnboarding.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -153,17 +159,11 @@ serve(async (req) => {
       )
     }
 
-    if (
-      password !== undefined
-      && (
-        typeof password !== 'string'
-        || password.length < 8
-        || password.length > 256
-        || password.trim().length === 0
-      )
-    ) {
+    if (password !== undefined && !isAcceptableNewPortalPassword(password)) {
       return new Response(
-        JSON.stringify({ error: 'password must be between 8 and 256 characters' }),
+        JSON.stringify({
+          error: `password must be between ${MIN_PORTAL_PASSWORD_LENGTH} and ${MAX_PORTAL_PASSWORD_LENGTH} characters`,
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       )
     }
@@ -396,7 +396,22 @@ serve(async (req) => {
     if (client.portal_access_enabled && send_invitation_email && resendApiKey) {
       try {
         const portalUrl = `${portalBaseUrl}/portal/login`
-        const emailTemplate = getPortalInvitationEmail(client.name, portalUrl)
+        // The client belongs to an agency workspace; the invitation speaks in
+        // that workspace's name, never the platform's.
+        let workspaceName: string | null = null
+        if (client.workspace_id) {
+          const { data: workspace } = await supabase
+            .from('workspaces')
+            .select('name')
+            .eq('id', client.workspace_id)
+            .maybeSingle()
+          workspaceName = typeof workspace?.name === 'string' && workspace.name.trim() ? workspace.name.trim() : null
+        }
+        const emailTemplate = getPortalInvitationEmail(client.name, portalUrl, workspaceName)
+        const sender = whiteLabelOnboardingSender(
+          Deno.env.get('RESEND_FROM_EMAIL') || 'portal@mail.getonapod.com',
+          workspaceName || 'Client portal',
+        ) ?? '"Client portal" <portal@mail.getonapod.com>'
 
         const emailResponse = await fetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -405,12 +420,11 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            from: 'Jonathan Garces <portal@mail.getonapod.com>',
+            from: sender,
             to: [email],
             subject: emailTemplate.subject,
             html: emailTemplate.html,
             text: emailTemplate.text,
-            reply_to: 'jonathan@getonapod.com',
           }),
         })
 
@@ -442,7 +456,7 @@ serve(async (req) => {
             const { error: emailLogError } = await supabase.from('email_logs').insert({
               resend_email_id: resendEmailId,
               email_type: 'portal_invitation',
-              from_address: 'Jonathan Garces <portal@mail.getonapod.com>',
+              from_address: sender,
               to_address: email,
               subject: emailTemplate.subject,
               status: 'sent',

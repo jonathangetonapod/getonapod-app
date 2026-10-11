@@ -336,8 +336,8 @@ export function WorkspaceDomainsCard({ workspaces }: Props) {
           </p>
         ) : domains.length === 0 ? (
           <p className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            No custom domains yet. Every workspace serves from getonapod.com — dashboards, onboarding forms, and the
-            links the platform emails — until one is added above.
+            No custom domains yet. Custom domains are added by the platform team; until one is added and serving, an
+            agency&apos;s dashboards, onboarding forms, and emailed links use the platform domain.
           </p>
         ) : (
           <ul className="divide-y rounded-xl border">
@@ -457,7 +457,7 @@ export function WorkspaceDomainsCard({ workspaces }: Props) {
             <AlertDialogDescription>
               This deletes the domain at its host as well as here. Any link already sent on this address stops working,
               and getting it back means a new certificate and a new DNS record for {pendingRemoval?.workspace?.name || 'this workspace'} to create.
-              {pendingRemoval?.is_primary && ' This is the domain their client links are built from — new links will go out on getonapod.com instead.'}
+              {pendingRemoval?.is_primary && ' This is the domain their client links are built from — new links will use the platform domain instead.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

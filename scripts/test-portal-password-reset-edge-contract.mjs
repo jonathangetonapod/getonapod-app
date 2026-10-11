@@ -8,8 +8,23 @@ const configToml = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/clientPortal.ts', 'utf8')
 const appRoutes = readFileSync('src/App.tsx', 'utf8')
 
-// Rate limiting happens before any account lookup.
-assert.match(edge, /reserve_client_portal_reset_request_v1[\s\S]*?RESET_RATE_LIMITED[\s\S]*?\.from\('clients'\)/u)
+// Rate limiting happens before any account lookup: the per-address limit in
+// the request path, and the per-client send quota only for a matching account
+// (20261011000400), so a miss never fills a real client's quota.
+const requestPath = edge.slice(edge.indexOf("if (action === 'request')"), edge.indexOf("if (action === 'complete')"))
+assert.match(requestPath, /reserve_client_portal_reset_ip_v1[\s\S]*?RESET_RATE_LIMITED[\s\S]*?issueResetForEmail\(admin, email, ip\)/u)
+assert.doesNotMatch(requestPath, /\.from\('clients'\)/u, 'the request path must not look the email up before responding')
+const issueReset = edge.slice(edge.indexOf('async function issueResetForEmail'), edge.indexOf('serve(async (req)'))
+assert.match(issueReset, /\.from\('clients'\)[\s\S]*?workspace\?\.status !== 'active'\) return[\s\S]*?reserve_client_portal_reset_email_v1[\s\S]*?client_portal_reset_tokens/u)
+// Timing: the match-dependent work runs after the response (EdgeRuntime
+// .waitUntil), or is awaited and padded to a fixed floor without it.
+assert.match(edge, /EdgeRuntime\?: \{ waitUntil\?/u)
+assert.match(requestPath, /if \(!runInBackground\(work\)\) \{\s*await work\s*await padToFloor\(startedAt, RESET_REQUEST_RESPONSE_FLOOR_MS\)/u)
+const quotaMigration = readFileSync('supabase/migrations/20261011000400_portal_reset_quota_and_login_backoff.sql', 'utf8')
+assert.match(quotaMigration, /FUNCTION public\.reserve_client_portal_reset_ip_v1[\s\S]*?recent_ip_requests >= 10/u)
+assert.match(quotaMigration, /FUNCTION public\.reserve_client_portal_reset_email_v1[\s\S]*?client\.portal_access_enabled\s+AND client\.portal_email_normalized = normalized_email[\s\S]*?recent_client_sends >= 3/u)
+assert.match(quotaMigration, /REVOKE ALL ON FUNCTION public\.reserve_client_portal_reset_ip_v1\(TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticated/u)
+assert.match(quotaMigration, /REVOKE ALL ON FUNCTION public\.reserve_client_portal_reset_email_v1\(UUID, TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticated/u)
 // Anti-enumeration: the request action returns success whether or not a client matched.
 assert.match(edge, /Identical response whether or not the email matched a portal account/u)
 assert.match(edge, /return jsonResponse\(req, METHODS, 200, \{ success: true \}\)/u)
@@ -34,14 +49,23 @@ assert.match(migration, /'client\.portal_password\.reset'/u)
 // pending one (an anonymous caller could otherwise invalidate the victim's
 // link); completion requires an active workspace; resets need 12 characters.
 const hardening = readFileSync('supabase/migrations/20261008000100_tighten_grants_and_portal_auth.sql', 'utf8')
-const requestBranch = edge.slice(edge.indexOf("if (action === 'request')"), edge.indexOf("if (action === 'complete')"))
+// The token work moved into issueResetForEmail (run after the response).
+const requestBranch = issueReset
 assert.doesNotMatch(requestBranch, /\.upsert\(/u)
 assert.doesNotMatch(requestBranch, /onConflict/u)
 assert.match(requestBranch, /from\('client_portal_reset_tokens'\)\s*\.insert\(\{/u)
 // Only expired tokens are cleaned up on request.
 assert.match(requestBranch, /\.delete\(\)\s*\.eq\('client_id', client\.id\)\s*\.lte\('expires_at'/u)
-assert.match(edge, /const MIN_RESET_PASSWORD_LENGTH = 12/u)
+assert.match(edge, /const MIN_RESET_PASSWORD_LENGTH = MIN_PORTAL_PASSWORD_LENGTH/u)
 assert.match(edge, /value\.length < MIN_RESET_PASSWORD_LENGTH/u)
+// Every portal password setter shares the 12-character floor.
+const portalSecurity = readFileSync('supabase/functions/_shared/portalSecurity.ts', 'utf8')
+assert.match(portalSecurity, /export const MIN_PORTAL_PASSWORD_LENGTH = 12/u)
+for (const setter of ['manage-client-portal-password', 'create-client-account']) {
+  const source = readFileSync(`supabase/functions/${setter}/index.ts`, 'utf8')
+  assert.match(source, /isAcceptableNewPortalPassword\(/u, `${setter} must enforce the shared portal password floor`)
+  assert.doesNotMatch(source, /length < 8\b/u, `${setter} must not accept 8-character portal passwords`)
+}
 assert.match(hardening, /ADD CONSTRAINT client_portal_reset_tokens_pkey PRIMARY KEY \(id\)/u)
 assert.match(hardening, /CREATE UNIQUE INDEX IF NOT EXISTS client_portal_reset_tokens_token_hash_uidx/u)
 const hardenedComplete = hardening.slice(hardening.indexOf('CREATE OR REPLACE FUNCTION public.complete_client_portal_password_reset_v1'))
@@ -67,6 +91,15 @@ assert.match(reserveLogin, /action = 'password_login_success'/u)
 assert.match(reserveLogin, /failure_window_start := GREATEST\(window_start, COALESCE\(last_success_at, window_start\)\)/u)
 assert.match(reserveLogin, /recent_pair_failures >= 8\s+OR recent_email_failures >= 40\s+OR recent_ip_attempts >= 30/u)
 assert.match(reserveLogin, /REVOKE ALL ON FUNCTION public\.reserve_client_portal_login_attempt\(TEXT, TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticated/u)
+// 20261011000400: the email's failures over 24 hours escalate a wait between
+// attempts and lock it from 100; a sign-in or completed reset clears them.
+const backoffLogin = quotaMigration.slice(quotaMigration.indexOf('CREATE OR REPLACE FUNCTION public.reserve_client_portal_login_attempt'))
+assert.match(backoffLogin, /activity\.action IN \('password_login_success', 'password_reset_completed'\)/u)
+assert.match(backoffLogin, /recent_pair_failures >= 8\s+OR recent_email_failures >= 40\s+OR recent_ip_attempts >= 30/u)
+assert.match(backoffLogin, /IF day_email_failures >= 100 THEN\s+RETURN false;/u)
+assert.match(backoffLogin, /WHEN day_email_failures >= 40 THEN interval '10 minutes'\s+WHEN day_email_failures >= 20 THEN interval '2 minutes'\s+WHEN day_email_failures >= 10 THEN interval '30 seconds'/u)
+assert.match(backoffLogin, /last_email_failure_at > now\(\) - required_gap/u)
+assert.match(backoffLogin, /REVOKE ALL ON FUNCTION public\.reserve_client_portal_login_attempt\(TEXT, TEXT, TEXT\)\s+FROM PUBLIC, anon, authenticated/u)
 const loginEdge = readFileSync('supabase/functions/login-with-password/index.ts', 'utf8')
 assert.match(loginEdge, /reserve_client_portal_login_attempt[\s\S]*?\.from\('clients'\)[\s\S]*?issue_client_portal_password_session/u)
 

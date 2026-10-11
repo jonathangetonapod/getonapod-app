@@ -45,7 +45,25 @@ assert.match(portal, /const authContext = await requirePlatformAdmin\(req\)/u)
 assert.match(portal, /action === 'plans-list' \|\| action === 'plans-update'/u)
 // The amount is the only thing a caller may set. A caller-supplied price id
 // would let an admin screen point a plan at any Stripe object at all.
-assert.match(portal, /requireOnlyKeys\(body, \['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance'\]\)/u)
+assert.match(portal, /requireOnlyKeys\(body, \['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers'\]\)/u)
+// An allowance edit reaches existing subscribers only on an explicit opt-in,
+// and only rows on that plan, and it is audited with how many it touched.
+assert.match(portal, /const applyToExisting = body\.apply_to_existing_subscribers === true/u)
+assert.match(portal, /if \(applyToExisting\) \{[\s\S]{0,400}\.eq\('plan_key', planKey\)/u)
+assert.match(portal, /action: 'billing_plan_allowance_backfilled'/u)
+
+// A second subscription checkout for a workspace that already subscribes is a
+// second subscription billed in full. Refused with a coded 409 — on the
+// recorded row and on Stripe's own list, since the webhook can lag — and the
+// caller is sent to the portal.
+assert.match(portal, /\.select\('stripe_customer_id, stripe_subscription_id, plan_key, billing_status'\)/u)
+assert.match(portal, /profile\.billing_status !== 'suspended'/u)
+assert.match(portal, /action === 'subscription-create' && alreadySubscribed/u)
+assert.equal((portal.match(/new HttpError\(409, 'SUBSCRIPTION_EXISTS'/gu) ?? []).length, 2)
+assert.match(portal, /subscriptions\?customer=\$\{encodeURIComponent\(customerId\)\}&status=all/u)
+const existingCheckAt = portal.indexOf("subscriptions?customer=")
+const checkoutAt = portal.indexOf("stripePost('checkout/sessions'")
+assert.ok(existingCheckAt > 0 && existingCheckAt < checkoutAt, 'Stripe is asked about live subscriptions before checkout opens')
 assert.doesNotMatch(portal, /body\.stripe_price_id/u)
 // Stripe Prices are immutable, so a change creates one; and creating one does
 // not put it in the portal, so the configuration is repointed in the same call.
@@ -99,6 +117,18 @@ assert.match(webhook, /from\('billing_plans'\)/u)
 assert.match(webhook, /byPrice\.get\(priceId\)/u)
 // A price nobody can name must not become a guessed plan.
 assert.match(webhook, /No plan configured for the subscribed price/u)
+// A subscription made outside the app carries no workspace_id; the customer
+// still names the workspace, but only when exactly one profile owns it.
+assert.match(webhook, /\.eq\('stripe_customer_id', customerId\)/u)
+assert.match(webhook, /\(owners \?\? \[\]\)\.length === 1/u)
+// An update or deletion for a subscription other than the one recorded must
+// not rewrite or cancel the workspace's real plan — checked before the write
+// and again inside it.
+assert.match(webhook, /const guardsCurrent = event\.type !== 'customer\.subscription\.created'/u)
+assert.match(webhook, /storedSubscriptionId && storedSubscriptionId !== subscriptionId/u)
+assert.match(webhook, /ignored: 'different subscription'/u)
+assert.match(webhook, /write\.eq\('stripe_subscription_id', storedSubscriptionId\)/u)
+assert.match(webhook, /write\.is\('stripe_subscription_id', null\)/u)
 
 const config = readFileSync('supabase/config.toml', 'utf8')
 assert.match(config, /\[functions\.workspace-billing-portal\]\nverify_jwt = true/u)

@@ -12,6 +12,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { requestHostname, requireServedByHost, resolveHostWorkspaceId } from '../_shared/workspaceDomain.ts'
+import { shouldRecordPublicView } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
 const DASHBOARD_FIELDS = [
@@ -143,6 +144,17 @@ serve(async (req) => {
       )
     }
 
+    // A reload, a refetch on focus, or a script in a loop is not a new
+    // reader. Count one view per caller per dashboard per hour, as the client
+    // dashboard does.
+    const recordView = async (): Promise<{ error: unknown }> => {
+      if (!await shouldRecordPublicView(admin, req, 'prospect', dashboardRow.id)) return { error: null }
+      const { error } = await admin.rpc('record_public_prospect_dashboard_view', {
+        p_dashboard_id: dashboardRow.id,
+      })
+      return { error }
+    }
+
     const [
       { data: feedback, error: feedbackError },
       { data: workspace, error: workspaceError },
@@ -158,9 +170,7 @@ serve(async (req) => {
         .eq('id', dashboardRow.workspace_id)
         .eq('status', 'active')
         .maybeSingle(),
-      admin.rpc('record_public_prospect_dashboard_view', {
-        p_dashboard_id: dashboardRow.id,
-      }),
+      recordView(),
     ])
 
     if (feedbackError) {
@@ -176,10 +186,7 @@ serve(async (req) => {
     delete publicDashboard.workspace_id
     return jsonResponse(req, METHODS, 200, {
       success: true,
-      dashboard: {
-        ...publicDashboard,
-        view_count: (dashboardRow.view_count ?? 0) + 1,
-      },
+      dashboard: publicDashboard,
       feedback: feedback ?? [],
       workspace: {
         name: workspace.name,

@@ -247,6 +247,18 @@ export interface GenerateReplyPackageInput {
   referenceKind: string
   /** The host's address, used to recover what we pitched this show. */
   leadEmail?: string | null
+  /** The thread and the exact reply being answered; they key the charge. */
+  threadKey?: string | null
+  emailId?: string | null
+}
+
+/**
+ * The package plus the debit it was paid with, so a caller that cannot keep
+ * the draft (a failed save) can give the charge back. Null when the charge was
+ * a replay of an earlier attempt or nothing was charged.
+ */
+export interface ChargedReplyPackage extends SdrReplyPackage {
+  chargeEntryId: string | null
 }
 
 /**
@@ -255,8 +267,14 @@ export interface GenerateReplyPackageInput {
  * CLIENT_NOT_FOUND, SDR_PROFILE_NOT_READY, SERVER_MISCONFIGURED,
  * INSUFFICIENT_CREDITS (from chargeCredits), DRAFT_FAILED.
  */
-export async function generateReplyPackage(input: GenerateReplyPackageInput): Promise<SdrReplyPackage> {
+export async function generateReplyPackage(input: GenerateReplyPackageInput): Promise<ChargedReplyPackage> {
   const { admin, workspaceId, clientId, subject, message } = input
+  // One spelling everywhere: the target lookup and the charge key both used
+  // the address exactly as the provider sent it, so "Host@Show.fm" and
+  // "host@show.fm" were different hosts to the meter.
+  const leadEmail = typeof input.leadEmail === 'string' && input.leadEmail.trim()
+    ? input.leadEmail.trim().toLowerCase()
+    : null
 
   // Every client column the variable registry can fill, not a hand-picked
   // subset: the prompt editor offers {{client_calendar_link}} and friends
@@ -293,13 +311,13 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
   let hostName = ''
   let podcastResearch = ''
   let catalogVariables: Record<string, string | null> = {}
-  if (input.leadEmail) {
+  if (leadEmail) {
     const { data: target } = await admin
       .from('workspace_client_campaign_targets')
       .select('podcast_name, host_name, pitch_subject, pitch_body, shortlist_podcast_id')
       .eq('workspace_id', workspaceId)
       .eq('client_id', clientId)
-      .ilike('contact_email', input.leadEmail)
+      .ilike('contact_email', leadEmail.replace(/[\\%_]/gu, (character) => `\\${character}`))
       .limit(1)
       .maybeSingle()
     if (target) {
@@ -428,14 +446,24 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     referenceId: clientId,
     clientId,
     actorUserId: input.actorUserId,
-    // Keyed to the host too: per client alone, the second and third replies a
-    // tick drafted inside the window replayed the first one's charge and ran
-    // the model for free.
-    idempotencyKey: retryWindowKey(['inbox_reply_package', workspaceId, clientId, input.referenceKind, input.leadEmail ?? null]),
+    // Keyed to the host and to the exact reply: per client alone, the second
+    // and third replies a tick drafted inside the window replayed the first
+    // one's charge and ran the model for free — and per host alone, two
+    // replies from one host (or one host on two threads) still shared a key.
+    idempotencyKey: retryWindowKey([
+      'inbox_reply_package',
+      workspaceId,
+      clientId,
+      input.referenceKind,
+      leadEmail,
+      input.threadKey ?? null,
+      input.emailId ?? null,
+    ]),
     byoKeyUsed: usedByoKey,
   })
   try {
-    return await generateWithModel()
+    const pkg = await generateWithModel()
+    return { ...pkg, chargeEntryId: charge.replayed ? null : charge.entryId }
   } catch (error) {
     if (!charge.replayed) {
       await refundCredits(admin, {

@@ -3,6 +3,10 @@ import { supabase } from './supabase'
 // Fallback admin email (always has access even if DB fails)
 export const FALLBACK_ADMIN_EMAIL = 'jonathan@getonapod.com'
 
+// Where workspace owners reach the platform team (account recovery, closure).
+// Named once so copy never hard-codes a person's inbox.
+export const PLATFORM_SUPPORT_EMAIL = 'jonathan@getonapod.com'
+
 // Cache for admin emails (only populated after authentication)
 let adminEmailsCache: string[] | null = null
 let cacheTimestamp = 0

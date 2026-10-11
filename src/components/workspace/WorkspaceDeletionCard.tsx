@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { deleteWorkspace } from '@/services/workspaceDeletion'
+import { PLATFORM_SUPPORT_EMAIL } from '@/lib/config'
 
 interface WorkspaceDeletionCardProps {
   workspaceId: string
@@ -105,7 +106,7 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
                 Closing removes your access straight away, so there is nothing to sign in to
                 afterwards. Your data is recoverable for 30 days — email
                 {' '}
-                <a className="underline" href="mailto:jonathan@getonapod.com">jonathan@getonapod.com</a>
+                <a className="underline" href={`mailto:${PLATFORM_SUPPORT_EMAIL}`}>{PLATFORM_SUPPORT_EMAIL}</a>
                 {' '}
                 and we can bring it back within that window.
               </p>

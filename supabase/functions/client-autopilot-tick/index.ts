@@ -6,7 +6,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-import { createAdminClient, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
+import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
@@ -15,6 +15,38 @@ const PODSCAN_BASE = 'https://podscan.fm/api/v1'
 const QUERY_COUNT = 4
 const RESULTS_PER_QUERY = 25
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+// A run that fails for a reason that clears on its own (a provider blip,
+// billing briefly unavailable) is retried soon; one that needs the agency to
+// act (top up credits, add a bio, connect a key) is retried a few times a day.
+// Either beats the old behaviour of silently losing the whole week.
+const TRANSIENT_RETRY_MS = 2 * 60 * 60 * 1000
+const ACTION_RETRY_MS = 6 * 60 * 60 * 1000
+
+class AnthropicError extends Error {}
+class CatalogMergeError extends Error {}
+
+interface RunFailure {
+  message: string
+  retryMs: number | null
+}
+
+function classifyFailure(error: unknown): RunFailure {
+  if (error instanceof HttpError) {
+    if (error.code === 'INSUFFICIENT_CREDITS') {
+      return { message: 'Not enough credits to run autopilot. Top up in workspace billing; it will retry automatically.', retryMs: ACTION_RETRY_MS }
+    }
+    if (error.code === 'BILLING_UNAVAILABLE') {
+      return { message: 'Billing was temporarily unavailable. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+    }
+  }
+  if (error instanceof AnthropicError) {
+    return { message: 'The AI provider did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+  }
+  if (error instanceof CatalogMergeError) {
+    return { message: 'Matches could not be saved to the podcast catalog. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+  }
+  return { message: 'Autopilot could not finish this run. It will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+}
 
 interface CandidatePodcast {
   podcast_id: string
@@ -42,6 +74,20 @@ function json(status: number, body: Record<string, unknown>): Response {
 }
 
 async function anthropicJson(
+  apiKey: string,
+  system: string,
+  content: string,
+  maxTokens: number,
+  usage: { input: number; output: number },
+): Promise<unknown> {
+  try {
+    return await anthropicJsonOnce(apiKey, system, content, maxTokens, usage)
+  } catch (error) {
+    throw new AnthropicError(error instanceof Error ? error.message : 'anthropic call failed')
+  }
+}
+
+async function anthropicJsonOnce(
   apiKey: string,
   system: string,
   content: string,
@@ -159,6 +205,23 @@ serve(async (req) => {
     .maybeSingle()
   if (!claimed) return json(200, { processed: 0, note: 'claimed by another tick' })
 
+  // The claim pushed next_run_at a week out. A run that cannot finish says
+  // why (the client page shows last_run_error) and, when the cause can clear,
+  // pulls the next attempt back in.
+  const recordFailure = async (failure: RunFailure): Promise<void> => {
+    const now = Date.now()
+    const { error } = await admin.from('client_autopilot_settings')
+      .update({
+        last_run_error: failure.message,
+        last_run_error_at: new Date(now).toISOString(),
+        ...(failure.retryMs ? { next_run_at: new Date(now + failure.retryMs).toISOString() } : {}),
+        updated_at: new Date(now).toISOString(),
+      })
+      .eq('workspace_id', due.workspace_id)
+      .eq('client_id', due.client_id)
+    if (error) console.error('[Autopilot] could not record run failure')
+  }
+
   const usage = { input: 0, output: 0 }
   let podscanCalls = 0
   let usedByoKey = false
@@ -178,12 +241,20 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle(),
     ])
-    if (!client || client.status !== 'active' || !client.bio) {
-      return json(200, { processed: 1, skipped: 'client inactive or missing bio' })
+    if (!client || client.status !== 'active') {
+      await recordFailure({ message: 'Autopilot only runs for active clients.', retryMs: null })
+      return json(200, { processed: 1, skipped: 'client inactive' })
+    }
+    if (!client.bio) {
+      await recordFailure({ message: 'Add a bio to this client so autopilot knows what shows to look for.', retryMs: ACTION_RETRY_MS })
+      return json(200, { processed: 1, skipped: 'missing bio' })
     }
 
     const anthropicKey = await resolveAiKey(admin, due.workspace_id, 'anthropic')
-    if (!anthropicKey) return json(200, { processed: 1, skipped: 'no anthropic key' })
+    if (!anthropicKey) {
+      await recordFailure({ message: 'No AI key is available for this workspace. Autopilot will retry.', retryMs: ACTION_RETRY_MS })
+      return json(200, { processed: 1, skipped: 'no anthropic key' })
+    }
     usedByoKey = anthropicKey.source === 'workspace'
 
     // Charged before the model call so an empty balance never gets a free
@@ -233,7 +304,7 @@ serve(async (req) => {
     const candidates = [...collected.values()].slice(0, 40)
     if (candidates.length === 0) {
       await admin.from('client_autopilot_settings')
-        .update({ last_run_at: new Date().toISOString(), last_run_added: 0 })
+        .update({ last_run_at: new Date().toISOString(), last_run_added: 0, last_run_error: null, last_run_error_at: null })
         .eq('workspace_id', due.workspace_id)
         .eq('client_id', due.client_id)
       return json(200, { processed: 1, added: 0 })
@@ -269,7 +340,9 @@ serve(async (req) => {
 
     let added = 0
     if (winners.length > 0) {
-      await admin.rpc('merge_global_podcast_catalog_batch_v1', {
+      // Checked: an unseen merge failure left the shortlist rows below pointing
+      // at catalog entries that were never written.
+      const { error: mergeError } = await admin.rpc('merge_global_podcast_catalog_batch_v1', {
         p_workspace_id: due.workspace_id,
         p_actor_user_id: ownerMembership?.user_id ?? null,
         p_source: 'workspace_shortlist',
@@ -293,6 +366,7 @@ serve(async (req) => {
           rss_url: podcast.rss_url,
         })),
       })
+      if (mergeError) throw new CatalogMergeError('catalog merge failed')
 
       const { data: lastPosition } = await admin
         .from('client_dashboard_podcasts')
@@ -341,7 +415,7 @@ serve(async (req) => {
     }
 
     await admin.from('client_autopilot_settings')
-      .update({ last_run_at: new Date().toISOString(), last_run_added: added })
+      .update({ last_run_at: new Date().toISOString(), last_run_added: added, last_run_error: null, last_run_error_at: null })
       .eq('workspace_id', due.workspace_id)
       .eq('client_id', due.client_id)
     await writeAudit(admin, {
@@ -365,6 +439,7 @@ serve(async (req) => {
     return json(200, { processed: 1, added, candidates: candidates.length })
   } catch (error) {
     console.error('[Autopilot] Tick failed', error instanceof Error ? error.message : '')
+    await recordFailure(classifyFailure(error))
     // The charge was taken before the model call. If the run did not finish,
     // the workspace paid for nothing — and this tick is unattended, so nobody
     // would ever notice the difference.
