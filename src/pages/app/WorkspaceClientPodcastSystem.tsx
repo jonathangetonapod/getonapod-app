@@ -308,6 +308,13 @@ function AllClientsView({
     status === 'all' ? rollup.client.status !== 'churned' : rollup.client.status === status
   ))
   const churned = churnedSeparately ? matching.filter((rollup) => rollup.client.status === 'churned') : []
+  // A stat names its own clients, so it widens the status filter: Published
+  // episodes counts paused clients too, and they would otherwise stay hidden
+  // behind the default Active filter. Churned still go in their own section.
+  const chooseKpi = (next: PipelineKpi | null) => {
+    setKpi(next)
+    if (next) setStatus('all')
+  }
   const queue = actionQueue(focused)
   // Attention follows the client filters, so narrowing to one client narrows
   // the work list with it. Clients are already ordered by urgency.
@@ -319,7 +326,7 @@ function AllClientsView({
 
   return (
     <div className="space-y-4">
-      <PipelineKpiRow counts={kpiCounts(rollups)} selected={kpi} onSelect={setKpi} />
+      <PipelineKpiRow counts={kpiCounts(rollups)} selected={kpi} onSelect={chooseKpi} />
 
       <Tabs value={portfolioView} onValueChange={(value) => setPortfolioView(value as 'clients' | 'calendar')}>
         <TabsList className="h-auto justify-start">
@@ -347,7 +354,7 @@ function AllClientsView({
           <Card>
             <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
               <div className="min-w-0 flex-1">
-                <CardTitle>All clients</CardTitle>
+                <h2 className="text-2xl font-semibold leading-none tracking-tight">All clients</h2>
                 <CardDescription className="mt-1 truncate">Clients needing action appear first.</CardDescription>
               </div>
               {/* No client picker here: the header's "Working on" is this list's client filter. */}
@@ -409,7 +416,7 @@ function AllClientsView({
 
           <Card>
             <CardHeader>
-              <CardTitle>Needs attention</CardTitle>
+              <h2 className="text-2xl font-semibold leading-none tracking-tight">Needs attention</h2>
               <CardDescription>The podcast work most likely to need a decision or follow-up next{focusRollup ? ` for ${focusRollup.client.name}` : ', across every active client'}.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

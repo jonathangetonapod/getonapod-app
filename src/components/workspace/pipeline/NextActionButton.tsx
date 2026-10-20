@@ -59,7 +59,7 @@ export const NextActionButton = ({
   const content = (
     <>
       {Icon && <Icon aria-hidden="true" />}
-      <span className="truncate">{label || nextAction.label}</span>
+      <span className="truncate" title={label ? undefined : nextAction.label}>{label || nextAction.label}</span>
       <ArrowRight aria-hidden="true" />
     </>
   )

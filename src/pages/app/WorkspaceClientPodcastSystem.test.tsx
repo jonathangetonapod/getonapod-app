@@ -380,7 +380,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(within(today).queryByText('Jordan Former')).not.toBeInTheDocument()
 
     // Setup gaps are one badge, and each gap links to where it is fixed.
-    fireEvent.click(screen.getByRole('button', { name: 'Setup 3 of 4 done for Taylor Client' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Setup 3/4 for Taylor Client, 1 to do' }))
     const setup = await screen.findByRole('dialog')
     expect(within(setup).getByRole('link', { name: 'Fix onboarding for Taylor Client' })).toHaveAttribute(
       'href',
@@ -451,6 +451,24 @@ describe('WorkspaceClientPodcastSystem', () => {
     fireEvent.click(screen.getByRole('button', { name: /Clear filter/ }))
     expect(attention).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Churned (1)' })).toBeInTheDocument()
+  })
+
+  it('lists every client a stat counts, including paused ones the default view hides', async () => {
+    const pausedId = '12121212-1212-4212-8212-121212121212'
+    mockedGetSystem.mockResolvedValue({
+      ...response,
+      clients: [...response.clients, { ...response.clients[0], id: pausedId, name: 'Pat Paused', status: 'paused' }],
+      items: [...response.items, { ...published, id: 'paused-published', client: { ...published.client, id: pausedId, name: 'Pat Paused', status: 'paused' } }],
+    } as never)
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Pat Paused' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Published episodes/ }))
+    expect(screen.getByRole('heading', { name: 'Pat Paused' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Filter clients by status' })).toHaveTextContent('All statuses')
   })
 
   it('says so instead of showing an empty queue when no client has an action', async () => {

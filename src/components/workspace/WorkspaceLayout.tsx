@@ -357,6 +357,8 @@ export const WorkspaceBrandLogo = ({
         // No logo yet: a polished brand monogram, not a flat grey box.
         : 'border-0 bg-gradient-to-br from-primary via-violet-500 to-fuchsia-500 shadow-lg shadow-primary/25 ring-1 ring-inset ring-white/20',
       brandLogoSizes[placement],
+      // An uploaded logo is often a wordmark; a square would shrink it unreadable.
+      placement === 'sidebar' && logoUrl && 'w-20',
     )}
   >
     {logoUrl && (
@@ -518,6 +520,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const requestedClientId = normalizeWorkingClientId(new URLSearchParams(location.search).get('client'))
   const currentSegmentReadsClient = Array.from(CLIENT_SCOPED_SEGMENTS)
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
+  const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
+    .some((segment) => matchesPath(`${baseHref}/${segment}`))
   const clientsQuery = useQuery({
     queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
@@ -535,7 +539,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   // Paused and churned clients are left out on purpose; the picker says so,
   // or a workspace with four clients wonders where two of them went.
   const inactiveClientCount = (clientsQuery.data?.length ?? 0) - workingClients.length
-  const workingClient = workingClients.find((client) => client.id.toLowerCase() === workingClientId) ?? null
+  /*
+   * Named from every client, not only active ones: the Pipeline can be opened
+   * on a paused client (from that client's record), and the header has to say
+   * who is on screen rather than "All clients".
+   */
+  const workingClient = (clientsQuery.data ?? []).find((client) => client.id.toLowerCase() === workingClientId) ?? null
 
   useEffect(() => {
     setWorkingClientId(readWorkingClient(workingClientWorkspaceId))
@@ -553,10 +562,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   // links should stop carrying them the moment that is known.
   useEffect(() => {
     if (!workingClientId || !clientsQuery.isSuccess) return
+    // Except while the page on screen is showing that client by address.
+    if (headerDrivesAddress && requestedClientId === workingClientId) return
     if (workingClients.some((client) => client.id.toLowerCase() === workingClientId)) return
     writeWorkingClient(workingClientWorkspaceId, null)
     setWorkingClientId(null)
-  }, [clientsQuery.isSuccess, workingClientId, workingClientWorkspaceId, workingClients])
+  }, [clientsQuery.isSuccess, headerDrivesAddress, requestedClientId, workingClientId, workingClientWorkspaceId, workingClients])
 
   /*
    * On a page that filters by the address, the header is that page's client
@@ -564,9 +575,6 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    * (cleared on the page, or a plain link) reads as All clients up here too,
    * so the two never disagree about what is on screen.
    */
-  const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
-    .some((segment) => matchesPath(`${baseHref}/${segment}`))
-
   useEffect(() => {
     if (!headerDrivesAddress || requestedClientId || !workingClientId) return
     writeWorkingClient(workingClientWorkspaceId, null)
@@ -816,7 +824,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label={`Account menu for ${viewerName}`}
+                  aria-label={`Account menu: ${[viewerName, viewerEmail, viewerRole].filter(Boolean).join(', ')}`}
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Avatar className="h-9 w-9">
@@ -841,17 +849,21 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             {/* Reordering is a once-a-quarter thing, so it lives down here
                 with the other housekeeping instead of above the nav. */}
             {canOrganizeNavigation && !isOrganizing && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                onClick={() => setIsOrganizing(true)}
-                aria-label="Reorder"
-                title="Reorder sidebar"
-              >
-                <GripVertical className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setIsOrganizing(true)}
+                    aria-label="Reorder"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Reorder sidebar</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>

@@ -38,8 +38,11 @@ export const ClientPipelineRow = ({
 
   return (
     <article className="rounded-xl border bg-card transition-colors hover:border-primary/30">
-      <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:gap-4">
-        <div className="flex min-w-0 items-center gap-3 lg:w-64 lg:shrink-0 xl:w-80">
+      {/* One line only from xl. From lg the name and action share a line and
+          the funnel takes the next one, since fixed columns either side would
+          leave it too narrow to read. Phones stack all three. */}
+      <div className="flex flex-col gap-3 p-3 lg:flex-row lg:flex-wrap lg:items-center xl:flex-nowrap xl:gap-4">
+        <div className="flex min-w-0 items-center gap-3 lg:flex-1 xl:w-56 xl:flex-none xl:shrink-0 2xl:w-80">
           <ClientAvatar client={client} />
           <div className="min-w-0">
             <h3 className="min-w-0 text-base font-semibold">
@@ -62,9 +65,9 @@ export const ClientPipelineRow = ({
           </div>
         </div>
 
-        <div className="min-w-0 lg:flex-1"><ClientFunnel rollup={rollup} /></div>
+        <div className="min-w-0 lg:order-last lg:basis-full xl:order-none xl:basis-auto xl:flex-1"><ClientFunnel rollup={rollup} /></div>
 
-        <div className="flex items-center gap-2 lg:w-[22rem] lg:shrink-0 lg:justify-end">
+        <div className="flex items-center gap-2 xl:w-64 xl:shrink-0 xl:justify-end 2xl:w-[22rem]">
           {nextAction.target ? (
             <NextActionButton rollup={rollup} baseHref={baseHref} onOpenItem={onOpenItem} className="min-w-0 flex-1 lg:flex-initial" />
           ) : (

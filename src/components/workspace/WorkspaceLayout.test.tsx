@@ -82,7 +82,7 @@ function renderWithLocation(initialEntry: string) {
 
 // Sign out lives in the menu on the person's avatar.
 function openAccountMenu() {
-  fireEvent.keyDown(screen.getByRole('button', { name: /^Account menu for / }), { key: 'Enter' })
+  fireEvent.keyDown(screen.getByRole('button', { name: /^Account menu: / }), { key: 'Enter' })
 }
 
 function chooseWorkingClient(label: string) {
@@ -364,6 +364,17 @@ describe('WorkspaceLayout', () => {
     expect(readWorkingClient(workspaceId)).toBeNull()
   })
 
+  // A paused client's record links to their Pipeline. The header has to name
+  // them, not drop to "All clients" while the page shows one client.
+  it('names a paused client the Pipeline was opened on', async () => {
+    const pausedId = '66666666-6666-4666-8666-666666666666'
+    renderLayout(undefined, `/app/client-podcast-system?client=${pausedId}`)
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('Former Client'))
+    expect(readWorkingClient(workspaceId)).toBe(pausedId)
+  })
+
   it('clears the header when the Pipeline is opened on all clients', async () => {
     writeWorkingClient(workspaceId, otherClientId)
     renderLayout(undefined, '/app/client-podcast-system')
@@ -586,7 +597,7 @@ describe('WorkspaceLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reorder' }))
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
-    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-10', 'w-10', 'bg-transparent')
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-10', 'w-20', 'bg-transparent')
     expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
   })

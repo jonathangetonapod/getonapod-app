@@ -60,7 +60,7 @@ export const ClientSetupBadge = ({
     <Popover>
       <PopoverTrigger
         className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium leading-[18px] text-violet-800 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Setup ${done} of ${counted.length} done for ${client.name}`}
+        aria-label={`Setup ${done}/${counted.length} for ${client.name}, ${counted.length - done} to do`}
       >
         Setup {done}/{counted.length}
       </PopoverTrigger>

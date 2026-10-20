@@ -22,7 +22,8 @@ export const PipelineKpiRow = ({
   onSelect: (kpi: PipelineKpi | null) => void
 }) => (
   <section aria-label="Client portfolio summary" className="space-y-2">
-    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+    {/* Padded all round: the scroll container clips the focus ring otherwise. */}
+    <div className="-m-1 flex gap-2 overflow-x-auto p-1">
       {KPI_ORDER.map(({ kpi, icon: Icon, iconClassName }) => {
         const pressed = selected === kpi
         return (
@@ -46,8 +47,11 @@ export const PipelineKpiRow = ({
         )
       })}
     </div>
+    {/* The live region is always mounted, so a screen reader announces the
+        filter when it appears rather than missing a region born with its text. */}
+    <div role="status" className="empty:hidden">
     {selected && (
-      <div role="status" className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm">
         <p>
           <span className="text-muted-foreground">Showing clients in </span>
           <span className="font-medium">{PIPELINE_KPI_LABELS[selected]}</span>
@@ -57,5 +61,6 @@ export const PipelineKpiRow = ({
         </Button>
       </div>
     )}
+    </div>
   </section>
 )
