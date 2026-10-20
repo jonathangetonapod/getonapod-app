@@ -1125,7 +1125,8 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByText(/the order is yours rather than the workspace's/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    // Sign out lives in the menu on the person's avatar.
+    expect(screen.getByRole('button', { name: /^Account menu for / })).toBeEnabled()
     expect(screen.getByText('platform@example.com')).toBeInTheDocument()
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute(

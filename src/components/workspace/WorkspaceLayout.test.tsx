@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -35,18 +35,18 @@ const workspaceClients = [
   // Not offered: nobody is working on a churned client.
   { id: '66666666-6666-4666-8666-666666666666', workspace_id: workspaceId, name: 'Former Client', status: 'churned' },
 ]
-// The daily loop first, then setup and reference pages.
+// In sidebar-group order: client work, finding shows, outreach, then the rest.
 const expectedNavigation = [
   'Clients',
   'Pipeline',
+  'Client intake',
+  'Client Campaigns',
   'Podcast Finder',
   'Podcast Database',
-  'Client Campaigns',
-  'Inbox',
-  'Relationships',
   'Prospect Studio',
-  'Client intake',
+  'Inbox',
   'Mailboxes',
+  'Relationships',
   'University',
   'Billing & credits',
   'Settings',
@@ -63,6 +63,26 @@ function renderLayout(platformWorkspace?: PlatformWorkspaceConfig, initialEntry?
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+const LocationProbe = () => {
+  const location = useLocation()
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
+}
+
+function renderWithLocation(initialEntry: string) {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <WorkspaceLayout><LocationProbe /></WorkspaceLayout>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+// Sign out lives in the menu on the person's avatar.
+function openAccountMenu() {
+  fireEvent.keyDown(screen.getByRole('button', { name: /^Account menu for / }), { key: 'Enter' })
 }
 
 function chooseWorkingClient(label: string) {
@@ -164,9 +184,11 @@ describe('WorkspaceLayout', () => {
 
     const disabledModules = within(navigation).queryAllByRole('button').filter((button) => button.hasAttribute('disabled'))
     expect(disabledModules).toHaveLength(0)
-    expect(screen.getAllByText('Acme Workspace')).toHaveLength(4)
+    // Sidebar name, header name, and the mobile header name.
+    expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    openAccountMenu()
+    expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
   })
 
   // "Workspace dashboard" under the name was filler on every page. The page
@@ -183,6 +205,29 @@ describe('WorkspaceLayout', () => {
     renderLayout(undefined, '/app/manage-workspaces')
     expect(within(screen.getByRole('banner')).queryByText('Inbox')).not.toBeInTheDocument()
     expect(screen.queryByText('Workspace dashboard')).not.toBeInTheDocument()
+  })
+
+  it('groups the default order under headings and keeps a custom order flat', () => {
+    const { unmount } = renderLayout()
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    const groups = within(navigation).getAllByRole('list')
+    expect(groups.map((list) => list.getAttribute('aria-labelledby'))).toEqual([
+      'workspace-nav-group-clients',
+      'workspace-nav-group-find',
+      'workspace-nav-group-outreach',
+      'workspace-nav-group-other',
+    ])
+    expect(within(navigation).getByRole('list', { name: 'Find' })).toHaveTextContent('Podcast FinderPodcast DatabaseProspect Studio')
+    expect(within(navigation).getByRole('list', { name: 'Other' })).toHaveTextContent('UniversityBilling & creditsSettings')
+    unmount()
+
+    window.localStorage.setItem(
+      `workspace-nav-order-v2:${workspaceId}:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+      JSON.stringify(['prospects', 'podcast-finder', 'onboarding']),
+    )
+    renderLayout()
+    expect(within(screen.getByRole('navigation', { name: 'Workspace navigation' })).getAllByRole('list')).toHaveLength(1)
   })
 
   it('restores and resets a navigation order saved for this owner and workspace', () => {
@@ -298,6 +343,43 @@ describe('WorkspaceLayout', () => {
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${otherClientId}`)
     expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  /*
+   * On the Pipeline the header is the page's client filter: the in-page client
+   * dropdown is gone, so choosing here has to move the address the page reads,
+   * and clearing the page's filter has to clear the header with it.
+   */
+  it('drives the Pipeline address from the working client, and follows it back', async () => {
+    renderWithLocation(`/app/client-podcast-system?client=${otherClientId}&podcast=pod-1`)
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
+
+    chooseWorkingClient('Dallas Fontaine')
+    expect(screen.getByTestId('location')).toHaveTextContent(`/app/client-podcast-system?client=${clientId}`)
+
+    chooseWorkingClient('All clients')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/client-podcast-system$/u)
+    expect(readWorkingClient(workspaceId)).toBeNull()
+  })
+
+  it('clears the header when the Pipeline is opened on all clients', async () => {
+    writeWorkingClient(workspaceId, otherClientId)
+    renderLayout(undefined, '/app/client-podcast-system')
+
+    await waitFor(() => expect(readWorkingClient(workspaceId)).toBeNull())
+    expect(screen.getByRole('combobox', { name: 'Working client' })).toHaveTextContent('All clients')
+  })
+
+  it('leaves the address alone on a module that reads the client only on arrival', async () => {
+    renderWithLocation('/app/podcast-finder')
+    await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(mockedClients).toHaveBeenCalled())
+
+    chooseWorkingClient('Dallas Fontaine')
+    expect(readWorkingClient(workspaceId)).toBe(clientId)
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-finder$/u)
   })
 
   it('drops a working client that is no longer active', async () => {
@@ -504,8 +586,7 @@ describe('WorkspaceLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reorder' }))
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
-    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-24', 'w-full', 'bg-transparent')
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-10', 'w-10', 'bg-transparent')
     expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
   })
@@ -573,7 +654,8 @@ describe('WorkspaceLayout', () => {
   it('signs a workspace user out without exposing an admin destination', async () => {
     renderLayout()
 
-    fireEvent.click(screen.getByRole('button', { name: /sign out/i }))
+    openAccountMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /sign out/i }))
     await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1))
   })
 

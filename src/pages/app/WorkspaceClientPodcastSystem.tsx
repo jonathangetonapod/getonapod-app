@@ -5,12 +5,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowRight,
-  CalendarDays,
-  ExternalLink,
-  Inbox,
+  ChevronDown,
   ListChecks,
   Loader2,
-  Radio,
   RefreshCw,
   Search,
   Users,
@@ -27,6 +24,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClientBookingDialog } from '@/components/workspace/ClientBookingDialog'
 import { ConversationBadge, OpportunityDetailSheet, StageBadge } from '@/components/workspace/OpportunityDetailSheet'
+import { ClientPipelineRow } from '@/components/workspace/pipeline/ClientPipelineRow'
+import { PipelineKpiRow } from '@/components/workspace/pipeline/PipelineKpiRow'
+import { TodayQueue } from '@/components/workspace/pipeline/TodayQueue'
+import {
+  actionQueue,
+  initials,
+  kpiCounts,
+  matchesKpi,
+  onboardingLabel,
+  type ClientRollup,
+  type PipelineKpi,
+} from '@/components/workspace/pipeline/pipelineRollup'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -40,81 +49,14 @@ interface WorkspaceClientPodcastSystemProps {
   platformWorkspaceId?: string
 }
 
-/** Where a client's next action is done: a shortlist row, or a tab on the client record. */
-type NextActionTarget =
-  | { kind: 'item'; itemId: string }
-  | { kind: 'record'; tab: 'profile' | 'shortlist' | 'intake' }
-  | null
-
-interface ClientRollup {
-  client: ClientPodcastSystemClient
-  items: ClientPodcastSystemItem[]
-  awaitingReview: number
-  preparation: number
-  activeOutreach: number
-  conversations: number
-  placements: number
-  published: number
-  upcomingRecordings: number
-  needsAttentionItems: ClientPodcastSystemItem[]
-  needsAttention: boolean
-  nextAction: {
-    label: string
-    detail: string
-    tone: 'urgent' | 'work' | 'clear'
-    target: NextActionTarget
-  }
-  lastActivityAt: string | null
-}
-
 type ClientStatusFilter = 'active' | 'paused' | 'churned' | 'all'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ATTENTION_PREVIEW = 12
 
-function initials(value: string): string {
-  return value.split(/\s+/u).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'C'
-}
-
-function formattedDate(value: string | null | undefined, includeTime = false): string {
-  if (!value) return 'Not set'
-  const date = new Date(value.length === 10 ? `${value}T00:00:00.000Z` : value)
-  if (Number.isNaN(date.getTime())) return 'Not set'
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    ...(includeTime ? { hour: 'numeric', minute: '2-digit' } : {}),
-    timeZone: 'UTC',
-  }).format(date)
-}
-
 function localToday(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-function statusClassName(status: string): string {
-  if (status === 'active') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  if (status === 'paused') return 'border-amber-200 bg-amber-50 text-amber-800'
-  return 'border-slate-200 bg-slate-50 text-slate-700'
-}
-
-function onboardingLabel(client: ClientPodcastSystemClient): string {
-  if (!client.onboarding) return 'Not started'
-  if (client.onboarding.status === 'changes_requested') return 'Changes requested'
-  if (client.onboarding.status === 'in_progress') return 'In progress'
-  return client.onboarding.status.charAt(0).toUpperCase() + client.onboarding.status.slice(1)
-}
-
-function ClientAvatar({ client }: { client: ClientPodcastSystemClient }) {
-  const imageUrl = safeExternalUrl(client.photo_url)
-  return (
-    <Avatar className="h-11 w-11 shrink-0 border bg-background">
-      {imageUrl && <AvatarImage src={imageUrl} alt="" className="object-cover" />}
-      <AvatarFallback>{initials(client.name)}</AvatarFallback>
-    </Avatar>
-  )
 }
 
 function PodcastIdentity({ item }: { item: ClientPodcastSystemItem }) {
@@ -289,42 +231,6 @@ function buildClientRollup(
   }
 }
 
-function PortfolioMetric({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  className,
-}: {
-  icon: typeof Users
-  label: string
-  value: number
-  detail: string
-  className: string
-}) {
-  return (
-    <Card className="shadow-none">
-      <CardContent className="flex items-start justify-between gap-3 p-4">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-bold">{value.toLocaleString()}</p>
-          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{detail}</p>
-        </div>
-        <div className={`rounded-xl p-2.5 ${className}`}><Icon className="h-4 w-4" /></div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function MiniMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border bg-background/70 px-3 py-2.5">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold">{value.toLocaleString()}</p>
-    </div>
-  )
-}
-
 function OpportunityList({
   items,
   onOpen,
@@ -355,16 +261,6 @@ function OpportunityList({
   )
 }
 
-function ReadinessLine({ client, canManage }: { client: ClientPodcastSystemClient; canManage: boolean }) {
-  const facts = [
-    client.profile.ready ? 'Reply brief ready' : 'Reply brief needs context',
-    `Onboarding ${canManage ? onboardingLabel(client).toLowerCase() : 'owner/admin only'}`,
-    client.dashboard_configured ? 'Dashboard live' : 'Dashboard not set up',
-    client.portal.enabled ? 'Portal enabled' : 'Portal off',
-  ]
-  return <p className="mt-1 truncate text-xs text-muted-foreground">{facts.join(' · ')}</p>
-}
-
 function AllClientsView({
   rollups,
   items,
@@ -385,12 +281,14 @@ function AllClientsView({
 }) {
   const [portfolioView, setPortfolioView] = useState<'clients' | 'calendar'>('clients')
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<ClientStatusFilter>('all')
+  const [status, setStatus] = useState<ClientStatusFilter>('active')
+  const [kpi, setKpi] = useState<PipelineKpi | null>(null)
+  const [churnedOpen, setChurnedOpen] = useState(false)
   const [attentionExpanded, setAttentionExpanded] = useState(false)
   const normalizedSearch = search.trim().toLowerCase()
-  const filtered = rollups.filter((rollup) => {
-    if (focusClientId && rollup.client.id !== focusClientId) return false
-    if (status !== 'all' && rollup.client.status !== status) return false
+  const focused = focusClientId ? rollups.filter((rollup) => rollup.client.id === focusClientId) : rollups
+  const matching = focused.filter((rollup) => {
+    if (kpi && !matchesKpi(rollup, kpi)) return false
     if (!normalizedSearch) return true
     return [
       rollup.client.name,
@@ -400,7 +298,17 @@ function AllClientsView({
       rollup.client.profile.positioning,
     ].filter(Boolean).join(' ').toLowerCase().includes(normalizedSearch)
   })
-  const activeRollups = rollups.filter((rollup) => rollup.client.status === 'active')
+  /*
+   * Churned clients sit in their own collapsed section below the list rather
+   * than taking a row's worth of attention each. Choosing Churned in the status
+   * filter, or opening one by address, lists them in the main list instead.
+   */
+  const churnedSeparately = !focusClientId && (status === 'active' || status === 'all')
+  const filtered = focusClientId ? matching : matching.filter((rollup) => (
+    status === 'all' ? rollup.client.status !== 'churned' : rollup.client.status === status
+  ))
+  const churned = churnedSeparately ? matching.filter((rollup) => rollup.client.status === 'churned') : []
+  const queue = actionQueue(focused)
   // Attention follows the client filters, so narrowing to one client narrows
   // the work list with it. Clients are already ordered by urgency.
   const attentionItems = filtered
@@ -410,14 +318,8 @@ function AllClientsView({
   const focusRollup = focusClientId ? rollups.find((rollup) => rollup.client.id === focusClientId) || null : null
 
   return (
-    <div className="space-y-6">
-      <section aria-label="Client portfolio summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <PortfolioMetric icon={Users} label="Active clients" value={activeRollups.length} detail="Currently receiving service" className="bg-sky-50 text-sky-700" />
-        <PortfolioMetric icon={AlertCircle} label="Need attention" value={activeRollups.filter((rollup) => rollup.needsAttention).length} detail="Have a clear next action" className="bg-amber-50 text-amber-700" />
-        <PortfolioMetric icon={Inbox} label="Open conversations" value={activeRollups.reduce((sum, rollup) => sum + rollup.conversations, 0)} detail="Host or scheduling replies" className="bg-fuchsia-50 text-fuchsia-700" />
-        <PortfolioMetric icon={CalendarDays} label="Upcoming recordings" value={activeRollups.reduce((sum, rollup) => sum + rollup.upcomingRecordings, 0)} detail="Confirmed recording dates" className="bg-emerald-50 text-emerald-700" />
-        <PortfolioMetric icon={Radio} label="Published episodes" value={rollups.reduce((sum, rollup) => sum + rollup.published, 0)} detail="Recorded client outcomes" className="bg-violet-50 text-violet-700" />
-      </section>
+    <div className="space-y-4">
+      <PipelineKpiRow counts={kpiCounts(rollups)} selected={kpi} onSelect={setKpi} />
 
       <Tabs value={portfolioView} onValueChange={(value) => setPortfolioView(value as 'clients' | 'calendar')}>
         <TabsList className="h-auto justify-start">
@@ -425,11 +327,11 @@ function AllClientsView({
           <TabsTrigger value="calendar">Calendar</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="calendar" className="mt-5">
+        <TabsContent value="calendar" className="mt-4">
           <ClientActivityCalendar items={items} onOpenItem={onOpenItem} />
         </TabsContent>
 
-        <TabsContent value="clients" className="mt-5 space-y-6">
+        <TabsContent value="clients" className="mt-4 space-y-4">
           {focusRollup && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
               <p className="text-sm">Showing <span className="font-semibold">{focusRollup.client.name}</span> only.</p>
@@ -440,99 +342,66 @@ function AllClientsView({
             </div>
           )}
 
+          <TodayQueue queue={queue} baseHref={baseHref} onOpenItem={onOpenItem} />
+
           <Card>
-            <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
+            <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
+              <div className="min-w-0 flex-1">
                 <CardTitle>All clients</CardTitle>
-                <CardDescription>Clients needing action appear first. Each next action opens where the work is done.</CardDescription>
+                <CardDescription className="mt-1 truncate">Clients needing action appear first.</CardDescription>
               </div>
+              {/* No client picker here: the header's "Working on" is this list's client filter. */}
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                 <div className="relative sm:w-64">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input aria-label="Search clients" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search clients" className="pl-9" />
                 </div>
-                <Select value={focusClientId || 'all'} onValueChange={onChooseClient}>
-                  <SelectTrigger aria-label="Filter by client" className="sm:w-56"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All clients</SelectItem>
-                    {rollups.map((rollup) => <SelectItem key={rollup.client.id} value={rollup.client.id}>{rollup.client.name} · {rollup.client.status}</SelectItem>)}
-                  </SelectContent>
-                </Select>
                 <Select value={status} onValueChange={(value) => setStatus(value as ClientStatusFilter)}>
-                  <SelectTrigger aria-label="Filter clients by status" className="sm:w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Filter clients by status" className="sm:w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
                     <SelectItem value="active">Active clients</SelectItem>
                     <SelectItem value="paused">Paused clients</SelectItem>
                     <SelectItem value="churned">Churned clients</SelectItem>
+                    <SelectItem value="all">All statuses</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
               {filtered.length === 0 ? (
-                <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center">
+                <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center">
                   <Users className="h-9 w-9 text-muted-foreground/50" />
                   <p className="mt-3 font-medium">No clients match this view</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Try another status or search term.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Try another filter or search term.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {filtered.map((rollup) => {
-                    const { client, nextAction } = rollup
-                    const { target } = nextAction
-                    const website = safeExternalUrl(client.website)
-                    const recordHref = `${baseHref}/clients/${encodeURIComponent(client.id)}`
-                    return (
-                      <article key={client.id} className="rounded-2xl border bg-card p-4 transition-colors hover:border-primary/30 sm:p-5">
-                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
-                          <div className="flex min-w-0 flex-1 items-start gap-3">
-                            <ClientAvatar client={client} />
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h2 className="truncate text-lg font-semibold">{client.name}</h2>
-                                <Badge variant="outline" className={statusClassName(client.status)}>{client.status}</Badge>
-                                <Badge variant="outline" className={client.profile.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-violet-200 bg-violet-50 text-violet-800'}>
-                                  {client.profile.ready ? 'Guest profile ready' : `${client.profile.completed_fields}/${client.profile.total_fields} profile sections`}
-                                </Badge>
-                              </div>
-                              <p className="mt-1 truncate text-sm text-muted-foreground">{client.email || client.contact_person || 'No primary contact saved'}</p>
-                              <ReadinessLine client={client} canManage={canManage} />
-                              {website && <a href={website} target="_blank" rel="noreferrer" className="mt-1 inline-flex max-w-full items-center truncate text-xs text-primary hover:underline">{client.website}<ExternalLink className="ml-1 h-3 w-3" /></a>}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 xl:w-[560px]">
-                            <MiniMetric label="Podcasts" value={rollup.items.length} />
-                            <MiniMetric label="To review" value={rollup.awaitingReview} />
-                            <MiniMetric label="Approved" value={rollup.preparation} />
-                            <MiniMetric label="Outreach" value={rollup.activeOutreach} />
-                            <MiniMetric label="Replies" value={rollup.conversations} />
-                            <MiniMetric label="Placements" value={rollup.placements} />
-                          </div>
-
-                          <div className={`xl:w-80 rounded-xl border p-3 ${nextAction.tone === 'urgent' ? 'border-amber-200 bg-amber-50' : nextAction.tone === 'work' ? 'border-violet-200 bg-violet-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Next action</p>
-                            <p className="mt-1 text-sm font-semibold">{nextAction.label}</p>
-                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{nextAction.detail}</p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-xs text-muted-foreground">Last activity {formattedDate(rollup.lastActivityAt, true)}</p>
-                          <div className="flex flex-wrap gap-2">
-                            <Button asChild variant="ghost" size="sm"><Link to={recordHref}>Client record</Link></Button>
-                            {target?.kind === 'item' && (
-                              <Button type="button" size="sm" onClick={() => onOpenItem(target.itemId)} aria-label={`Open ${client.name} next action`}>Open opportunity<ArrowRight className="ml-2 h-4 w-4" /></Button>
-                            )}
-                            {target?.kind === 'record' && (
-                              <Button asChild size="sm"><Link to={`${recordHref}?tab=${target.tab}`} aria-label={`Open ${client.name} next action`}>Open<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
-                            )}
-                          </div>
-                        </div>
-                      </article>
-                    )
-                  })}
+                <div className="space-y-2">
+                  {filtered.map((rollup) => (
+                    <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onOpenItem={onOpenItem} />
+                  ))}
+                </div>
+              )}
+              {churned.length > 0 && (
+                <div className="mt-4 border-t pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2 text-muted-foreground"
+                    aria-expanded={churnedOpen}
+                    aria-controls="pipeline-churned-clients"
+                    onClick={() => setChurnedOpen((current) => !current)}
+                  >
+                    <ChevronDown className={`transition-transform ${churnedOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    Churned ({churned.length})
+                  </Button>
+                  {churnedOpen && (
+                    <div id="pipeline-churned-clients" className="mt-2 space-y-2">
+                      {churned.map((rollup) => (
+                        <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onOpenItem={onOpenItem} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -660,7 +529,7 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pipeline</h1>
-          <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`${baseHref}/clients`}><Users className="mr-2 h-4 w-4" />Clients</Link></Button><Button asChild><Link to={`${baseHref}/podcast-finder`}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button></div>
+          <div className="flex flex-wrap gap-2"><Button asChild><Link to={`${baseHref}/podcast-finder`}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button></div>
         </div>
 
         {systemQuery.isLoading ? (

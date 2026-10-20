@@ -114,7 +114,8 @@ describe('AdminWorkspaceClients', () => {
       `/app/workspaces/${workspaceId}/clients/${workspaceView().clients[0].id}`,
     )
     expect(screen.queryByText('Research')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    // Sign out lives in the menu on the person's avatar.
+    expect(screen.getByRole('button', { name: /^Account menu for / })).toBeEnabled()
 
     fireEvent.click(screen.getByRole('button', { name: /add client/i }))
     const dialog = screen.getByRole('dialog')

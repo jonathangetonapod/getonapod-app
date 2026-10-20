@@ -105,7 +105,8 @@ describe('WorkspaceClients tenant mode', () => {
       `/app/clients/${client.id}`,
     )
     expect(screen.queryByText('Research')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sign out/i })).toBeEnabled()
+    // Sign out lives in the menu on the person's avatar.
+    expect(screen.getByRole('button', { name: /^Account menu for / })).toBeEnabled()
     expect(screen.queryByText('Admin preview · Read only')).not.toBeInTheDocument()
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
   })

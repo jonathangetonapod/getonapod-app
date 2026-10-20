@@ -362,16 +362,40 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.queryByRole('tab', { name: /Placements/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'All clients' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
-    expect(screen.getByText('Get client podcast decisions')).toBeInTheDocument()
-    expect(screen.getByText(/Onboarding not started · Dashboard live · Portal enabled/)).toBeInTheDocument()
+    // The in-list client picker is gone: the header's working client does that.
+    expect(screen.queryByRole('combobox', { name: 'Filter by client' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
 
-    // Every client links to its record, and the churned client's next action
-    // is nothing to open.
-    const links = screen.getAllByRole('link', { name: 'Client record' })
-    expect(links[0]).toHaveAttribute('href', `/app/clients/${clientId}`)
-    expect(links[1]).toHaveAttribute('href', `/app/clients/${formerClientId}`)
-    expect(screen.queryByRole('link', { name: 'Open Jordan Former next action' })).not.toBeInTheDocument()
+    // Churned clients wait, collapsed, below the active list.
+    expect(screen.queryByRole('heading', { name: 'Jordan Former' })).not.toBeInTheDocument()
+    const churned = screen.getByRole('button', { name: 'Churned (1)' })
+    expect(churned).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(churned)
+    expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+    expect(screen.queryByText('Client is no longer active')).not.toBeInTheDocument()
+
+    // The Today queue holds the active client's pending next action, not the churned one.
+    const today = screen.getByRole('region', { name: /Today/ })
+    expect(within(today).getByText('Get client podcast decisions')).toBeInTheDocument()
+    expect(within(today).queryByText('Jordan Former')).not.toBeInTheDocument()
+
+    // Setup gaps are one badge, and each gap links to where it is fixed.
+    fireEvent.click(screen.getByRole('button', { name: 'Setup 3 of 4 done for Taylor Client' }))
+    const setup = await screen.findByRole('dialog')
+    expect(within(setup).getByRole('link', { name: 'Fix onboarding for Taylor Client' })).toHaveAttribute(
+      'href',
+      `/app/clients/${clientId}?tab=intake`,
+    )
+    expect(within(setup).queryByRole('link', { name: /Fix approval dashboard/ })).not.toBeInTheDocument()
+    fireEvent.keyDown(setup, { key: 'Escape' })
+
+    // A row expands to its setup and its client record.
+    fireEvent.click(screen.getByRole('button', { name: 'Taylor Client' }))
+    expect(screen.getByRole('button', { name: 'Taylor Client' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('link', { name: 'Open client record' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+
+    // A churned client's next action is nothing to open.
+    expect(screen.queryByRole('button', { name: /^(?!More ).* for Jordan Former/ })).not.toBeInTheDocument()
 
     // The attention list holds live work across clients; finished work is not there.
     const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('div')?.parentElement as HTMLElement
@@ -379,7 +403,8 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(within(attention).getByText('Operator Stories')).toBeInTheDocument()
     expect(screen.queryByText('Scale Notes')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Taylor Client next action' }))
+    // The next action is the button, labelled with the action itself.
+    fireEvent.click(screen.getByRole('button', { name: 'Get client podcast decisions for Taylor Client' }))
     const details = await screen.findByRole('dialog')
     expect(within(details).getByRole('heading', { name: 'Founder Frequency' })).toBeInTheDocument()
     expect(within(details).getByRole('link', { name: 'Client shortlist' })).toHaveAttribute(
@@ -405,11 +430,59 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Complete the guest profile')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open Taylor Client next action' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Complete the guest profile for Taylor Client' })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=profile`,
     )
+  })
+
+  it('filters the client list by a portfolio stat until the filter is cleared', async () => {
+    renderPage()
+
+    const attention = await screen.findByRole('button', { name: /Need attention/ })
+    expect(attention).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(attention)
+
+    expect(attention).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('status')).toHaveTextContent('Showing clients in Need attention')
+    expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Churned/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Clear filter/ }))
+    expect(attention).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Churned (1)' })).toBeInTheDocument()
+  })
+
+  it('says so instead of showing an empty queue when no client has an action', async () => {
+    mockedGetSystem.mockResolvedValue({ ...response, items: [published] } as never)
+
+    renderPage()
+
+    expect(await screen.findByText(/Nothing to do right now/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Today/ })).not.toBeInTheDocument()
+  })
+
+  it('flags an active client who has gone quiet, with the exact date on hand', async () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+    mockedGetSystem.mockResolvedValue({
+      ...response,
+      clients: [
+        { ...response.clients[0], last_activity_at: daysAgo(20) },
+        { ...response.clients[1], last_activity_at: daysAgo(90) },
+      ],
+      items: [{ ...awaitingReview, last_activity_at: daysAgo(20) }],
+    } as never)
+
+    renderPage()
+
+    const quiet = await screen.findByText('Active 20 days ago')
+    expect(quiet.parentElement).toHaveClass('text-red-700')
+    // Not colour alone.
+    expect(quiet.parentElement).toHaveTextContent('gone quiet')
+
+    // A churned client is quiet on purpose.
+    fireEvent.click(screen.getByRole('button', { name: 'Churned (1)' }))
+    expect(screen.getByText('Active 90 days ago').parentElement).not.toHaveClass('text-red-700')
   })
 
   // The nav and the client record open this page on one client. That narrows
@@ -422,7 +495,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.getByText(/Showing/)).toHaveTextContent('Taylor Client')
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all clients' }))
-    expect(await screen.findByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Churned (1)' })).toBeInTheDocument()
   })
 
   it('keeps raw contact emails out of the member-safe lifecycle response', async () => {
@@ -446,8 +519,8 @@ describe('WorkspaceClientPodcastSystem', () => {
     })
 
     renderPage(`/app/client-podcast-system?client=${clientId}`)
-    await screen.findByRole('heading', { name: 'Pipeline' })
-    expect(await screen.findByText(/Onboarding owner\/admin only/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Taylor Client' }))
+    expect(screen.getByText(/Owner\/admin only/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Operator Stories/ }))
 
     const details = await screen.findByRole('dialog')

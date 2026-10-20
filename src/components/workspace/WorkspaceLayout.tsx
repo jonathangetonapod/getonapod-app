@@ -51,6 +51,13 @@ import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getWorkspaceClients } from '@/services/clients'
 import { cn } from '@/lib/utils'
@@ -71,20 +78,20 @@ interface WorkspaceNavItem {
   enabled: boolean
 }
 
-// Default order follows the daily loop: pick a client, see where they stand,
-// find and vet shows, run outreach, answer replies. Setup and reference pages
-// come after. Ids and segments are stable; only labels and positions move.
+// Default order follows the sidebar groups below: client work, finding shows,
+// outreach, then setup and reference pages. Ids and segments are stable; only
+// labels and positions move.
 const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'clients', name: 'Clients', segment: 'clients', icon: Users, enabled: true },
   { id: 'client-podcast-system', name: 'Pipeline', segment: 'client-podcast-system', icon: Calendar, enabled: true },
+  { id: 'onboarding', name: 'Client intake', segment: 'onboarding', icon: ClipboardList, enabled: true },
+  { id: 'outreach-platform', name: 'Client Campaigns', segment: 'client-campaigns', icon: Megaphone, enabled: true },
   { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
-  { id: 'outreach-platform', name: 'Client Campaigns', segment: 'client-campaigns', icon: Megaphone, enabled: true },
-  { id: 'unibox', name: 'Inbox', segment: 'master-inbox', icon: Inbox, enabled: true },
-  { id: 'relationships', name: 'Relationships', segment: 'relationships', icon: BookUser, enabled: true },
   { id: 'prospects', name: 'Prospect Studio', segment: 'prospects', icon: Share2, enabled: true },
-  { id: 'onboarding', name: 'Client intake', segment: 'onboarding', icon: ClipboardList, enabled: true },
+  { id: 'unibox', name: 'Inbox', segment: 'master-inbox', icon: Inbox, enabled: true },
   { id: 'mailboxes', name: 'Mailboxes', segment: 'mailboxes', icon: Mailbox, enabled: true },
+  { id: 'relationships', name: 'Relationships', segment: 'relationships', icon: BookUser, enabled: true },
   { id: 'university', name: 'University', segment: 'university', icon: GraduationCap, enabled: true },
   // Billing sits in the main navigation rather than only inside Settings:
   // "where do I buy credits" should not require knowing that credits live
@@ -93,6 +100,35 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'billing', name: 'Billing & credits', segment: 'settings/billing', icon: CreditCard, enabled: false },
   { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
+
+/*
+ * Headings over the default order. Someone who has arranged their own order
+ * keeps a flat list: headings over a custom arrangement would split it in
+ * places they did not choose. Anything not named here falls under Other.
+ */
+const workspaceNavGroups: Array<{ label: string; ids: string[] }> = [
+  { label: 'Clients', ids: ['clients', 'client-podcast-system', 'onboarding', 'outreach-platform'] },
+  { label: 'Find', ids: ['podcast-finder', 'podcast-database', 'prospects'] },
+  { label: 'Outreach', ids: ['unibox', 'mailboxes', 'relationships'] },
+]
+
+function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: string; items: WorkspaceNavItem[] }> {
+  const grouped = new Set(workspaceNavGroups.flatMap((group) => group.ids))
+  return [
+    ...workspaceNavGroups.map((group) => ({
+      label: group.label,
+      items: items.filter((item) => group.ids.includes(item.id)),
+    })),
+    { label: 'Other', items: items.filter((item) => !grouped.has(item.id)) },
+  ].filter((group) => group.items.length > 0)
+}
+
+/*
+ * The modules whose page follows the header's working client, not only the
+ * other way round. Podcast Finder reads ?client= once on arrival, so changing
+ * the address under it would not move it; the Pipeline filters on every read.
+ */
+const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system']
 
 // Radix Select needs a non-empty value for the "no client" choice.
 const ALL_CLIENTS = 'all-clients'
@@ -287,19 +323,19 @@ interface WorkspaceBrandLogoProps {
 }
 
 const brandLogoSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
-  sidebar: 'h-24 w-full rounded-2xl',
+  sidebar: 'h-10 w-10 shrink-0 rounded-xl',
   mobile: 'h-12 w-20 rounded-xl',
   settings: 'h-24 w-40 rounded-xl sm:h-28 sm:w-48',
 }
 
 const brandLogoImageSpacing: Record<WorkspaceBrandLogoProps['placement'], string> = {
-  sidebar: 'p-2',
+  sidebar: 'p-1',
   mobile: 'p-1.5',
   settings: 'p-2 sm:p-3',
 }
 
 const brandLogoFallbackSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
-  sidebar: 'text-3xl',
+  sidebar: 'text-sm',
   mobile: 'text-sm',
   settings: 'text-2xl',
 }
@@ -522,10 +558,33 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     setWorkingClientId(null)
   }, [clientsQuery.isSuccess, workingClientId, workingClientWorkspaceId, workingClients])
 
+  /*
+   * On a page that filters by the address, the header is that page's client
+   * filter: choosing here rewrites ?client=, and an address with no client
+   * (cleared on the page, or a plain link) reads as All clients up here too,
+   * so the two never disagree about what is on screen.
+   */
+  const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
+    .some((segment) => matchesPath(`${baseHref}/${segment}`))
+
+  useEffect(() => {
+    if (!headerDrivesAddress || requestedClientId || !workingClientId) return
+    writeWorkingClient(workingClientWorkspaceId, null)
+    setWorkingClientId(null)
+  }, [headerDrivesAddress, requestedClientId, workingClientId, workingClientWorkspaceId])
+
   const handleWorkingClientChange = (value: string) => {
     const next = value === ALL_CLIENTS ? null : normalizeWorkingClientId(value)
     writeWorkingClient(workingClientWorkspaceId, next)
     setWorkingClientId(next)
+    if (!headerDrivesAddress) return
+    const params = new URLSearchParams(location.search)
+    if (next) params.set('client', next)
+    else params.delete('client')
+    // A linked show belongs to the client it was opened under.
+    params.delete('podcast')
+    const search = params.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
   }
 
   useLayoutEffect(() => {
@@ -612,6 +671,27 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     setSidebarOpen(false)
   }
 
+  const showNavGroups = isDefaultNavOrder && !isOrganizing
+
+  const renderNavItem = (item: WorkspaceNavItem) => {
+    const isSettings = item.id === 'settings'
+    const isBilling = item.id === 'billing'
+    const itemEnabled = isSettings || isBilling ? managesWorkspace : item.enabled
+
+    return (
+      <SortableWorkspaceNavItem
+        key={item.id}
+        item={item}
+        href={clientScopedHref(baseHref, item.segment, workingClientId)}
+        isActive={item === activeNavItem}
+        isEnabled={itemEnabled}
+        isOrganizing={isOrganizing}
+        restrictedLabel={isSettings || isBilling ? 'Owner/Admin' : 'Soon'}
+        onNavigate={handleSidebarNavigate}
+      />
+    )
+  }
+
   const handleSignOut = async () => {
     try {
       await signOut()
@@ -622,6 +702,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   }
 
   return (
+    // Its own provider, so the shell's tooltips do not depend on where it is mounted.
+    <TooltipProvider delayDuration={200}>
     <div data-testid="workspace-layout" className="min-h-screen max-w-full overflow-x-clip bg-background">
       {sidebarOpen && (
         <button
@@ -643,35 +725,31 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
         )}
       >
         <div className="flex h-full flex-col">
-          <div className="flex h-16 items-center justify-between border-b border-border px-6">
-            {/* Not a heading: every page has its own h1, and this name repeats
-                on all of them. */}
-            <p className="truncate text-xl font-bold">{workspaceName}</p>
-            <Button
-              ref={sidebarCloseRef}
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setSidebarOpen(false)}
-              aria-label="Close workspace navigation"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
-
-          <div className="border-b border-border px-4 py-4">
+          <div className="flex h-16 items-center gap-3 border-b border-border px-4">
             <WorkspaceBrandLogo
               logoUrl={logoUrl}
               workspaceName={workspaceName}
               workspaceInitials={workspaceInitials}
               placement="sidebar"
             />
-            <div className="mt-3 min-w-0 px-1">
-              <p className="truncate text-base font-bold tracking-tight">{workspaceDisplayName}</p>
+            {/* Not a heading: every page has its own h1, and this name repeats
+                on all of them. */}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold tracking-tight">{workspaceDisplayName}</p>
               {workspaceSubtitle && (
                 <p className="truncate text-xs font-medium text-muted-foreground">{workspaceSubtitle}</p>
               )}
             </div>
+            <Button
+              ref={sidebarCloseRef}
+              variant="ghost"
+              size="icon"
+              className="shrink-0 lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close workspace navigation"
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
 
           <nav
@@ -680,6 +758,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 [scrollbar-gutter:stable]"
             onScroll={(event) => saveWorkspaceNavScroll(navScrollStorageKey, event.currentTarget.scrollTop)}
           >
+            {!showNavGroups && (
             <div className="mb-2 flex items-center justify-between gap-2 px-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Navigation</p>
               {canOrganizeNavigation && isOrganizing && (
@@ -706,72 +785,74 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 </div>
               )}
             </div>
+            )}
             {isOrganizing && (
               <p className="mb-2 px-1 text-xs text-muted-foreground">Drag pages into your preferred order. Changes save automatically.</p>
             )}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={visibleNavItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
-                <ul className="space-y-1">
-                  {visibleNavItems.map((item) => {
-                    const isSettings = item.id === 'settings'
-                    const isBilling = item.id === 'billing'
-                    const itemEnabled = isSettings || isBilling ? managesWorkspace : item.enabled
-
-                    return (
-                      <SortableWorkspaceNavItem
-                        key={item.id}
-                        item={item}
-                        href={clientScopedHref(baseHref, item.segment, workingClientId)}
-                        isActive={item === activeNavItem}
-                        isEnabled={itemEnabled}
-                        isOrganizing={isOrganizing}
-                        restrictedLabel={isSettings || isBilling ? 'Owner/Admin' : 'Soon'}
-                        onNavigate={handleSidebarNavigate}
-                      />
-                    )
-                  })}
-                </ul>
+                {showNavGroups ? (
+                  <div className="space-y-4">
+                    {groupWorkspaceNavItems(visibleNavItems).map((group) => (
+                      <div key={group.label}>
+                        <p id={`workspace-nav-group-${group.label.toLowerCase()}`} className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</p>
+                        <ul aria-labelledby={`workspace-nav-group-${group.label.toLowerCase()}`} className="space-y-0.5">
+                          {group.items.map(renderNavItem)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="space-y-1">
+                    {visibleNavItems.map(renderNavItem)}
+                  </ul>
+                )}
               </SortableContext>
             </DndContext>
           </nav>
 
-          <div className="border-t border-border p-4">
-            <div className="mb-3 flex items-center gap-3">
-              <Avatar className="h-10 w-10">
-                {viewerAvatarUrl && <AvatarImage src={viewerAvatarUrl} alt={viewerName ? `${viewerName} profile picture` : 'Profile picture'} className="object-cover" />}
-                <AvatarFallback>
-                  {viewerInitials || <User className="h-5 w-5" />}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{viewerName}</p>
-                <p className="truncate text-xs text-muted-foreground">{viewerEmail}</p>
-              </div>
-              {viewerRole && <Badge variant="outline" className="capitalize">{viewerRole}</Badge>}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => void handleSignOut()}
-                variant="outline"
-                size="sm"
-                className="flex-1"
-              >
-                <LogOut className="mr-2 h-4 w-4" />Sign out
-              </Button>
-              {/* Reordering is a once-a-quarter thing, so it lives down here
-                  with the other housekeeping instead of above the nav. */}
-              {canOrganizeNavigation && !isOrganizing && (
-                <Button
+          <div className="flex items-center gap-1 border-t border-border p-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="px-2 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setIsOrganizing(true)}
+                  aria-label={`Account menu for ${viewerName}`}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <GripVertical className="mr-1 h-3.5 w-3.5" />Reorder
-                </Button>
-              )}
-            </div>
+                  <Avatar className="h-9 w-9">
+                    {viewerAvatarUrl && <AvatarImage src={viewerAvatarUrl} alt={viewerName ? `${viewerName} profile picture` : 'Profile picture'} className="object-cover" />}
+                    <AvatarFallback>
+                      {viewerInitials || <User className="h-5 w-5" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{viewerName}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{viewerEmail}</span>
+                  </span>
+                  {viewerRole && <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] capitalize">{viewerRole}</Badge>}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" className="w-56">
+                <DropdownMenuItem onSelect={() => void handleSignOut()}>
+                  <LogOut className="mr-2 h-4 w-4" />Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* Reordering is a once-a-quarter thing, so it lives down here
+                with the other housekeeping instead of above the nav. */}
+            {canOrganizeNavigation && !isOrganizing && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setIsOrganizing(true)}
+                aria-label="Reorder"
+                title="Reorder sidebar"
+              >
+                <GripVertical className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </aside>
@@ -856,11 +937,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             {isPlatformAdmin && (
               // Relative, so the waiting-count bubble can sit on the corner.
               <div className="relative">
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/app/manage-workspaces" aria-label="Manage workspaces">
-                    <Building2 className="h-4 w-4 xl:mr-2" /><span className="hidden xl:inline">Manage workspaces</span>
-                  </Link>
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/app/manage-workspaces" aria-label="Manage workspaces">
+                        <Building2 className="h-4 w-4 xl:mr-2" /><span className="hidden xl:inline">Manage workspaces</span>
+                      </Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="xl:hidden">Manage workspaces and join requests</TooltipContent>
+                </Tooltip>
                 <JoinRequestsBadge enabled={isPlatformAdmin} />
               </div>
             )}
@@ -869,11 +955,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 billing page — so the tools for every other workspace lived
                 behind one workspace's balance. */}
             {isPlatformAdmin && (
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/app/platform/billing" aria-label="Billing administration">
-                  <ShieldCheck className="h-4 w-4 xl:mr-2" /><span className="hidden xl:inline">Billing admin</span>
-                </Link>
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/app/platform/billing" aria-label="Billing administration">
+                      <ShieldCheck className="h-4 w-4 xl:mr-2" /><span className="hidden xl:inline">Billing admin</span>
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="xl:hidden">Billing administration: plans, credit grants and allowances</TooltipContent>
+              </Tooltip>
             )}
             {isPlatformAdmin && (
               <div className="w-44 min-w-0 sm:w-60 lg:w-72">
@@ -915,5 +1006,6 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
         <main className="min-w-0 p-4 sm:p-6">{children}</main>
       </div>
     </div>
+    </TooltipProvider>
   )
 }
