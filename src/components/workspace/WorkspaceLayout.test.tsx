@@ -283,6 +283,8 @@ describe('WorkspaceLayout', () => {
     fireEvent.click(combobox)
     expect(screen.getByRole('option', { name: 'Dallas Fontaine' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Former Client' })).not.toBeInTheDocument()
+    expect(screen.getByText('Active clients only')).toBeInTheDocument()
+    expect(screen.getByText(/1 paused or churned client is not listed\./)).toBeInTheDocument()
   })
 
   // A page opened with ?client= (a link from another module, a bookmark) is a

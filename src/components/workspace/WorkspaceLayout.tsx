@@ -51,7 +51,7 @@ import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getWorkspaceClients } from '@/services/clients'
 import { cn } from '@/lib/utils'
 import {
@@ -496,6 +496,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     () => (clientsQuery.data ?? []).filter((client) => client.status === 'active'),
     [clientsQuery.data],
   )
+  // Paused and churned clients are left out on purpose; the picker says so,
+  // or a workspace with four clients wonders where two of them went.
+  const inactiveClientCount = (clientsQuery.data?.length ?? 0) - workingClients.length
   const workingClient = workingClients.find((client) => client.id.toLowerCase() === workingClientId) ?? null
 
   useEffect(() => {
@@ -807,10 +810,24 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_CLIENTS}>All clients</SelectItem>
-                  {workingClients.map((client) => (
-                    <SelectItem key={client.id} value={client.id.toLowerCase()}>{client.name}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel className="text-xs font-medium text-muted-foreground">Active clients only</SelectLabel>
+                    <SelectItem value={ALL_CLIENTS}>All clients</SelectItem>
+                    {workingClients.map((client) => (
+                      <SelectItem key={client.id} value={client.id.toLowerCase()}>{client.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  {inactiveClientCount > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                        {inactiveClientCount === 1
+                          ? '1 paused or churned client is not listed.'
+                          : `${inactiveClientCount} paused or churned clients are not listed.`}
+                        {' '}Set a client to Active on the Clients page to work on it.
+                      </p>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
