@@ -35,7 +35,7 @@ describe('RequestAccess', () => {
     // The invite-only promise, said before the button rather than after.
     expect(screen.getByText(/does not create an account/iu)).toBeInTheDocument()
     // Someone who wants to be a guest, not an agency, is sent to the call.
-    expect(screen.getByRole('link', { name: 'book a 30-minute call' })).toHaveAttribute('href', 'https://cal.com/jonathan-garces-x5v8tl/30min')
+    expect(screen.getByRole('link', { name: 'book a 30-minute call' })).toHaveAttribute('href', 'https://cal.com/jonathan-garces-x5v8tl/30minutes')
   })
 
   it('sends the request from this page too, not only from the landing page', async () => {

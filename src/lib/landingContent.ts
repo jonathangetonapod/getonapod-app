@@ -15,7 +15,7 @@
  * Where "book a call" goes. The buttons name the call's length, so the label
  * follows the link — change them together.
  */
-export const CALL_URL = 'https://cal.com/jonathan-garces-x5v8tl/30min'
+export const CALL_URL = 'https://cal.com/jonathan-garces-x5v8tl/30minutes'
 export const CALL_LABEL = 'Book a 30-minute call'
 export const CONTACT_EMAIL = 'jonathan@getonapod.com'
 

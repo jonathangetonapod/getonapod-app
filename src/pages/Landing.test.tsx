@@ -40,7 +40,7 @@ describe('Landing', () => {
     expect(screen.getByRole('link', { name: 'For agencies' })).toHaveAttribute('href', '/platform')
     expect(screen.getByRole('link', { name: 'See the week-by-week plan' })).toHaveAttribute('href', '/what-to-expect')
     // The page books a 30-minute call; every button agrees.
-    expect(CALL_URL).toMatch(/\/30min$/u)
+    expect(CALL_URL).toMatch(/\/30minutes$/u)
     const podcastLinks = screen.getAllByRole('link', { name: /book a (30-minute )?call/iu })
     expect(podcastLinks.length).toBeGreaterThanOrEqual(4)
     for (const link of podcastLinks) {
