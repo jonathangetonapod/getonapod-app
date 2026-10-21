@@ -139,6 +139,12 @@ interface LegacyOutreachRow {
   created_at: string | null
 }
 
+/** One timestamped thing that happened to a client, from any source. */
+interface ClientEventRow {
+  client_id: string
+  at: string | null
+}
+
 interface CampaignTargetRow {
   id: string
   campaign_id: string
@@ -271,6 +277,18 @@ function firstByKey<T, K>(rows: T[], keyOf: (row: T) => K): Map<K, T> {
     if (!result.has(key)) result.set(key, row)
   }
   return result
+}
+
+/**
+ * A source that only feeds last activity. Losing it should mark the answer
+ * partial, not take the whole pipeline down with it.
+ */
+async function optionalLoad<T>(load: Promise<Loaded<T>>): Promise<Loaded<T>> {
+  try {
+    return await load
+  } catch {
+    return { rows: [], truncated: true }
+  }
 }
 
 function chunks<T>(values: T[]): T[][] {
@@ -569,6 +587,8 @@ serve(async (req) => {
       bookingsLoaded,
       analysesLoaded,
       onboardingLoaded,
+      statusEventsLoaded,
+      legacyMessagesLoaded,
     ] = await Promise.all([
       loadForClients<ShortlistRow>('CLIENT_PODCAST_SHORTLIST_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
@@ -634,6 +654,28 @@ serve(async (req) => {
           .order('id', { ascending: true })
           .range(from, to) as unknown as PromiseLike<PageResult<OnboardingRow>>
       )),
+      // Status changes, and outreach sent by the legacy Email Bison flow, which
+      // records its sends here rather than in podcast_outreach_actions. Both
+      // count as client activity and nothing else on this page reads them.
+      optionalLoad(loadForClients<ClientEventRow>('CLIENT_PODCAST_STATUS_EVENTS_UNAVAILABLE', clientIds, (ids, from, to) => (
+        context.admin
+          .from('workspace_client_status_events')
+          .select('client_id,at:created_at')
+          .eq('workspace_id', workspaceId)
+          .in('client_id', ids)
+          .order('created_at', { ascending: false })
+          .range(from, to) as unknown as PromiseLike<PageResult<ClientEventRow>>
+      ))),
+      optionalLoad(loadForClients<ClientEventRow>('CLIENT_PODCAST_LEGACY_MESSAGES_UNAVAILABLE', clientIds, (ids, from, to) => (
+        context.admin
+          .from('outreach_messages')
+          .select('client_id,at:sent_at')
+          .in('client_id', ids)
+          .eq('status', 'sent')
+          .not('sent_at', 'is', null)
+          .order('sent_at', { ascending: false })
+          .range(from, to) as unknown as PromiseLike<PageResult<ClientEventRow>>
+      ))),
     ])
     const shortlist = shortlistLoaded.rows
     const feedback = feedbackLoaded.rows
@@ -657,6 +699,17 @@ serve(async (req) => {
     const { data: threadStateRows, error: threadStateError } = await threadQuery
       .order('updated_at', { ascending: false })
       .limit(THREAD_LIMIT)
+    // Replies the inbox could not tie to a show still happened to the client,
+    // so last activity reads them even though no opportunity can link to them.
+    let unlinkedThreadQuery = context.admin
+      .from('workspace_inbox_thread_state')
+      .select('client_id,updated_at')
+      .eq('workspace_id', workspaceId)
+      .is('podcast_id', null)
+    if (onlyClientId) unlinkedThreadQuery = unlinkedThreadQuery.eq('client_id', onlyClientId)
+    const { data: unlinkedThreadRows, error: unlinkedThreadError } = await unlinkedThreadQuery
+      .order('updated_at', { ascending: false })
+      .limit(THREAD_LIMIT)
     const threadByClientPodcast = new Map<string, ThreadStateRow>()
     for (const row of (threadStateRows || []) as unknown as ThreadStateRow[]) {
       if (!row.podcast_id) continue
@@ -678,6 +731,9 @@ serve(async (req) => {
       ['onboarding', onboardingLoaded.truncated],
       // A failed thread read leaves conversations unknown, which is also partial.
       ['inbox_threads', Boolean(threadStateError) || (threadStateRows || []).length >= THREAD_LIMIT],
+      ['inbox_activity', Boolean(unlinkedThreadError) || (unlinkedThreadRows || []).length >= THREAD_LIMIT],
+      ['status_events', statusEventsLoaded.truncated],
+      ['legacy_outreach_messages', legacyMessagesLoaded.truncated],
     ].flatMap(([source, cut]) => (cut ? [source as string] : []))
 
     const uniquePodcastIds = Array.from(new Set([
@@ -711,6 +767,29 @@ serve(async (req) => {
       const nameKey = recordKey(booking.client_id, normalizedName(booking.podcast_name))
       if (!bookingByName.has(nameKey)) bookingByName.set(nameKey, booking)
     })
+
+    // A client's last activity is the newest thing that actually happened to
+    // them: outreach sent, a host reply, a status change, a client decision, an
+    // onboarding step or a placement. Not clients.updated_at or a shortlist
+    // row's updated_at, which move with every edit and every backfill — a
+    // migration that touched every client had every card showing the day it ran.
+    const clientActivity = new Map<string, string>()
+    const noteActivity = (clientId: string, values: Array<string | null | undefined>) => {
+      const latest = latestTimestamp([clientActivity.get(clientId), ...values])
+      if (latest) clientActivity.set(clientId, latest)
+    }
+    for (const row of [...statusEventsLoaded.rows, ...legacyMessagesLoaded.rows]) {
+      noteActivity(row.client_id, [row.at])
+    }
+    for (const row of [
+      ...((threadStateRows || []) as unknown as ThreadStateRow[]),
+      ...((unlinkedThreadRows || []) as unknown as Array<Pick<ThreadStateRow, 'client_id' | 'updated_at'>>),
+    ]) {
+      noteActivity(row.client_id, [row.updated_at])
+    }
+    for (const row of onboarding) {
+      if (!row.archived_at) noteActivity(row.client_id, [row.invited_at, row.submitted_at, row.approved_at, row.updated_at])
+    }
 
     const matchedBookingIds = new Set<string>()
     const shortlistItems = shortlist.map((row) => {
@@ -772,6 +851,13 @@ serve(async (req) => {
         target?.updated_at,
         booking?.updated_at,
         analysis?.updated_at,
+      ])
+      noteActivity(row.client_id, [
+        feedbackRow?.updated_at,
+        legacyOutreachRow?.webhook_sent_at || legacyOutreachRow?.created_at,
+        target?.launched_at,
+        target?.last_activity_at,
+        booking?.updated_at,
       ])
 
       return {
@@ -867,6 +953,7 @@ serve(async (req) => {
           ? 'podcast_id'
           : 'podcast_name'
         const fitReasons = analysis?.ai_fit_reasons || []
+        noteActivity(booking.client_id, [booking.updated_at])
 
         return {
           id: `booking:${booking.id}`,
@@ -986,11 +1073,7 @@ serve(async (req) => {
           podcast_count: clientItems.length,
           created_at: client.created_at,
           updated_at: client.updated_at,
-          last_activity_at: latestTimestamp([
-            client.updated_at,
-            clientOnboarding?.updated_at,
-            ...clientItems.map((item) => item.last_activity_at),
-          ]),
+          last_activity_at: clientActivity.get(client.id) || null,
         }
       }),
       summary: {

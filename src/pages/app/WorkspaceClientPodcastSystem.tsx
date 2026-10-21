@@ -65,9 +65,12 @@ interface ClientRollup {
     target: NextActionTarget
   }
   lastActivityAt: string | null
+  /** Outreach, a booking or a later stage exists, so the client is underway. */
+  pipelineStarted: boolean
 }
 
-type ClientStatusFilter = 'active' | 'paused' | 'churned' | 'all'
+/** 'current' is every client still being served: active and paused, not churned. */
+type ClientStatusFilter = 'current' | 'active' | 'paused' | 'churned' | 'all'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ATTENTION_PREVIEW = 12
@@ -100,8 +103,15 @@ function statusClassName(status: string): string {
   return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
-function onboardingLabel(client: ClientPodcastSystemClient): string {
-  if (!client.onboarding) return 'Not started'
+const STARTED_STAGES = new Set(['outreach', 'conversation', 'booked', 'recorded', 'published'])
+
+/**
+ * With no intake on record, a client already in outreach or with placements
+ * was onboarded before the intake form existed, or outside it. Calling that
+ * "not started" contradicts the rest of the card.
+ */
+function onboardingLabel(client: ClientPodcastSystemClient, pipelineStarted: boolean): string {
+  if (!client.onboarding) return pipelineStarted ? 'Done outside intake' : 'Not started'
   if (client.onboarding.status === 'changes_requested') return 'Changes requested'
   if (client.onboarding.status === 'in_progress') return 'In progress'
   return client.onboarding.status.charAt(0).toUpperCase() + client.onboarding.status.slice(1)
@@ -192,7 +202,7 @@ function buildClientRollup(
     }
   } else if (!client.profile.ready) {
     nextAction = {
-      label: 'Complete the guest profile',
+      label: 'Complete the reply brief',
       detail: `${client.profile.completed_fields} of ${client.profile.total_fields} host-ready context sections are complete.`,
       tone: 'work',
       target: { kind: 'record', tab: 'profile' },
@@ -200,7 +210,7 @@ function buildClientRollup(
   } else if (onboardingNeedsWork) {
     nextAction = {
       label: 'Move onboarding forward',
-      detail: `The current onboarding status is ${onboardingLabel(client).toLowerCase()}.`,
+      detail: `The current onboarding status is ${onboardingLabel(client, true).toLowerCase()}.`,
       tone: 'work',
       target: { kind: 'record', tab: 'intake' },
     }
@@ -282,10 +292,13 @@ function buildClientRollup(
     needsAttentionItems,
     needsAttention: client.status === 'active' && nextAction.tone !== 'clear',
     nextAction,
-    lastActivityAt: [client.last_activity_at, ...items.map((item) => item.last_activity_at)]
-      .filter((value): value is string => Boolean(value))
-      .sort()
-      .at(-1) || null,
+    // The server's client-level value counts only real events; folding in
+    // each item's last_activity_at brought back shortlist edits and backfills.
+    lastActivityAt: client.last_activity_at,
+    pipelineStarted: items.some((item) => (
+      Boolean(item.booking || item.legacy_outreach_at || item.campaign?.launched_at)
+      || STARTED_STAGES.has(item.stage)
+    )),
   }
 }
 
@@ -355,10 +368,12 @@ function OpportunityList({
   )
 }
 
-function ReadinessLine({ client, canManage }: { client: ClientPodcastSystemClient; canManage: boolean }) {
+function ReadinessLine({ rollup, canManage }: { rollup: ClientRollup; canManage: boolean }) {
+  const { client } = rollup
+  // The reply brief has its own badge beside the name; repeating it here put
+  // the same flag on the card twice under two names.
   const facts = [
-    client.profile.ready ? 'Reply brief ready' : 'Reply brief needs context',
-    `Onboarding ${canManage ? onboardingLabel(client).toLowerCase() : 'owner/admin only'}`,
+    `Onboarding ${canManage ? onboardingLabel(client, rollup.pipelineStarted).toLowerCase() : 'owner/admin only'}`,
     client.dashboard_configured ? 'Dashboard live' : 'Dashboard not set up',
     client.portal.enabled ? 'Portal enabled' : 'Portal off',
   ]
@@ -385,12 +400,14 @@ function AllClientsView({
 }) {
   const [portfolioView, setPortfolioView] = useState<'clients' | 'calendar'>('clients')
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<ClientStatusFilter>('all')
+  // Churned clients are kept out of the default view; they stay one filter away.
+  const [status, setStatus] = useState<ClientStatusFilter>('current')
   const [attentionExpanded, setAttentionExpanded] = useState(false)
   const normalizedSearch = search.trim().toLowerCase()
   const filtered = rollups.filter((rollup) => {
     if (focusClientId && rollup.client.id !== focusClientId) return false
-    if (status !== 'all' && rollup.client.status !== status) return false
+    if (status === 'current' && rollup.client.status === 'churned') return false
+    if (status !== 'all' && status !== 'current' && rollup.client.status !== status) return false
     if (!normalizedSearch) return true
     return [
       rollup.client.name,
@@ -461,10 +478,11 @@ function AllClientsView({
                 <Select value={status} onValueChange={(value) => setStatus(value as ClientStatusFilter)}>
                   <SelectTrigger aria-label="Filter clients by status" className="sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="current">Active and paused</SelectItem>
                     <SelectItem value="active">Active clients</SelectItem>
                     <SelectItem value="paused">Paused clients</SelectItem>
                     <SelectItem value="churned">Churned clients</SelectItem>
+                    <SelectItem value="all">All statuses</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -493,11 +511,11 @@ function AllClientsView({
                                 <h2 className="truncate text-lg font-semibold">{client.name}</h2>
                                 <Badge variant="outline" className={statusClassName(client.status)}>{client.status}</Badge>
                                 <Badge variant="outline" className={client.profile.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-violet-200 bg-violet-50 text-violet-800'}>
-                                  {client.profile.ready ? 'Guest profile ready' : `${client.profile.completed_fields}/${client.profile.total_fields} profile sections`}
+                                  {client.profile.ready ? 'Reply brief ready' : `Reply brief ${client.profile.completed_fields}/${client.profile.total_fields}`}
                                 </Badge>
                               </div>
                               <p className="mt-1 truncate text-sm text-muted-foreground">{client.email || client.contact_person || 'No primary contact saved'}</p>
-                              <ReadinessLine client={client} canManage={canManage} />
+                              <ReadinessLine rollup={rollup} canManage={canManage} />
                               {website && <a href={website} target="_blank" rel="noreferrer" className="mt-1 inline-flex max-w-full items-center truncate text-xs text-primary hover:underline">{client.website}<ExternalLink className="ml-1 h-3 w-3" /></a>}
                             </div>
                           </div>
@@ -519,7 +537,7 @@ function AllClientsView({
                         </div>
 
                         <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-                          <p className="text-xs text-muted-foreground">Last activity {formattedDate(rollup.lastActivityAt, true)}</p>
+                          <p className="text-xs text-muted-foreground">{rollup.lastActivityAt ? `Last activity ${formattedDate(rollup.lastActivityAt, true)}` : 'No activity recorded yet'}</p>
                           <div className="flex flex-wrap gap-2">
                             <Button asChild variant="ghost" size="sm"><Link to={recordHref}>Client record</Link></Button>
                             {target?.kind === 'item' && (

@@ -85,3 +85,11 @@ assert.match(masterInbox, /searchParams\.get\('thread'\)/u)
 assert.match(masterInbox, /thread\.thread_key === requestedThreadKey/u)
 assert.match(masterInbox, /Open this placement/u)
 assert.match(masterInbox, /client-podcast-system\?client=/u)
+
+// A client's last activity is built from real events only. clients.updated_at
+// moves with every edit and backfill, so it must not decide the date.
+assert.match(edge, /from\('workspace_client_status_events'\)[\s\S]{0,160}\.eq\('workspace_id', workspaceId\)/u)
+assert.match(edge, /from\('outreach_messages'\)[\s\S]{0,200}\.eq\('status', 'sent'\)/u)
+assert.match(edge, /\.is\('podcast_id', null\)/u)
+assert.match(edge, /last_activity_at: clientActivity\.get\(client\.id\) \|\| null/u)
+assert.doesNotMatch(edge, /last_activity_at: latestTimestamp\(\[\s*client\.updated_at/u)

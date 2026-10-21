@@ -362,16 +362,14 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.queryByRole('tab', { name: /Placements/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'All clients' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+    // Churned clients are out of the default view.
+    expect(screen.queryByRole('heading', { name: 'Jordan Former' })).not.toBeInTheDocument()
     expect(screen.getByText('Get client podcast decisions')).toBeInTheDocument()
-    expect(screen.getByText(/Onboarding not started · Dashboard live · Portal enabled/)).toBeInTheDocument()
-
-    // Every client links to its record, and the churned client's next action
-    // is nothing to open.
-    const links = screen.getAllByRole('link', { name: 'Client record' })
-    expect(links[0]).toHaveAttribute('href', `/app/clients/${clientId}`)
-    expect(links[1]).toHaveAttribute('href', `/app/clients/${formerClientId}`)
-    expect(screen.queryByRole('link', { name: 'Open Jordan Former next action' })).not.toBeInTheDocument()
+    // Taylor has a published placement and no intake on record, which is not
+    // "not started".
+    expect(screen.getByText(/Onboarding done outside intake · Dashboard live · Portal enabled/)).toBeInTheDocument()
+    expect(screen.queryByText(/Reply brief needs context/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Client record' })).toHaveAttribute('href', `/app/clients/${clientId}`)
 
     // The attention list holds live work across clients; finished work is not there.
     const attention = screen.getByRole('heading', { name: 'Needs attention' }).closest('div')?.parentElement as HTMLElement
@@ -405,7 +403,7 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Complete the guest profile')).toBeInTheDocument()
+    expect(await screen.findByText('Complete the reply brief')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Taylor Client next action' })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=profile`,
@@ -422,7 +420,59 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.getByText(/Showing/)).toHaveTextContent('Taylor Client')
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all clients' }))
+    expect(screen.queryByText(/Showing/)).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+  })
+
+  // Churned clients are hidden by default but one filter away, and their next
+  // action is nothing to open.
+  it('keeps churned clients out of the default view and reachable by status', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    const statusFilter = screen.getByRole('combobox', { name: 'Filter clients by status' })
+    expect(statusFilter).toHaveTextContent('Active and paused')
+    expect(screen.queryByRole('heading', { name: 'Jordan Former' })).not.toBeInTheDocument()
+
+    fireEvent.click(statusFilter)
+    fireEvent.click(screen.getByRole('option', { name: 'Churned clients' }))
+
     expect(await screen.findByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Taylor Client' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Client record' })).toHaveAttribute('href', `/app/clients/${formerClientId}`)
+    expect(screen.queryByRole('link', { name: 'Open Jordan Former next action' })).not.toBeInTheDocument()
+
+    fireEvent.click(statusFilter)
+    fireEvent.click(screen.getByRole('option', { name: 'All statuses' }))
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+  })
+
+  /*
+   * The card reads the server's client-level activity, which counts only real
+   * events. Item timestamps include shortlist edits and backfills, and folding
+   * them in had every card showing the day a migration ran.
+   */
+  it('shows the reply brief count, real last activity and onboarding from pipeline history', async () => {
+    mockedGetSystem.mockResolvedValue({
+      ...response,
+      clients: [
+        { ...response.clients[0], profile: { ...response.clients[0].profile, ready: false, completed_fields: 2 } },
+        { ...response.clients[1], status: 'active', last_activity_at: null },
+      ],
+    } as never)
+
+    renderPage()
+
+    const taylor = (await screen.findByRole('heading', { name: 'Taylor Client' })).closest('article') as HTMLElement
+    expect(within(taylor).getByText('Reply brief 2/6')).toBeInTheDocument()
+    expect(within(taylor).getByText('Last activity Jul 1, 2026, 12:00 PM')).toBeInTheDocument()
+
+    // No pipeline history and no intake: genuinely not started.
+    const jordan = screen.getByRole('heading', { name: 'Jordan Former' }).closest('article') as HTMLElement
+    expect(within(jordan).getByText('Reply brief 0/6')).toBeInTheDocument()
+    expect(within(jordan).getByText(/Onboarding not started/)).toBeInTheDocument()
+    expect(within(jordan).getByText('No activity recorded yet')).toBeInTheDocument()
   })
 
   it('keeps raw contact emails out of the member-safe lifecycle response', async () => {
