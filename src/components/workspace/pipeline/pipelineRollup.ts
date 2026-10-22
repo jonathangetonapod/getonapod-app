@@ -25,6 +25,8 @@ export interface ClientRollup {
     target: NextActionTarget
   }
   lastActivityAt: string | null
+  /** Outreach, a booking or a later stage exists, so the client is underway. */
+  pipelineStarted: boolean
 }
 
 /** The portfolio stats double as filters on the client list. */
@@ -146,8 +148,13 @@ export function statusClassName(status: string): string {
   return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
-export function onboardingLabel(client: ClientPodcastSystemClient): string {
-  if (!client.onboarding) return 'Not started'
+/**
+ * With no intake on record, a client already in outreach or with placements
+ * was onboarded before the intake form existed, or outside it. Calling that
+ * "not started" contradicts the rest of the card.
+ */
+export function onboardingLabel(client: ClientPodcastSystemClient, pipelineStarted: boolean): string {
+  if (!client.onboarding) return pipelineStarted ? 'Done outside intake' : 'Not started'
   if (client.onboarding.status === 'changes_requested') return 'Changes requested'
   if (client.onboarding.status === 'in_progress') return 'In progress'
   return client.onboarding.status.charAt(0).toUpperCase() + client.onboarding.status.slice(1)
@@ -168,7 +175,7 @@ export function daysSince(value: string | null, now = Date.now()): number | null
 }
 
 export function relativeDays(days: number | null): string {
-  if (days === null) return 'No activity yet'
+  if (days === null) return 'No activity recorded yet'
   if (days === 0) return 'Today'
   if (days === 1) return 'Yesterday'
   return `${days} days ago`
@@ -191,11 +198,11 @@ export interface SetupItem {
   tab: 'profile' | 'intake' | 'sharing'
 }
 
-export function setupItems(client: ClientPodcastSystemClient, canManage: boolean): SetupItem[] {
+export function setupItems(client: ClientPodcastSystemClient, canManage: boolean, pipelineStarted: boolean): SetupItem[] {
   return [
     {
       key: 'profile',
-      label: 'Guest profile',
+      label: 'Reply brief',
       detail: client.profile.ready ? 'Reply brief ready' : `${client.profile.completed_fields}/${client.profile.total_fields} sections complete`,
       done: client.profile.ready,
       tab: 'profile',
@@ -203,8 +210,8 @@ export function setupItems(client: ClientPodcastSystemClient, canManage: boolean
     {
       key: 'onboarding',
       label: 'Onboarding',
-      detail: canManage ? onboardingLabel(client) : 'Owner/admin only',
-      done: canManage ? client.onboarding?.status === 'approved' : null,
+      detail: canManage ? onboardingLabel(client, pipelineStarted) : 'Owner/admin only',
+      done: canManage ? client.onboarding?.status === 'approved' || (!client.onboarding && pipelineStarted) : null,
       tab: 'intake',
     },
     {

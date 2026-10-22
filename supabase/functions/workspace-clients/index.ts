@@ -237,6 +237,9 @@ function rpcError(error: { message?: string; details?: string | null }): never {
     message.includes('active workspace manager')
     || message.includes('active workspace staff')
     || message.includes('active selected workspace')
+    || message.includes('active workspace settings access')
+    || message.includes('active platform workspace access')
+    || message.includes('owner or administrator access')
   ) {
     throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
   }

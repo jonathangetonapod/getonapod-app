@@ -59,7 +59,7 @@ export const ClientPipelineRow = ({
             </h3>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
               <Badge variant="outline" className={cn('px-1.5 py-0 text-[11px]', statusClassName(client.status))}>{client.status}</Badge>
-              {isActive && <ClientSetupBadge client={client} canManage={canManage} recordHref={recordHref} />}
+              {isActive && <ClientSetupBadge client={client} canManage={canManage} pipelineStarted={rollup.pipelineStarted} recordHref={recordHref} />}
               <LastActivity rollup={rollup} />
             </div>
           </div>
@@ -106,7 +106,7 @@ export const ClientPipelineRow = ({
           )}
           <div className="min-w-0">
             <p className="mb-1 text-xs text-muted-foreground">Setup</p>
-            <ClientSetupList client={client} canManage={canManage} recordHref={recordHref} />
+            <ClientSetupList client={client} canManage={canManage} pipelineStarted={rollup.pipelineStarted} recordHref={recordHref} />
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Last activity</p>

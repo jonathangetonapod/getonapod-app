@@ -379,20 +379,16 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(within(today).getByText('Get client podcast decisions')).toBeInTheDocument()
     expect(within(today).queryByText('Jordan Former')).not.toBeInTheDocument()
 
-    // Setup gaps are one badge, and each gap links to where it is fixed.
-    fireEvent.click(screen.getByRole('button', { name: 'Setup 3/4 for Taylor Client, 1 to do' }))
-    const setup = await screen.findByRole('dialog')
-    expect(within(setup).getByRole('link', { name: 'Fix onboarding for Taylor Client' })).toHaveAttribute(
-      'href',
-      `/app/clients/${clientId}?tab=intake`,
-    )
-    expect(within(setup).queryByRole('link', { name: /Fix approval dashboard/ })).not.toBeInTheDocument()
-    fireEvent.keyDown(setup, { key: 'Escape' })
+    // Taylor has a published placement and no intake on record, which is not
+    // "not started": setup counts as complete.
+    expect(screen.getByText('Set up')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Setup \d/ })).not.toBeInTheDocument()
 
     // A row expands to its setup and its client record.
     fireEvent.click(screen.getByRole('button', { name: 'Taylor Client' }))
     expect(screen.getByRole('button', { name: 'Taylor Client' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('link', { name: 'Open client record' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(screen.getByText(/Done outside intake/)).toBeInTheDocument()
 
     // A churned client's next action is nothing to open.
     expect(screen.queryByRole('button', { name: /^(?!More ).* for Jordan Former/ })).not.toBeInTheDocument()
@@ -430,7 +426,7 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('link', { name: 'Complete the guest profile for Taylor Client' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Complete the reply brief for Taylor Client' })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=profile`,
     )
@@ -453,7 +449,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.getByRole('button', { name: 'Churned (1)' })).toBeInTheDocument()
   })
 
-  it('lists every client a stat counts, including paused ones the default view hides', async () => {
+  it('lists every client a stat counts, including paused ones a narrower status filter hides', async () => {
     const pausedId = '12121212-1212-4212-8212-121212121212'
     mockedGetSystem.mockResolvedValue({
       ...response,
@@ -463,7 +459,10 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    // Paused clients are in the default view; narrowing to Active hides them.
+    expect(await screen.findByRole('heading', { name: 'Pat Paused' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Filter clients by status' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Active clients' }))
     expect(screen.queryByRole('heading', { name: 'Pat Paused' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Published episodes/ }))
@@ -514,6 +513,62 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show all clients' }))
     expect(await screen.findByRole('button', { name: 'Churned (1)' })).toBeInTheDocument()
+  })
+
+  // Churned clients wait in their own section by default and are one filter
+  // away from the main list; their next action is nothing to open.
+  it('keeps churned clients out of the default list and reachable by status', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
+    const statusFilter = screen.getByRole('combobox', { name: 'Filter clients by status' })
+    expect(statusFilter).toHaveTextContent('Active and paused')
+    expect(screen.queryByRole('heading', { name: 'Jordan Former' })).not.toBeInTheDocument()
+
+    fireEvent.click(statusFilter)
+    fireEvent.click(screen.getByRole('option', { name: 'Churned clients' }))
+
+    expect(await screen.findByRole('heading', { name: 'Jordan Former' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Taylor Client' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Churned (1)' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^(?!More ).* for Jordan Former/ })).not.toBeInTheDocument()
+  })
+
+  /*
+   * The row reads the server's client-level activity, which counts only real
+   * events. Item timestamps include shortlist edits and backfills, and folding
+   * them in had every row showing the day a migration ran.
+   */
+  it('shows the reply brief gap, real last activity and onboarding from pipeline history', async () => {
+    mockedGetSystem.mockResolvedValue({
+      ...response,
+      clients: [
+        { ...response.clients[0], profile: { ...response.clients[0].profile, ready: false, completed_fields: 2 } },
+        { ...response.clients[1], status: 'active', last_activity_at: null },
+      ],
+    } as never)
+
+    renderPage()
+
+    // Setup gaps are one badge, and each gap links to where it is fixed.
+    fireEvent.click(await screen.findByRole('button', { name: 'Setup 3/4 for Taylor Client, 1 to do' }))
+    const setup = await screen.findByRole('dialog')
+    expect(within(setup).getByText(/2\/6 sections complete/)).toBeInTheDocument()
+    expect(within(setup).getByRole('link', { name: 'Fix reply brief for Taylor Client' })).toHaveAttribute(
+      'href',
+      `/app/clients/${clientId}?tab=profile`,
+    )
+    expect(within(setup).queryByRole('link', { name: /Fix onboarding/ })).not.toBeInTheDocument()
+    fireEvent.keyDown(setup, { key: 'Escape' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Taylor Client' }))
+    expect(screen.getByText('Jul 1, 2026, 12:00 PM')).toBeInTheDocument()
+
+    // No pipeline history and no intake: genuinely not started.
+    const jordan = screen.getByRole('heading', { name: 'Jordan Former' }).closest('article') as HTMLElement
+    expect(within(jordan).getByText('No activity recorded yet')).toBeInTheDocument()
+    fireEvent.click(within(jordan).getByRole('button', { name: 'Jordan Former' }))
+    expect(within(jordan).getByText(/Not started/)).toBeInTheDocument()
   })
 
   it('keeps raw contact emails out of the member-safe lifecycle response', async () => {

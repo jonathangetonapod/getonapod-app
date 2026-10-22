@@ -9,14 +9,16 @@ import { setupItems } from './pipelineRollup'
 export const ClientSetupList = ({
   client,
   canManage,
+  pipelineStarted,
   recordHref,
 }: {
   client: ClientPodcastSystemClient
   canManage: boolean
+  pipelineStarted: boolean
   recordHref: string
 }) => (
   <ul className="space-y-1.5 text-sm">
-    {setupItems(client, canManage).map((item) => {
+    {setupItems(client, canManage, pipelineStarted).map((item) => {
       const Icon = item.done === null ? Lock : item.done ? CheckCircle2 : Circle
       return (
         <li key={item.key} className="flex items-center gap-2">
@@ -41,13 +43,15 @@ export const ClientSetupList = ({
 export const ClientSetupBadge = ({
   client,
   canManage,
+  pipelineStarted,
   recordHref,
 }: {
   client: ClientPodcastSystemClient
   canManage: boolean
+  pipelineStarted: boolean
   recordHref: string
 }) => {
-  const counted = setupItems(client, canManage).filter((item) => item.done !== null)
+  const counted = setupItems(client, canManage, pipelineStarted).filter((item) => item.done !== null)
   const done = counted.filter((item) => item.done).length
   if (done === counted.length) {
     return (
@@ -66,7 +70,7 @@ export const ClientSetupBadge = ({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72">
         <p className="mb-2 text-sm font-semibold">Setup for {client.name}</p>
-        <ClientSetupList client={client} canManage={canManage} recordHref={recordHref} />
+        <ClientSetupList client={client} canManage={canManage} pipelineStarted={pipelineStarted} recordHref={recordHref} />
       </PopoverContent>
     </Popover>
   )

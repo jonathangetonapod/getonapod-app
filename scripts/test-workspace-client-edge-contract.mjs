@@ -397,6 +397,22 @@ assert.match(clientCapMigration, /COALESCE\(profile\.included_active_clients, 3\
 assert.match(clientCapMigration, /RAISE EXCEPTION 'workspace client limit reached'[\s\S]*?RETURN public\.workspace_client_operation\(/u)
 assert.match(clientCapMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;/u)
 
+// The default platform workspace manages its own clients (20261020000100).
+// Listing always admitted it; every mutation went through the staff gate,
+// which raises 'private workspace not found' for it, so delete came back 404.
+// It now resolves through the settings gate, tenants keep the staff path, and
+// the plan cap skips the default workspace, which has no plan.
+const defaultClientMigration = readFileSync('supabase/migrations/20261020000100_default_workspace_client_parity.sql', 'utf8')
+assert.match(
+  defaultClientMigration,
+  /IF COALESCE\(workspace_is_default, false\) THEN\s*actor_role := public\.workspace_settings_actor_role_v1\([\s\S]*?ELSIF public\.is_platform_admin_identity\(p_actor_user_id, actor_email\) THEN\s*actor_role := public\.workspace_staff_actor_role_v1\(/u,
+)
+assert.match(defaultClientMigration, /IF normalized_action IN \('create', 'update'\) AND NOT COALESCE\(workspace_is_default, false\) THEN/u)
+assert.match(defaultClientMigration, /IF normalized_action <> 'list' AND actor_role = 'member' THEN/u)
+assert.match(defaultClientMigration, /'public\.workspace_client_operation\(text,uuid,uuid,jsonb,uuid\)'::REGPROCEDURE[\s\S]*?IF restriction_count <> 1 THEN[\s\S]*?EXECUTE replace\(function_definition, restriction_marker, 'AND TRUE'\);/u)
+assert.match(defaultClientMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;[\s\S]*?TO service_role;/u)
+assert.match(clientsEdge, /message\.includes\('owner or administrator access'\)[\s\S]*?WORKSPACE_ACCESS_REQUIRED/u)
+
 // Booking edits only write the journey links when the request names them, so
 // a form that never shows them cannot erase them.
 assert.match(clientsEdge, /hasOwnProperty\.call\(input, 'shortlist_podcast_id'\)/u)

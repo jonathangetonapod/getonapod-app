@@ -36,6 +36,7 @@ function rollup(
     needsAttention: true,
     nextAction: { label: 'Do the work', detail: '', tone: 'work', target: null, ...nextAction },
     lastActivityAt,
+    pipelineStarted: false,
   }
 }
 
@@ -92,7 +93,7 @@ describe('quietLevel', () => {
   })
 
   it('reads as relative days', () => {
-    expect(relativeDays(null)).toBe('No activity yet')
+    expect(relativeDays(null)).toBe('No activity recorded yet')
     expect(relativeDays(0)).toBe('Today')
     expect(relativeDays(1)).toBe('Yesterday')
     expect(relativeDays(72)).toBe('72 days ago')
@@ -109,7 +110,7 @@ describe('setupItems', () => {
   } as ClientRollup['client']
 
   it('lists every gap with where it is fixed', () => {
-    expect(setupItems(client, true).map(({ key, done, tab }) => ({ key, done, tab }))).toEqual([
+    expect(setupItems(client, true, false).map(({ key, done, tab }) => ({ key, done, tab }))).toEqual([
       { key: 'profile', done: false, tab: 'profile' },
       { key: 'onboarding', done: true, tab: 'intake' },
       { key: 'dashboard', done: true, tab: 'sharing' },
@@ -117,7 +118,13 @@ describe('setupItems', () => {
     ])
   })
 
+  it('counts onboarding as done for a client already underway without an intake', () => {
+    const underway = { ...client, onboarding: null } as ClientRollup['client']
+    expect(setupItems(underway, true, true).find((item) => item.key === 'onboarding')).toMatchObject({ done: true, detail: 'Done outside intake' })
+    expect(setupItems(underway, true, false).find((item) => item.key === 'onboarding')).toMatchObject({ done: false, detail: 'Not started' })
+  })
+
   it('leaves onboarding uncounted for someone who cannot see it', () => {
-    expect(setupItems(client, false).find((item) => item.key === 'onboarding')?.done).toBeNull()
+    expect(setupItems(client, false, false).find((item) => item.key === 'onboarding')?.done).toBeNull()
   })
 })

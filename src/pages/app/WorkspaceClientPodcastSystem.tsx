@@ -49,7 +49,11 @@ interface WorkspaceClientPodcastSystemProps {
   platformWorkspaceId?: string
 }
 
-type ClientStatusFilter = 'active' | 'paused' | 'churned' | 'all'
+/** 'current' is every client still being served: active and paused, not churned. */
+type ClientStatusFilter = 'current' | 'active' | 'paused' | 'churned' | 'all'
+
+// Stages that mean the client is already underway, so a missing intake was done some other way.
+const STARTED_STAGES = new Set(['outreach', 'conversation', 'booked', 'recorded', 'published'])
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const ATTENTION_PREVIEW = 12
@@ -134,7 +138,7 @@ function buildClientRollup(
     }
   } else if (!client.profile.ready) {
     nextAction = {
-      label: 'Complete the guest profile',
+      label: 'Complete the reply brief',
       detail: `${client.profile.completed_fields} of ${client.profile.total_fields} host-ready context sections are complete.`,
       tone: 'work',
       target: { kind: 'record', tab: 'profile' },
@@ -142,7 +146,7 @@ function buildClientRollup(
   } else if (onboardingNeedsWork) {
     nextAction = {
       label: 'Move onboarding forward',
-      detail: `The current onboarding status is ${onboardingLabel(client).toLowerCase()}.`,
+      detail: `The current onboarding status is ${onboardingLabel(client, true).toLowerCase()}.`,
       tone: 'work',
       target: { kind: 'record', tab: 'intake' },
     }
@@ -224,10 +228,13 @@ function buildClientRollup(
     needsAttentionItems,
     needsAttention: client.status === 'active' && nextAction.tone !== 'clear',
     nextAction,
-    lastActivityAt: [client.last_activity_at, ...items.map((item) => item.last_activity_at)]
-      .filter((value): value is string => Boolean(value))
-      .sort()
-      .at(-1) || null,
+    // The server's client-level value counts only real events; folding in
+    // each item's last_activity_at brought back shortlist edits and backfills.
+    lastActivityAt: client.last_activity_at,
+    pipelineStarted: items.some((item) => (
+      Boolean(item.booking || item.legacy_outreach_at || item.campaign?.launched_at)
+      || STARTED_STAGES.has(item.stage)
+    )),
   }
 }
 
@@ -281,7 +288,7 @@ function AllClientsView({
 }) {
   const [portfolioView, setPortfolioView] = useState<'clients' | 'calendar'>('clients')
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<ClientStatusFilter>('active')
+  const [status, setStatus] = useState<ClientStatusFilter>('current')
   const [kpi, setKpi] = useState<PipelineKpi | null>(null)
   const [churnedOpen, setChurnedOpen] = useState(false)
   const [attentionExpanded, setAttentionExpanded] = useState(false)
@@ -303,14 +310,16 @@ function AllClientsView({
    * than taking a row's worth of attention each. Choosing Churned in the status
    * filter, or opening one by address, lists them in the main list instead.
    */
-  const churnedSeparately = !focusClientId && (status === 'active' || status === 'all')
-  const filtered = focusClientId ? matching : matching.filter((rollup) => (
-    status === 'all' ? rollup.client.status !== 'churned' : rollup.client.status === status
-  ))
+  const churnedSeparately = !focusClientId && (status === 'current' || status === 'active' || status === 'all')
+  const filtered = focusClientId ? matching : matching.filter((rollup) => {
+    if (status === 'all') return rollup.client.status !== 'churned'
+    if (status === 'current') return rollup.client.status === 'active' || rollup.client.status === 'paused'
+    return rollup.client.status === status
+  })
   const churned = churnedSeparately ? matching.filter((rollup) => rollup.client.status === 'churned') : []
   // A stat names its own clients, so it widens the status filter: Published
   // episodes counts paused clients too, and they would otherwise stay hidden
-  // behind the default Active filter. Churned still go in their own section.
+  // behind a narrower status filter. Churned still go in their own section.
   const chooseKpi = (next: PipelineKpi | null) => {
     setKpi(next)
     if (next) setStatus('all')
@@ -366,6 +375,7 @@ function AllClientsView({
                 <Select value={status} onValueChange={(value) => setStatus(value as ClientStatusFilter)}>
                   <SelectTrigger aria-label="Filter clients by status" className="sm:w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="current">Active and paused</SelectItem>
                     <SelectItem value="active">Active clients</SelectItem>
                     <SelectItem value="paused">Paused clients</SelectItem>
                     <SelectItem value="churned">Churned clients</SelectItem>
