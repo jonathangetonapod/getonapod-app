@@ -389,7 +389,7 @@ const NewIntakeDialog = ({
                 {!emailConfigured ? (
                   <p className="pl-6 text-xs text-amber-800">Email sending is not set up, so you will share the link yourself after creating it.</p>
                 ) : sendEmail && !data.workspace.client_contact_email ? (
-                  <p className="pl-6 text-xs text-muted-foreground">Replies will not reach you until you set a reply-to address in <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-branding`}>Settings</Link>.</p>
+                  <p className="pl-6 text-xs text-muted-foreground">Replies will not reach you until you <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-contact-email`}>add a reply-to email</Link>.</p>
                 ) : null}
               </div>
               <div className="space-y-2">

@@ -25,7 +25,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { bookingLinkFromPaste, schedulerName } from '@/lib/schedulerEmbed'
 import {
@@ -402,6 +402,25 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   // surface, so it owns the message alone.
 
   const data = staffQuery.data
+  /*
+   * Other pages link straight to a setting (#client-contact-email from the
+   * intake page's reply-to banner). The sections only exist once the
+   * workspace has loaded, and the router does not scroll to a hash on its
+   * own, so a link used to land at the top of Settings with nothing pointed
+   * out. Scroll to it once, and put the cursor in it when it is a field.
+   */
+  const location = useLocation()
+  const scrolledHashRef = useRef('')
+  const settingsLoaded = Boolean(data)
+  useEffect(() => {
+    const target = location.hash.slice(1)
+    if (!settingsLoaded || !target || scrolledHashRef.current === location.hash) return
+    const element = document.getElementById(decodeURIComponent(target))
+    if (!element) return
+    scrolledHashRef.current = location.hash
+    element.scrollIntoView({ block: 'center' })
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) element.focus({ preventScroll: true })
+  }, [location.hash, settingsLoaded])
   const staff = useMemo(
     () => (data?.members || []).filter((member) => member.status !== 'revoked'),
     [data?.members],
@@ -1086,7 +1105,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                 }))}
                                 placeholder="hello@youragency.com"
                               />
-                              <p className="text-xs text-muted-foreground">Set as the reply-to on shortlist and booking emails, so a client who replies reaches you. Leave it empty and replies go nowhere.</p>
+                              <p className="text-xs text-muted-foreground">Set as the reply-to on intake invitations, reminders, shortlist and booking emails, so a client who replies reaches you. Leave it empty and replies go nowhere.</p>
                             </div>
 
                             <div className="space-y-2">

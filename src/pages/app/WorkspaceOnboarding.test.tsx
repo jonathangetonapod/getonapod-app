@@ -224,8 +224,11 @@ describe('WorkspaceOnboarding', () => {
   it('asks for a reply-to address on the page when none is set', async () => {
     mockedList.mockResolvedValue(listData({ templates: [template], instances: [instance({})] }))
     renderPage()
-    expect(await screen.findByText(/Client replies have nowhere to go yet/u)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Set it in Settings' })).toHaveAttribute('href', '/app/settings#client-branding')
+    expect(await screen.findByText('Client replies are not reaching you')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Add reply-to email' })).toHaveAttribute('href', '/app/settings#client-contact-email')
+    fireEvent.click(screen.getByRole('button', { name: 'What does this mean?' }))
+    expect(await screen.findByRole('heading', { name: 'Where client replies go' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /Add reply-to email/u }).at(-1)).toHaveAttribute('href', '/app/settings#client-contact-email')
   })
 
   it('says when invitation emails cannot be sent and when delivery is unknown', async () => {

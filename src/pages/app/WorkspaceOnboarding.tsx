@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import IntakeTable, { IntakeFilterStrip, type IntakeFilter, type IntakeRowAction } from '@/components/onboarding/IntakeTable'
 import NewIntakeDialog, { type CreatedIntake } from '@/components/onboarding/NewIntakeDialog'
 import OnboardingReviewDialog, { type OnboardingReviewComment } from '@/components/onboarding/OnboardingReviewDialog'
+import ReplyToHelpDialog from '@/components/onboarding/ReplyToHelpDialog'
 import OnboardingTemplateBuilder, { type OnboardingTemplateDraft } from '@/components/onboarding/OnboardingTemplateBuilder'
 import { starterOnboardingTemplate } from '@/components/onboarding/starterTemplate'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -115,6 +116,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const [remindedIds, setRemindedIds] = useState<Set<string>>(() => new Set())
   const [clientSearch, setClientSearch] = useState('')
   const [replyToDismissed, setReplyToDismissed] = useState(() => readDismissed(workspaceId))
+  const [replyToHelpOpen, setReplyToHelpOpen] = useState(false)
 
   /*
    * The 30-second poll used to carry every client and every template
@@ -557,7 +559,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       }
     : undefined
   const hasDefaultTemplate = publishedTemplates.some((template) => template.is_default)
-  const settingsHref = `${workspaceBaseHref}/settings#client-branding`
+  // The reply-to field itself, which Settings scrolls to and focuses.
+  const replyToSettingsHref = `${workspaceBaseHref}/settings#client-contact-email`
 
   const emptyState = () => {
     if (!canManage) {
@@ -639,9 +642,13 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
             {canManage && emailConfigured && !data.workspace.client_contact_email && !replyToDismissed && (
               <Alert className="border-amber-200 bg-amber-50 pr-12 text-amber-900">
                 <MailWarning className="h-4 w-4" />
-                <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span>Client replies have nowhere to go yet. Set a reply-to address so clients can answer your invitation emails.</span>
-                  <Link className="font-medium underline underline-offset-2" to={settingsHref}>Set it in Settings</Link>
+                <AlertTitle>Client replies are not reaching you</AlertTitle>
+                <AlertDescription className="space-y-2">
+                  <p>If a client replies to an invitation email, the reply goes to a shared sending address you cannot read. Add your own email so replies land in your inbox.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button asChild size="sm" className="h-8"><Link to={replyToSettingsHref}>Add reply-to email</Link></Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-8 text-amber-900 hover:bg-amber-100 hover:text-amber-950" onClick={() => setReplyToHelpOpen(true)}>What does this mean?</Button>
+                  </div>
                 </AlertDescription>
                 <button type="button" className="absolute right-3 top-3 rounded p-1 text-amber-900/70 hover:text-amber-900" aria-label="Dismiss" onClick={dismissReplyToBanner}><X className="h-4 w-4" /></button>
               </Alert>
@@ -779,6 +786,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           <DialogFooter>{invitation && <Button variant="outline" asChild><a href={staffPreviewUrl(invitation.onboarding_url)} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open preview</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReplyToHelpDialog open={replyToHelpOpen} onOpenChange={setReplyToHelpOpen} workspaceName={data?.workspace.name ?? ''} settingsHref={replyToSettingsHref} />
 
       <OnboardingTemplateBuilder open={builderOpen} template={editingTemplate} workspaceName={data?.workspace.name ?? ''} workspaceLogoUrl={agencyLogoUrl} saving={templateMutation.isPending} onOpenChange={(open) => { setBuilderOpen(open); if (!open) setEditingTemplate(null) }} onSave={(draft, publish, makeDefault) => templateMutation.mutate({ draft, publish, makeDefault })} />
 
