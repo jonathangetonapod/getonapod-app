@@ -35,7 +35,10 @@ assert.match(service, /response\.workspace\.id\.toLowerCase\(\) !== canonicalWor
 // tabs it used to carry live on the client record, and the opportunity sheet
 // is shared between the two.
 assert.match(page, />Pipeline</u)
-assert.match(page, /Needs attention/u)
+// One action queue: Today is the only list of things to do, and the old
+// per-podcast "Needs attention" list does not come back beside it.
+assert.match(page, /<TodayQueue/u)
+assert.doesNotMatch(page, /Needs attention/u)
 assert.match(page, /Client record/u)
 assert.doesNotMatch(page, /Private workspace overview/u)
 assert.match(layout, /id: 'client-podcast-system', name: 'Pipeline'[\s\S]+enabled: true/u)

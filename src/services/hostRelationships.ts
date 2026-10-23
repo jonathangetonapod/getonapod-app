@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastName, withDecodedPodcastNames } from '@/lib/feedText'
 
 /** Outreach state the platform derives; never edited by hand. */
 export type HostRelationshipDerivedState =
@@ -135,9 +136,9 @@ export async function listHostRelationshipsPage(
     },
     'The relationship book could not be loaded.',
   )
-  const relationships = Array.isArray(data?.relationships)
-    ? data.relationships as HostRelationshipSummary[]
-    : []
+  const relationships = withDecodedPodcastNames(
+    Array.isArray(data?.relationships) ? data.relationships as HostRelationshipSummary[] : [],
+  )
   // An older function build sends neither totals nor paging: the page it
   // returned is then the whole known book.
   const total = typeof data?.total === 'number' ? count(data.total) : offset + relationships.length
@@ -185,7 +186,7 @@ export async function getHostRelationship(workspaceId: string, podcastId: string
     'The relationship could not be loaded.',
   )
   return {
-    relationship: data.relationship ?? null,
+    relationship: data.relationship ? withDecodedPodcastName(data.relationship) : null,
     derived: data.derived ?? null,
     clients: Array.isArray(data.clients) ? data.clients : [],
     events: Array.isArray(data.events) ? data.events : [],
@@ -359,7 +360,7 @@ export async function listOutreachSuppressions(workspaceId: string): Promise<Out
     { action: 'suppression-list', workspace_id: workspaceId.toLowerCase() },
     'The do-not-contact list could not be loaded.',
   )
-  return Array.isArray(data.suppressions) ? data.suppressions : []
+  return withDecodedPodcastNames(data.suppressions)
 }
 
 export async function addOutreachSuppression(

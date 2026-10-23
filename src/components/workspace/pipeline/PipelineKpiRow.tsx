@@ -26,6 +26,7 @@ export const PipelineKpiRow = ({
     <div className="-m-1 flex gap-2 overflow-x-auto p-1">
       {KPI_ORDER.map(({ kpi, icon: Icon, iconClassName }) => {
         const pressed = selected === kpi
+        const empty = counts[kpi] === 0
         return (
           <button
             key={kpi}
@@ -33,15 +34,18 @@ export const PipelineKpiRow = ({
             aria-pressed={pressed}
             onClick={() => onSelect(pressed ? null : kpi)}
             className={cn(
-              'flex min-w-[168px] flex-1 items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left transition-colors',
+              'flex min-w-[140px] flex-1 items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left transition-colors',
               'hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               pressed && 'border-primary bg-primary/5 ring-1 ring-primary',
+              // Nothing to see: still a filter, but it should not compete with the counts that matter.
+              empty && !pressed && 'bg-muted/30',
             )}
           >
-            <span className={cn('rounded-lg p-2', iconClassName)}><Icon className="h-4 w-4" aria-hidden="true" /></span>
+            <span className={cn('rounded-lg p-2', empty ? 'bg-muted text-muted-foreground' : iconClassName)}><Icon className="h-4 w-4" aria-hidden="true" /></span>
             <span className="min-w-0">
-              <span className="block text-xl font-bold leading-6">{counts[kpi].toLocaleString()}</span>
-              <span className="block truncate text-xs text-muted-foreground">{PIPELINE_KPI_LABELS[kpi]}</span>
+              <span className={cn('block text-xl font-bold leading-6', empty && 'font-semibold text-muted-foreground')}>{counts[kpi].toLocaleString()}</span>
+              {/* Wraps rather than truncates: "Upcoming recordin…" read as a typo. */}
+              <span className="block text-xs leading-4 text-muted-foreground">{PIPELINE_KPI_LABELS[kpi]}</span>
             </span>
           </button>
         )

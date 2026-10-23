@@ -368,6 +368,20 @@ describe('WorkspaceLayout', () => {
     expect(readWorkingClient(workspaceId)).toBeNull()
   })
 
+  // The Database's add buttons name the working client, so the header has to
+  // move the address the page reads, and keep the search and filters in it.
+  it('drives the Podcast Database address from the working client', async () => {
+    renderWithLocation('/app/podcast-database?q=founders')
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    chooseWorkingClient('Dallas Fontaine')
+    await waitFor(() => expect(combobox).toHaveTextContent('Dallas Fontaine'))
+    expect(screen.getByTestId('location')).toHaveTextContent(`/app/podcast-database?q=founders&client=${clientId}`)
+
+    chooseWorkingClient('All clients')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-database\?q=founders$/u)
+  })
+
   // A paused client's record links to their Pipeline. The header has to name
   // them, not drop to "All clients" while the page shows one client.
   it('names a paused client the Pipeline was opened on', async () => {
@@ -689,6 +703,43 @@ describe('WorkspaceLayout', () => {
 
     const link = await screen.findByRole('link', { name: 'Billing administration' })
     expect(link).toHaveAttribute('href', '/app/platform/billing')
+  })
+
+  // On a phone the header had no room for them, and the switcher ran off the screen.
+  it('moves a platform admin\'s workspace controls into the drawer on a phone', async () => {
+    vi.mocked(countWaitingJoinRequests).mockResolvedValue(2)
+    const original = window.matchMedia
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: (query: string) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) })
+    try {
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com', user_metadata: {} },
+        workspace: { id: workspaceId, name: 'Acme Workspace' },
+        membership: { full_name: 'Owner Name', role: 'owner' },
+        isPlatformAdmin: true,
+        signOut,
+      } as never)
+      renderLayout()
+
+      const drawer = document.getElementById('workspace-sidebar') as HTMLElement
+      expect(await within(drawer).findByRole('link', { name: /^Workspaces\b.*2 join requests waiting$/, hidden: true })).toHaveAttribute('href', '/app/manage-workspaces')
+      expect(within(drawer).getByRole('link', { name: 'Billing admin', hidden: true })).toHaveAttribute('href', '/app/platform/billing')
+      expect(within(drawer).getByText('Workspace switcher')).toBeInTheDocument()
+      const header = document.querySelector('header') as HTMLElement
+      expect(within(header).queryByRole('link', { name: 'Billing administration' })).not.toBeInTheDocument()
+      expect(within(header).queryByRole('link', { name: 'Manage workspaces' })).not.toBeInTheDocument()
+      expect(within(header).queryByText('Workspace switcher')).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: original })
+    }
   })
 
   // A red "2" on an icon says nothing on its own; the tooltip says what it counts.

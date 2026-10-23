@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastName, withDecodedPodcastNames } from '@/lib/feedText'
 
 /**
  * A value for a PostgREST filter string. Quoting it keeps a comma, dot or
@@ -199,7 +200,7 @@ export async function saveWorkspaceClientBooking(
   })
   if (error) throw await toFunctionError(error, 'The placement could not be saved.')
   if (!data?.booking) throw new Error('The placement could not be saved.')
-  return data.booking as WorkspaceClientBooking
+  return withDecodedPodcastName(data.booking as WorkspaceClientBooking)
 }
 
 export async function deleteWorkspaceClientBooking(
@@ -509,6 +510,7 @@ export async function getWorkspaceClientDetail(
   return {
     ...detail,
     public_base_url: linkOrigin(detail.public_base_url),
+    bookings: withDecodedPodcastNames(detail.bookings),
     client: {
       ...detail.client,
       ai_sdr_profile: sdrProfile,

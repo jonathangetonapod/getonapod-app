@@ -62,6 +62,22 @@ const STAGES: Array<{ value: Status; label: string; hint: string; dates: DateFie
   { value: 'cancelled', label: 'Cancelled', hint: 'It is not happening.', dates: [] },
 ]
 
+/*
+ * Moving forward from Scheduling carries the target date into the recording
+ * date when none was entered. Saving sends only the dates the new stage shows,
+ * so without this a placement moved to Booked or Recorded lost the only date
+ * it had and dropped off every calendar while still counting as booked.
+ */
+function withStage(current: BookingForm, status: Status): BookingForm {
+  const owned = (STAGES.find((option) => option.value === status) ?? STAGES[0]).dates
+  const carryTarget = owned.includes('recording_date') && !current.recording_date && Boolean(current.scheduled_date)
+  return {
+    ...current,
+    status,
+    recording_date: carryTarget ? current.scheduled_date : current.recording_date,
+  }
+}
+
 const DATE_LABELS: Record<DateField, string> = {
   scheduled_date: 'Target date',
   recording_date: 'Recording date',
@@ -314,7 +330,7 @@ export const ClientBookingDialog = ({
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    onClick={() => setForm((current) => ({ ...current, status: option.value }))}
+                    onClick={() => setForm((current) => withStage(current, option.value))}
                     className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                       selected
                         ? option.value === 'cancelled'

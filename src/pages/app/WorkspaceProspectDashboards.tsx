@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
+  ArrowLeft,
   ArrowUpRight,
   Building2,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   Copy,
   Eye,
@@ -53,19 +56,36 @@ import { cn } from '@/lib/utils'
 import { plural } from '@/lib/plural'
 import { decodeHtmlEntities, dedupeShows } from '@/lib/showText'
 import {
+  compareProspects,
+  findDuplicateProspect,
+  parseProspectFilter,
+  parseProspectSort,
+  prospectFilterCounts,
+  prospectMatchesFilter,
+  outcomeLabel,
+  prospectStage,
+  stageLabel,
+  type ProspectListFilter,
+  type ProspectSort,
+} from '@/lib/prospectStage'
+import { ProspectList } from '@/components/workspace/prospects/ProspectList'
+import { NEXT_STEP_ACTION_LABELS, nextStep, type NextStepAction } from '@/lib/prospectNextStep'
+import {
   archiveWorkspaceProspect,
   buildWorkspaceProspect,
   createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
+  markWorkspaceProspectLinkCopied,
   removeWorkspaceProspectPhoto,
   rotateWorkspaceProspectLink,
+  setWorkspaceProspectOutcome,
   setWorkspaceProspectPublished,
   updateWorkspaceProspect,
   updateWorkspaceProspectPodcast,
   uploadWorkspaceProspectPhoto,
   type ProspectCtaType,
-  type ProspectLifecycleStatus,
+  type ProspectOutcome,
   type ProspectReadiness,
   type ProspectShortlistPodcast,
   type WorkspaceProspect,
@@ -83,8 +103,6 @@ const BUILD_STALE_AFTER_MS = 10 * 60 * 1000
 interface WorkspaceProspectDashboardsProps {
   platformWorkspaceId?: string
 }
-
-type ProspectListFilter = 'all' | 'needs_action' | 'ready' | 'live' | 'viewed'
 
 interface ProspectProfileForm {
   name: string
@@ -166,41 +184,19 @@ function profileInputFor(form: ProspectProfileForm): WorkspaceProspectProfileInp
   }
 }
 
-function lifecycleLabel(status: ProspectLifecycleStatus): string {
-  const labels: Record<ProspectLifecycleStatus, string> = {
-    draft: 'Draft',
-    researching: 'Researching',
-    matching: 'Matching',
-    analyzing: 'Analyzing',
-    review: 'Needs review',
-    ready: 'Live',
-    sent: 'Sent',
-    viewed: 'Viewed',
-    engaged: 'Engaged',
-    converted: 'Converted',
-    failed: 'Build failed',
-    archived: 'Archived',
-  }
-  return labels[status]
-}
-
-function lifecycleClass(status: ProspectLifecycleStatus): string {
-  if (['ready', 'sent', 'viewed', 'engaged', 'converted'].includes(status)) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  }
-  if (['matching', 'analyzing', 'researching'].includes(status)) {
-    return 'border-blue-200 bg-blue-50 text-blue-700'
-  }
-  if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
-  if (status === 'review') return 'border-amber-200 bg-amber-50 text-amber-700'
-  return 'border-slate-200 bg-slate-50 text-slate-600'
-}
-
 function formatDate(value: string | null): string {
   if (!value) return 'Never'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown'
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+/** "Oct 20": for dates the reader knows are recent. */
+function formatShortDate(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
 }
 
 function formatNumber(value: number | null): string {
@@ -217,20 +213,64 @@ function readinessPercent(readiness: ProspectReadiness): number {
   ].filter(Boolean).length / 4) * 100)
 }
 
-function prospectMatchesFilter(prospect: WorkspaceProspect, filter: ProspectListFilter): boolean {
-  if (filter === 'needs_action') {
-    return !prospect.published_at
-      && (prospect.lifecycle_status === 'failed' || !prospect.readiness.publishable)
-  }
-  if (filter === 'ready') return !prospect.published_at && prospect.readiness.publishable
-  if (filter === 'live') return Boolean(prospect.published_at)
-  if (filter === 'viewed') return (prospect.view_count || 0) > 0
-  return true
-}
-
 function publicProspectUrl(slug: string): string {
   return `${window.location.origin}/prospect/${encodeURIComponent(slug)}`
 }
+
+const SORT_STORAGE_KEY = 'goap:prospect-studio:sort'
+
+/** The last sort chosen in this browser; storage can be unavailable, so it is optional. */
+function readStoredSort(): ProspectSort {
+  try {
+    return parseProspectSort(window.localStorage.getItem(SORT_STORAGE_KEY)) || 'last_activity'
+  } catch {
+    return 'last_activity'
+  }
+}
+
+function writeStoredSort(sort: ProspectSort): void {
+  try {
+    window.localStorage.setItem(SORT_STORAGE_KEY, sort)
+  } catch {
+    // A private window or blocked storage just means the choice is not remembered.
+  }
+}
+
+/** A summary number that is also the way to filter the list to it. */
+const StatButton = ({
+  pressed,
+  onClick,
+  icon,
+  value,
+  label,
+}: {
+  pressed: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  value: number
+  label: string
+}) => (
+  <button
+    type="button"
+    aria-pressed={pressed}
+    onClick={onClick}
+    className={cn(
+      'flex h-10 items-center gap-2 rounded-lg border px-3 text-left text-sm transition-colors',
+      pressed ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:border-primary/30',
+    )}
+  >
+    {icon}
+    <span className="font-semibold">{value.toLocaleString()}</span>
+    <span className="text-muted-foreground">{label}</span>
+  </button>
+)
+
+/** Previous or next within the current list; a plain disabled button at either end. */
+const StepLink = ({ label, to, children }: { label: string; to: string | null; children: React.ReactNode }) => (
+  to
+    ? <Button asChild variant="outline" size="icon" className="h-8 w-8"><Link to={to} aria-label={label}>{children}</Link></Button>
+    : <Button variant="outline" size="icon" className="h-8 w-8" disabled aria-label={label}>{children}</Button>
+)
 
 function ReadinessItem({ complete, children }: { complete: boolean; children: React.ReactNode }) {
   return (
@@ -254,7 +294,11 @@ function ProspectProfileDialog({
   onSubmit,
   onUploadPhoto,
   onRemovePhoto,
+  duplicate,
+  onOpenDuplicate,
 }: {
+  duplicate: { name: string; href: string } | null
+  onOpenDuplicate: () => void
   open: boolean
   editing: boolean
   form: ProspectProfileForm
@@ -288,6 +332,15 @@ function ProspectProfileDialog({
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="prospect-name">Name</Label>
                     <Input id="prospect-name" required autoFocus value={form.name} onChange={(event) => onChange({ ...form, name: event.target.value })} placeholder="Dallas Fontaine" />
+                    {duplicate && (
+                      <Alert className="border-amber-200 bg-amber-50">
+                        <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-amber-900">
+                          <span>A prospect named {duplicate.name} already exists.</span>
+                          <Link to={duplicate.href} className="font-medium underline" onClick={onOpenDuplicate}>Open existing</Link>
+                          <span className="text-amber-900/70">or create anyway.</span>
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                   <div className="space-y-3 rounded-xl border bg-muted/20 p-4 sm:col-span-2">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -447,69 +500,12 @@ function ProspectProfileDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={saving || !form.name.trim()}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editing ? 'Save profile' : 'Create draft'}
+              {editing ? 'Save profile' : duplicate ? 'Create anyway' : 'Create draft'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function ProspectListCard({
-  prospect,
-  selected,
-  onSelect,
-}: {
-  prospect: WorkspaceProspect
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'w-full rounded-xl border px-3 py-3 text-left transition-all',
-        selected
-          ? 'border-primary bg-primary/[0.04] shadow-sm ring-1 ring-primary/20'
-          : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{prospect.prospect_name}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {[prospect.prospect_title, prospect.prospect_company].filter(Boolean).join(' · ') || 'Profile draft'}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge variant="outline" className={cn('font-normal', lifecycleClass(prospect.lifecycle_status))}>
-            {lifecycleLabel(prospect.lifecycle_status)}
-          </Badge>
-          {/* Live and edited look identical without this. */}
-          {prospect.pending_review_at && (
-            <Badge variant="outline" className="border-amber-200 bg-amber-50 font-normal text-amber-700">
-              To review
-            </Badge>
-          )}
-        </div>
-      </div>
-      {/* The link is stored on the client, so a prospect page could not say
-          whether it converted without reading it back. */}
-      {prospect.linked_client && (
-        <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] font-medium text-emerald-700">
-          <UserCheck className="h-3 w-3 shrink-0" />
-          Became {prospect.linked_client.name}
-        </p>
-      )}
-      <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{plural(prospect.readiness.visible_count, 'match', 'matches')}</span>
-        <span>{plural(prospect.view_count, 'view')}</span>
-        <span>{readinessPercent(prospect.readiness)}% ready</span>
-      </div>
-      <Progress value={readinessPercent(prospect.readiness)} className="mt-1.5 h-1" />
-    </button>
   )
 }
 
@@ -665,7 +661,10 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const { user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const requestedProspectId = (searchParams.get('prospect') || '').toLowerCase()
+  const navigate = useNavigate()
+  const { prospectId: routeProspectId = '' } = useParams()
+  // Old links carried the prospect as ?prospect=; they are moved to the path below.
+  const legacyProspectId = (searchParams.get('prospect') || '').toLowerCase()
   const requestedShortlistView = searchParams.get('view') === 'all'
     ? 'all'
     : searchParams.get('view') === 'removed'
@@ -673,9 +672,17 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
       : searchParams.get('view') === 'new'
         ? 'new'
         : 'featured'
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [prospectFilter, setProspectFilter] = useState<ProspectListFilter>('all')
+  const selectedId = UUID_PATTERN.test(routeProspectId) ? routeProspectId.toLowerCase() : null
+  // Filter, sort and search live in the address so the way back from a
+  // prospect, and the previous and next buttons, keep the same list.
+  const prospectFilter = parseProspectFilter(searchParams.get('filter'))
+  const [storedSort, setStoredSort] = useState<ProspectSort>(readStoredSort)
+  const prospectSort = parseProspectSort(searchParams.get('sort')) || storedSort
+  const search = searchParams.get('q') || ''
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
+  const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false)
+  // A live prospect's finished checklists fold to one line; reopened per prospect.
+  const [liveDetailsOpen, setLiveDetailsOpen] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState<ProspectProfileForm>(emptyProfileForm)
@@ -701,27 +708,52 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   })
 
   const prospects = useMemo(() => listQuery.data?.dashboards || [], [listQuery.data?.dashboards])
-  const orderedProspects = useMemo(() => [...prospects].sort((left, right) => {
-    const publicationPriority = Number(Boolean(right.published_at)) - Number(Boolean(left.published_at))
-    if (publicationPriority !== 0) return publicationPriority
-    return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-  }), [prospects])
+  const workspaceBaseHref = isPlatformWorkspace
+    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
+    : '/app'
+  const prospectsHref = `${workspaceBaseHref}/prospects`
+  const listParams = new URLSearchParams()
+  if (prospectFilter !== 'all') listParams.set('filter', prospectFilter)
+  if (searchParams.get('sort')) listParams.set('sort', prospectSort)
+  if (search) listParams.set('q', search)
+  const listQueryString = listParams.toString() ? `?${listParams.toString()}` : ''
+  const listHref = `${prospectsHref}${listQueryString}`
+  const prospectHref = (id: string) => `${prospectsHref}/${encodeURIComponent(id)}${listQueryString}`
+
+  const updateListParams = (changes: Record<string, string | null>) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      for (const [key, value] of Object.entries(changes)) {
+        if (value) next.set(key, value)
+        else next.delete(key)
+      }
+      return next
+    }, { replace: true })
+  }
+  const setProspectFilter = (filter: ProspectListFilter) => {
+    updateListParams({ filter: filter === 'all' ? null : filter })
+    setCheckedIds(new Set())
+  }
+  const setProspectSort = (sort: ProspectSort) => {
+    setStoredSort(sort)
+    writeStoredSort(sort)
+    updateListParams({ sort })
+  }
+  const setSearch = (value: string) => updateListParams({ q: value || null })
+
   useEffect(() => {
-    if (orderedProspects.length === 0) {
-      setSelectedId(null)
-      return
-    }
-    if (requestedProspectId && orderedProspects.some((prospect) => prospect.id === requestedProspectId)) {
-      if (selectedId !== requestedProspectId) setSelectedId(requestedProspectId)
-      return
-    }
-    if (!selectedId || !orderedProspects.some((prospect) => prospect.id === selectedId)) {
-      setSelectedId(orderedProspects[0].id)
-    }
-  }, [orderedProspects, requestedProspectId, selectedId])
+    if (routeProspectId || !UUID_PATTERN.test(legacyProspectId)) return
+    const view = searchParams.get('view')
+    navigate(`${prospectsHref}/${legacyProspectId}${view ? `?view=${encodeURIComponent(view)}` : ''}`, { replace: true })
+  }, [legacyProspectId, navigate, prospectsHref, routeProspectId, searchParams])
+
+  // Each prospect opens on the tab its address names, Featured by default.
   useEffect(() => {
-    if (requestedProspectId) setShortlistView(requestedShortlistView)
-  }, [requestedProspectId, requestedShortlistView])
+    if (selectedId) setShortlistView(requestedShortlistView)
+  }, [selectedId, requestedShortlistView])
+  useEffect(() => {
+    setLiveDetailsOpen(false)
+  }, [selectedId])
 
   // Another prospect's shortlist has its own categories, so a filter carried
   // across would silently show nothing.
@@ -777,12 +809,9 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         queryClient.setQueryData(detailQueryKey, result.detail)
       }
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
-      // Selected through the address as well: a ?prospect= left over from the
-      // previous selection would otherwise win and snap the view back to it.
       if (result.created && result.prospect) {
-        setSelectedId(result.prospect.id)
         setShortlistView('featured')
-        setSearchParams({ prospect: result.prospect.id, view: 'featured' }, { replace: true })
+        navigate(prospectHref(result.prospect.id))
       }
       toast.success(result.created ? 'Prospect draft created.' : 'Prospect profile updated.')
     },
@@ -883,6 +912,26 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The private link could not be regenerated.'),
   })
 
+  // Recorded after the clipboard write succeeds; a failure here leaves the copy
+  // in place and only means the next-step advice will not know it was sent.
+  const linkCopiedMutation = useMutation({
+    mutationFn: (id: string) => markWorkspaceProspectLinkCopied(workspaceId, id),
+    onSuccess: async (nextDetail) => refreshAfterMutation(nextDetail),
+    onError: () => toast.error('The link was copied, but Studio could not record it.'),
+  })
+
+  const outcomeMutation = useMutation({
+    mutationFn: (outcome: ProspectOutcome | null) => {
+      if (!selected) throw new Error('Choose a prospect first.')
+      return setWorkspaceProspectOutcome(workspaceId, selected.id, outcome)
+    },
+    onSuccess: async (nextDetail, outcome) => {
+      await refreshAfterMutation(nextDetail)
+      toast.success(outcome ? `Marked ${outcomeLabel(outcome).toLowerCase()}.` : 'Outcome cleared.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The outcome could not be saved.'),
+  })
+
   const archiveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('Choose a prospect first.')
@@ -890,16 +939,40 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     },
     onSuccess: async () => {
       setArchiveDialogOpen(false)
-      setSelectedId(null)
+      navigate(listHref)
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
       toast.success('Prospect dashboard archived.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospect could not be archived.'),
   })
 
+  // One at a time through the existing action, so each archive is audited
+  // exactly as a single one is, and a failure part way says what landed.
+  const bulkArchiveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      let archived = 0
+      for (const id of ids) {
+        try {
+          await archiveWorkspaceProspect(workspaceId, id)
+          archived += 1
+        } catch (error) {
+          throw new Error(`${plural(archived, 'prospect')} archived before an error: ${error instanceof Error ? error.message : 'unknown error'}`)
+        }
+      }
+      return archived
+    },
+    onSuccess: (archived) => {
+      setBulkArchiveOpen(false)
+      setCheckedIds(new Set())
+      toast.success(`${plural(archived, 'prospect')} archived.`)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospects could not be archived.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: listQueryKey }),
+  })
+
   const filteredProspects = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return orderedProspects.filter((prospect) => {
+    return prospects.filter((prospect) => {
       if (!prospectMatchesFilter(prospect, prospectFilter)) return false
       if (!query) return true
       return [
@@ -908,15 +981,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         prospect.prospect_company,
         prospect.prospect_title,
       ].some((value) => value?.toLowerCase().includes(query))
-    })
-  }, [orderedProspects, prospectFilter, search])
-  const prospectFilterOptions: Array<{ value: ProspectListFilter; label: string; count: number }> = [
-    { value: 'all', label: 'All', count: prospects.length },
-    { value: 'needs_action', label: 'Needs action', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'needs_action')).length },
-    { value: 'ready', label: 'Ready', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'ready')).length },
-    { value: 'live', label: 'Live', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'live')).length },
-    { value: 'viewed', label: 'Viewed', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'viewed')).length },
-  ]
+    }).sort(compareProspects(prospectSort))
+  }, [prospects, prospectFilter, prospectSort, search])
+  const filterCounts = useMemo(() => prospectFilterCounts(prospects), [prospects])
+  const selectedPosition = selectedId ? filteredProspects.findIndex((prospect) => prospect.id === selectedId) : -1
+  const previousProspect = selectedPosition > 0 ? filteredProspects[selectedPosition - 1] : null
+  const nextProspect = selectedPosition >= 0 ? filteredProspects[selectedPosition + 1] ?? null : null
 
   const workspaceSummary = listQuery.data?.workspace
   const platformWorkspace = isPlatformWorkspace
@@ -927,9 +997,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
       }
     : undefined
-  const workspaceBaseHref = isPlatformWorkspace
-    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
-    : '/app'
   /*
    * A prospect has to be handed to the finder that knows what a prospect is.
    * The plain address is the one-click Smart Finder, and it reads ?client= and
@@ -972,10 +1039,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     if (!selected?.published_at) return
     try {
       await navigator.clipboard.writeText(publicProspectUrl(selected.slug))
-      toast.success('Private dashboard link copied.')
     } catch {
       toast.error('The link could not be copied. Open it and copy it from the address bar.')
+      return
     }
+    toast.success('Private dashboard link copied.')
+    if (canManage) linkCopiedMutation.mutate(selected.id)
   }
 
   /*
@@ -1069,17 +1138,15 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     setShortlistView(view)
     if (shortlistFiltered) clearShortlistFilters()
   }
-  const publishedCount = prospects.filter((prospect) => prospect.published_at).length
-  /*
-   * A live dashboard with unreviewed edits keeps a live lifecycle_status, so
-   * counting only 'review' and 'failed' meant the summary and the list looked
-   * identical whether or not anything was waiting. Nobody would find it without
-   * opening every prospect in turn.
-   */
-  const reviewCount = prospects.filter((prospect) => (
-    ['review', 'failed'].includes(prospect.lifecycle_status) || Boolean(prospect.pending_review_at)
-  )).length
+  const createDuplicate = profileDialogOpen && !editingProfile
+    ? findDuplicateProspect(prospects, profileForm.name, profileForm.email)
+    : null
+  const showStats = !selectedId && !listQuery.isLoading && !listQuery.error && prospects.length > 0
   const totalViews = prospects.reduce((total, prospect) => total + (prospect.view_count || 0), 0)
+  // Null when the server could not count recent views; the all-time total stands in.
+  const recentViews = prospects.some((prospect) => prospect.views_last_7_days === null || prospect.views_last_7_days === undefined)
+    ? null
+    : prospects.reduce((total, prospect) => total + (prospect.views_last_7_days || 0), 0)
   const buildInProgress = ['matching', 'analyzing'].includes(selected?.lifecycle_status || '')
   const buildStartedAt = selected?.build_started_at || selected?.updated_at || null
   const buildStale = buildInProgress && Boolean(buildStartedAt) && Date.now() - Date.parse(buildStartedAt) > BUILD_STALE_AFTER_MS
@@ -1087,43 +1154,46 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   // Said on every button that starts a build, and hidden once one is running.
   const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: listQuery.data?.ai_keys?.anthropic })}</span>
   const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending || rotateLinkMutation.isPending
-  const nextActionKind = !selected?.readiness.profile_ready
-    ? 'profile'
-    : selected.readiness.visible_count < 5
-      ? 'build'
-      : selected.readiness.analyzed_count < 5
-        ? 'analyze'
-        : !selected.readiness.cta_ready
-          ? 'cta'
-          : selected.published_at
-            ? 'share'
-            : 'publish'
-  const nextAction = {
-    profile: {
-      title: 'Complete the guest profile',
-      description: 'Add a focused positioning statement before researching podcast matches.',
-    },
-    build: {
-      title: 'Build the first shortlist',
-      description: 'Create at least five relevant opportunities from the approved profile.',
-    },
-    analyze: {
-      title: 'Complete the match analysis',
-      description: 'Refresh the shortlist so at least five opportunities have clear fit reasons.',
-    },
-    cta: {
-      title: 'Set the response path',
-      description: 'Choose exactly what this prospect should do after reviewing the dashboard.',
-    },
-    share: {
-      title: 'Share the private dashboard',
-      description: `Send ${selected?.prospect_name || 'the prospect'} the private link, then monitor views and feedback here.`,
-    },
-    publish: {
-      title: 'Publish the dashboard',
-      description: 'The profile and shortlist are ready. Make the private link available when the selection feels right.',
-    },
-  }[nextActionKind]
+  const advice = selected ? nextStep(selected) : null
+  const isLive = Boolean(selected?.published_at)
+  const showChecklists = !isLive || liveDetailsOpen
+  const reviewShortlist = () => {
+    browseShortlist('all')
+    document.getElementById('prospect-shortlist')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const stepHandlers: Record<NextStepAction, () => void> = {
+    edit_profile: openEdit,
+    build_shortlist: startBuild,
+    review_shortlist: reviewShortlist,
+    publish: () => publicationMutation.mutate(true),
+    copy_link: () => void copyLiveLink(),
+    open_live: () => { if (selected) openExternalUrl(publicProspectUrl(selected.slug)) },
+    find_podcasts: () => { if (selected) navigate(`${prospectFinderHref}?prospect=${encodeURIComponent(selected.id)}`) },
+    mark_call_booked: () => outcomeMutation.mutate('call_booked'),
+    mark_won: () => outcomeMutation.mutate('won'),
+    mark_lost: () => outcomeMutation.mutate('lost'),
+    reopen: () => outcomeMutation.mutate(null),
+  }
+  const stepIcons: Partial<Record<NextStepAction, React.ReactNode>> = {
+    edit_profile: <Pencil className="mr-2 h-4 w-4" />,
+    publish: <Send className="mr-2 h-4 w-4" />,
+    copy_link: <Copy className="mr-2 h-4 w-4" />,
+    open_live: <Eye className="mr-2 h-4 w-4" />,
+    find_podcasts: <Search className="mr-2 h-4 w-4" />,
+  }
+  const renderStepAction = (action: NextStepAction, primary: boolean) => {
+    const isBuild = action === 'build_shortlist'
+    const disabled = (isBuild || action === 'publish') ? mutating : outcomeMutation.isPending && action.startsWith('mark_')
+    return (
+      <Button key={action} variant={primary ? 'default' : 'outline'} disabled={disabled} onClick={stepHandlers[action]}>
+        {isBuild
+          ? (building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />)
+          : stepIcons[action]}
+        {NEXT_STEP_ACTION_LABELS[action]}
+        {isBuild && buildCost}
+      </Button>
+    )
+  }
   const studioSteps = selected
     ? [
         { label: 'Profile', complete: selected.readiness.profile_ready },
@@ -1145,90 +1215,112 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
+        {/* The summary sits in the header so the list starts higher: twelve
+            rows have to fit on a 764px screen without scrolling. */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-primary">
               <Sparkles className="h-4 w-4" />
               Lead magnet workspace
             </div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Prospect Studio</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground sm:text-base">
-              Turn a strong guest profile into a focused, share-ready podcast shortlist in minutes.
-            </p>
           </div>
-          {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {showStats && (
+              <div className="flex flex-wrap items-center gap-2">
+                <StatButton pressed={prospectFilter === 'all'} onClick={() => setProspectFilter('all')} icon={<Users className="h-4 w-4 text-blue-700" />} value={filterCounts.all} label={filterCounts.all === 1 ? 'open prospect' : 'open prospects'} />
+                <StatButton pressed={prospectFilter === 'live'} onClick={() => setProspectFilter('live')} icon={<Globe2 className="h-4 w-4 text-emerald-700" />} value={filterCounts.live} label="live" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatButton
+                        pressed={prospectFilter === 'live_viewed'}
+                        onClick={() => setProspectFilter('live_viewed')}
+                        icon={<Eye className="h-4 w-4 text-violet-700" />}
+                        value={recentViews ?? totalViews}
+                        label={recentViews === null ? (totalViews === 1 ? 'view' : 'views') : (recentViews === 1 ? 'view, last 7 days' : 'views, last 7 days')}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{plural(totalViews, 'view')} all time</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            {canManage && <Button className="shrink-0" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+          </div>
         </div>
 
         {listQuery.isLoading ? (
           <Card><CardContent className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></CardContent></Card>
         ) : listQuery.error ? (
           <Card><CardContent className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">Prospect Studio could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{listQuery.error instanceof Error ? listQuery.error.message : 'Check your connection and try again.'}</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Try again</Button></CardContent></Card>
+        ) : prospects.length === 0 && !selectedId ? (
+          <Card>
+            <CardContent className="flex min-h-72 flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="rounded-full bg-primary/10 p-4 text-primary"><Target className="h-7 w-7" /></div>
+              <div>
+                <p className="font-semibold">Create your first lead magnet</p>
+                <p className="mt-1 max-w-md text-sm text-muted-foreground">Turn a strong guest profile into a focused, share-ready podcast shortlist in minutes.</p>
+              </div>
+              {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+            </CardContent>
+          </Card>
+        ) : !selectedId ? (
+          <ProspectList
+            prospects={filteredProspects}
+            counts={filterCounts}
+            filter={prospectFilter}
+            onFilterChange={setProspectFilter}
+            sort={prospectSort}
+            onSortChange={setProspectSort}
+            search={search}
+            onSearchChange={setSearch}
+            hrefFor={prospectHref}
+            checkedIds={canManage ? checkedIds : undefined}
+            onCheckedIdsChange={canManage ? setCheckedIds : undefined}
+            onArchiveChecked={() => setBulkArchiveOpen(true)}
+          />
         ) : (
-          <>
-            <Card>
-              <CardContent className="flex flex-wrap items-center gap-x-7 gap-y-3 px-4 py-3">
-                <div className="flex items-center gap-2"><Users className="h-4 w-4 text-blue-700" /><span className="font-semibold">{prospects.length}</span><span className="text-sm text-muted-foreground">{prospects.length === 1 ? 'prospect' : 'prospects'}</span></div>
-                <div className="flex items-center gap-2"><Globe2 className="h-4 w-4 text-emerald-700" /><span className="font-semibold">{publishedCount}</span><span className="text-sm text-muted-foreground">live</span></div>
-                <div className="flex items-center gap-2"><Eye className="h-4 w-4 text-violet-700" /><span className="font-semibold">{totalViews}</span><span className="text-sm text-muted-foreground">{totalViews === 1 ? 'view' : 'views'}</span></div>
-                {reviewCount > 0 && <Badge variant="secondary" className="ml-auto">{reviewCount} to review</Badge>}
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 xl:h-[calc(100dvh-290px)] xl:min-h-[620px] xl:grid-cols-[320px_minmax(0,1fr)] xl:overflow-hidden">
-              <Card className="flex max-h-[420px] min-h-0 flex-col overflow-hidden xl:max-h-none">
-                <CardHeader className="p-4 pb-3">
-                  <CardTitle className="text-base">Prospects</CardTitle>
-                  <CardDescription>Find the prospects that need your attention.</CardDescription>
-                  <div className="relative pt-2">
-                    <Search className="absolute left-3 top-1/2 mt-1 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search prospects" className="pl-9" />
+          /*
+           * Two panes from xl up, as before, now driven by the address: the
+           * list beside the open prospect. Below xl the prospect has the page
+           * to itself, with a way back to the list and through it.
+           */
+          <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)] xl:items-start">
+            <aside className="hidden xl:sticky xl:top-4 xl:block xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
+              <ProspectList
+                compact
+                prospects={filteredProspects}
+                counts={filterCounts}
+                filter={prospectFilter}
+                onFilterChange={setProspectFilter}
+                sort={prospectSort}
+                onSortChange={setProspectSort}
+                search={search}
+                onSearchChange={setSearch}
+                hrefFor={prospectHref}
+                selectedId={selectedId}
+              />
+            </aside>
+            <div className="min-w-0 space-y-4">
+              <nav aria-label="Prospect navigation" className="flex items-center justify-between gap-2">
+                <Button asChild variant="ghost" size="sm" className="-ml-2">
+                  <Link to={listHref}><ArrowLeft className="mr-1.5 h-4 w-4" />All prospects</Link>
+                </Button>
+                {selectedPosition >= 0 && (
+                  <div className="flex items-center gap-1">
+                    <span className="mr-1 text-sm text-muted-foreground">{selectedPosition + 1} of {filteredProspects.length}</span>
+                    <StepLink label="Previous prospect" to={previousProspect ? prospectHref(previousProspect.id) : null}><ChevronLeft className="h-4 w-4" /></StepLink>
+                    <StepLink label="Next prospect" to={nextProspect ? prospectHref(nextProspect.id) : null}><ChevronRight className="h-4 w-4" /></StepLink>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1" aria-label="Filter prospects">
-                    {prospectFilterOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={prospectFilter === option.value}
-                        onClick={() => setProspectFilter(option.value)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                          prospectFilter === option.value
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                        )}
-                      >
-                        {option.label} <span className="ml-1 opacity-75">{option.count}</span>
-                      </button>
-                    ))}
-                  </div>
-                </CardHeader>
-                <CardContent className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-                  {prospects.length === 0 ? (
-                    <div className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-6 text-center">
-                      <div className="rounded-full bg-primary/10 p-4 text-primary"><Target className="h-7 w-7" /></div>
-                      <div><p className="font-semibold">Create your first lead magnet</p><p className="mt-1 text-sm text-muted-foreground">Add a profile, let Scout build the shortlist, review it, and publish.</p></div>
-                      {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
-                    </div>
-                  ) : filteredProspects.length === 0 ? (
-                    <div className="py-12 text-center text-sm text-muted-foreground">
-                      {search ? `No prospects match “${search}”.` : 'No prospects in this view.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {filteredProspects.map((prospect) => <ProspectListCard key={prospect.id} prospect={prospect} selected={prospect.id === selectedId} onSelect={() => { setSelectedId(prospect.id); setShortlistView('featured'); setSearchParams({ prospect: prospect.id, view: 'featured' }, { replace: true }) }} />)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {!selected ? (
-                <Card><CardContent className="flex min-h-[520px] items-center justify-center text-center text-muted-foreground">Choose a prospect to get started.</CardContent></Card>
-              ) : detailQuery.isLoading ? (
+                )}
+              </nav>
+              {detailQuery.isLoading ? (
                 <Card><CardContent className="flex min-h-[520px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></CardContent></Card>
-              ) : detailQuery.error || !detail ? (
-                <Card><CardContent className="flex min-h-[520px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">This prospect could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{detailQuery.error instanceof Error ? detailQuery.error.message : 'Refresh and try again.'}</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>Try again</Button></CardContent></Card>
+              ) : detailQuery.error || !detail || !selected ? (
+                <Card><CardContent className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">This prospect could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{detailQuery.error instanceof Error ? detailQuery.error.message : 'It may have been archived. Go back to the list and try again.'}</p><div className="flex gap-2"><Button variant="outline" onClick={() => void detailQuery.refetch()}>Try again</Button><Button asChild variant="ghost"><Link to={listHref}>All prospects</Link></Button></div></CardContent></Card>
               ) : (
-                <div className="min-h-0 space-y-4 xl:overflow-y-auto xl:overscroll-contain xl:pr-2">
+                <div className="space-y-4">
                   <Card className="overflow-hidden">
                     <div className="border-b bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 px-4 py-4 text-white sm:px-5">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1241,7 +1333,26 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <h2 className="truncate text-xl font-bold sm:text-2xl">{selected.prospect_name}</h2>
-                              <Badge variant="outline" className={cn('border-white/20 bg-white/10 text-white', selected.published_at && 'border-emerald-400/40 bg-emerald-400/15 text-emerald-100')}>{lifecycleLabel(selected.lifecycle_status)}</Badge>
+                              <Badge variant="outline" className={cn('border-white/20 bg-white/10 text-white', selected.published_at && 'border-emerald-400/40 bg-emerald-400/15 text-emerald-100')}>{stageLabel(prospectStage(selected))}</Badge>
+                              {canManage ? (
+                                <Select
+                                  value={selected.outcome ?? 'none'}
+                                  onValueChange={(value) => outcomeMutation.mutate(value === 'none' ? null : value as ProspectOutcome)}
+                                  disabled={outcomeMutation.isPending}
+                                >
+                                  <SelectTrigger aria-label="Outcome" className="h-6 w-auto gap-1 rounded-full border-white/20 bg-white/10 px-2.5 text-xs text-white">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No outcome</SelectItem>
+                                    <SelectItem value="call_booked">Call booked</SelectItem>
+                                    <SelectItem value="won">Won</SelectItem>
+                                    <SelectItem value="lost">Lost</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : selected.outcome && (
+                                <Badge variant="outline" className="border-white/20 bg-white/10 text-white">{outcomeLabel(selected.outcome)}</Badge>
+                              )}
                             </div>
                             <p className="mt-1 truncate text-sm text-white/75">{[selected.prospect_title, selected.prospect_company].filter(Boolean).join(' · ') || 'Prospect dashboard'}</p>
                             <p className="mt-0.5 text-xs text-white/50">Updated {formatDate(selected.updated_at)}</p>
@@ -1260,6 +1371,21 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                       </div>
                     </div>
                     <CardContent className="p-0">
+                      {/* Four green steps and a full checklist say nothing new
+                          once a dashboard is live, so they fold to one line. */}
+                      {isLive && (
+                        <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5 text-sm sm:px-5">
+                          <span className="flex items-center gap-2 text-muted-foreground">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            Published {formatShortDate(selected.published_at)} · {readinessPercent(selected.readiness)}% ready
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" aria-expanded={liveDetailsOpen} onClick={() => setLiveDetailsOpen((open) => !open)}>
+                            {liveDetailsOpen ? 'Hide details' : 'Show details'}
+                            <ChevronDown className={cn('ml-1 h-3.5 w-3.5 transition-transform', liveDetailsOpen && 'rotate-180')} />
+                          </Button>
+                        </div>
+                      )}
+                      {showChecklists && (
                       <div className="border-b px-4 py-3 sm:px-5">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Publishing progress</p>
                         <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1279,26 +1405,27 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           })}
                         </ol>
                       </div>
+                      )}
 
-                      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                      <div className={cn('grid gap-4 p-4', showChecklists && 'lg:grid-cols-[minmax(0,1fr)_260px]')}>
                         <div className="rounded-xl border bg-muted/20 p-4">
                           <div className="flex items-start gap-3">
                             <div className="rounded-lg bg-primary/10 p-2 text-primary"><Target className="h-4 w-4" /></div>
                             <div className="min-w-0">
                               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
-                              <h3 className="mt-1 font-semibold">{nextAction.title}</h3>
-                              <p className="mt-1 text-sm text-muted-foreground">{nextAction.description}</p>
+                              <h3 className="mt-1 font-semibold">{advice.title}</h3>
+                              <p className="mt-1 text-sm text-muted-foreground">{advice.body}</p>
                             </div>
                           </div>
 
-                          {canManage && (
+                          {canManage && (advice.primary || advice.secondary) && (
                             <div className="mt-4 flex flex-wrap gap-2">
-                              {(nextActionKind === 'profile' || nextActionKind === 'cta') && <Button onClick={openEdit}><Pencil className="mr-2 h-4 w-4" />{nextActionKind === 'cta' ? 'Edit next step' : 'Edit profile'}</Button>}
-                              {(nextActionKind === 'build' || nextActionKind === 'analyze') && <Button disabled={mutating} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{nextActionKind === 'build' ? 'Build shortlist' : 'Analyze matches'}{buildCost}</Button>}
-                              {nextActionKind === 'publish' && <Button disabled={mutating} onClick={() => publicationMutation.mutate(true)}><Send className="mr-2 h-4 w-4" />Publish dashboard</Button>}
-                              {nextActionKind === 'share' && <Button onClick={() => void copyLiveLink()}><Copy className="mr-2 h-4 w-4" />Copy private link</Button>}
-                              {nextActionKind === 'share' && <Button variant="outline" onClick={() => openExternalUrl(publicProspectUrl(selected.slug))}><Eye className="mr-2 h-4 w-4" />Open live</Button>}
+                              {advice.primary && renderStepAction(advice.primary, true)}
+                              {advice.secondary && renderStepAction(advice.secondary, false)}
                             </div>
+                          )}
+                          {isLive && selected.sent_at && (
+                            <p className="mt-2 text-xs text-muted-foreground">Link copied {formatShortDate(selected.sent_at)}</p>
                           )}
                           {building && <p className="mt-2 text-xs text-muted-foreground">Usually 3 to 6 minutes.</p>}
 
@@ -1350,6 +1477,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           {buildStale && <p className="mt-4 text-sm text-muted-foreground">The previous build did not finish. Build the shortlist again to retry.</p>}
                         </div>
 
+                        {showChecklists && (
                         <div className="rounded-xl border bg-muted/30 p-3">
                           <div className="flex items-center justify-between"><p className="font-medium">Publish readiness</p><span className="text-sm font-semibold">{readinessPercent(selected.readiness)}%</span></div>
                           <Progress value={readinessPercent(selected.readiness)} className="my-2.5 h-1.5" />
@@ -1360,6 +1488,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                             <ReadinessItem complete={selected.readiness.cta_ready}>Next step configured</ReadinessItem>
                           </div>
                         </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1400,7 +1529,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                     </details>
                   </Card>
 
-                  <Card>
+                  <Card id="prospect-shortlist" className="scroll-mt-4">
                     <CardHeader className="p-4 pb-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div><CardTitle className="flex items-center gap-2"><Mic2 className="h-5 w-5" />Podcast shortlist</CardTitle><CardDescription>{visiblePodcasts.length > 0 ? `${visiblePodcasts.length} approved opportunities. Start with the strongest featured matches.` : 'Build the shortlist once the profile is ready.'}</CardDescription></div>
@@ -1520,7 +1649,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -1537,7 +1666,24 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         onSubmit={() => saveMutation.mutate()}
         onUploadPhoto={(photo) => photoMutation.mutate({ photo })}
         onRemovePhoto={() => photoMutation.mutate({})}
+        duplicate={createDuplicate ? { name: createDuplicate.prospect_name, href: prospectHref(createDuplicate.id) } : null}
+        onOpenDuplicate={() => setProfileDialogOpen(false)}
       />
+
+      <Dialog open={bulkArchiveOpen} onOpenChange={(open) => { if (!open && !bulkArchiveMutation.isPending) setBulkArchiveOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive {plural(checkedIds.size, 'prospect')}?</DialogTitle>
+            <DialogDescription>Their private links stop working. The prospects and their shortlists stay in the database for reporting.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkArchiveOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={bulkArchiveMutation.isPending} onClick={() => bulkArchiveMutation.mutate(Array.from(checkedIds))}>
+              {bulkArchiveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rebuildDialogOpen} onOpenChange={(open) => { if (!open && !building) setRebuildDialogOpen(false) }}>
         <DialogContent>

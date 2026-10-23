@@ -1,10 +1,41 @@
 import type { ClientPodcastSystemClient, ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 
-/** Where a client's next action is done: a shortlist row, or a tab on the client record. */
-export type NextActionTarget =
+/** Where a queue action is done: a shortlist row, a tab on the client record, or another page. */
+export type ActionTarget =
   | { kind: 'item'; itemId: string }
-  | { kind: 'record'; tab: 'profile' | 'shortlist' | 'intake' }
-  | null
+  | { kind: 'record'; tab: 'profile' | 'shortlist' | 'intake'; filter?: 'not_reviewed' }
+  | { kind: 'href'; href: string }
+
+/*
+ * What kind of work an action is, which is also its place in the queue: an
+ * outreach issue blocks everything after it, a recorded episode is waiting on
+ * one fact, a booked recording has a date coming, a host reply has a person
+ * waiting, and a review batch waits on the client. Client-level work comes last.
+ */
+export type ActionKind = 'issue' | 'recorded' | 'booked' | 'conversation' | 'review' | 'client'
+
+const KIND_RANK: Record<ActionKind, number> = {
+  issue: 0,
+  recorded: 1,
+  booked: 2,
+  conversation: 3,
+  review: 4,
+  client: 5,
+}
+
+export interface PipelineAction {
+  /** Stable across renders, so the card chip can find its row. */
+  id: string
+  kind: ActionKind
+  client: ClientPodcastSystemClient
+  title: string
+  detail: string
+  /** The button: a verb and a count, never "Open". */
+  verb: string
+  /** Only a true blocker is drawn red. */
+  blocking: boolean
+  target: ActionTarget
+}
 
 export interface ClientRollup {
   client: ClientPodcastSystemClient
@@ -16,17 +47,171 @@ export interface ClientRollup {
   placements: number
   published: number
   upcomingRecordings: number
-  needsAttentionItems: ClientPodcastSystemItem[]
+  /** Every queue row this client owns, most pressing first. Empty unless active. */
+  actions: PipelineAction[]
   needsAttention: boolean
-  nextAction: {
-    label: string
-    detail: string
-    tone: 'urgent' | 'work' | 'clear'
-    target: NextActionTarget
-  }
   lastActivityAt: string | null
   /** Outreach, a booking or a later stage exists, so the client is underway. */
   pipelineStarted: boolean
+}
+
+// Stages that mean the client is already underway, so a missing intake was done some other way.
+const STARTED_STAGES = new Set(['outreach', 'conversation', 'booked', 'recorded', 'published'])
+
+const plural = (count: number, one: string, many: string) => `${count.toLocaleString()} ${count === 1 ? one : many}`
+
+/** The client's first name as a possessive: "Dallas's". */
+export function possessive(name: string): string {
+  return `${name.trim().split(/\s+/u)[0] || name}'s`
+}
+
+/*
+ * The work on one active client that needs a person today. Prep work that
+ * moves at the operator's own pace (finding an email, finishing a pitch,
+ * launching outreach) is not here: it lives behind the Approved count on the
+ * card. Reply brief and onboarding gaps live on the Setup chip. Listing them
+ * again here was how the page came to say the same thing four times.
+ */
+export function clientActions(
+  client: ClientPodcastSystemClient,
+  items: ClientPodcastSystemItem[],
+  baseHref: string,
+): PipelineAction[] {
+  if (client.status !== 'active') return []
+  const open = items.filter((item) => !item.terminal)
+  const actions: PipelineAction[] = []
+  const issues = open.filter((item) => item.has_conflict || item.campaign?.status === 'failed')
+  if (issues.length > 0) {
+    actions.push({
+      id: `${client.id}:issue`,
+      kind: 'issue',
+      client,
+      title: 'Resolve an outreach history issue',
+      detail: `${plural(issues.length, 'podcast record needs', 'podcast records need')} review before more outreach.`,
+      verb: `Review ${plural(issues.length, 'record', 'records')}`,
+      blocking: true,
+      target: { kind: 'item', itemId: issues[0].id },
+    })
+  }
+  const flagged = new Set(issues.map((item) => item.id))
+  for (const item of open) {
+    if (flagged.has(item.id) || item.stage !== 'recorded') continue
+    actions.push({
+      id: `${client.id}:recorded:${item.id}`,
+      kind: 'recorded',
+      client,
+      title: item.podcast.name,
+      detail: item.booking?.publish_date
+        ? `Recorded. Add the episode link once it is live on ${formattedDate(item.booking.publish_date)}.`
+        : 'Recorded. Confirm when the episode goes live.',
+      verb: item.booking?.publish_date ? 'Add episode link' : 'Confirm publish date',
+      blocking: false,
+      target: { kind: 'item', itemId: item.id },
+    })
+  }
+  for (const item of open) {
+    if (flagged.has(item.id) || item.stage !== 'booked' || item.booking?.prep_sent) continue
+    const recording = item.booking?.recording_date || item.booking?.scheduled_date
+    actions.push({
+      id: `${client.id}:booked:${item.id}`,
+      kind: 'booked',
+      client,
+      title: item.podcast.name,
+      detail: recording ? `Booked for ${formattedDate(recording)}. Prep is not marked sent.` : 'Booked. Prep is not marked sent.',
+      verb: 'Prep the client',
+      blocking: false,
+      target: { kind: 'item', itemId: item.id },
+    })
+  }
+  const conversations = open.filter((item) => !flagged.has(item.id) && item.stage === 'conversation')
+  if (conversations.length > 0) {
+    actions.push({
+      id: `${client.id}:conversation`,
+      kind: 'conversation',
+      client,
+      title: conversations.length === 1 ? conversations[0].podcast.name : 'Hosts waiting on a reply',
+      detail: conversations.length === 1
+        ? 'The host replied.'
+        : `${plural(conversations.length, 'host has', 'hosts have')} replied.`,
+      verb: `Reply to ${plural(conversations.length, 'host', 'hosts')}`,
+      blocking: false,
+      // One reply opens where it is answered; several are read in the inbox.
+      target: conversations.length === 1
+        ? { kind: 'item', itemId: conversations[0].id }
+        : { kind: 'href', href: `${baseHref}/master-inbox?client=${encodeURIComponent(client.id)}` },
+    })
+  }
+  const awaitingReview = open.filter((item) => !flagged.has(item.id) && item.stage === 'awaiting_review')
+  if (awaitingReview.length > 0) {
+    actions.push({
+      id: `${client.id}:review`,
+      kind: 'review',
+      client,
+      title: `${plural(awaitingReview.length, 'podcast', 'podcasts')} waiting on ${possessive(client.name)} review`,
+      detail: 'One batch on the client’s approval list.',
+      verb: 'Open review batch',
+      blocking: false,
+      target: { kind: 'record', tab: 'shortlist', filter: 'not_reviewed' },
+    })
+  }
+  if (client.onboarding?.status === 'submitted') {
+    actions.push({
+      id: `${client.id}:onboarding`,
+      kind: 'client',
+      client,
+      title: 'Onboarding submitted',
+      detail: 'The client sent their intake for review.',
+      verb: 'Review onboarding',
+      blocking: false,
+      target: { kind: 'record', tab: 'intake' },
+    })
+  }
+  if (items.length === 0) {
+    actions.push({
+      id: `${client.id}:first-podcasts`,
+      kind: 'client',
+      client,
+      title: 'No podcasts yet',
+      detail: 'Start a focused shortlist for this client.',
+      verb: 'Add podcasts',
+      blocking: false,
+      target: { kind: 'record', tab: 'shortlist' },
+    })
+  }
+  return actions
+}
+
+export function buildClientRollup(
+  client: ClientPodcastSystemClient,
+  allItems: ClientPodcastSystemItem[],
+  today: string,
+  baseHref: string,
+): ClientRollup {
+  const items = allItems.filter((item) => item.client.id === client.id)
+  const open = items.filter((item) => !item.terminal)
+  const actions = clientActions(client, items, baseHref)
+  return {
+    client,
+    items,
+    awaitingReview: open.filter((item) => item.stage === 'awaiting_review').length,
+    preparation: open.filter((item) => ['approved', 'contact_needed', 'research_needed', 'ready'].includes(item.stage)).length,
+    activeOutreach: open.filter((item) => item.stage === 'outreach').length,
+    conversations: open.filter((item) => item.stage === 'conversation').length,
+    placements: items.filter((item) => item.booking && item.booking.status !== 'cancelled').length,
+    published: items.filter((item) => item.stage === 'published').length,
+    upcomingRecordings: open.filter((item) => (
+      Boolean(item.booking?.recording_date) && item.booking!.recording_date! >= today
+    )).length,
+    actions,
+    needsAttention: actions.length > 0,
+    // The server's client-level value counts only real events; folding in
+    // each item's last_activity_at brought back shortlist edits and backfills.
+    lastActivityAt: client.last_activity_at,
+    pipelineStarted: items.some((item) => (
+      Boolean(item.booking || item.legacy_outreach_at || item.campaign?.launched_at)
+      || STARTED_STAGES.has(item.stage)
+    )),
+  }
 }
 
 /** The portfolio stats double as filters on the client list. */
@@ -43,86 +228,73 @@ export const PIPELINE_KPI_LABELS: Record<PipelineKpi, string> = {
 export function matchesKpi(rollup: ClientRollup, kpi: PipelineKpi): boolean {
   const active = rollup.client.status === 'active'
   if (kpi === 'active') return active
-  if (kpi === 'attention') return active && rollup.needsAttention
+  if (kpi === 'attention') return rollup.needsAttention
   if (kpi === 'conversations') return active && rollup.conversations > 0
   if (kpi === 'recordings') return active && rollup.upcomingRecordings > 0
   return rollup.published > 0
 }
 
-export function kpiCounts(rollups: ClientRollup[]): Record<PipelineKpi, number> {
+/** "Need attention" is the queue's own length, so the two can never disagree. */
+export function kpiCounts(rollups: ClientRollup[], queue: PipelineAction[]): Record<PipelineKpi, number> {
   const active = rollups.filter((rollup) => rollup.client.status === 'active')
   return {
     active: active.length,
-    attention: active.filter((rollup) => rollup.needsAttention).length,
+    attention: queue.length,
     conversations: active.reduce((sum, rollup) => sum + rollup.conversations, 0),
     recordings: active.reduce((sum, rollup) => sum + rollup.upcomingRecordings, 0),
     published: rollups.reduce((sum, rollup) => sum + rollup.published, 0),
   }
 }
 
-/*
- * How pressing a next action is. There is no due date on a next action yet,
- * so this reads the existing tone: an outreach conflict blocks all further
- * work, other urgent actions (host replies, an unprepared recording) are due
- * soon, and everything else is routine.
- * TODO: switch to real due dates (overdue / due this week) once next actions carry one.
- */
-export type ActionUrgency = 'blocking' | 'soon' | 'routine'
-
-export function actionUrgency(rollup: ClientRollup): ActionUrgency {
-  const { tone, target } = rollup.nextAction
-  if (tone !== 'urgent') return 'routine'
-  const item = target?.kind === 'item' ? rollup.items.find((candidate) => candidate.id === target.itemId) : null
-  if (item && (item.has_conflict || item.campaign?.status === 'failed')) return 'blocking'
-  return 'soon'
-}
-
-const URGENCY_RANK: Record<ActionUrgency, number> = { blocking: 0, soon: 1, routine: 2 }
-
-/** Clients with a pending next action, most pressing first, then the longest untouched. */
-export function actionQueue(rollups: ClientRollup[]): ClientRollup[] {
+/** Every action across clients: issues, recorded, booked, replies, review batches, then client work. */
+export function actionQueue(rollups: ClientRollup[]): PipelineAction[] {
+  const lastActivity = new Map(rollups.map((rollup) => [rollup.client.id, rollup.lastActivityAt || '']))
   return rollups
-    .filter((rollup) => rollup.client.status === 'active' && rollup.nextAction.tone !== 'clear')
+    .flatMap((rollup) => rollup.actions)
     .sort((left, right) => (
-      URGENCY_RANK[actionUrgency(left)] - URGENCY_RANK[actionUrgency(right)]
-      || (left.lastActivityAt || '').localeCompare(right.lastActivityAt || '')
+      KIND_RANK[left.kind] - KIND_RANK[right.kind]
+      // Within a kind, the client left longest goes first.
+      || (lastActivity.get(left.client.id) || '').localeCompare(lastActivity.get(right.client.id) || '')
       || left.client.name.localeCompare(right.client.name)
+      || left.title.localeCompare(right.title)
     ))
 }
 
+/** The rank of a client's most pressing action, for ordering the client list. */
+export function topActionRank(rollup: ClientRollup): number {
+  return rollup.actions.reduce((best, action) => Math.min(best, KIND_RANK[action.kind]), Number.POSITIVE_INFINITY)
+}
+
+export function actionHref(action: PipelineAction, baseHref: string): string | null {
+  const { target } = action
+  if (target.kind === 'href') return target.href
+  if (target.kind === 'record') {
+    const params = new URLSearchParams({ tab: target.tab })
+    if (target.filter) params.set('filter', target.filter)
+    return `${baseHref}/clients/${encodeURIComponent(action.client.id)}?${params.toString()}`
+  }
+  return null
+}
+
 export interface FunnelStage {
+  key: 'podcasts' | 'review' | 'approved' | 'outreach' | 'replies' | 'placements'
   label: string
   count: number
+  /** That client's list, filtered to this stage. */
+  href: string
 }
 
-export function funnelStages(rollup: ClientRollup): FunnelStage[] {
+export function funnelStages(rollup: ClientRollup, baseHref: string): FunnelStage[] {
+  const id = encodeURIComponent(rollup.client.id)
+  const record = `${baseHref}/clients/${id}`
   return [
-    { label: 'Podcasts', count: rollup.items.length },
-    { label: 'To review', count: rollup.awaitingReview },
-    { label: 'Approved', count: rollup.preparation },
-    { label: 'Outreach', count: rollup.activeOutreach },
-    { label: 'Replies', count: rollup.conversations },
-    { label: 'Placements', count: rollup.placements },
+    { key: 'podcasts', label: 'Podcasts', count: rollup.items.length, href: `${record}?tab=shortlist` },
+    { key: 'review', label: 'To review', count: rollup.awaitingReview, href: `${record}?tab=shortlist&filter=not_reviewed` },
+    { key: 'approved', label: 'Approved', count: rollup.preparation, href: `${record}?tab=shortlist&filter=approved` },
+    { key: 'outreach', label: 'Outreach', count: rollup.activeOutreach, href: `${baseHref}/client-campaigns/${id}` },
+    { key: 'replies', label: 'Replies', count: rollup.conversations, href: `${baseHref}/master-inbox?client=${id}` },
+    { key: 'placements', label: 'Placements', count: rollup.placements, href: `${record}?tab=placements` },
   ]
-}
-
-/*
- * The stage where the count falls furthest below the one before it. The
- * counts are where podcasts sit now, not how many passed through, so this is
- * a pointer rather than a conversion rate. "Podcasts" is the total of every
- * stage, so the comparison starts at To review → Approved.
- */
-export function bottleneckIndex(stages: FunnelStage[]): number | null {
-  let worst: number | null = null
-  let worstDrop = 0
-  for (let index = 2; index < stages.length; index += 1) {
-    const drop = stages[index - 1].count - stages[index].count
-    if (drop > worstDrop) {
-      worstDrop = drop
-      worst = index
-    }
-  }
-  return worst
 }
 
 export function initials(value: string): string {
@@ -160,10 +332,8 @@ export function onboardingLabel(client: ClientPodcastSystemClient, pipelineStart
   return client.onboarding.status.charAt(0).toUpperCase() + client.onboarding.status.slice(1)
 }
 
-/** Days without activity before an active client reads as going quiet, then as gone quiet. */
-export const QUIET_CLIENT_DAYS = { warn: 7, alert: 14 } as const
-
-export type QuietLevel = 'recent' | 'warn' | 'alert'
+/** Days without activity before an active client reads as stale. */
+export const STALE_CLIENT_DAYS = 14
 
 const DAY_MS = 86_400_000
 
@@ -174,19 +344,10 @@ export function daysSince(value: string | null, now = Date.now()): number | null
   return Math.max(0, Math.floor((now - time) / DAY_MS))
 }
 
-export function relativeDays(days: number | null): string {
-  if (days === null) return 'No activity recorded yet'
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Yesterday'
-  return `${days} days ago`
-}
-
-/** Only an active client can go quiet; paused and churned are quiet on purpose. */
-export function quietLevel(rollup: ClientRollup, days: number | null): QuietLevel {
-  if (rollup.client.status !== 'active' || days === null) return 'recent'
-  if (days > QUIET_CLIENT_DAYS.alert) return 'alert'
-  if (days > QUIET_CLIENT_DAYS.warn) return 'warn'
-  return 'recent'
+/** Only an active client can go stale; paused and churned are quiet on purpose. */
+export function isStale(rollup: ClientRollup, now = Date.now()): boolean {
+  const days = daysSince(rollup.lastActivityAt, now)
+  return rollup.client.status === 'active' && days !== null && days > STALE_CLIENT_DAYS
 }
 
 export interface SetupItem {

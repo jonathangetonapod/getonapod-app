@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastName, withDecodedPodcastNamesIn } from '@/lib/feedText'
 import { defaultInstantlyTimezone } from '@/lib/instantlyTimezones'
 
 export type WorkspaceCampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'attention'
@@ -254,7 +255,8 @@ interface CampaignMutationResponse {
 async function invokeWorkspaceCampaigns<T>(body: Record<string, unknown>, fallback: string): Promise<T> {
   const { data, error } = await supabase.functions.invoke('workspace-client-campaigns', { body })
   if (error) throw await toFunctionError(error, fallback)
-  return data as T
+  // Every target the campaign pages draw passes here; decoded once for all of them.
+  return withDecodedPodcastNamesIn(data, ['targets', 'target']) as T
 }
 
 export async function getWorkspaceCampaignOverview(workspaceId: string): Promise<WorkspaceCampaignOverview> {
@@ -1095,7 +1097,12 @@ export async function getWorkspaceInboxThreads(
   ) {
     throw new Error('The inbox response could not be read. Try again.')
   }
-  return data
+  return {
+    ...data,
+    threads: data.threads.map((thread) => (
+      thread?.lead_context ? { ...thread, lead_context: withDecodedPodcastName(thread.lead_context) } : thread
+    )),
+  }
 }
 
 export interface WorkspaceInboxDraft {

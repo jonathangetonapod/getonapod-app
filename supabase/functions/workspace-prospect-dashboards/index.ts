@@ -33,6 +33,8 @@ const PROSPECT_IMAGE_TYPES = new Map([
 const MAX_PROSPECT_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_PROSPECT_IMAGE_MULTIPART_BYTES = MAX_PROSPECT_IMAGE_BYTES + (64 * 1024)
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+const RECENT_VIEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const PROSPECT_OUTCOMES = new Set(['call_booked', 'won', 'lost'])
 const PROFILE_FIELDS = [
   'name',
   'email',
@@ -84,6 +86,8 @@ const DASHBOARD_FIELDS = [
   'pending_review_at',
   'view_count',
   'last_viewed_at',
+  'outcome',
+  'outcome_at',
   'created_by',
   'created_at',
   'updated_at',
@@ -1341,6 +1345,25 @@ serve(async (req) => {
           status: String(row.status ?? ''),
         })
       }
+      // Views in the last seven days, from the per-view log. A failure here
+      // (or a database without the log yet) leaves the counts unknown rather
+      // than failing the whole list; the all-time counter is still there.
+      const recentViews = new Map<string, number>()
+      let recentViewsKnown = false
+      if (ids.length > 0) {
+        const { data: viewCounts, error: viewCountError } = await context.admin.rpc('prospect_dashboard_view_counts_v1', {
+          p_dashboard_ids: ids,
+          p_since: new Date(Date.now() - RECENT_VIEW_WINDOW_MS).toISOString(),
+        })
+        if (viewCountError) {
+          console.warn('[workspace-prospect-dashboards] recent view counts were unavailable')
+        } else {
+          recentViewsKnown = true
+          for (const row of (viewCounts || []) as Array<{ prospect_dashboard_id: string; views: number | string }>) {
+            recentViews.set(String(row.prospect_dashboard_id), Number(row.views) || 0)
+          }
+        }
+      }
       // Which providers the workspace pays for itself: a build on the
       // workspace's own key is not charged, and the button says so.
       const aiKeys = await workspaceAiKeyStatus(context.admin, workspaceId)
@@ -1355,6 +1378,7 @@ serve(async (req) => {
           ...dashboard,
           readiness: readinessForRows(dashboard, shortlistByDashboard.get(dashboard.id) || []),
           linked_client: clientBySlug.get(dashboard.slug) ?? null,
+          views_last_7_days: recentViewsKnown ? recentViews.get(dashboard.id) ?? 0 : null,
         })),
       })
     }
@@ -1896,6 +1920,58 @@ serve(async (req) => {
         entityType: 'prospect_dashboard',
         entityId: dashboardId,
         metadata: { was_published: Boolean(existing.published_at) },
+      })
+      return jsonResponse(req, METHODS, 200, await detailPayload(context.admin, workspaceId, dashboardId))
+    }
+
+    /*
+     * Copying the private link is the closest Studio gets to knowing it was
+     * sent, and the next-step advice turns on it ("waiting on", "no views
+     * yet"). Each copy moves the time on, so a nudge restarts the wait.
+     */
+    if (action === 'link-copied') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'dashboard_id'])
+      if (!existing.published_at) {
+        throw new HttpError(409, 'PROSPECT_NOT_LIVE', 'Publish the dashboard before sharing its link')
+      }
+      const update: Record<string, unknown> = { sent_at: new Date().toISOString() }
+      if (existing.lifecycle_status === 'ready') update.lifecycle_status = 'sent'
+      const { error } = await context.admin
+        .from('prospect_dashboards')
+        .update(update)
+        .eq('id', dashboardId)
+        .eq('workspace_id', workspaceId)
+      if (error) throw new HttpError(500, 'PROSPECT_LINK_COPY_FAILED', 'The link copy could not be recorded')
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: 'workspace.prospect.link_copied',
+        entityType: 'prospect_dashboard',
+        entityId: dashboardId,
+        metadata: { first_copy: !existing.sent_at },
+      })
+      return jsonResponse(req, METHODS, 200, await detailPayload(context.admin, workspaceId, dashboardId))
+    }
+
+    if (action === 'set-outcome') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'dashboard_id', 'outcome'])
+      const outcome = body.outcome === null ? null : String(body.outcome)
+      if (outcome !== null && !PROSPECT_OUTCOMES.has(outcome)) {
+        throw new HttpError(400, 'INVALID_FIELD', 'outcome must be call_booked, won, lost or null')
+      }
+      const { error } = await context.admin
+        .from('prospect_dashboards')
+        .update({ outcome, outcome_at: outcome ? new Date().toISOString() : null })
+        .eq('id', dashboardId)
+        .eq('workspace_id', workspaceId)
+      if (error) throw new HttpError(500, 'PROSPECT_OUTCOME_FAILED', 'The outcome could not be saved')
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: 'workspace.prospect.outcome_set',
+        entityType: 'prospect_dashboard',
+        entityId: dashboardId,
+        metadata: { outcome, previous: existing.outcome ?? null },
       })
       return jsonResponse(req, METHODS, 200, await detailPayload(context.admin, workspaceId, dashboardId))
     }

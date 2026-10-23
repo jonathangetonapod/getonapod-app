@@ -57,6 +57,34 @@ describe('workspacePodcastCatalog service', () => {
     })
   })
 
+  // You're Wrong About and Armchair Expert arrive wrapped in <p>; SmartLess and
+  // the MrBallen title carry &amp;. Cleaned once here, never per component.
+  it('strips feed markup and entities from names and descriptions', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        ...response,
+        items: [{
+          podcast_id: 'p1',
+          podcast_name: 'MrBallen Podcast: Strange, Dark &amp; Mysterious Stories',
+          podcast_description: '<p>Smart &amp;  less.</p>\n<p>Two&#39;s   company.</p>',
+          host_name: 'Jason  Bateman &amp; Co',
+          publisher_name: null,
+          podcast_categories: [{ category_id: 'sc', category_name: 'Society &amp; Culture' }, 'Kids &amp; Family'],
+        }],
+      },
+      error: null,
+    } as never)
+
+    const page = await getWorkspacePodcastCatalog(workspaceId)
+    expect(page.items[0]).toMatchObject({
+      podcast_name: 'MrBallen Podcast: Strange, Dark & Mysterious Stories',
+      podcast_description: "Smart & less. Two's company.",
+      host_name: 'Jason Bateman & Co',
+      publisher_name: null,
+      podcast_categories: [{ category_id: 'sc', category_name: 'Society & Culture' }, 'Kids & Family'],
+    })
+  })
+
   it('rejects a response for a different workspace', async () => {
     invoke.mockResolvedValueOnce({
       data: { ...response, workspace: { ...response.workspace, id: '22222222-2222-4222-8222-222222222222' } },
