@@ -364,6 +364,20 @@ describe('WorkspaceLayout', () => {
     expect(readWorkingClient(workspaceId)).toBeNull()
   })
 
+  // The Database's add buttons name the working client, so the header has to
+  // move the address the page reads, and keep the search and filters in it.
+  it('drives the Podcast Database address from the working client', async () => {
+    renderWithLocation('/app/podcast-database?q=founders')
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    chooseWorkingClient('Dallas Fontaine')
+    await waitFor(() => expect(combobox).toHaveTextContent('Dallas Fontaine'))
+    expect(screen.getByTestId('location')).toHaveTextContent(`/app/podcast-database?q=founders&client=${clientId}`)
+
+    chooseWorkingClient('All clients')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-database\?q=founders$/u)
+  })
+
   // A paused client's record links to their Pipeline. The header has to name
   // them, not drop to "All clients" while the page shows one client.
   it('names a paused client the Pipeline was opened on', async () => {

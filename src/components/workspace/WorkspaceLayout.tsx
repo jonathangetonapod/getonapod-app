@@ -126,9 +126,10 @@ function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: strin
 /*
  * The modules whose page follows the header's working client, not only the
  * other way round. Podcast Finder reads ?client= once on arrival, so changing
- * the address under it would not move it; the Pipeline filters on every read.
+ * the address under it would not move it; the Pipeline filters on every read,
+ * and the Podcast Database's add buttons name whichever client is chosen.
  */
-const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system']
+const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'podcast-database']
 
 // Radix Select needs a non-empty value for the "no client" choice.
 const ALL_CLIENTS = 'all-clients'

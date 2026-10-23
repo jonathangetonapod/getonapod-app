@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, within, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
 import WorkspacePodcastDatabase from '@/pages/app/WorkspacePodcastDatabase'
-import { addClientShortlistPodcasts } from '@/services/clientShortlist'
+import { addClientShortlistPodcasts, getClientShortlist } from '@/services/clientShortlist'
 import { toast } from 'sonner'
 import { addWorkspaceProspectPodcasts, getWorkspaceProspects, PartialShortlistAddError } from '@/services/prospectDashboards'
 import { listHostRelationships } from '@/services/hostRelationships'
@@ -17,7 +17,7 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
 }))
 vi.mock('@/services/workspacePodcastCatalog', () => ({ getWorkspacePodcastCatalog: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
-vi.mock('@/services/clientShortlist', () => ({ addClientShortlistPodcasts: vi.fn() }))
+vi.mock('@/services/clientShortlist', () => ({ addClientShortlistPodcasts: vi.fn(), getClientShortlist: vi.fn() }))
 vi.mock('@/services/hostRelationships', () => ({ listHostRelationships: vi.fn() }))
 vi.mock('@/services/prospectDashboards', async (importOriginal) => ({
   PartialShortlistAddError: (await importOriginal<typeof import('@/services/prospectDashboards')>()).PartialShortlistAddError,
@@ -30,6 +30,7 @@ const mockedUseAuth = vi.mocked(useAuth)
 const mockedCatalog = vi.mocked(getWorkspacePodcastCatalog)
 const mockedClients = vi.mocked(getWorkspaceClients)
 const mockedAdd = vi.mocked(addClientShortlistPodcasts)
+const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedProspects = vi.mocked(getWorkspaceProspects)
 const mockedAddToProspect = vi.mocked(addWorkspaceProspectPodcasts)
 const mockedRelationships = vi.mocked(listHostRelationships)
@@ -104,6 +105,11 @@ describe('WorkspacePodcastDatabase', () => {
     mockedCatalog.mockResolvedValue(catalogResponse as never)
     mockedClients.mockResolvedValue([{ id: clientId, name: 'Dallas Fontaine', status: 'active' }] as never)
     mockedAdd.mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-one'] })
+    mockedShortlist.mockResolvedValue({ client: { id: clientId, name: 'Dallas Fontaine' }, podcasts: [] } as never)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('shows the searchable shared catalog without internal network metrics', async () => {
@@ -145,15 +151,27 @@ describe('WorkspacePodcastDatabase', () => {
     ))
   })
 
-  it('adds selected shared podcasts to a workspace client shortlist', async () => {
+  /*
+   * With a working client the add is one click, and it waits out the Undo
+   * window before it is sent: once sent, the server merges the show into the
+   * catalogue and may tell the client, and there is no remove to call.
+   */
+  it('adds the selection to the working client after the undo window', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     renderPage(`/app/podcast-database?client=${clientId}`)
 
     expect(await screen.findByText('Browsing for Dallas Fontaine')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Founder Show' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add to client' }))
-    expect(await screen.findByRole('combobox', { name: 'Client' })).toHaveTextContent('Dallas Fontaine')
-    fireEvent.click(screen.getByRole('button', { name: 'Add to shortlist' }))
+    fireEvent.click(screen.getByRole('button', { name: /Add 1 to Dallas/ }))
 
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Added to Dallas Fontaine.', expect.objectContaining({
+      duration: 8000,
+      action: expect.objectContaining({ label: 'Undo' }),
+    }))
+    expect(screen.getByRole('button', { name: 'Added' })).toBeDisabled()
+    expect(mockedAdd).not.toHaveBeenCalled()
+
+    vi.advanceTimersByTime(8000)
     await waitFor(() => expect(mockedAdd).toHaveBeenCalledWith(
       workspaceId,
       clientId,
@@ -163,6 +181,84 @@ describe('WorkspacePodcastDatabase', () => {
         podcast_email: 'show@example.com',
       })],
     ))
+  })
+
+  it('takes an add back when Undo is pressed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderPage(`/app/podcast-database?client=${clientId}`)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to Dallas: The Founder Show' }))
+    const options = vi.mocked(toast.success).mock.calls.at(-1)?.[1] as unknown as { action: { onClick: () => void } }
+    act(() => options.action.onClick())
+
+    vi.advanceTimersByTime(10_000)
+    await screen.findByRole('button', { name: 'Add to Dallas: The Founder Show' })
+    expect(mockedAdd).not.toHaveBeenCalled()
+  })
+
+  it('says a show is already on the working client’s shortlist', async () => {
+    mockedShortlist.mockResolvedValue({
+      client: { id: clientId, name: 'Dallas Fontaine' },
+      podcasts: [{ podcast_id: 'podcast-one', podcast_name: 'The Founder Show' }],
+    } as never)
+    renderPage(`/app/podcast-database?client=${clientId}`)
+
+    expect(await screen.findByRole('button', { name: 'On shortlist' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Add to Dallas/ })).not.toBeInTheDocument()
+  })
+
+  it('skips what the client already has and says so', async () => {
+    mockedCatalog.mockResolvedValue({
+      ...catalogResponse,
+      items: [catalogResponse.items[0], { ...catalogResponse.items[0], podcast_id: 'podcast-two', podcast_name: 'Second Show' }],
+    } as never)
+    mockedShortlist.mockResolvedValue({
+      client: { id: clientId, name: 'Dallas Fontaine' },
+      podcasts: [{ podcast_id: 'podcast-one', podcast_name: 'The Founder Show' }],
+    } as never)
+    renderPage(`/app/podcast-database?client=${clientId}`)
+
+    await screen.findByRole('button', { name: 'On shortlist' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select this page' }))
+    fireEvent.click(screen.getByRole('button', { name: /Add 2 to Dallas/ }))
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+      'Added to Dallas Fontaine. 1 was already there.',
+      expect.anything(),
+    )
+  })
+
+  it('adds from the details without closing them', async () => {
+    renderPage(`/app/podcast-database?client=${clientId}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'The Founder Show' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.click(await dialog.findByRole('button', { name: 'Add to Dallas: The Founder Show' }))
+    expect(dialog.getByRole('button', { name: 'Added' })).toBeDisabled()
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Added to Dallas Fontaine.', expect.anything())
+  })
+
+  it('picks a client in the dialog when the header is on all clients', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to client: The Founder Show' }))
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Client' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Dallas Fontaine' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to shortlist' }))
+
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Added to Dallas Fontaine.', expect.anything())
+    vi.advanceTimersByTime(8000)
+    await waitFor(() => expect(mockedAdd).toHaveBeenCalledWith(workspaceId, clientId, [expect.objectContaining({ podcast_id: 'podcast-one' })]))
+  })
+
+  it('gives members without add rights the details as their one action', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: { role: 'member' },
+      isPlatformAdmin: false,
+    } as never)
+    renderPage()
+    expect(await screen.findByRole('button', { name: 'See details' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select The Founder Show' })).not.toBeInTheDocument()
   })
 
   /*
@@ -188,7 +284,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Founder Show' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add to client' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to client' }))
     fireEvent.click(await screen.findByRole('button', { name: 'A prospect' }))
 
     const picker = await screen.findByRole('combobox', { name: 'Prospect' })
@@ -219,7 +315,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Founder Show' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add to client' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to client' }))
     fireEvent.click(await screen.findByRole('button', { name: 'A prospect' }))
     fireEvent.click(await screen.findByRole('combobox', { name: 'Prospect' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Ada Bell' }))
@@ -317,7 +413,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
 
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The Founder Show' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add to client' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 to client' }))
     fireEvent.click(await screen.findByRole('button', { name: 'A prospect' }))
     fireEvent.click(await screen.findByRole('combobox', { name: 'Prospect' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Ada Bell' }))
@@ -388,7 +484,7 @@ describe('WorkspacePodcastDatabase', () => {
     // Fields the row never showed.
     expect(dialog.getByText('Reach score')).toBeInTheDocument()
     expect(dialog.getByText('Last published')).toBeInTheDocument()
-    expect(dialog.getByText(/Used on 4 client shortlists/i)).toBeInTheDocument()
+    expect(dialog.getByText(/On 4 shortlists across 2 workspaces/i)).toBeInTheDocument()
   })
 
   it('carries the relationship warning into the details', async () => {

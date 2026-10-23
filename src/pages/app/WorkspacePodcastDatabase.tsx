@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   Database,
   ExternalLink,
   LayoutGrid,
   List,
-  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -23,14 +21,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -40,14 +30,11 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
 import { PodcastCatalogRow, PodcastCatalogRowHeader } from '@/components/workspace/catalog/PodcastCatalogRow'
 import type { PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
-import { repairableExternalUrl } from '@/lib/externalUrl'
-import { addClientShortlistPodcasts, type ClientShortlistPodcastInput } from '@/services/clientShortlist'
-import {
-  addWorkspaceProspectPodcasts,
-  getWorkspaceProspects,
-  PartialShortlistAddError,
-  type ProspectShortlistPodcastInput,
-} from '@/services/prospectDashboards'
+import { PodcastAddDialog } from '@/components/workspace/catalog/PodcastAddDialog'
+import type { PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
+import { PodcastSelectionBar } from '@/components/workspace/catalog/PodcastSelectionBar'
+import { useDeferredShortlistAdd } from '@/hooks/useDeferredShortlistAdd'
+import { getClientShortlist } from '@/services/clientShortlist'
 import { getWorkspaceClients } from '@/services/clients'
 import {
   getWorkspacePodcastCatalog,
@@ -62,10 +49,10 @@ import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
-  categoryNames,
   formatDay,
   isStaleCatalogDate,
   oldestCatalogUpdate,
+  shortClientName,
 } from '@/lib/podcastCatalogDisplay'
 
 const PAGE_SIZE = 24
@@ -84,62 +71,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 interface WorkspacePodcastDatabaseProps {
   platformWorkspaceId?: string
-}
-
-function shortlistCategories(podcast: WorkspacePodcastCatalogItem) {
-  return categoryNames(podcast).map((categoryName) => ({
-    category_id: `catalog-${categoryName.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '')}`.slice(0, 200),
-    category_name: categoryName.slice(0, 200),
-  }))
-}
-
-function toShortlistPodcast(podcast: WorkspacePodcastCatalogItem): ClientShortlistPodcastInput {
-  return {
-    podcast_id: podcast.podcast_id,
-    podcast_name: podcast.podcast_name,
-    podcast_description: podcast.podcast_description,
-    podcast_image_url: podcast.podcast_image_url,
-    podcast_url: podcast.podcast_url,
-    publisher_name: podcast.publisher_name,
-    itunes_rating: podcast.itunes_rating,
-    episode_count: podcast.episode_count,
-    audience_size: podcast.audience_size,
-    last_posted_at: podcast.last_posted_at,
-    podcast_categories: shortlistCategories(podcast),
-    language: podcast.language,
-    region: podcast.region,
-    // Prefer the paid, verified direct contact; a show can have one with no
-    // free email, and taking only the free field dropped the best contact
-    // the workspace paid to verify.
-    podcast_email: podcast.direct_email || podcast.free_podscan_email,
-    rss_feed: podcast.rss_feed,
-  }
-}
-
-/*
- * The prospect shortlist takes a narrower row than a client's: no contact
- * address, no feed, no language or region. That is the point of the two shapes
- * — a prospect page is something you send to someone who has not signed
- * anything yet, so the things worth protecting are not gathered for it.
- */
-function toProspectPodcast(podcast: WorkspacePodcastCatalogItem): ProspectShortlistPodcastInput {
-  return {
-    podcast_id: podcast.podcast_id,
-    podcast_name: podcast.podcast_name,
-    podcast_description: podcast.podcast_description,
-    // The prospect endpoint validates both of these, because the dashboard it
-    // builds is public. The catalogue holds websites typed without a scheme —
-    // simplecast.com, www.AngelInvestorsNetwork.com — so passing them straight
-    // through failed the whole batch on one row's untidy address.
-    podcast_image_url: repairableExternalUrl(podcast.podcast_image_url),
-    podcast_url: repairableExternalUrl(podcast.podcast_url),
-    publisher_name: podcast.publisher_name,
-    itunes_rating: podcast.itunes_rating,
-    episode_count: podcast.episode_count,
-    audience_size: podcast.audience_size,
-    last_posted_at: podcast.last_posted_at,
-    podcast_categories: shortlistCategories(podcast),
-  }
 }
 
 const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatabaseProps) => {
@@ -175,12 +106,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const [dialogPodcasts, setDialogPodcasts] = useState<WorkspacePodcastCatalogItem[]>([])
   const [view, setView] = useState<CatalogView>(readStoredView)
   const [detailsPodcast, setDetailsPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState(targetClientId)
-  // Which kind of thing the selection is being added to. A prospect page
-  // is a pitch to someone who is not a client yet, and the same shows are
-  // exactly what you want to put in front of them.
-  const [addTarget, setAddTarget] = useState<'client' | 'prospect'>('client')
-  const [selectedProspectId, setSelectedProspectId] = useState('')
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -296,81 +221,42 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const clientsQuery = useQuery({
     queryKey: ['workspace-podcast-catalog', user?.id || 'unknown', workspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workspaceId),
-    enabled: validWorkspaceId && canAddToClient && (addDialogOpen || Boolean(targetClientId)),
+    enabled: validWorkspaceId && canAddToClient,
     retry: false,
   })
 
-  const prospectsQuery = useQuery({
-    queryKey: ['workspace-podcast-catalog', user?.id || 'unknown', workspaceId, 'prospects'],
-    queryFn: () => getWorkspaceProspects(workspaceId),
-    enabled: validWorkspaceId && canAddToClient && addDialogOpen && addTarget === 'prospect',
+  /*
+   * What the working client already has, so a show they have reads On
+   * shortlist instead of offering an add the server would only skip. One read
+   * per client, not one per row.
+   */
+  const shortlistQuery = useQuery({
+    queryKey: ['workspace-client-shortlist', workspaceId, targetClientId, 'catalog-ids'],
+    queryFn: () => getClientShortlist(workspaceId, targetClientId),
+    enabled: validWorkspaceId && canAddToClient && Boolean(targetClientId),
+    staleTime: 60_000,
     retry: false,
   })
+  const shortlistIds = useMemo(
+    () => new Set((shortlistQuery.data?.podcasts || []).map((podcast) => podcast.podcast_id)),
+    [shortlistQuery.data],
+  )
 
-  const addMutation = useMutation({
-    mutationFn: async () => {
-      const podcasts = dialogPodcasts
-      if (addTarget === 'prospect') {
-        if (!selectedProspectId) throw new Error('Choose a prospect first.')
-        return await addWorkspaceProspectPodcasts(
-          workspaceId,
-          selectedProspectId,
-          podcasts.map(toProspectPodcast),
-        )
-      }
-      if (!selectedClientId) throw new Error('Choose a client first.')
-      return await addClientShortlistPodcasts(
-        workspaceId,
-        selectedClientId,
-        podcasts.map(toShortlistPodcast),
-      )
-    },
-    onSuccess: (result) => {
-      if (addTarget === 'prospect') {
-        const prospect = availableProspects.find((candidate) => candidate.id === selectedProspectId)
-        if (result.added > 0) {
-          toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${prospect?.prospect_name || 'the prospect page'}.`)
-        } else {
-          toast.info('Those podcasts are already on this prospect page.')
-        }
-        // A live dashboard stays live; the additions wait hidden for review.
-        if ('hidden_pending_review' in result && result.hidden_pending_review) {
-          toast.warning('Added hidden. Open the prospect’s New tab to show them.', { duration: 8000 })
-        }
-      } else {
-        const client = clientsQuery.data?.find((candidate) => candidate.id === selectedClientId)
-        if (result.added > 0) {
-          toast.success(`Added ${result.added} podcast${result.added === 1 ? '' : 's'} to ${client?.name || 'the client shortlist'}.`)
-        } else {
-          toast.info('Those podcasts are already on this client’s shortlist.')
-        }
-      }
-      // Whatever was just added leaves the selection; anything else stays picked.
-      setSelectedPodcasts((current) => {
-        const next = new Map(current)
-        dialogPodcasts.forEach((podcast) => next.delete(podcast.podcast_id))
-        return next
-      })
-      setSelectedClientId(targetClientId)
-      setAddDialogOpen(false)
-      void catalogQuery.refetch()
-    },
-    onError: (error) => {
-      // The batch is sent in chunks; say how far it got before the failure.
-      if (error instanceof PartialShortlistAddError) {
-        toast.warning(`${error.partial.added} podcast${error.partial.added === 1 ? ' was' : 's were'} added before it failed.`)
-      }
-      toast.error(error instanceof Error ? error.message : 'The podcasts could not be added.')
+  const shortlistAdd = useDeferredShortlistAdd({
+    workspaceId,
+    onCommitted: (clientId) => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace-client-shortlist', workspaceId, clientId] })
+      // Shortlist counts on the rows include this add now.
+      void queryClient.invalidateQueries({ queryKey: ['workspace-podcast-catalog', user?.id || 'unknown', workspaceId] })
     },
   })
 
   const catalog = catalogQuery.data
   const podcasts = catalog?.items || []
   const activeClients = (clientsQuery.data || []).filter((client) => client.status === 'active')
-  // Archived dashboards are not somewhere anything should be added to.
-  const availableProspects = (prospectsQuery.data?.dashboards || [])
-    .filter((prospect) => prospect.lifecycle_status !== 'archived')
-  const targetClient = activeClients.find((client) => client.id === targetClientId) || null
+  // Any client, not only active ones: the header can open this page on a
+  // paused client by address, and the buttons have to name who that is.
+  const targetClient = (clientsQuery.data || []).find((client) => client.id === targetClientId) || null
   const pageCatalogUpdated = oldestCatalogUpdate(podcasts)
   const pagePodcastIds = podcasts.map((podcast) => podcast.podcast_id)
   const allPageSelected = pagePodcastIds.length > 0
@@ -423,19 +309,56 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     setPage(1)
   }
 
-  useEffect(() => {
-    if (!addDialogOpen || clientsQuery.isLoading) return
-    if (selectedClientId && !activeClients.some((client) => client.id === selectedClientId)) {
-      setSelectedClientId('')
-    }
-  }, [activeClients, addDialogOpen, clientsQuery.isLoading, selectedClientId])
-
   const openAddDialog = (podcastsToAdd: WorkspacePodcastCatalogItem[]) => {
-    setAddTarget('client')
-    setSelectedProspectId('')
-    setSelectedClientId(targetClientId)
     setDialogPodcasts(podcastsToAdd)
     setAddDialogOpen(true)
+  }
+
+  const dropFromSelection = (added: WorkspacePodcastCatalogItem[]) => {
+    setSelectedPodcasts((current) => {
+      const next = new Map(current)
+      added.forEach((podcast) => next.delete(podcast.podcast_id))
+      return next
+    })
+  }
+
+  /** Add to the working client, leaving out what they already have. */
+  const addToWorkingClient = (podcastsToAdd: WorkspacePodcastCatalogItem[]) => {
+    if (!targetClient) return
+    shortlistAdd.add(
+      { id: targetClient.id, name: targetClient.name },
+      podcastsToAdd,
+      podcastsToAdd.filter((podcast) => shortlistIds.has(podcast.podcast_id)),
+    )
+  }
+
+  const addSelection = () => {
+    const chosen = Array.from(selectedPodcasts.values())
+    if (targetClient) {
+      addToWorkingClient(chosen)
+      dropFromSelection(chosen)
+    } else {
+      openAddDialog(chosen)
+    }
+  }
+
+  /*
+   * One answer for every surface, from the header's working client: a one
+   * click add when one is chosen, the client picker when it is All clients.
+   */
+  const primaryAction = (podcast: WorkspacePodcastCatalogItem): PodcastPrimaryActionState => {
+    if (!canAddToClient) return { kind: 'details', onOpen: () => setDetailsPodcast(podcast) }
+    if (targetClient) {
+      if (shortlistAdd.isAdded(targetClient.id, podcast.podcast_id)) return { kind: 'added' }
+      if (shortlistIds.has(podcast.podcast_id)) return { kind: 'on-shortlist', clientName: targetClient.name }
+      return {
+        kind: 'add',
+        label: `Add to ${shortClientName(targetClient.name)}`,
+        onAdd: () => addToWorkingClient([podcast]),
+      }
+    }
+    if (shortlistAdd.isAddedAnywhere(podcast.podcast_id)) return { kind: 'added' }
+    return { kind: 'add', label: 'Add to client', onAdd: () => openAddDialog([podcast]) }
   }
 
   const changeView = (next: CatalogView) => {
@@ -453,9 +376,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     selectable: canAddToClient,
     selected: selectedPodcasts.has(podcast.podcast_id),
     onSelectedChange: (checked) => togglePodcast(podcast, checked),
-    action: canAddToClient
-      ? { kind: 'add', label: 'Add to client', onAdd: () => openAddDialog([podcast]) }
-      : { kind: 'details', onOpen: () => setDetailsPodcast(podcast) },
+    action: primaryAction(podcast),
     onOpenDetails: () => setDetailsPodcast(podcast),
     onCopyEmail: (email) => void copyEmail(email),
   })
@@ -485,7 +406,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <TooltipProvider delayDuration={200}>
-      <div className="space-y-6">
+      <div className={`space-y-6 ${selectedPodcasts.size > 0 ? 'pb-20' : ''}`}>
         {/* A banner explaining the page every time it is opened is a cost paid
             by the people who already know — which, after the first visit, is
             everyone. The title and the badge carry it; the sentence that used
@@ -635,19 +556,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           </CardContent>
         </Card>
 
-        {selectedPodcasts.size > 0 && (
-          <div className="sticky top-24 z-20 flex flex-col gap-3 rounded-xl border border-primary/20 bg-background/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">{selectedPodcasts.size} podcast{selectedPodcasts.size === 1 ? '' : 's'} selected</p>
-              <p className="text-xs text-muted-foreground">Add the selection to one client shortlist. Existing entries are skipped safely.</p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setSelectedPodcasts(new Map())}>Clear</Button>
-              <Button onClick={() => openAddDialog(Array.from(selectedPodcasts.values()))}><Plus className="mr-2 h-4 w-4" />Add to client</Button>
-            </div>
-          </div>
-        )}
-
         {catalogQuery.isLoading ? (
           <div className="grid gap-4 xl:grid-cols-2">
             {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-72 rounded-xl" />)}
@@ -702,104 +610,46 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         </Card>
       </div>
 
-      <Dialog open={addDialogOpen} onOpenChange={(open) => { if (!addMutation.isPending) setAddDialogOpen(open) }}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{dialogPodcasts.length === 1 ? `Add ${dialogPodcasts[0].podcast_name}` : `Add ${dialogPodcasts.length} podcasts`}</DialogTitle>
-            <DialogDescription>{addTarget === 'prospect'
-              ? 'The selected shows will be added to the prospect’s dashboard. Existing entries are skipped.'
-              : 'The selected shows will be added to the client’s shortlist. Existing entries are skipped.'}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {/* The same shows serve both: a client shortlist is work already
-                sold, a prospect page is the pitch for work that is not. */}
-            <div className="space-y-2">
-              <Label>Add to</Label>
-              {/* secondary and outline read almost the same here, so the chosen
-                  side did not look chosen. Filled plus a tick, the way selecting
-                  a podcast already looks on this page. */}
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={addTarget === 'client' ? 'default' : 'outline'}
-                  aria-pressed={addTarget === 'client'}
-                  onClick={() => setAddTarget('client')}
-                >
-                  {addTarget === 'client' && <Check className="mr-2 h-4 w-4" aria-hidden="true" />}
-                  A client
-                </Button>
-                <Button
-                  type="button"
-                  variant={addTarget === 'prospect' ? 'default' : 'outline'}
-                  aria-pressed={addTarget === 'prospect'}
-                  onClick={() => setAddTarget('prospect')}
-                >
-                  {addTarget === 'prospect' && <Check className="mr-2 h-4 w-4" aria-hidden="true" />}
-                  A prospect
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {addTarget === 'prospect'
-                  ? 'Adding to a prospect page, a pitch for someone who is not a client yet.'
-                  : 'Adding to a client’s shortlist.'}
-              </p>
-            </div>
-            {addTarget === 'prospect' ? (
-              <div className="space-y-2">
-                <Label htmlFor="podcast-database-prospect">Prospect</Label>
-                {prospectsQuery.isLoading ? (
-                  <Skeleton className="h-10 w-full" />
-                ) : prospectsQuery.error ? (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{prospectsQuery.error instanceof Error ? prospectsQuery.error.message : 'Prospects could not be loaded.'}</div>
-                ) : availableProspects.length === 0 ? (
-                  <div className="rounded-lg border p-4 text-sm text-muted-foreground">No prospect pages are available in this workspace.</div>
-                ) : (
-                  <Select value={selectedProspectId} onValueChange={setSelectedProspectId}>
-                    <SelectTrigger id="podcast-database-prospect" aria-label="Prospect"><SelectValue placeholder="Choose a prospect" /></SelectTrigger>
-                    <SelectContent>{availableProspects.map((prospect) => <SelectItem key={prospect.id} value={prospect.id}>{prospect.prospect_name}</SelectItem>)}</SelectContent>
-                  </Select>
-                )}
-              </div>
-            ) : (
-            <div className="space-y-2">
-              <Label htmlFor="podcast-database-client">Client</Label>
-              {clientsQuery.isLoading ? (
-                <Skeleton className="h-10 w-full" />
-              ) : clientsQuery.error ? (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{clientsQuery.error instanceof Error ? clientsQuery.error.message : 'Clients could not be loaded.'}</div>
-              ) : activeClients.length === 0 ? (
-                <div className="rounded-lg border p-4 text-sm text-muted-foreground">No active clients are available in this workspace.</div>
-              ) : (
-                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                  <SelectTrigger id="podcast-database-client" aria-label="Client"><SelectValue placeholder="Choose a client" /></SelectTrigger>
-                  <SelectContent>{activeClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}</SelectContent>
-                </Select>
-              )}
-            </div>
-            )}
-            <div className="rounded-xl bg-muted/50 p-4">
-              <p className="text-sm font-medium">What happens next</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{addTarget === 'prospect'
-                ? 'The shows are added to the prospect’s dashboard hidden, so nothing changes under a reader. Open the prospect’s New tab to review and show them.'
-                : 'The shows appear in the client’s Podcasts section for review, research, contact selection, and campaign preparation. This action does not send outreach.'}</p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)} disabled={addMutation.isPending}>Cancel</Button>
-            <Button
-              onClick={() => addMutation.mutate()}
-              disabled={addMutation.isPending || (addTarget === 'prospect'
-                ? !selectedProspectId || availableProspects.length === 0
-                : !selectedClientId || activeClients.length === 0)}
-            >{addMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{addTarget === 'prospect' ? 'Add to dashboard' : 'Add to shortlist'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {canAddToClient && (
+        <>
+          <PodcastSelectionBar
+            count={selectedPodcasts.size}
+            clientShortName={targetClient ? shortClientName(targetClient.name) : null}
+            onClear={() => setSelectedPodcasts(new Map())}
+            onAdd={addSelection}
+            onAddElsewhere={targetClient ? () => openAddDialog(Array.from(selectedPodcasts.values())) : undefined}
+          />
+          <PodcastAddDialog
+            open={addDialogOpen}
+            onOpenChange={setAddDialogOpen}
+            workspaceId={workspaceId}
+            userId={user?.id || 'unknown'}
+            podcasts={dialogPodcasts}
+            clients={activeClients}
+            clientsLoading={clientsQuery.isLoading}
+            clientsError={clientsQuery.error}
+            defaultClientId={targetClientId}
+            onAddToClient={(client, podcastsToAdd) => {
+              shortlistAdd.add(client, podcastsToAdd, client.id === targetClientId
+                ? podcastsToAdd.filter((podcast) => shortlistIds.has(podcast.podcast_id))
+                : [])
+              dropFromSelection(podcastsToAdd)
+            }}
+            onProspectAdded={(added) => {
+              dropFromSelection(added)
+              void catalogQuery.refetch()
+            }}
+          />
+        </>
+      )}
 
       <PodcastCatalogDetailsDialog
         podcast={detailsPodcast}
         relationship={detailsPodcast ? relationshipsByPodcastId.get(detailsPodcast.podcast_id) ?? null : null}
         onClose={() => setDetailsPodcast(null)}
+        // Members without add rights already see See details; it would only reopen this.
+        action={detailsPodcast && canAddToClient ? primaryAction(detailsPodcast) : undefined}
+        onCopyEmail={(email) => void copyEmail(email)}
       />
       </TooltipProvider>
     </WorkspaceLayout>
