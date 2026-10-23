@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import { PodcastEmailChip } from '@/components/workspace/catalog/PodcastEmailChip'
 import { PodcastPrimaryAction } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { PodcastRowMenu } from '@/components/workspace/catalog/PodcastRowMenu'
@@ -110,5 +111,23 @@ export const PodcastCatalogRowHeader = ({ selectable }: { selectable: boolean })
     <span className={ROW_COLUMNS.email}>Email</span>
     <span className={ROW_COLUMNS.action} />
     <span className={ROW_COLUMNS.menu} />
+  </div>
+)
+
+/** A row's shape while the first page loads, so the list does not jump when it lands. */
+export const PodcastCatalogRowSkeleton = () => (
+  <div className="flex items-center gap-3 px-3 py-2.5 md:min-h-16">
+    <Skeleton className="h-4 w-4 rounded-sm" />
+    <Skeleton className="h-10 w-10 rounded-md" />
+    <div className="min-w-0 flex-1 space-y-1.5">
+      <Skeleton className="h-3.5 w-2/5" />
+      <Skeleton className="h-3 w-1/4" />
+    </div>
+    <Skeleton className={cn(ROW_COLUMNS.categories, 'h-4')} />
+    <Skeleton className={cn(ROW_COLUMNS.audience, 'h-4')} />
+    <Skeleton className={cn(ROW_COLUMNS.rating, 'h-4')} />
+    <Skeleton className={cn(ROW_COLUMNS.lastEpisode, 'h-4')} />
+    <Skeleton className={cn(ROW_COLUMNS.email, 'hidden h-5 md:block')} />
+    <Skeleton className="h-8 w-24 shrink-0 md:w-32" />
   </div>
 )

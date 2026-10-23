@@ -124,31 +124,95 @@ describe('WorkspacePodcastDatabase', () => {
     // The rating names its source, and the page says how old its data is.
     expect(screen.getByText('Apple 4.8')).toBeInTheDocument()
     expect(screen.getByText('Catalog updated Jul 20, 2026')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Email availability' })).toHaveTextContent('All podcasts')
-    expect(screen.getByRole('combobox', { name: 'Publishing recency' })).toHaveTextContent('Active shows')
-    expect(screen.getByRole('combobox', { name: 'Audience size' })).toHaveTextContent('Any audience size')
+    // Every control is named by what it shows.
+    expect(screen.getByRole('combobox', { name: 'Any category' })).toHaveTextContent('Any category')
+    expect(screen.getByRole('combobox', { name: 'Email status: Public or verified' })).toHaveTextContent('Public or verified')
+    expect(screen.getByRole('combobox', { name: 'Still publishing' })).toHaveTextContent('Still publishing')
+    expect(screen.getByRole('combobox', { name: 'Any audience size' })).toHaveTextContent('Any audience size')
+    expect(screen.getByRole('combobox', { name: 'Sort: Largest audience' })).toBeInTheDocument()
+    expect(screen.getByText(/^Showing 1 to 1 of 1 ·/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /find and contribute podcasts/i })).toHaveAttribute('href', '/app/podcast-finder')
   })
 
-  it('filters by email availability, publishing recency, and audience size', async () => {
+  it('filters by email status, activity, and audience size, and keeps them in the address', async () => {
     renderPage()
     await screen.findByText('The Founder Show')
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Email availability' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Has an email' }))
-    fireEvent.click(screen.getByRole('combobox', { name: 'Publishing recency' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Email status: Public or verified' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Verified email' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Still publishing' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Published in 90 days' }))
-    fireEvent.click(screen.getByRole('combobox', { name: 'Audience size' }))
-    fireEvent.click(await screen.findByRole('option', { name: '10K–50K' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any audience size' }))
+    fireEvent.click(await screen.findByRole('option', { name: '10K to 50K' }))
 
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
       workspaceId,
-      expect.objectContaining({
-        contact: 'any',
-        activity: 'last_90_days',
-        audience: '10k_50k',
-      }),
+      expect.objectContaining({ contact: 'direct', activity: 'last_90_days', audience: '10k_50k', page: 1 }),
     ))
+    expect(screen.getByText('Email: Verified email')).toBeInTheDocument()
+    expect(screen.getByText('Activity: Published in 90 days')).toBeInTheDocument()
+    expect(screen.getByText('Audience: 10K to 50K')).toBeInTheDocument()
+  })
+
+  // Untouched, the list shows shows somebody can be pitched, and says so.
+  it('starts on shows with an email and lets the chip be removed', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'any' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Email: Public or verified' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' })))
+    expect(screen.queryByText('Email: Public or verified')).not.toBeInTheDocument()
+  })
+
+  it('reads filters, sort, page and size from the address', async () => {
+    renderPage('/app/podcast-database?q=founders&category=Business&email=all&activity=last_30_days&sort=recent&page=3&size=48')
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenCalledWith(workspaceId, expect.objectContaining({
+      search: 'founders',
+      category: 'Business',
+      contact: 'all',
+      activity: 'last_30_days',
+      sort: 'recent',
+      page: 3,
+      pageSize: 48,
+    }))
+    expect(screen.getByLabelText('Search podcasts')).toHaveValue('founders')
+    expect(screen.getByRole('combobox', { name: 'Sort: Most recent episode' })).toBeInTheDocument()
+  })
+
+  it('jumps to a typed page number', async () => {
+    mockedCatalog.mockResolvedValue({
+      ...catalogResponse,
+      pagination: { page: 1, page_size: 24, total: 9566, total_pages: 399 },
+    } as never)
+    renderPage()
+    await screen.findByText('The Founder Show')
+    expect(screen.getByText(/^Showing 1 to 1 of 9,566/)).toBeInTheDocument()
+
+    const [pageInput] = screen.getAllByRole('textbox', { name: 'Page, of 399' })
+    fireEvent.change(pageInput, { target: { value: '212' } })
+    fireEvent.keyDown(pageInput, { key: 'Enter' })
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ page: 212 })))
+  })
+
+  it('offers a way out when nothing matches', async () => {
+    mockedCatalog.mockResolvedValue({ ...catalogResponse, items: [], pagination: { page: 1, page_size: 24, total: 0, total_pages: 0 } } as never)
+    renderPage('/app/podcast-database?category=Business')
+    expect(await screen.findByText('No shows match these filters.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Not finding it? Open Finder' })).toHaveAttribute('href', '/app/podcast-finder')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all filters' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ category: undefined, contact: 'all' })))
+  })
+
+  it('says the catalog could not load and retries', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockedCatalog.mockRejectedValueOnce(new Error('down'))
+    renderPage()
+    expect(await screen.findByText('Couldn\'t load the catalog. Try again.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('The Founder Show')).toBeInTheDocument()
   })
 
   /*

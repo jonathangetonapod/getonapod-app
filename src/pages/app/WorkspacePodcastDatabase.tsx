@@ -1,17 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
-  ArrowRight,
   Database,
   ExternalLink,
-  LayoutGrid,
-  List,
   Plus,
-  RefreshCw,
   Search,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,45 +15,33 @@ import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/work
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
-import { PodcastCatalogRow, PodcastCatalogRowHeader } from '@/components/workspace/catalog/PodcastCatalogRow'
+import { PodcastCatalogPagination } from '@/components/workspace/catalog/PodcastCatalogPagination'
+import { PodcastCatalogRow, PodcastCatalogRowHeader, PodcastCatalogRowSkeleton } from '@/components/workspace/catalog/PodcastCatalogRow'
+import { PodcastCatalogSearchPanel } from '@/components/workspace/catalog/PodcastCatalogSearchPanel'
+import { PodcastResultsHeader, type CatalogView } from '@/components/workspace/catalog/PodcastResultsHeader'
 import type { PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
 import { PodcastAddDialog } from '@/components/workspace/catalog/PodcastAddDialog'
 import type { PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { PodcastSelectionBar } from '@/components/workspace/catalog/PodcastSelectionBar'
 import { useDeferredShortlistAdd } from '@/hooks/useDeferredShortlistAdd'
+import { CLEAR_ALL_FILTERS, usePodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
+import { captureException } from '@/lib/sentry'
 import { getClientShortlist } from '@/services/clientShortlist'
 import { getWorkspaceClients } from '@/services/clients'
 import {
   getWorkspacePodcastCatalog,
-  type WorkspacePodcastCatalogActivityFilter,
-  type WorkspacePodcastCatalogAudienceFilter,
-  type WorkspacePodcastCatalogContactFilter,
   type WorkspacePodcastCatalogItem,
-  type WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
 import { PodcastCatalogDetailsDialog } from '@/components/workspace/PodcastCatalogDetailsDialog'
 import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
-import {
-  formatDay,
-  isStaleCatalogDate,
-  oldestCatalogUpdate,
-  shortClientName,
-} from '@/lib/podcastCatalogDisplay'
+import { oldestCatalogUpdate, shortClientName } from '@/lib/podcastCatalogDisplay'
 
-const PAGE_SIZE = 24
 const VIEW_STORAGE_KEY = 'podcastDb.view'
-
-type CatalogView = 'list' | 'cards'
 
 function readStoredView(): CatalogView {
   try {
@@ -91,14 +74,9 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const targetClientId = UUID_PATTERN.test(requestedClientId) ? requestedClientId : ''
 
   const queryClient = useQueryClient()
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('all')
-  const [contact, setContact] = useState<WorkspacePodcastCatalogContactFilter>('all')
-  const [activity, setActivity] = useState<WorkspacePodcastCatalogActivityFilter>('active')
-  const [audience, setAudience] = useState<WorkspacePodcastCatalogAudienceFilter>('all')
-  const [sort, setSort] = useState<WorkspacePodcastCatalogSort>('audience')
-  const [page, setPage] = useState(1)
+  const { params, update } = usePodcastCatalogParams()
+  const { search, category, contact, activity, audience, sort, page, pageSize } = params
+  const resultsRef = useRef<HTMLDivElement>(null)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   // What the add dialog is adding: the bulk selection, or the one show whose
@@ -106,14 +84,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const [dialogPodcasts, setDialogPodcasts] = useState<WorkspacePodcastCatalogItem[]>([])
   const [view, setView] = useState<CatalogView>(readStoredView)
   const [detailsPodcast, setDetailsPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setSearch(searchInput.trim())
-      setPage(1)
-    }, 300)
-    return () => window.clearTimeout(timer)
-  }, [searchInput])
 
   const catalogQuery = useQuery({
     queryKey: [
@@ -127,6 +97,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       audience,
       sort,
       page,
+      pageSize,
     ],
     queryFn: () => getWorkspacePodcastCatalog(workspaceId, {
       search,
@@ -136,7 +107,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       audience,
       sort,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
     }),
     enabled: validWorkspaceId,
     retry: false,
@@ -172,6 +143,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         audience,
         sort,
         nextPage,
+        pageSize,
       ],
       queryFn: () => getWorkspacePodcastCatalog(workspaceId, {
         search,
@@ -181,14 +153,21 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         audience,
         sort,
         page: nextPage,
-        pageSize: PAGE_SIZE,
+        pageSize,
       }),
       staleTime: 5 * 60_000,
     })
   }, [
     queryClient, validWorkspaceId, catalogQuery.isFetching, page, totalPages,
-    user?.id, workspaceId, search, category, contact, activity, audience, sort,
+    user?.id, workspaceId, search, category, contact, activity, audience, sort, pageSize,
   ])
+
+  // A failed load is shown to the person and reported, not only shown.
+  useEffect(() => {
+    if (!catalogQuery.error) return
+    console.error('[Podcast Database] Catalog load failed', catalogQuery.error)
+    captureException(catalogQuery.error instanceof Error ? catalogQuery.error : new Error(String(catalogQuery.error)))
+  }, [catalogQuery.error])
 
   /**
    * History with these hosts, so the catalogue is not read cold.
@@ -261,14 +240,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const pagePodcastIds = podcasts.map((podcast) => podcast.podcast_id)
   const allPageSelected = pagePodcastIds.length > 0
     && pagePodcastIds.every((podcastId) => selectedPodcasts.has(podcastId))
-  const filtersActive = Boolean(
-    search
-    || category !== 'all'
-    || contact !== 'all'
-    || activity !== 'active'
-    || audience !== 'all'
-  )
-
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
     ? {
         workspaceId,
@@ -296,17 +267,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       })
       return next
     })
-  }
-
-  const resetFilters = () => {
-    setSearchInput('')
-    setSearch('')
-    setCategory('all')
-    setContact('all')
-    setActivity('active')
-    setAudience('all')
-    setSort('audience')
-    setPage(1)
   }
 
   const openAddDialog = (podcastsToAdd: WorkspacePodcastCatalogItem[]) => {
@@ -381,6 +341,30 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     onCopyEmail: (email) => void copyEmail(email),
   })
 
+  /** Page changes keep the reader in the results, not at the top of the document. */
+  const goToPage = (next: number) => {
+    update({ page: next })
+    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const total = catalog?.pagination.total ?? 0
+  const totalPagesShown = Math.max(1, catalog?.pagination.total_pages ?? 1)
+  const pageFrom = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const pageTo = Math.min(total, (page - 1) * pageSize + podcasts.length)
+  // Paging keeps the page that was there and dims it; skeletons are for the first load only.
+  const refreshing = catalogQuery.isFetching && catalogQuery.isPlaceholderData
+  const pagination = (position: 'top' | 'bottom') => (
+    <PodcastCatalogPagination
+      position={position}
+      page={page}
+      totalPages={totalPagesShown}
+      pageSize={pageSize}
+      disabled={catalogQuery.isLoading}
+      onPage={goToPage}
+      onPageSize={(size) => update({ pageSize: size })}
+    />
+  )
+
   const copyEmail = async (email: string) => {
     try {
       await navigator.clipboard.writeText(email)
@@ -441,163 +425,87 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           </div>
         )}
 
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Search the shared catalog</CardTitle>
-            <CardDescription>Search show details, topics, audiences, or conversation ideas. Scout uses semantic matching when available and always falls back safely to catalog keywords; workspace client data remains private.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_repeat(5,minmax(140px,180px))]">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  aria-label="Search podcasts"
-                  maxLength={120}
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search a show, host, topic, or ideal conversation"
-                  className="pl-9"
-                />
+        <PodcastCatalogSearchPanel
+          params={params}
+          update={update}
+          categories={catalog?.categories || []}
+          searching={catalogQuery.isFetching}
+        />
+
+        <div ref={resultsRef} className="scroll-mt-24 space-y-3">
+          <PodcastResultsHeader
+            selectable={canAddToClient}
+            allPageSelected={allPageSelected}
+            onTogglePage={togglePage}
+            from={pageFrom}
+            to={pageTo}
+            total={total}
+            catalogUpdated={pageCatalogUpdated}
+            fetching={catalogQuery.isFetching}
+            onRefresh={() => void catalogQuery.refetch()}
+            view={view}
+            onViewChange={changeView}
+            sort={sort}
+            onSortChange={(next) => update({ sort: next })}
+          />
+
+          {catalogQuery.isLoading ? (
+            view === 'list' ? (
+              <Card className="overflow-hidden" aria-busy="true" aria-label="Loading podcasts">
+                <PodcastCatalogRowHeader selectable={canAddToClient} />
+                <div className="divide-y">{Array.from({ length: 10 }, (_, index) => <PodcastCatalogRowSkeleton key={index} />)}</div>
+              </Card>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-2" aria-busy="true" aria-label="Loading podcasts">
+                {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-60 rounded-xl" />)}
               </div>
-              <Select value={category} onValueChange={(value) => { setCategory(value); setPage(1) }}>
-                <SelectTrigger aria-label="Category"><SelectValue placeholder="All categories" /></SelectTrigger>
-                <SelectContent className="max-h-80">
-                  <SelectItem value="all">All categories</SelectItem>
-                  {(catalog?.categories || []).map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={contact} onValueChange={(value: WorkspacePodcastCatalogContactFilter) => { setContact(value); setPage(1) }}>
-                <SelectTrigger aria-label="Email availability"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All podcasts</SelectItem>
-                  <SelectItem value="any">Has an email</SelectItem>
-                  <SelectItem value="free">Free email</SelectItem>
-                  <SelectItem value="direct"><span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-violet-700" aria-hidden="true" />Verified direct email</span></SelectItem>
-                  <SelectItem value="none">No email yet</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={activity} onValueChange={(value: WorkspacePodcastCatalogActivityFilter) => { setActivity(value); setPage(1) }}>
-                <SelectTrigger aria-label="Publishing recency"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active shows</SelectItem>
-                  <SelectItem value="last_30_days">Published in 30 days</SelectItem>
-                  <SelectItem value="last_90_days">Published in 90 days</SelectItem>
-                  <SelectItem value="last_180_days">Published in 6 months</SelectItem>
-                  <SelectItem value="last_year">Published in 1 year</SelectItem>
-                  <SelectItem value="all">All shows</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={audience} onValueChange={(value: WorkspacePodcastCatalogAudienceFilter) => { setAudience(value); setPage(1) }}>
-                <SelectTrigger aria-label="Audience size"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Any audience size</SelectItem>
-                  <SelectItem value="under_10k">Under 10K</SelectItem>
-                  <SelectItem value="10k_50k">10K–50K</SelectItem>
-                  <SelectItem value="50k_250k">50K–250K</SelectItem>
-                  <SelectItem value="250k_plus">250K+</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={sort} onValueChange={(value: WorkspacePodcastCatalogSort) => { setSort(value); setPage(1) }}>
-                <SelectTrigger aria-label="Sort podcasts"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="audience">Largest audience</SelectItem>
-                  <SelectItem value="community">Most used</SelectItem>
-                  <SelectItem value="recent">Most recently active</SelectItem>
-                  <SelectItem value="name">Name A–Z</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-              <div className="flex items-center gap-3">
-                {canAddToClient && (
-                  <>
-                    <Checkbox
-                      id="select-catalog-page"
-                      checked={allPageSelected}
-                      onCheckedChange={(checked) => togglePage(checked === true)}
-                      disabled={podcasts.length === 0}
-                    />
-                    <Label htmlFor="select-catalog-page" className="text-sm">Select this page</Label>
-                  </>
+            )
+          ) : catalogQuery.error && !catalog ? (
+            <Card>
+              <CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
+                <Database className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                <p className="font-semibold">Couldn't load the catalog. Try again.</p>
+                <Button variant="outline" onClick={() => void catalogQuery.refetch()}>Retry</Button>
+              </CardContent>
+            </Card>
+          ) : podcasts.length === 0 ? (
+            <Card>
+              <CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
+                <Search className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                <p className="font-semibold">No shows match these filters.</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" onClick={() => update(CLEAR_ALL_FILTERS)}>Clear all filters</Button>
+                  <Button asChild variant="ghost"><Link to={`${baseHref}/podcast-finder`}>Not finding it? Open Finder</Link></Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {totalPagesShown > 1 && pagination('top')}
+              {catalogQuery.error && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  Couldn't load the catalog. Try again.
+                  <Button variant="outline" size="sm" onClick={() => void catalogQuery.refetch()}>Retry</Button>
+                </div>
+              )}
+              <div className={refreshing ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
+                {view === 'list' ? (
+                  <Card className="overflow-hidden">
+                    <PodcastCatalogRowHeader selectable={canAddToClient} />
+                    <ul className="divide-y">
+                      {podcasts.map((podcast) => <PodcastCatalogRow key={podcast.podcast_id} {...resultProps(podcast)} />)}
+                    </ul>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {podcasts.map((podcast) => <PodcastCatalogCard key={podcast.podcast_id} {...resultProps(podcast)} />)}
+                  </div>
                 )}
-                {filtersActive && <Button variant="ghost" size="sm" onClick={resetFilters}>Reset filters</Button>}
               </div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-muted-foreground">
-                  {catalog?.pagination.total.toLocaleString() || 0} result{catalog?.pagination.total === 1 ? '' : 's'}
-                  {pageCatalogUpdated && (
-                    <>
-                      {' · '}
-                      <span
-                        className={`whitespace-nowrap ${isStaleCatalogDate(pageCatalogUpdated) ? 'font-medium text-amber-700' : ''}`}
-                        title="The oldest refresh date among the shows on this page."
-                      >
-                        Catalog updated {formatDay(pageCatalogUpdated)}
-                      </span>
-                    </>
-                  )}
-                </p>
-                <Button variant="ghost" size="icon" aria-label="Refresh podcast database" onClick={() => void catalogQuery.refetch()} disabled={catalogQuery.isFetching}>
-                  <RefreshCw className={`h-4 w-4 ${catalogQuery.isFetching ? 'animate-spin' : ''}`} />
-                </Button>
-                <ToggleGroup
-                  type="single"
-                  size="sm"
-                  variant="outline"
-                  value={view}
-                  onValueChange={(value) => { if (value === 'list' || value === 'cards') changeView(value) }}
-                  aria-label="Result layout"
-                >
-                  <ToggleGroupItem value="list" aria-label="List"><List className="h-4 w-4 sm:mr-1.5" aria-hidden="true" /><span className="hidden sm:inline">List</span></ToggleGroupItem>
-                  <ToggleGroupItem value="cards" aria-label="Cards"><LayoutGrid className="h-4 w-4 sm:mr-1.5" aria-hidden="true" /><span className="hidden sm:inline">Cards</span></ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {catalogQuery.isLoading ? (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-72 rounded-xl" />)}
-          </div>
-        ) : catalogQuery.error ? (
-          <Card>
-            <CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
-              <Database className="h-10 w-10 text-muted-foreground" />
-              <div><p className="font-semibold">Podcast Database could not be loaded</p><p className="mt-1 max-w-md text-sm text-muted-foreground">{catalogQuery.error instanceof Error ? catalogQuery.error.message : 'Check your connection and try again.'}</p></div>
-              <Button variant="outline" onClick={() => void catalogQuery.refetch()}>Try again</Button>
-            </CardContent>
-          </Card>
-        ) : podcasts.length === 0 ? (
-          <Card>
-            <CardContent className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center">
-              <Search className="h-10 w-10 text-muted-foreground" />
-              <div><p className="font-semibold">No podcasts match these filters.</p><p className="mt-1 text-sm text-muted-foreground">Clear a filter, or search the live index to add a new show.</p></div>
-              <div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={resetFilters}>Reset filters</Button><Button asChild><Link to={`${baseHref}/podcast-finder`}>Open Podcast Finder</Link></Button></div>
-            </CardContent>
-          </Card>
-        ) : view === 'list' ? (
-          <Card className="overflow-hidden">
-            <PodcastCatalogRowHeader selectable={canAddToClient} />
-            <ul className="divide-y">
-              {podcasts.map((podcast) => <PodcastCatalogRow key={podcast.podcast_id} {...resultProps(podcast)} />)}
-            </ul>
-          </Card>
-        ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {podcasts.map((podcast) => <PodcastCatalogCard key={podcast.podcast_id} {...resultProps(podcast)} />)}
-          </div>
-        )}
-
-        {catalog && catalog.pagination.total_pages > 1 && (
-          <div className="flex flex-col items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:flex-row">
-            <p className="text-sm text-muted-foreground">Page {catalog.pagination.page.toLocaleString()} of {catalog.pagination.total_pages.toLocaleString()}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={page <= 1 || catalogQuery.isFetching} onClick={() => { setPage((current) => Math.max(1, current - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }) }}><ArrowLeft className="mr-2 h-4 w-4" />Previous</Button>
-              <Button variant="outline" disabled={page >= catalog.pagination.total_pages || catalogQuery.isFetching} onClick={() => { setPage((current) => current + 1); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Next<ArrowRight className="ml-2 h-4 w-4" /></Button>
-            </div>
-          </div>
-        )}
+              {totalPagesShown > 1 && pagination('bottom')}
+            </>
+          )}
+        </div>
 
         <Card className="border-dashed">
           <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
