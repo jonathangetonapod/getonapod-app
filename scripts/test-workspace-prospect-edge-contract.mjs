@@ -93,8 +93,14 @@ for (const edge of [queryGeneration, compatibilityScoring]) {
   assert.match(edge, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
   assert.match(edge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 }
-assert.match(queryGeneration, /function fallbackQueries/u)
-assert.match(queryGeneration, /source: 'deterministic'/u)
+// A failed or unusable generation is an error the caller sees and is refunded,
+// never template filler: the old fallback shipped "and the" as a strategy.
+assert.doesNotMatch(queryGeneration, /function fallbackQueries|source: 'deterministic'/u)
+assert.match(queryGeneration, /'STRATEGY_PROVIDER_FAILED'/u)
+assert.match(queryGeneration, /filterQueries\(/u)
+assert.match(queryGeneration, /status: 'profile_too_thin'/u)
+// The thin-profile refusal comes before the charge.
+assert.match(queryGeneration, /assessProfile\([\s\S]*?profile_too_thin[\s\S]*?chargeCredits\(/u)
 assert.match(compatibilityScoring, /function deterministicScore/u)
 
 assert.match(migration, /ADD COLUMN IF NOT EXISTS workspace_id UUID/u)
