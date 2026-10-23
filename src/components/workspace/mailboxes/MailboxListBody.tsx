@@ -8,14 +8,15 @@ import type { WorkspaceClient } from '@/services/clients'
 import type { WorkspaceMailboxAccount, WorkspaceMailboxesResponse } from '@/services/workspaceCampaigns'
 import type { MailboxActions } from './MailboxMenus'
 import { MailboxPager } from './MailboxPager'
-import { MAILBOX_COLUMN_COUNT, MailboxRow } from './MailboxRow'
+import { useMailboxColumnCount } from '@/hooks/useMailboxColumnCount'
+import { MailboxRow } from './MailboxRow'
 
 const SKELETON_ROWS = 8
 
-const MessageRow = ({ children }: { children: ReactNode }) => (
+const MessageRow = ({ columnCount, children }: { columnCount: number; children: ReactNode }) => (
   <tbody>
     <tr>
-      <td colSpan={MAILBOX_COLUMN_COUNT} className="h-52 px-5 text-center">
+      <td colSpan={columnCount} className="h-52 px-5 text-center">
         <div className="mx-auto max-w-md">{children}</div>
       </td>
     </tr>
@@ -58,11 +59,12 @@ interface MailboxListBodyProps {
 }
 
 export const MailboxListBody = ({ data, loading, error, list, canManage, clients, clientsError, actions }: MailboxListBodyProps) => {
+  const columnCount = useMailboxColumnCount()
   if (loading) return <SkeletonRows />
   // The banner above names the failure; with no earlier list there is nothing to show.
   if (!data) {
     return (
-      <MessageRow>
+      <MessageRow columnCount={columnCount}>
         <p className="text-sm text-muted-foreground">
           {error ? 'No mailbox list to show until a sync succeeds.' : 'The mailboxes for this workspace could not be read.'}
         </p>
@@ -72,7 +74,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
   // Only a payload that says connected: false may say disconnected.
   if (!data.connected) {
     return (
-      <MessageRow>
+      <MessageRow columnCount={columnCount}>
         <h2 className="font-semibold">{data.reason ? 'Instantly declined the connected key' : 'Instantly is not connected'}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {data.reason === 'key_rejected'
@@ -86,7 +88,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
   }
   if (data.accounts.length === 0) {
     return (
-      <MessageRow>
+      <MessageRow columnCount={columnCount}>
         <h2 className="font-semibold">No mailboxes found</h2>
         <p className="mt-1 text-sm text-muted-foreground">This Instantly workspace has no sending accounts.</p>
       </MessageRow>
@@ -94,7 +96,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
   }
   if (list.filtered.length === 0) {
     return (
-      <MessageRow>
+      <MessageRow columnCount={columnCount}>
         <h2 className="font-semibold">No mailboxes match this view</h2>
         <Button type="button" variant="outline" size="sm" className="mt-3" onClick={list.clearFilters}>Clear filters</Button>
       </MessageRow>
@@ -105,6 +107,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
     <MailboxRow
       key={account.email}
       account={account}
+      columnCount={columnCount}
       selected={list.isSelected(account.email)}
       onSelectedChange={(on) => list.setSelectedOne(account.email, on)}
       detailsOpen={list.detailsOpen(account.email)}
@@ -125,9 +128,8 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
         const paged = list.groupPage(group.key, group.accounts)
         const emails = group.accounts.map((account) => account.email)
         const selectedCount = emails.filter((email) => list.isSelected(email)).length
-        const bodyId = `mailbox-group-${group.key.replace(/[^a-z0-9]/gi, '-')}`
         return (
-          <tbody key={group.key} id={bodyId}>
+          <tbody key={group.key}>
             <tr className="border-b bg-muted/30">
               <td className="w-10 py-2 pl-4 pr-0">
                 <Checkbox
@@ -136,11 +138,11 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
                   aria-label={`Select all ${emails.length} in ${group.label}`}
                 />
               </td>
-              <td colSpan={MAILBOX_COLUMN_COUNT - 1} className="py-1 pr-4">
+              <td colSpan={columnCount - 1} className="py-1 pr-4">
                 <button
                   type="button"
                   aria-expanded={open}
-                  aria-controls={bodyId}
+                  data-group-toggle
                   onClick={() => list.toggleGroup(group.key)}
                   className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm font-semibold hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
@@ -153,7 +155,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
             {open && renderRows(paged.items)}
             {open && paged.pageCount > 1 && (
               <tr className="border-b">
-                <td colSpan={MAILBOX_COLUMN_COUNT} className="p-0">
+                <td colSpan={columnCount} className="p-0">
                   <MailboxPager
                     total={group.accounts.length}
                     page={paged.page}

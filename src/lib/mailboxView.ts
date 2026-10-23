@@ -92,6 +92,14 @@ export function formatWarmup(account: WorkspaceMailboxAccount): string {
   return `${sent} sent${target}`
 }
 
+/** "3 of 20"; with no analytics, says so instead of reading "No data of 20". */
+export function sentText(account: WorkspaceMailboxAccount): string {
+  if (typeof account.sent_today !== 'number') {
+    return account.daily_limit ? `No data, limit ${account.daily_limit}` : 'No data'
+  }
+  return account.daily_limit ? `${account.sent_today} of ${account.daily_limit}` : String(account.sent_today)
+}
+
 export function healthScore(account: WorkspaceMailboxAccount): number | null {
   return typeof account.health_score === 'number' && Number.isFinite(account.health_score)
     ? Math.round(account.health_score)
@@ -134,28 +142,35 @@ export function matchesSearch(account: WorkspaceMailboxAccount, query: string): 
     || clientNames(account).some((name) => name.toLowerCase().includes(needle))
 }
 
-function compareBy(key: MailboxSortKey, left: WorkspaceMailboxAccount, right: WorkspaceMailboxAccount): number {
-  if (key === 'status') {
-    return STATUS_RANK[effectiveStatus(left)] - STATUS_RANK[effectiveStatus(right)]
-      || (healthScore(left) ?? 101) - (healthScore(right) ?? 101)
-  }
-  if (key === 'health') return (healthScore(left) ?? 101) - (healthScore(right) ?? 101)
-  if (key === 'sent') return (left.sent_today ?? -1) - (right.sent_today ?? -1)
-  if (key === 'client') {
-    // Unassigned sorts last ascending, so the assigned ones are what you see first.
-    const leftName = clientNames(left)[0]
-    const rightName = clientNames(right)[0]
-    if (!leftName || !rightName) return Number(!leftName) - Number(!rightName)
-    return leftName.localeCompare(rightName)
-  }
-  return 0
+/**
+ * The value a column sorts by, or null for "nothing to sort by", which always
+ * goes last whichever way the column is sorted. A mailbox that cannot send
+ * has no health worth ranking: its warmup score still reads 100%.
+ */
+function sortValue(key: MailboxSortKey, account: WorkspaceMailboxAccount): number | string | null {
+  if (key === 'email') return account.email
+  if (key === 'health') return cannotSend(effectiveStatus(account)) ? null : healthScore(account)
+  if (key === 'sent') return typeof account.sent_today === 'number' ? account.sent_today : null
+  if (key === 'client') return clientNames(account)[0] ?? null
+  return STATUS_RANK[effectiveStatus(account)]
 }
 
-/** Ties break on email, so a row does not move under the cursor between loads. */
+function compareNullsLast(left: number | string | null, right: number | string | null, sign: number): number {
+  if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1
+  if (typeof left === 'string' || typeof right === 'string') return sign * String(left).localeCompare(String(right))
+  return sign * (left - right)
+}
+
+/**
+ * Within a status, the weakest health first. Ties break on email, so a row
+ * does not move under the cursor between loads.
+ */
 export function sortMailboxes(accounts: WorkspaceMailboxAccount[], sort: MailboxSort): WorkspaceMailboxAccount[] {
   const sign = sort.direction === 'asc' ? 1 : -1
   return [...accounts].sort((left, right) => (
-    sign * compareBy(sort.key, left, right) || left.email.localeCompare(right.email)
+    compareNullsLast(sortValue(sort.key, left), sortValue(sort.key, right), sign)
+      || (sort.key === 'status' ? compareNullsLast(sortValue('health', left), sortValue('health', right), 1) : 0)
+      || left.email.localeCompare(right.email)
   ))
 }
 

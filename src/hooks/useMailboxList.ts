@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   DEFAULT_MAILBOX_SORT,
   cannotSend,
@@ -34,14 +34,18 @@ export const useMailboxList = (accounts: WorkspaceMailboxAccount[]) => {
   const [pageSize, setPageSizeValue] = useState(DEFAULT_MAILBOX_PAGE_SIZE)
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [details, setDetails] = useState<Set<string>>(() => new Set())
-  // null means "the default": only the first group open.
+  // null means "the default": only the first group open. Which group that is
+  // gets pinned once, so a refresh that reorders groups by size does not
+  // swap the open one under the operator.
   const [openGroups, setOpenGroups] = useState<Set<string> | null>(null)
+  const [defaultGroup, setDefaultGroup] = useState<string | null>(null)
   const [groupPages, setGroupPages] = useState<Record<string, number>>({})
 
   const resetView = () => {
     setPage(1)
     setSelected(new Set())
     setOpenGroups(null)
+    setDefaultGroup(null)
     setGroupPages({})
   }
 
@@ -52,7 +56,12 @@ export const useMailboxList = (accounts: WorkspaceMailboxAccount[]) => {
   const groups = useMemo(() => groupMailboxes(filtered, groupBy), [filtered, groupBy])
   const pageInfo = paginate(filtered, page, pageSize)
 
-  const isGroupOpen = (key: string) => (openGroups ? openGroups.has(key) : key === groups[0]?.key)
+  const firstGroup = groups[0]?.key ?? null
+  useEffect(() => {
+    if (defaultGroup === null && firstGroup !== null) setDefaultGroup(firstGroup)
+  }, [defaultGroup, firstGroup])
+  const openByDefault = defaultGroup ?? firstGroup
+  const isGroupOpen = (key: string) => (openGroups ? openGroups.has(key) : key === openByDefault)
   const groupPage = (key: string, groupAccounts: WorkspaceMailboxAccount[]) => (
     paginate(groupAccounts, groupPages[key] ?? 1, pageSize)
   )
@@ -68,8 +77,10 @@ export const useMailboxList = (accounts: WorkspaceMailboxAccount[]) => {
     }
     return next
   })
-  // Kept to rows that still exist: a refresh can drop a mailbox from the list.
-  const selectedAccounts = accounts.filter((account) => selected.has(account.email))
+  // Only rows that still match the view: a refresh or an action can move a
+  // selected mailbox out of it, and a bulk action must not reach rows the
+  // operator can no longer see.
+  const selectedAccounts = filtered.filter((account) => selected.has(account.email))
   const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((account) => selected.has(account.email))
   const someVisibleSelected = visibleRows.some((account) => selected.has(account.email))
 
@@ -112,7 +123,7 @@ export const useMailboxList = (accounts: WorkspaceMailboxAccount[]) => {
     visibleRows,
     isGroupOpen,
     toggleGroup: (key: string) => setOpenGroups((current) => {
-      const next = new Set(current ?? (groups[0] ? [groups[0].key] : []))
+      const next = new Set(current ?? (openByDefault ? [openByDefault] : []))
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next

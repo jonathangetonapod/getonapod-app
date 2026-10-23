@@ -52,7 +52,7 @@ const CAMPAIGN_MANAGER_ROLES = new Set(["owner", "admin", "platform_admin"]);
 const MAX_PROVIDER_CAMPAIGN_PAGES = 10;
 const MAX_ANALYTICS_REFRESH_CAMPAIGNS = 200;
 const SEND_HISTORY_DAYS = 7;
-const MAX_MAILBOX_PAUSE_EMAILS = 500;
+const MAX_MAILBOX_PAUSE_EMAILS = 100;
 const RESEARCH_PROMPT_IDS = [
   "podcast_research",
   "host_info",
@@ -3317,18 +3317,36 @@ serve(async (req) => {
           account,
         ) => [account.email.trim().toLowerCase(), account.email]),
       );
-      if (requested.some((email) => !providerEmails.has(email))) {
-        throw new HttpError(
-          409,
-          "INSTANTLY_SENDER_UNAVAILABLE",
-          "Some of these mailboxes are no longer in the connected Instantly workspace. Refresh and try again.",
-        );
-      }
+      // A mailbox removed from Instantly since the page loaded is reported
+      // back as failed rather than failing the whole batch; the rest proceed.
+      const failed: Array<{ email: string; message: string }> = requested
+        .filter((email) => !providerEmails.has(email))
+        .map((email) => ({
+          email,
+          message:
+            "This mailbox is no longer in the connected Instantly workspace. Refresh and try again.",
+        }));
+      const sendable = requested.filter((email) => providerEmails.has(email));
+      const auditAction = body.paused
+        ? "workspace.mailbox.paused"
+        : "workspace.mailbox.resumed";
+      // Recorded before the provider calls, so a run cut off by the edge
+      // time limit still leaves a trace of what was attempted.
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: `${auditAction}.requested`,
+        entityType: "workspace_instantly_integration",
+        entityId: null,
+        metadata: {
+          provider_workspace_id: connection!.provider_workspace_id,
+          requested: requested.length,
+        },
+      });
       const updated: string[] = [];
-      const failed: Array<{ email: string; message: string }> = [];
-      for (let start = 0; start < requested.length; start += 5) {
+      for (let start = 0; start < sendable.length; start += 5) {
         await Promise.all(
-          requested.slice(start, start + 5).map(async (email) => {
+          sendable.slice(start, start + 5).map(async (email) => {
             try {
               await instantlyRequest<unknown>(
                 apiKey,
@@ -3347,12 +3365,17 @@ serve(async (req) => {
       await writeAudit(context.admin, {
         workspaceId,
         actorUserId: context.user.id,
-        action: body.paused
-          ? "workspace.mailbox.paused"
-          : "workspace.mailbox.resumed",
+        action: auditAction,
         entityType: "workspace_instantly_integration",
         entityId: null,
-        metadata: { requested: requested.length, updated, failed_count: failed.length },
+        // Counts and a short sample, not every address.
+        metadata: {
+          provider_workspace_id: connection!.provider_workspace_id,
+          requested: requested.length,
+          updated_count: updated.length,
+          failed_count: failed.length,
+          sample: updated.slice(0, 10),
+        },
       });
       return jsonResponse(req, METHODS, 200, {
         paused: body.paused,

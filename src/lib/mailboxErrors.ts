@@ -70,10 +70,12 @@ export function humanizeMailboxError(status: number, rawMessage: string | null |
     const match = MAILBOX_ERROR_PATTERNS.find((pattern) => pattern.test.test(raw))
     if (match) return { id: match.id, label: match.label, hint: match.hint, kind: match.kind, raw }
   }
+  // An unrecognized message reads "Sending error" with the message as its
+  // hint; only an empty one falls back to what Instantly's status code says.
   const fallback = STATUS_FALLBACK[status] ?? { label: 'Sending error', kind: 'error' as const }
   return {
     id: raw ? 'unmatched' : `status-${status}`,
-    label: fallback.label,
+    label: raw ? 'Sending error' : fallback.label,
     hint: raw ? truncateHint(raw) : 'Instantly did not say why. Open the mailbox in Instantly to check it.',
     kind: fallback.kind,
     raw,
@@ -88,6 +90,20 @@ export interface TextPart {
 const URL_PATTERN = /https?:\/\/[^\s<>"'()]+/g
 
 /**
+ * This text comes from remote mail servers, so a URL with credentials in it
+ * (https://support.google.com@evil.example/) is shown, not linked: it reads
+ * as one host and opens another.
+ */
+function isPlainLink(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password
+  } catch {
+    return false
+  }
+}
+
+/**
  * Splits text into plain runs and http(s) links, so a raw error's "go to
  * https://support.google.com/..." renders as a link. Trailing sentence
  * punctuation stays text, not part of the URL.
@@ -99,7 +115,7 @@ export function linkifyText(text: string): TextPart[] {
     const start = match.index ?? 0
     const url = match[0].replace(/[.,;:!?]+$/, '')
     if (start > cursor) parts.push({ text: text.slice(cursor, start) })
-    parts.push({ text: url, href: url })
+    parts.push(isPlainLink(url) ? { text: url, href: url } : { text: url })
     cursor = start + url.length
   }
   if (cursor < text.length) parts.push({ text: text.slice(cursor) })

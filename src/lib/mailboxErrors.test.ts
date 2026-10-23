@@ -32,6 +32,10 @@ describe('humanizeMailboxError', () => {
     expect(result?.kind).toBe('error')
   })
 
+  it('calls any unrecognized message a sending error, keeping a connection error disconnected', () => {
+    expect(humanizeMailboxError(-1, 'SMTP AUTH failed: 535 bad credentials')).toMatchObject({ label: 'Sending error', kind: 'disconnected' })
+  })
+
   it('labels by status when Instantly gave no message', () => {
     expect(humanizeMailboxError(-1, null)).toMatchObject({ label: 'Connection error', kind: 'disconnected' })
     expect(humanizeMailboxError(-2, '')).toMatchObject({ label: 'Soft bounce error', kind: 'error' })
@@ -55,6 +59,13 @@ describe('linkifyText', () => {
       { text: 'see ' },
       { text: 'https://support.google.com/a/answer/166852', href: 'https://support.google.com/a/answer/166852' },
       { text: '. Then retry' },
+    ])
+  })
+
+  it('does not link a URL that hides its real host behind credentials', () => {
+    expect(linkifyText('visit https://support.google.com@evil.example/login')).toEqual([
+      { text: 'visit ' },
+      { text: 'https://support.google.com@evil.example/login' },
     ])
   })
 

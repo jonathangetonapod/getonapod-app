@@ -52,10 +52,10 @@ export const MailboxBulkBar = ({
               />
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button type="button" variant="outline" size="sm" className="h-8 bg-background" disabled={actions.busy} onClick={() => actions.setPaused(emails, true)}>
+          <Button type="button" variant="outline" size="sm" className="h-8 bg-background" disabled={actions.busy} onClick={() => actions.setPaused(selected, true)}>
             <Pause className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Pause
           </Button>
-          <Button type="button" variant="outline" size="sm" className="h-8 bg-background" disabled={actions.busy} onClick={() => actions.setPaused(emails, false)}>
+          <Button type="button" variant="outline" size="sm" className="h-8 bg-background" disabled={actions.busy} onClick={() => actions.setPaused(selected, false)}>
             <Play className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Resume
           </Button>
           {/* TODO(mailboxes): Reconnect. Instantly's API has no endpoint to

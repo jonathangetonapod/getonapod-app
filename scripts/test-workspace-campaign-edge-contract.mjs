@@ -53,9 +53,11 @@ assert.match(edge, /action === "mailboxes"[\s\S]*?if \(!Array\.isArray\(accounts
 // Mailbox pause/resume: manager-gated, bounded, and only for mailboxes the
 // workspace's key can see right now.
 assert.match(edge, /action === "mailbox-pause"[\s\S]*?requireOnlyKeys\(body, \["action", "workspace_id", "emails", "paused"\]\)[\s\S]*?requireCampaignManager\(access\)/u)
-assert.match(edge, /action === "mailbox-pause"[\s\S]*?MAX_MAILBOX_PAUSE_EMAILS[\s\S]*?refreshProviderAccounts[\s\S]*?INSTANTLY_SENDER_UNAVAILABLE/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?MAX_MAILBOX_PAUSE_EMAILS[\s\S]*?refreshProviderAccounts[\s\S]*?!providerEmails\.has\(email\)[\s\S]*?const sendable = requested\.filter/u)
 assert.match(edge, /action === "mailbox-pause"[\s\S]*?\/accounts\/\$\{encodeURIComponent\(/u)
-assert.match(edge, /action === "mailbox-pause"[\s\S]*?writeAudit[\s\S]*?workspace\.mailbox\.paused/u)
+// Audited before the provider calls (a run cut off mid-way still leaves a
+// trace) and after, with counts rather than every address.
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?"workspace\.mailbox\.paused"[\s\S]*?writeAudit\([\s\S]*?\.requested`[\s\S]*?instantlyRequest[\s\S]*?writeAudit\([\s\S]*?action: auditAction[\s\S]*?sample: updated\.slice\(0, 10\)/u)
 assert.match(edge, /action === "launch-pitch"[\s\S]*?requireCampaignManager\(access\)/u)
 // Client ↔ Instantly campaign links: manager-gated writes, one client per
 // campaign, and inbox attribution that tolerates the pre-migration state.
@@ -1047,7 +1049,7 @@ assert.match(campaignsPage, /result\.missing > 0/u)
 const mailboxInfra = readFileSync('supabase/functions/workspace-mailbox-infra/index.ts', 'utf8')
 const mailboxesTable = readFileSync('src/components/workspace/MailboxesTable.tsx', 'utf8')
 const mailboxView = readFileSync('src/lib/mailboxView.ts', 'utf8')
-const mailboxRow = readFileSync('src/components/workspace/mailboxes/MailboxRow.tsx', 'utf8')
+const mailboxCells = readFileSync('src/components/workspace/mailboxes/MailboxCells.tsx', 'utf8')
 
 // A UTC day rolls over during the American sending window, so an afternoon of
 // sending read as zero from late afternoon onwards.
@@ -1103,9 +1105,9 @@ assert.match(mailboxInfra, /action === 'warming-retry'/u)
 // Problems first, by one derived status rather than the warmup score, and the
 // SMTP reason on the row as a label and hint with the raw text one click away.
 assert.match(mailboxView, /export function effectiveStatus\(account: WorkspaceMailboxAccount\): EffectiveStatus/u)
-assert.match(mailboxView, /sign \* compareBy\(sort\.key, left, right\) \|\| left\.email\.localeCompare/u)
-assert.match(mailboxRow, /linkifyText\(error\.raw\)/u)
-assert.match(mailboxRow, /rel="noopener noreferrer"/u)
+assert.match(mailboxView, /compareNullsLast\(sortValue\(sort\.key, left\), sortValue\(sort\.key, right\), sign\)[\s\S]*?\|\| left\.email\.localeCompare/u)
+assert.match(mailboxCells, /linkifyText\(raw\)/u)
+assert.match(mailboxCells, /rel="noopener noreferrer"/u)
 assert.match(mailboxesTable, /useMailboxList\(allAccounts\)/u)
 
 // Why a campaign is not sending. The provider reports it on every sync and it

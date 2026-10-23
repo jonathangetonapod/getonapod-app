@@ -71,7 +71,7 @@ export const MailboxSummary = ({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {problemCount > 0 && (
+        {(problemCount > 0 || filter === 'attention') && (
           <FilterChip
             count={problemCount}
             label={problemCount === 1 ? 'mailbox cannot send' : 'mailboxes cannot send'}
@@ -80,7 +80,7 @@ export const MailboxSummary = ({
             onClick={() => toggle('attention')}
           />
         )}
-        {unassignedCount > 0 && (
+        {(unassignedCount > 0 || filter === 'unassigned') && (
           <FilterChip
             count={unassignedCount}
             label="not connected to any client"

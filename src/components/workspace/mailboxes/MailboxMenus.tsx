@@ -151,8 +151,8 @@ export const MailboxActionsMenu = ({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
           {account.status === 2
-            ? <DropdownMenuItem onSelect={() => actions.setPaused([account.email], false)}>Resume sending</DropdownMenuItem>
-            : <DropdownMenuItem onSelect={() => actions.setPaused([account.email], true)}>Pause sending</DropdownMenuItem>}
+            ? <DropdownMenuItem onSelect={() => actions.setPaused([account], false)}>Resume sending</DropdownMenuItem>
+            : <DropdownMenuItem onSelect={() => actions.setPaused([account], true)}>Pause sending</DropdownMenuItem>}
           {/* TODO(mailboxes): Reconnect. Instantly's API has no endpoint to
               re-run a mailbox's OAuth; it has to be done in Instantly. */}
           <DropdownMenuSeparator />

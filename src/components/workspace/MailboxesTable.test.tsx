@@ -38,9 +38,9 @@ function mailbox(email: string, overrides: Partial<WorkspaceMailboxAccount> = {}
   }
 }
 
-/** 120 mailboxes: 4 at the Gmail limit, 3 needing a reconnect, the rest healthy. */
-function payload(): WorkspaceMailboxesResponse {
-  const accounts = Array.from({ length: 120 }, (_, index) => {
+/** 4 at the Gmail limit, 3 needing a reconnect, the rest healthy; 60 spans two pages. */
+function payload(count = 60): WorkspaceMailboxesResponse {
+  const accounts = Array.from({ length: count }, (_, index) => {
     const email = `sender${String(index).padStart(3, '0')}@example.com`
     if (index < 4) return mailbox(email, { status: -3, status_message: GMAIL_LIMIT, health_score: 100 })
     if (index < 7) return mailbox(email, { status: -1, status_message: TOKEN, health_score: 100 })
@@ -80,7 +80,9 @@ function renderTable(data: WorkspaceMailboxesResponse = payload()) {
 
 const bodyRows = (table: HTMLElement) => within(table).getAllByRole('row').slice(1)
 
-describe('MailboxesTable', () => {
+// A full page is 50 rows, each with two menus; jsdom renders that slowly when
+// the whole suite runs in parallel, so this file gets more than the default 5s.
+describe('MailboxesTable', { timeout: 20_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -102,9 +104,9 @@ describe('MailboxesTable', () => {
 
   it('applies the No client filter from its chip', () => {
     const table = renderTable()
-    fireEvent.click(screen.getByRole('button', { name: '119 not connected to any client' }))
+    fireEvent.click(screen.getByRole('button', { name: '59 not connected to any client' }))
     expect(within(table).queryByText('sender010@example.com')).not.toBeInTheDocument()
-    expect(screen.getByText('1-50 of 119 mailboxes')).toBeInTheDocument()
+    expect(screen.getByText('1-50 of 59 mailboxes')).toBeInTheDocument()
   })
 
   it('never shows a green dot or a status of Healthy next to a sending or connection error', () => {
@@ -126,15 +128,15 @@ describe('MailboxesTable', () => {
     expect(within(row).getByText('Google paused sending for this account until the limit resets.')).toBeInTheDocument()
     expect(screen.queryByText(/Daily user sending limit exceeded/)).not.toBeInTheDocument()
 
-    fireEvent.click(within(row).getByRole('button', { name: 'Details' }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Show error details for sender000@example.com' }))
     const link = screen.getByRole('link', { name: 'https://support.google.com/a/answer/166852' })
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
   it('selects a page, then every matching mailbox across pages, and pauses them all', async () => {
-    vi.mocked(setWorkspaceMailboxesPaused).mockResolvedValue({ paused: true, updated: [], failed: [] })
-    const table = renderTable()
+    vi.mocked(setWorkspaceMailboxesPaused).mockImplementation(async ({ emails }) => ({ paused: true, updated: emails, failed: [] }))
+    const table = renderTable(payload(120))
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shown mailboxes' }))
     const bar = screen.getByRole('region', { name: 'Bulk actions' })
@@ -148,10 +150,36 @@ describe('MailboxesTable', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
     expect(within(bodyRows(table)[0]).getByRole('checkbox')).toHaveAttribute('data-state', 'checked')
 
+    // 120 goes out as 100 + 20: the server takes at most 100 per call.
     fireEvent.click(within(bar).getByRole('button', { name: 'Pause' }))
-    await waitFor(() => expect(setWorkspaceMailboxesPaused).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(setWorkspaceMailboxesPaused).mock.calls[0][0].emails).toHaveLength(120)
+    await waitFor(() => expect(setWorkspaceMailboxesPaused).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(setWorkspaceMailboxesPaused).mock.calls.map(([input]) => input.emails.length)).toEqual([100, 20])
     expect(vi.mocked(setWorkspaceMailboxesPaused).mock.calls[0][0].paused).toBe(true)
+    // Done rows leave the selection, so a second action cannot reach them unseen.
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument())
+  })
+
+  it('never runs two assignments at once, even from different rows', async () => {
+    let finishFirst: () => void = () => undefined
+    vi.mocked(setWorkspaceMailboxClient)
+      .mockImplementationOnce(() => new Promise((resolve) => { finishFirst = () => resolve({ sender_accounts: [] }) }))
+      .mockResolvedValue({ sender_accounts: [] })
+    renderTable()
+
+    for (const email of ['sender020@example.com', 'sender021@example.com']) {
+      const trigger = screen.getByRole('button', { name: `Client for ${email}: unassigned` })
+      trigger.focus()
+      fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+      fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
+    }
+
+    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(1))
+    // The second waits: both read and rewrite the same campaign sender list.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(1)
+    finishFirst()
+    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(setWorkspaceMailboxClient).mock.calls[1][0].email).toBe('sender021@example.com')
   })
 
   it('assigns a selection to a client one mailbox at a time, skipping ones that cannot send', async () => {
@@ -178,10 +206,8 @@ describe('MailboxesTable', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Group mailboxes' }))
     fireEvent.click(screen.getByRole('option', { name: 'Error type' }))
 
-    const toggles = within(table).getAllByRole('button', { expanded: true })
-      .concat(within(table).getAllByRole('button', { expanded: false }))
-      .filter((button) => button.getAttribute('aria-controls') === button.closest('tbody')?.id)
-    expect(toggles.map((button) => button.textContent)).toEqual(['Gmail daily limit4', 'Reconnect needed3', 'No errors113'])
+    const toggles = Array.from(table.querySelectorAll<HTMLButtonElement>('button[data-group-toggle]'))
+    expect(toggles.map((button) => button.textContent)).toEqual(['Gmail daily limit4', 'Reconnect needed3', 'No errors53'])
     expect(toggles[0]).toHaveAttribute('aria-expanded', 'true')
     expect(toggles[1]).toHaveAttribute('aria-expanded', 'false')
     expect(within(table).getAllByText('Gmail daily limit').length).toBeGreaterThan(1)
@@ -204,6 +230,6 @@ describe('MailboxesTable', () => {
   it('says when and where it synced, in relative time', () => {
     renderTable()
     expect(screen.getByTestId('mailbox-sync-status')).toHaveTextContent('Synced 12 min ago · Instantly / Power Payback 1')
-    expect(screen.getByTestId('mailbox-capacity')).toHaveTextContent('226 / 1,130 sent today, resets midnight America/Detroit')
+    expect(screen.getByTestId('mailbox-capacity')).toHaveTextContent('106 / 530 sent today, resets midnight America/Detroit')
   })
 })

@@ -9,6 +9,7 @@ import {
   matchesSearch,
   paginate,
   sendDataPoints,
+  sentText,
   sortMailboxes,
   statusLabel,
 } from './mailboxView'
@@ -118,6 +119,25 @@ describe('sortMailboxes', () => {
     expect(sorted.map((account) => account.email)).toEqual(['error@x.com', 'gone@x.com', 'warming@x.com', 'healthy@x.com'])
   })
 
+  it('sorts by email in either direction', () => {
+    const rows = [mailbox({ email: 'b@x.com' }), mailbox({ email: 'a@x.com' }), mailbox({ email: 'c@x.com' })]
+    expect(sortMailboxes(rows, { key: 'email', direction: 'asc' }).map((account) => account.email)).toEqual(['a@x.com', 'b@x.com', 'c@x.com'])
+    expect(sortMailboxes(rows, { key: 'email', direction: 'desc' }).map((account) => account.email)).toEqual(['c@x.com', 'b@x.com', 'a@x.com'])
+  })
+
+  it('never ranks a mailbox that cannot send by its warmup score, in either direction', () => {
+    const rows = [
+      mailbox({ email: 'broken@x.com', status: -3, health_score: 100 }),
+      mailbox({ email: 'weak@x.com', health_score: 70 }),
+      mailbox({ email: 'strong@x.com', health_score: 98 }),
+      mailbox({ email: 'unscored@x.com', health_score: null }),
+    ]
+    expect(sortMailboxes(rows, { key: 'health', direction: 'desc' }).map((account) => account.email))
+      .toEqual(['strong@x.com', 'weak@x.com', 'broken@x.com', 'unscored@x.com'])
+    expect(sortMailboxes(rows, { key: 'health', direction: 'asc' }).map((account) => account.email))
+      .toEqual(['weak@x.com', 'strong@x.com', 'broken@x.com', 'unscored@x.com'])
+  })
+
   it('sorts by sent today descending and keeps unassigned last by client', () => {
     const rows = [mailbox({ email: 'a@x.com', sent_today: 1 }), mailbox({ email: 'b@x.com', sent_today: 9 })]
     expect(sortMailboxes(rows, { key: 'sent', direction: 'desc' })[0].email).toBe('b@x.com')
@@ -126,6 +146,7 @@ describe('sortMailboxes', () => {
       campaigns: [{ campaign_id: 'c', campaign_name: 'C', campaign_status: 'active', client_id: 'k', client_name: 'Acme' }],
     })
     expect(sortMailboxes([...rows, withClient], { key: 'client', direction: 'asc' })[0].email).toBe('z@x.com')
+    expect(sortMailboxes([...rows, withClient], { key: 'client', direction: 'desc' })[0].email).toBe('z@x.com')
   })
 })
 
@@ -151,6 +172,12 @@ describe('groupMailboxes', () => {
 })
 
 describe('helpers', () => {
+  it('states sends as X of Y, and never "No data of Y"', () => {
+    expect(sentText(mailbox({ sent_today: 3, daily_limit: 20 }))).toBe('3 of 20')
+    expect(sentText(mailbox({ sent_today: null, daily_limit: 20 }))).toBe('No data, limit 20')
+    expect(sentText(mailbox({ sent_today: null, daily_limit: null }))).toBe('No data')
+  })
+
   it('counts only days with sends as sparkline data', () => {
     expect(sendDataPoints(mailbox({ send_history: week([0, 0, 0, 0, 0, 0, 0]) }))).toBe(0)
     expect(sendDataPoints(mailbox())).toBe(6)
