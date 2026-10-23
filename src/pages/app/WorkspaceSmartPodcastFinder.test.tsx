@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import WorkspaceSmartPodcastFinder from '@/pages/app/WorkspaceSmartPodcastFinder'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
-import { generatePodcastQueries } from '@/services/queryGeneration'
+import { generatePodcastQueries, ProfileTooThinError, StrategyGenerationError } from '@/services/queryGeneration'
 import { searchPodcastsWithMeta } from '@/services/podscan'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { addClientShortlistPodcasts, searchClientPodcastCatalog } from '@/services/clientShortlist'
@@ -29,7 +29,10 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceResearchContext: vi.fn(),
 }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
-vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
+vi.mock('@/services/queryGeneration', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/queryGeneration')>(),
+  generatePodcastQueries: vi.fn(),
+}))
 vi.mock('@/services/podscan', () => ({ searchPodcastsWithMeta: vi.fn() }))
 vi.mock('@/services/compatibilityScoring', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/compatibilityScoring')>(),
@@ -43,6 +46,9 @@ const clientId = '22222222-2222-4222-8222-222222222222'
 // Deliberately not the workspace in AuthContext above: in the platform view the
 // viewer's own workspace is never the one on screen.
 const viewedWorkspaceId = '99999999-9999-4999-8999-999999999999'
+// Relative to today: a fixed date ages out of the finder's 90-day recency
+// filter, and the catalog match then silently drops out of every scan.
+const recentDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
 
 function mockViewedWorkspace() {
   vi.mocked(getAdminWorkspaceView).mockResolvedValue({
@@ -58,7 +64,7 @@ function podcast(id: string, name: string) {
     podcast_url: `https://example.com/${id}`,
     podcast_description: `${name} description`,
     episode_count: 100,
-    last_posted_at: '2026-07-20',
+    last_posted_at: recentDate(3),
     reach: { audience_size: 12_000 },
     podcast_categories: [{ category_id: 'business', category_name: 'Business' }],
   }
@@ -142,7 +148,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
         itunes_rating: null,
         episode_count: 80,
         audience_size: 9_000,
-        last_posted_at: '2026-07-18',
+        last_posted_at: recentDate(5),
         podcast_categories: null,
         language: 'en',
         region: null,
@@ -301,18 +307,44 @@ describe('WorkspaceSmartPodcastFinder', () => {
       .toHaveAttribute('href', `/app/podcast-finder/advanced?client=${clientId}`)
   })
 
-  it('says the scan failed when every search failed, instead of reporting nothing new', async () => {
-    vi.mocked(searchClientPodcastCatalog).mockRejectedValue(new Error('catalog down'))
-    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(new Error('podscan down'))
+  /*
+   * The live audit: every index page came back 403, the shared database
+   * answered with shows already on the list, and the page said "Nothing new
+   * this time" after a minute and a half of retries. A refused request ends
+   * the scan on the first page and says so.
+   */
+  it('stops on the first 403 and shows the failure panel with the refund, not "nothing new"', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockResolvedValue([] as never)
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(Object.assign(new Error('Podscan API error: 403'), {
+      code: 'PODSCAN_UPSTREAM_403', status: 502, creditsCharged: 1, creditsRefunded: 1,
+    }))
     renderFinder()
     fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
-    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringMatching(/Every search failed/u)), { timeout: 5_000 })
-    expect(vi.mocked(toast.info)).not.toHaveBeenCalledWith(expect.stringMatching(/No new podcasts/u))
+    const panel = await screen.findByRole('alert')
+    expect(panel).toHaveTextContent('Scan could not run.')
+    expect(panel).toHaveTextContent('The podcast index rejected the request (error 403).')
+    expect(panel).toHaveTextContent('1 credit taken for the failed request was refunded.')
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Contact support' })).toHaveAttribute('href', expect.stringMatching(/^mailto:/u))
+    expect(screen.queryByText(/Nothing new this time/u)).not.toBeInTheDocument()
+    expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
+  })
+
+  it('retries a flaky index twice and then fails, instead of walking every page', async () => {
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(Object.assign(new Error('Podscan did not respond in time'), {
+      code: 'PODSCAN_TIMEOUT', status: 504,
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByRole('alert', {}, { timeout: 6_000 })).toHaveTextContent('The podcast index did not respond in time.')
+    expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Scan could not run. The podcast index did not respond in time.')
   }, 15_000)
 
-  it('counts failed searches when some of them fail', async () => {
+  it('does not call it "nothing new" when the shared database searches failed', async () => {
     vi.mocked(searchClientPodcastCatalog).mockRejectedValue(new Error('catalog down'))
     vi.mocked(searchPodcastsWithMeta).mockResolvedValue({
       data: { podcasts: [podcast('pd-existing', 'Already Listed')], pagination: { last_page: '1' } },
@@ -321,7 +353,42 @@ describe('WorkspaceSmartPodcastFinder', () => {
     renderFinder()
     fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
-    await waitFor(() => expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringMatching(/1 search failed/u)))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The shared podcast database did not answer 1 of 1 searches')
+    expect(screen.queryByText(/Nothing new this time/u)).not.toBeInTheDocument()
+  })
+
+  it('sends a thin profile to the client record instead of scanning with a guessed strategy', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(new ProfileTooThinError('The profile has only 3 descriptive words.'))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    const panel = await screen.findByText('Scan could not run.')
+    const card = panel.closest('[role="alert"]') as HTMLElement
+    expect(card).toHaveTextContent('Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.')
+    expect(card).toHaveTextContent('No credits were charged for this scan.')
+    expect(screen.getByRole('link', { name: 'Open client profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(screen.getByRole('link', { name: 'Open Taylor Client’s profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(vi.mocked(searchPodcastsWithMeta)).not.toHaveBeenCalled()
+  })
+
+  it('says the strategy failed instead of searching with filler when the AI call fails', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(
+      new StrategyGenerationError('The AI could not draft a search strategy. Try again in a moment.', 'STRATEGY_PROVIDER_FAILED'),
+    )
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The AI could not draft a search strategy. Try again in a moment.')
+    expect(vi.mocked(searchPodcastsWithMeta)).not.toHaveBeenCalled()
+  })
+
+  it('flags a thin profile when previewing the strategy', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(new ProfileTooThinError('The profile has only 3 descriptive words.'))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /Preview strategy/ }))
+
+    expect(await screen.findByRole('link', { name: 'Open Taylor Client’s profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.')
   })
 
   it('stops a running scan when the page is left, before any paid scoring', async () => {
