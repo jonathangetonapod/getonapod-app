@@ -52,6 +52,7 @@ const CAMPAIGN_MANAGER_ROLES = new Set(["owner", "admin", "platform_admin"]);
 const MAX_PROVIDER_CAMPAIGN_PAGES = 10;
 const MAX_ANALYTICS_REFRESH_CAMPAIGNS = 200;
 const SEND_HISTORY_DAYS = 7;
+const MAX_MAILBOX_PAUSE_EMAILS = 100;
 const RESEARCH_PROMPT_IDS = [
   "podcast_research",
   "host_info",
@@ -3273,6 +3274,113 @@ serve(async (req) => {
         }),
         last_synced_at: lastSyncedAt,
         analytics_errors: analyticsErrors,
+      });
+    }
+
+    /*
+     * Pause or resume sending mailboxes in Instantly, one or many. Each address
+     * must be one this workspace's key can see right now, so a stale screen
+     * cannot pause a mailbox that moved to another workspace. Per-mailbox
+     * failures are reported back instead of failing the whole batch: the page
+     * is acting on hundreds of rows and needs to say which ones did not take.
+     */
+    if (action === "mailbox-pause") {
+      requireOnlyKeys(body, ["action", "workspace_id", "emails", "paused"]);
+      requireCampaignManager(access);
+      if (typeof body.paused !== "boolean") {
+        throw new HttpError(400, "INVALID_FIELD", "paused must be a boolean");
+      }
+      if (
+        !Array.isArray(body.emails) || body.emails.length === 0 ||
+        body.emails.length > MAX_MAILBOX_PAUSE_EMAILS
+      ) {
+        throw new HttpError(
+          400,
+          "INVALID_FIELD",
+          `emails must list 1 to ${MAX_MAILBOX_PAUSE_EMAILS} mailboxes`,
+        );
+      }
+      const requested = [
+        ...new Set(
+          body.emails.map((value, index) =>
+            requireString(value, `emails[${index}]`, { max: 254 })
+              .trim()
+              .toLowerCase()
+          ),
+        ),
+      ];
+      const connection = await readConnection(context.admin, workspaceId);
+      const apiKey = await integrationApiKey(connection);
+      // Instantly's own casing is what its path expects.
+      const providerEmails = new Map(
+        (await refreshProviderAccounts(context.admin, connection!, apiKey)).map((
+          account,
+        ) => [account.email.trim().toLowerCase(), account.email]),
+      );
+      // A mailbox removed from Instantly since the page loaded is reported
+      // back as failed rather than failing the whole batch; the rest proceed.
+      const failed: Array<{ email: string; message: string }> = requested
+        .filter((email) => !providerEmails.has(email))
+        .map((email) => ({
+          email,
+          message:
+            "This mailbox is no longer in the connected Instantly workspace. Refresh and try again.",
+        }));
+      const sendable = requested.filter((email) => providerEmails.has(email));
+      const auditAction = body.paused
+        ? "workspace.mailbox.paused"
+        : "workspace.mailbox.resumed";
+      // Recorded before the provider calls, so a run cut off by the edge
+      // time limit still leaves a trace of what was attempted.
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: `${auditAction}.requested`,
+        entityType: "workspace_instantly_integration",
+        entityId: null,
+        metadata: {
+          provider_workspace_id: connection!.provider_workspace_id,
+          requested: requested.length,
+        },
+      });
+      const updated: string[] = [];
+      for (let start = 0; start < sendable.length; start += 5) {
+        await Promise.all(
+          sendable.slice(start, start + 5).map(async (email) => {
+            try {
+              await instantlyRequest<unknown>(
+                apiKey,
+                `/accounts/${encodeURIComponent(providerEmails.get(email)!)}/${
+                  body.paused ? "pause" : "resume"
+                }`,
+                { method: "POST" },
+              );
+              updated.push(email);
+            } catch (error) {
+              failed.push({ email, message: safeInstantlyError(error).message });
+            }
+          }),
+        );
+      }
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: auditAction,
+        entityType: "workspace_instantly_integration",
+        entityId: null,
+        // Counts and a short sample, not every address.
+        metadata: {
+          provider_workspace_id: connection!.provider_workspace_id,
+          requested: requested.length,
+          updated_count: updated.length,
+          failed_count: failed.length,
+          sample: updated.slice(0, 10),
+        },
+      });
+      return jsonResponse(req, METHODS, 200, {
+        paused: body.paused,
+        updated,
+        failed,
       });
     }
 

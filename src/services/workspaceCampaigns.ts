@@ -331,6 +331,31 @@ export async function setWorkspaceMailboxClient(input: {
   }, 'The mailbox assignment could not be saved.')
 }
 
+export interface WorkspaceMailboxPauseResult {
+  paused: boolean
+  updated: string[]
+  /** Mailboxes Instantly refused, each with its reason. */
+  failed: Array<{ email: string; message: string }>
+}
+
+/** Pause or resume sending for one or more mailboxes in Instantly. */
+export async function setWorkspaceMailboxesPaused(input: {
+  workspaceId: string
+  emails: string[]
+  paused: boolean
+}): Promise<WorkspaceMailboxPauseResult> {
+  const data = await invokeWorkspaceCampaigns<WorkspaceMailboxPauseResult>({
+    action: 'mailbox-pause',
+    workspace_id: input.workspaceId,
+    emails: input.emails,
+    paused: input.paused,
+  }, input.paused ? 'The mailboxes could not be paused.' : 'The mailboxes could not be resumed.')
+  if (!data || !Array.isArray(data.updated) || !Array.isArray(data.failed)) {
+    throw new Error('The mailbox update response could not be read. Refresh to see the current state.')
+  }
+  return data
+}
+
 export async function getWorkspaceCampaign(
   workspaceId: string,
   clientId: string,

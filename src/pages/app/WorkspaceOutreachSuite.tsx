@@ -289,6 +289,7 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
               workspaceId={effectiveWorkspace.id}
               data={mailboxesQuery.data}
               loading={mailboxesQuery.isLoading}
+              refreshing={mailboxesQuery.isFetching}
               error={mailboxesQuery.error instanceof Error ? mailboxesQuery.error : null}
               onRetry={() => void mailboxesQuery.refetch()}
               canManage={canManage}
