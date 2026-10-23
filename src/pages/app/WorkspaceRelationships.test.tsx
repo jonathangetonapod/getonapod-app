@@ -77,6 +77,9 @@ const workspaceId = '11111111-1111-4111-8111-111111111111'
 const platformWorkspaceId = '99999999-9999-4999-8999-999999999999'
 const clientId = '22222222-2222-4222-8222-222222222222'
 
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+
 const relationship: HostRelationshipSummary = {
   podcast_id: 'show-one',
   podcast_name: 'Founder &amp; Operator',
@@ -86,12 +89,18 @@ const relationship: HostRelationshipSummary = {
   derived_state: 'replied',
   manual_stage: null,
   summary: 'Prefers practical operator stories.',
-  last_contacted_at: '2026-07-20T12:00:00.000Z',
+  last_contacted_at: daysAgo(2),
   touch_count: 1,
   booked_client_name: null,
   client_count: 1,
+  client_names: ['Taylor Client'],
   note_count: 1,
-  last_note_at: '2026-07-21T12:00:00.000Z',
+  last_note_at: daysAgo(2),
+  last_message_body: 'Interested in revisiting this in Q3.',
+  last_message_at: daysAgo(2),
+  last_message_direction: 'inbound',
+  last_thread_key: null,
+  last_thread_client_id: null,
   curated: true,
 }
 
@@ -131,11 +140,11 @@ const detail: HostRelationshipDetail = {
     from_email: 'morgan@example.com',
     to_email: 'sdr@example.com',
     latest_message_body: 'Interested in revisiting this in Q3.',
-    latest_message_at: '2026-07-21T12:00:00.000Z',
+    latest_message_at: '2026-07-09T12:00:00.000Z',
     campaign_id: 'campaign-one',
-    campaign_name: 'Taylor outreach',
-    created_at: '2026-07-21T12:00:00.000Z',
-    updated_at: '2026-07-21T12:00:00.000Z',
+    campaign_name: '(failed) Titan | (Sunnova, Mosaic)',
+    created_at: '2026-07-09T12:00:00.000Z',
+    updated_at: '2026-07-09T12:00:00.000Z',
   }],
 }
 
@@ -150,6 +159,10 @@ function renderPage(props: { platformWorkspaceId?: string } = {}) {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+const openDetails = async (title: string) => {
+  fireEvent.click(await screen.findByRole('button', { name: `Open details for ${title}` }))
 }
 
 describe('WorkspaceRelationships', () => {
@@ -186,26 +199,118 @@ describe('WorkspaceRelationships', () => {
     })
   })
 
-  it('lets a manager curate the stage, timeline, and client plan', async () => {
+  // A row answers who to reply to and what they last said, not when the
+  // metadata changed.
+  it('shows each row as the last message and the next step', async () => {
+    mockedList.mockResolvedValue([
+      { ...relationship, client_names: ['Taylor Client', 'Jordan Client'] },
+      {
+        ...relationship,
+        podcast_id: 'show-two',
+        podcast_name: 'Second Show',
+        derived_state: 'pitched',
+        client_names: [],
+        last_message_body: `Hi there, ${'a long pitch '.repeat(20)}`,
+        last_message_direction: 'outbound',
+        last_message_at: daysAgo(3),
+      },
+      {
+        ...relationship,
+        podcast_id: 'show-three',
+        podcast_name: 'Third Show',
+        derived_state: 'none',
+        manual_stage: 'nurturing',
+        last_message_body: null,
+        last_message_at: null,
+        last_message_direction: null,
+        last_contacted_at: null,
+      },
+      { ...relationship, podcast_id: 'show-four', podcast_name: 'Fourth Show', derived_state: 'booked' },
+    ])
     renderPage()
 
-    expect(await screen.findByText('Founder & Operator')).toBeInTheDocument()
-    expect(screen.getByText('Replied')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(await screen.findByText('Taylor Client, Jordan Client')).toBeInTheDocument()
+    expect(screen.getAllByText('Them:')).toHaveLength(2)
+    expect(screen.getByText('Us:')).toBeInTheDocument()
+    expect(screen.getByText(/· 3d ago/)).toBeInTheDocument()
+    // Snippets stop at 90 characters.
+    const line = screen.getByText('Us:').parentElement!.textContent!
+    const snippet = line.replace(/^Us: /, '').replace(/ · 3d ago$/, '')
+    expect(snippet.length).toBeLessThanOrEqual(90)
+    expect(snippet).toMatch(/^Hi there, a long pitch.*…$/)
+    expect(screen.getByText('No messages yet')).toBeInTheDocument()
 
+    expect(screen.getByRole('button', { name: 'Reply' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Follow up' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pitch' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument()
+    // The old metadata line is gone from the row.
+    expect(screen.queryByText(/Last contact .* 2026/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\d+ notes?$/)).not.toBeInTheDocument()
+
+    // The whole row opens the panel.
+    fireEvent.click(screen.getByText('Third Show'))
+    expect(await screen.findByRole('tab', { name: 'Overview' })).toBeInTheDocument()
+  })
+
+  it('uses one stage vocabulary on badges and in the filter', async () => {
+    mockedList.mockResolvedValue([
+      relationship,
+      { ...relationship, podcast_id: 'show-two', podcast_name: 'Second Show', derived_state: 'declined' },
+      { ...relationship, podcast_id: 'show-three', podcast_name: 'Third Show', derived_state: 'none', manual_stage: 'warm' },
+    ])
+    renderPage()
+
+    expect(await screen.findByText('In conversation')).toBeInTheDocument()
+    expect(screen.getByText('Not a fit')).toBeInTheDocument()
+    expect(screen.getByText('Nurturing')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Filter relationships' }))
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
+    expect(options).toEqual([
+      'All', 'Needs attention', 'New', 'Pitched', 'In conversation', 'Nurturing', 'Placed', 'Not a fit', 'Do not contact',
+    ])
+    fireEvent.click(screen.getByRole('option', { name: 'Not a fit' }))
+    expect(screen.getByText('Second Show')).toBeInTheDocument()
+    expect(screen.queryByText('Third Show')).not.toBeInTheDocument()
+  })
+
+  it('lets a manager curate notes, stage and clients from the panel', async () => {
+    renderPage()
+    await openDetails('Founder & Operator')
+
+    // Autosaves on blur; there is no save button.
     const summary = await screen.findByLabelText('What we know about this host')
+    expect(screen.queryByRole('button', { name: 'Save relationship' })).not.toBeInTheDocument()
     fireEvent.change(summary, { target: { value: 'Warm, direct, and prefers concise pitches.' } })
-    fireEvent.click(screen.getByRole('combobox', { name: 'Relationship stage' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Warm relationship' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save relationship' }))
-
+    fireEvent.blur(summary)
     await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
       podcastId: 'show-one',
       summary: 'Warm, direct, and prefers concise pitches.',
-      manualStage: 'warm',
+    }))
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+
+    // The stage saves the moment it changes.
+    expect(screen.getByText('Auto follows your outreach activity. Pick a stage to override it.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Stage' }))
+    expect(await screen.findByRole('option', { name: 'Auto (currently: In conversation)' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: 'Not a fit' }))
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      manualStage: 'not_a_fit',
     }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add note' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Choose a client' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Jordan Client' }))
+    expect(screen.getByText('Add a client')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(mockedLinkClient).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      clientId: '33333333-3333-4333-8333-333333333333',
+      intent: 'considering',
+    }))
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Notes 1' }), { button: 0, ctrlKey: false })
     fireEvent.click(screen.getByRole('combobox', { name: 'Interaction type' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Call' }))
     fireEvent.change(screen.getByLabelText('Add an internal note'), { target: { value: 'Call went well.' } })
@@ -215,68 +320,58 @@ describe('WorkspaceRelationships', () => {
       body: 'Call went well.',
       kind: 'call',
     }))
-
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Overview' }), { button: 0, ctrlKey: false })
-    fireEvent.click(screen.getByRole('combobox', { name: 'Choose a client' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Jordan Client' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save client' }))
-    await waitFor(() => expect(mockedLinkClient).toHaveBeenCalledWith(workspaceId, {
-      podcastId: 'show-one',
-      clientId: '33333333-3333-4333-8333-333333333333',
-      intent: 'considering',
-    }))
-    expect(screen.getByText('Re: operator systems')).toBeInTheDocument()
-    expect(screen.getByText('Interested in revisiting this in Q3.')).toBeInTheDocument()
   })
 
-  it('works as a simple owner CRM with artwork, fast search, threads, and one activity log', async () => {
+  it('drops the duplicated header and the stat tiles from the panel', async () => {
     renderPage()
+    await openDetails('Founder & Operator')
 
-    expect(await screen.findByRole('img', { name: 'Founder & Operator cover' })).toHaveAttribute(
-      'src',
-      'https://cdn.example.com/founder-operator.jpg',
-    )
-    fireEvent.change(screen.getByLabelText('Search relationships'), { target: { value: 'morgan@example.com' } })
-    expect(screen.getByText('Founder & Operator')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
-
-    expect(await screen.findByRole('tab', { name: 'Overview' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Notes 1' })).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: 'Notes 1' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Threads 1' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Activity 2' })).toBeInTheDocument()
+    expect(screen.getAllByText('Founder & Operator')).toHaveLength(1)
+    expect(screen.queryByText('Saved threads')).not.toBeInTheDocument()
+    expect(screen.queryByText('Internal notes')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Clients on this host 1' })).toBeInTheDocument()
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
-    expect(screen.getByText('Re: operator systems')).toBeInTheDocument()
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Activity 2' }), { button: 0, ctrlKey: false })
-    expect(screen.getByText('Activity log')).toBeInTheDocument()
-    expect(screen.getByText('Internal note added')).toBeInTheDocument()
-    expect(screen.getByText('Interested in revisiting this in Q3.')).toBeInTheDocument()
+    const headings = screen.getAllByText(/What we know about this host|^Stage$|Clients on this host|Recent activity/)
+      .map((node) => node.textContent?.replace(/\s*\d+$/, ''))
+    expect(headings).toEqual(['What we know about this host', 'Stage', 'Clients on this host', 'Recent activity'])
   })
 
-  /*
-   * The reply happens in the inbox; this page only knows about it. The
-   * saved threads named the conversation and stopped one click short of the
-   * place a follow-up is written — the inbox links here, and this is the way
-   * back, carrying the client and the thread.
-   */
-  it('links a saved thread back to its inbox conversation', async () => {
+  it('keeps campaign metadata and send status out of activity lines', async () => {
+    renderPage()
+    await openDetails('Founder & Operator')
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Activity 2' }), { button: 0, ctrlKey: false })
+    expect(screen.getByText('Taylor Client · Jul 9, 2026')).toBeInTheDocument()
+    expect(screen.queryByText(/\(failed\)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Titan/)).not.toBeInTheDocument()
+
+    // The Threads tab still carries the campaign for whoever needs it.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
+    expect(screen.getByText(/Titan \| \(Sunnova, Mosaic\)/)).toBeInTheDocument()
+  })
+
+  // The reply happens in the inbox; this page only knows about it. Every
+  // Reply goes to the exact thread, carrying the client.
+  it('sends Reply straight to the inbox thread', async () => {
+    mockedList.mockResolvedValue([{ ...relationship, last_thread_key: 'thread-one', last_thread_client_id: clientId }])
     renderPage()
 
-    fireEvent.change(await screen.findByLabelText('Search relationships'), { target: { value: 'morgan@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
-
-    expect(await screen.findByRole('link', { name: 'Reply in the inbox' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Reply' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}&thread=thread-one`,
     )
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
+    await openDetails('Founder & Operator')
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
     expect(screen.getByRole('link', { name: 'Open in the inbox' })).toHaveAttribute(
       'href',
       `/app/master-inbox?client=${clientId}&thread=thread-one`,
     )
   })
 
-  it('states whole-book totals and loads the rest of a large book on request', async () => {
+  it('turns the header chips into filters with whole-book counts', async () => {
     mockedListPage
       .mockResolvedValueOnce({
         relationships: [relationship],
@@ -287,7 +382,7 @@ describe('WorkspaceRelationships', () => {
         counts: { in_conversation: 7, booked: 3, engaged: 4 },
       })
       .mockResolvedValueOnce({
-        relationships: [{ ...relationship, podcast_id: 'show-two', podcast_name: 'Second Show' }],
+        relationships: [{ ...relationship, podcast_id: 'show-two', podcast_name: 'Second Show', derived_state: 'booked' }],
         total: 2,
         offset: 1,
         has_more: false,
@@ -296,22 +391,34 @@ describe('WorkspaceRelationships', () => {
       })
     renderPage()
 
-    expect(await screen.findByText('7 in conversation')).toBeInTheDocument()
-    expect(screen.getByText('3 placed')).toBeInTheDocument()
+    const live = await screen.findByRole('button', { name: '7 in conversation' })
+    expect(screen.getByRole('button', { name: '3 placed' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: '0 needs attention' })).toBeInTheDocument()
+    expect(screen.queryByText(/engaged/)).not.toBeInTheDocument()
     expect(screen.getByText('1 of 2 relationships loaded. Search, filters and sorting cover the loaded rows.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load more relationships' }))
-
     expect(await screen.findByText('Second Show')).toBeInTheDocument()
     expect(mockedListPage).toHaveBeenLastCalledWith(workspaceId, { offset: 1 })
-    expect(screen.queryByRole('button', { name: 'Load more relationships' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '3 placed' }))
+    expect(screen.getByRole('button', { name: '3 placed' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Founder & Operator')).not.toBeInTheDocument()
+    expect(screen.getByText('Second Show')).toBeInTheDocument()
+    // Clicking the active chip clears it.
+    fireEvent.click(screen.getByRole('button', { name: '3 placed' }))
+    expect(screen.getByText('Founder & Operator')).toBeInTheDocument()
+    expect(live).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('lets a manager unlink a client from a host', async () => {
+  it('asks before removing a client from a host', async () => {
     mockedUnlinkClient.mockResolvedValue(undefined)
     renderPage()
+    await openDetails('Founder & Operator')
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Open' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Unlink Taylor Client from this host' }))
+    expect(await screen.findByRole('alertdialog', { name: 'Remove Taylor Client from this host?' })).toBeInTheDocument()
+    expect(mockedUnlinkClient).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
 
     await waitFor(() => expect(mockedUnlinkClient).toHaveBeenCalledWith(workspaceId, {
       podcastId: 'show-one',
@@ -319,52 +426,157 @@ describe('WorkspaceRelationships', () => {
     }))
   })
 
-  // The header counted live conversations; which of them had gone silent —
-  // the actionable fact — was invisible, buried by the recency sort.
-  it('surfaces live conversations going quiet, longest silence first', async () => {
-    const quietDate = new Date(Date.now() - 8 * 86_400_000).toISOString()
+  // "No touch in five days" next to "quiet 88d" was true of both and useful
+  // for neither. Between five and thirty days a conversation is going quiet;
+  // past thirty it went cold and waits under Needs attention.
+  it('lists only conversations going quiet, and moves the cold ones to Needs attention', async () => {
     mockedList.mockResolvedValue([
-      { ...relationship, podcast_id: 'show-quiet', podcast_name: 'Gone Quiet FM', derived_state: 'in_conversation', last_contacted_at: quietDate },
-      { ...relationship, podcast_id: 'show-fresh', podcast_name: 'Fresh Talk', derived_state: 'in_conversation', last_contacted_at: new Date().toISOString() },
-      relationship,
+      { ...relationship, podcast_id: 'show-quiet', podcast_name: 'Gone Quiet FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(8), last_thread_key: 'thread-quiet', last_thread_client_id: clientId },
+      { ...relationship, podcast_id: 'show-cold', podcast_name: 'Long Gone FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(88) },
+      { ...relationship, podcast_id: 'show-fresh', podcast_name: 'Fresh Talk', derived_state: 'in_conversation', last_contacted_at: daysAgo(0) },
     ])
     renderPage()
 
-    expect(await screen.findByText('A live conversation is going quiet')).toBeInTheDocument()
-    const chip = screen.getByRole('button', { name: /Gone Quiet FM.*quiet 8d/ })
-    expect(chip).toBeInTheDocument()
-    // A conversation touched today is unhurried, not stalled.
-    expect(screen.queryByRole('button', { name: /Fresh Talk.*quiet/ })).not.toBeInTheDocument()
+    const banner = await screen.findByRole('region', { name: '1 conversation going quiet' })
+    expect(within(banner).getByText('quiet 8d')).toBeInTheDocument()
+    expect(within(banner).queryByText('Long Gone FM')).not.toBeInTheDocument()
+    expect(within(banner).queryByText('Fresh Talk')).not.toBeInTheDocument()
+    expect(within(banner).getByRole('link', { name: 'Reply to Gone Quiet FM' })).toHaveAttribute(
+      'href',
+      `/app/master-inbox?client=${clientId}&thread=thread-quiet`,
+    )
+    expect(screen.queryByText(/Silence here/)).not.toBeInTheDocument()
+    expect(screen.getByText('Went cold')).toBeInTheDocument()
 
-    // The chip opens the relationship rather than leaving the operator to find
-    // it at the bottom of a recency-sorted list.
-    fireEvent.click(chip)
-    expect(await screen.findByRole('heading', { name: 'Gone Quiet FM' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '2 needs attention' }))
+    expect(screen.getByText('Long Gone FM')).toBeInTheDocument()
+    expect(screen.queryByText('Fresh Talk')).not.toBeInTheDocument()
+  })
+
+  it('renders no banner when nothing is going quiet', async () => {
+    mockedList.mockResolvedValue([
+      { ...relationship, derived_state: 'in_conversation', last_contacted_at: daysAgo(88) },
+    ])
+    renderPage()
+
+    expect(await screen.findByText('Went cold')).toBeInTheDocument()
+    expect(screen.queryByText(/going quiet/)).not.toBeInTheDocument()
+  })
+
+  it('names an unresolved row after its host, never a placeholder', async () => {
+    mockedList.mockResolvedValue([
+      { ...relationship, podcast_id: 'manual-email', podcast_name: null, host_name: null, contact_email: 'unknown-host@example.com' },
+      { ...relationship, podcast_id: 'manual-host', podcast_name: null, host_name: 'Priya Raman', contact_email: 'priya@example.com' },
+    ])
+    const { container } = renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'unknown-host@example.com' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Priya Raman' })).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/not identified/i)
+
+    const [nameFirst] = screen.getAllByRole('button', { name: 'Name this show' })
+    fireEvent.click(nameFirst)
+    const input = screen.getByRole('textbox', { name: 'Show name for unknown-host@example.com' })
+    fireEvent.change(input, { target: { value: 'Draft' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByRole('textbox', { name: 'Show name for unknown-host@example.com' })).not.toBeInTheDocument()
+    expect(mockedSave).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Name this show' })[0])
+    const editor = screen.getByRole('textbox', { name: 'Show name for unknown-host@example.com' })
+    fireEvent.change(editor, { target: { value: 'The Scale Show' } })
+    fireEvent.keyDown(editor, { key: 'Enter' })
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'manual-email',
+      podcastName: 'The Scale Show',
+    }))
+    // Saving never opened the row.
+    expect(mockedDetail).not.toHaveBeenCalled()
+  })
+
+  it('falls back to initials when a cover will not load', async () => {
+    const { container } = renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    const cover = container.querySelector('img[src="https://cdn.example.com/founder-operator.jpg"]')
+    expect(cover).not.toBeNull()
+    fireEvent.error(cover!)
+    await waitFor(() => expect(container.querySelector('img')).toBeNull())
+    expect(screen.getByText('FO')).toBeInTheDocument()
+  })
+
+  it('moves do not contact out of the header and asks before blocking a host', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+    expect(screen.queryByRole('button', { name: 'Do not contact' })).not.toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mark as do not contact' }))
+    expect(await screen.findByText('Block new pitches to this host?')).toBeInTheDocument()
+    expect(mockedSave).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Block pitches' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      manualStage: 'do_not_contact',
+    }))
   })
 
   it('lets a manager add a relationship before outreach exists', async () => {
     renderPage()
-    await screen.findByText('Founder & Operator')
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Add relationship' }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('Podcast or show'), { target: { value: 'The Operator Room' } })
+    expect(within(dialog).getByText(
+      "Add a host before outreach starts. Once we see their email in a thread, we'll link it to the show automatically.",
+    )).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Add relationship' })).toBeDisabled()
+    expect(within(dialog).getByText('Add a show name or a host email to continue.')).toBeVisible()
+    expect(within(dialog).getByPlaceholderText('host@example.com')).toBeInTheDocument()
+    expect(within(dialog).getByRole('combobox', { name: 'Stage' })).toHaveTextContent('Nurturing')
+
+    fireEvent.change(within(dialog).getByLabelText(/Show name/), { target: { value: 'The Operator Room' } })
     fireEvent.change(within(dialog).getByLabelText('Host name'), { target: { value: 'Alex Host' } })
-    fireEvent.change(within(dialog).getByLabelText('Host email'), { target: { value: 'alex@example.com' } })
-    fireEvent.click(within(dialog).getByRole('combobox', { name: 'Relationship stage' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Warm relationship' }))
-    fireEvent.change(within(dialog).getByLabelText('What should the team remember?'), {
-      target: { value: 'Met at the operator summit.' },
-    })
+    fireEvent.change(within(dialog).getByLabelText(/Host email/), { target: { value: 'alex@example.com' } })
+    fireEvent.change(within(dialog).getByLabelText('Notes'), { target: { value: 'Met at the operator summit.' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add relationship' }))
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledWith(workspaceId, {
       podcastName: 'The Operator Room',
       hostName: 'Alex Host',
       contactEmail: 'alex@example.com',
-      manualStage: 'warm',
+      manualStage: 'nurturing',
       summary: 'Met at the operator summit.',
     }))
+  })
+
+  it('adds a host by email alone', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add relationship' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/Host email/), { target: { value: 'alex@example.com' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add relationship' }))
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledWith(workspaceId, {
+      podcastName: null,
+      hostName: null,
+      contactEmail: 'alex@example.com',
+      manualStage: 'nurturing',
+      summary: null,
+    }))
+  })
+
+  it('shows an empty state when the workspace has no hosts', async () => {
+    mockedList.mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'No hosts yet' })).toBeInTheDocument()
+    expect(screen.getByText('Hosts show up here automatically once outreach starts. You can also add one by hand.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add relationship' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Search relationships')).not.toBeInTheDocument()
   })
 
   it('pages a growing relationship book and resets pagination for search', async () => {
@@ -414,7 +626,7 @@ describe('WorkspaceRelationships', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add relationship' }))
     const dialog = screen.getByRole('dialog')
-    fireEvent.change(within(dialog).getByLabelText('Podcast or show'), { target: { value: 'Relationship Show 30' } })
+    fireEvent.change(within(dialog).getByLabelText(/Show name/), { target: { value: 'Relationship Show 30' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add relationship' }))
 
     expect(await screen.findByRole('heading', { name: 'Relationship Show 30' })).toBeInTheDocument()
@@ -431,13 +643,13 @@ describe('WorkspaceRelationships', () => {
     } as never)
 
     renderPage()
-    await screen.findByText('Founder & Operator')
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
     expect(screen.getByText(/owners and admins curate stages/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
+    await openDetails('Founder & Operator')
 
     expect(await screen.findByText('Prefers practical operator stories.')).toBeInTheDocument()
-    expect(screen.getByText('Asked for a tighter angle next time.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Save relationship' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Stage' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Save note' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add relationship' })).not.toBeInTheDocument()
     expect(mockedClients).not.toHaveBeenCalled()
@@ -460,34 +672,5 @@ describe('WorkspaceRelationships', () => {
       'data-base-href',
       `/app/workspaces/${platformWorkspaceId}`,
     )
-  })
-
-  it('separates an unreachable cover from a show that has no name yet', async () => {
-    mockedList.mockResolvedValue([
-      relationship,
-      {
-        ...relationship,
-        podcast_id: 'manual-unknown',
-        podcast_name: null,
-        podcast_image_url: null,
-        contact_email: 'unknown-host@example.com',
-      },
-    ])
-
-    renderPage()
-
-    // A show can take its artwork private long after the feed keeps pointing
-    // there, so the tile must degrade to a deliberate stand-in rather than the
-    // browser's broken-image glyph.
-    const cover = await screen.findByRole('img', { name: 'Founder & Operator cover' })
-    fireEvent.error(cover)
-    await waitFor(() => {
-      expect(screen.queryByRole('img', { name: 'Founder & Operator cover' })).not.toBeInTheDocument()
-    })
-    expect(screen.getByTitle('Founder & Operator — cover art unavailable')).toBeInTheDocument()
-
-    // An unnamed row is a different job for the operator and has to say so
-    // rather than looking like one more show whose art failed to load.
-    expect(screen.getByTitle('Show not identified yet')).toBeInTheDocument()
   })
 })

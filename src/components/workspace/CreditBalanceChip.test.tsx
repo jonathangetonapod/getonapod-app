@@ -56,7 +56,7 @@ describe('CreditBalanceChip', () => {
     fireEvent.pointerMove(info)
     fireEvent.focus(info)
     expect((await screen.findAllByText(
-      'Credits pay for AI and data work. Monthly credits renew with your plan; purchased credits never expire.',
+      /^Credits pay for AI and data work\. Monthly credits renew with your plan; purchased credits never expire\. One credit covers one of: verify a host email/,
     )).length).toBeGreaterThan(0)
     // The link is still the chip's destination.
     expect(screen.getByRole('link', { name: /850 credits remaining/i })).toHaveAttribute('href', '/app/settings/billing')

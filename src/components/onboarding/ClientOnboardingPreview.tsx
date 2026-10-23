@@ -195,7 +195,7 @@ const ClientOnboardingPreview = ({
         {workspaceLogoUrl && !logoUnavailable
           ? <div className="relative flex h-24 w-full max-w-xs items-center justify-center rounded-2xl border border-white/30 bg-white p-4 shadow-xl sm:w-56"><img src={workspaceLogoUrl} alt={`${brandName} logo`} className="max-h-full max-w-full object-contain" onError={() => setLogoUnavailable(true)} /></div>
           : <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(brandName)}</div>}
-        <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client onboarding</p><h2 className="mt-1 truncate text-2xl font-bold">{brandName}</h2><p className="mt-1 text-sm text-white/80">Secure client intake</p></div>
+        <div className="relative min-w-0"><p className="text-xs font-bold uppercase tracking-[.18em] text-white/70">Client intake</p><h2 className="mt-1 truncate text-2xl font-bold">{brandName}</h2><p className="mt-1 text-sm text-white/80">Secure client intake</p></div>
       </div>
     </header>
   )

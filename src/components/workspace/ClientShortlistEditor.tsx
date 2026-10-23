@@ -63,6 +63,7 @@ import {
 } from '@/services/clientShortlist'
 
 type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'archived'
+const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'archived']
 type ListSort = 'list_order' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
 interface ClientShortlistEditorProps {
@@ -77,6 +78,8 @@ interface ClientShortlistEditorProps {
   viewerRole?: 'owner' | 'admin' | 'member' | 'platform_admin'
   databaseHref: string
   finderHref: string
+  /** The list filter to open on, from a ?filter= link such as the Pipeline's "To review". */
+  initialFilter?: string | null
   /**
    * `${base}/client-campaigns/${clientId}`, so the workspace base every pitch
    * link is built on is what precedes it; the editor is given no other route
@@ -166,10 +169,13 @@ export function ClientShortlistEditor({
   databaseHref,
   finderHref,
   campaignHref,
+  initialFilter,
   onChanged,
 }: ClientShortlistEditorProps) {
   const queryClient = useQueryClient()
-  const [filter, setFilter] = useState<ListFilter>('all')
+  const [filter, setFilter] = useState<ListFilter>(() => (
+    LIST_FILTERS.includes(initialFilter as ListFilter) ? initialFilter as ListFilter : 'all'
+  ))
   const [sort, setSort] = useState<ListSort>('list_order')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)

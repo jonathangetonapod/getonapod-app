@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { decodeFeedText } from '@/lib/feedText'
 
 export type ClientPodcastLifecycleStage =
   | 'awaiting_review'
@@ -216,6 +217,18 @@ export async function getWorkspaceClientPodcastSystem(
     ...response,
     truncated: response.truncated === true || truncatedSources.length > 0,
     truncated_sources: truncatedSources,
+    // Feed titles arrive as HTML ("Angels, Exits, &amp; Acquisitions").
+    // Decoded here, once, so every surface built on this payload (the queue,
+    // the opportunity sheet, the calendar, a placement seeded from a row)
+    // shows and saves the readable name.
+    items: response.items.map((item) => ({
+      ...item,
+      podcast: {
+        ...item.podcast,
+        name: typeof item.podcast?.name === 'string' ? decodeFeedText(item.podcast.name) : item.podcast?.name,
+        description: item.podcast?.description ? decodeFeedText(item.podcast.description) : item.podcast?.description ?? null,
+      },
+    })),
     workspace: {
       ...response.workspace,
       logo_path: typeof response.workspace.logo_path === 'string' ? response.workspace.logo_path : null,

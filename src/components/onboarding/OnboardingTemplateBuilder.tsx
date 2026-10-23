@@ -471,7 +471,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <DialogHeader className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <DialogTitle className="text-xl">{template ? 'Edit onboarding template' : 'Create onboarding template'}</DialogTitle>
+                  <DialogTitle className="text-xl">{template ? 'Edit form template' : 'Create form template'}</DialogTitle>
                   <Badge variant="secondary">{draft.definition.sections.length}/12 sections</Badge>
                   <Badge variant="secondary">{questionCount}/100 questions</Badge>
                 </div>
@@ -531,15 +531,17 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
           <div className="min-h-0 flex-1">
             {mode === 'build' && activeSection ? (
               <div className="flex h-full min-h-0 flex-col lg:flex-row" role="tabpanel" aria-label="Build form">
-                <aside className="flex max-h-56 shrink-0 flex-col border-b bg-muted/20 lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r">
+                <aside className="flex shrink-0 flex-col border-b bg-muted/20 lg:w-72 lg:border-b-0 lg:border-r">
                   <div className="border-b px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Form outline</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Choose one section to edit.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Every section in this form. Select one to edit it.</p>
                   </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                    <ol className="space-y-1">
+                  {/* Below lg the outline is a horizontal strip, so every section
+                      stays in view instead of a short box showing one or two. */}
+                  <div className="min-h-0 flex-1 overflow-x-auto p-2 lg:overflow-y-auto">
+                    <ol className="flex gap-1 lg:flex-col">
                       {draft.definition.sections.map((section, sectionIndex) => (
-                        <li key={section.id}>
+                        <li key={section.id} className="w-56 shrink-0 lg:w-auto">
                           <button
                             type="button"
                             aria-current={section.id === activeSection.id ? 'step' : undefined}
@@ -1015,7 +1017,7 @@ const OnboardingTemplateBuilder = ({ open, template, workspaceName, workspaceLog
                             <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
                             <div className="relative flex items-center gap-3">
                               <PreviewBrandMark workspaceName={workspaceName} logoUrl={workspaceLogoUrl} logoUnavailable={workspaceLogoUnavailable} onLogoError={() => setWorkspaceLogoUnavailable(true)} compact />
-                              <div className="min-w-0"><p className="truncate text-sm font-semibold">{brandedWorkspaceName}</p><p className="text-xs text-white/75">Client onboarding</p></div>
+                              <div className="min-w-0"><p className="truncate text-sm font-semibold">{brandedWorkspaceName}</p><p className="text-xs text-white/75">Client intake</p></div>
                             </div>
                             <h3 className="mt-5 text-lg font-semibold">{renderOnboardingBrandText(draft.definition.intro_title, workspaceName) || 'Welcome headline'}</h3>
                             <p className="mt-2 text-sm leading-relaxed text-white/80">{renderOnboardingBrandText(draft.definition.intro_body, workspaceName) || 'Your welcome message will appear here.'}</p>

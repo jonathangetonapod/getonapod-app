@@ -34,7 +34,11 @@ import {
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
-const MANUAL_STAGES = new Set(['nurturing', 'warm', 'do_not_contact'])
+// Every stage the book offers as an override. 'warm' predates the shared
+// vocabulary; it is still accepted and reads as Nurturing.
+const MANUAL_STAGES = new Set([
+  'new', 'pitched', 'in_conversation', 'nurturing', 'warm', 'placed', 'not_a_fit', 'do_not_contact',
+])
 const EVENT_KINDS = new Set(['note', 'call', 'meeting'])
 const CLIENT_INTENTS = new Set(['considering', 'pitched', 'placed', 'declined', 'ruled_out'])
 // An operator may record any of these; only the inbox prefilter writes
@@ -53,7 +57,7 @@ function parseManualStage(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null
   const stage = requireString(value, 'manual_stage', { max: 40 })
   if (!MANUAL_STAGES.has(stage)) {
-    throw new HttpError(400, 'INVALID_FIELD', 'manual_stage must be nurturing, warm, or do_not_contact')
+    throw new HttpError(400, 'INVALID_FIELD', 'manual_stage is not a known relationship stage')
   }
   return stage
 }
@@ -296,8 +300,9 @@ serve(async (req) => {
         ? Math.max(0, Math.min(body.offset, 1_000_000))
         : 0
       // Paged: a book past one page used to lose the rest without a word, and
-      // the header counted only what arrived. v2 carries whole-book totals.
-      const { data, error } = await admin.rpc('workspace_host_relationship_book_v2', {
+      // the header counted only what arrived. v2 added whole-book totals; v3
+      // adds the clients, latest message and reply thread each row shows.
+      const { data, error } = await admin.rpc('workspace_host_relationship_book_v3', {
         p_workspace_id: workspaceId,
         p_limit: limit,
         p_offset: offset,
@@ -521,9 +526,14 @@ serve(async (req) => {
         'host_name', 'contact_email', 'manual_stage', 'summary',
       ])
       requireManager()
-      const showName = requireString(body.podcast_name, 'podcast_name', { max: 500 })
+      // A host can be added by address alone: the show is often unknown until
+      // they reply, and the inbox links the thread to it by that address.
+      const showName = optionalString(body.podcast_name, 'podcast_name', 500)
       const hostName = optionalString(body.host_name, 'host_name', 300)
       const contactEmail = optionalContactEmail(body.contact_email)
+      if (!showName && !contactEmail) {
+        throw new HttpError(400, 'INVALID_FIELD', 'podcast_name or contact_email is required')
+      }
       const stage = parseManualStage(body.manual_stage)
       const summary = optionalString(body.summary, 'summary', 5_000)
       const requestedPodcastId = body.podcast_id === undefined || body.podcast_id === null || body.podcast_id === ''
@@ -546,8 +556,10 @@ serve(async (req) => {
           .eq('workspace_id', workspaceId).eq('contact_email', contactEmail).limit(50)
         if (error) throw new HttpError(500, 'RELATIONSHIP_CREATE_FAILED', 'The relationship could not be created')
         existing = ((data ?? []) as Array<Record<string, unknown>>).find((row) => (
-          typeof row.podcast_name === 'string'
-          && row.podcast_name.trim().toLowerCase() === showName.toLowerCase()
+          showName
+            ? typeof row.podcast_name === 'string' && row.podcast_name.trim().toLowerCase() === showName.toLowerCase()
+            // Address only: the unnamed record for that address is the same host.
+            : typeof row.podcast_name !== 'string' || row.podcast_name.trim() === ''
         )) ?? null
       } else {
         const { data, error } = await admin.from('workspace_host_relationships')
@@ -559,9 +571,9 @@ serve(async (req) => {
       if (existing && typeof existing.podcast_id === 'string') {
         const existingId = existing.podcast_id
         const changes: Record<string, unknown> = {
-          podcast_name: showName,
           updated_at: new Date().toISOString(),
         }
+        if (showName) changes.podcast_name = showName
         // A duplicate manual add is an intentional enrichment, but blank
         // optional inputs must not erase context the team already recorded.
         if (hostName) changes.host_name = hostName

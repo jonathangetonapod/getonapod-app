@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastNames } from '@/lib/feedText'
 import { createPortalSessionStore } from '@/lib/portalSessionStore'
 import type { Client } from './clients'
 import type { Booking } from './bookings'
@@ -184,7 +185,7 @@ export async function getClientBookings(clientId: string): Promise<ClientPortalD
   if (data.error) throw new Error(typeof data.error === 'string' ? data.error : 'Your bookings could not be loaded.')
 
   return {
-    bookings: Array.isArray(data.bookings) ? data.bookings : [],
+    bookings: withDecodedPodcastNames(data.bookings),
   }
 }
 
@@ -285,7 +286,8 @@ export async function getPortalExperience(clientId: string): Promise<PortalExper
 
   return {
     ...data,
-    bookings: Array.isArray(data.bookings) ? data.bookings : [],
+    bookings: withDecodedPodcastNames(data.bookings),
+    ...(Array.isArray(data.outreach_targets) ? { outreach_targets: withDecodedPodcastNames(data.outreach_targets) } : {}),
   } as PortalExperienceOverview
 }
 

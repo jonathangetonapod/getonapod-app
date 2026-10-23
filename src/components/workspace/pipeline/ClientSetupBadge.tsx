@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Circle, Lock } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { ClientPodcastSystemClient } from '@/services/clientPodcastSystem'
 import { setupItems } from './pipelineRollup'
@@ -39,7 +39,7 @@ export const ClientSetupList = ({
   </ul>
 )
 
-/** "Setup X/Y" that opens the checklist, or a small check once nothing is missing. */
+/** "Setup X/Y" that names what is missing and goes straight to the first gap. */
 export const ClientSetupBadge = ({
   client,
   canManage,
@@ -52,26 +52,32 @@ export const ClientSetupBadge = ({
   recordHref: string
 }) => {
   const counted = setupItems(client, canManage, pipelineStarted).filter((item) => item.done !== null)
-  const done = counted.filter((item) => item.done).length
-  if (done === counted.length) {
+  const missing = counted.filter((item) => !item.done)
+  const done = counted.length - missing.length
+  if (missing.length === 0) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Set up
       </span>
     )
   }
+  const missingNames = missing.map((item) => item.label.toLowerCase()).join(', ')
   return (
-    <Popover>
-      <PopoverTrigger
-        className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium leading-[18px] text-violet-800 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Setup ${done}/${counted.length} for ${client.name}, ${counted.length - done} to do`}
-      >
-        Setup {done}/{counted.length}
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72">
-        <p className="mb-2 text-sm font-semibold">Setup for {client.name}</p>
-        <ClientSetupList client={client} canManage={canManage} pipelineStarted={pipelineStarted} recordHref={recordHref} />
-      </PopoverContent>
-    </Popover>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to={`${recordHref}?tab=${missing[0].tab}`}
+            className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium leading-[18px] text-violet-800 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Setup ${done}/${counted.length} for ${client.name}: missing ${missingNames}. Go to ${missing[0].label.toLowerCase()}`}
+          >
+            Setup {done}/{counted.length}
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs">
+          Missing: {missing.map((item) => `${item.label} (${item.detail})`).join(', ')}. Opens {missing[0].label.toLowerCase()}.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

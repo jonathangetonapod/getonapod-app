@@ -104,7 +104,7 @@ assert.match(reviewDialog, /comment\.body\.length > 0 && comment\.body\.length <
 assert.match(reviewDialog, /disabled=\{busy \|\| comments\.length === 0\}/u)
 // This reaches the client's inbox and reopens their link, so the dialog says so
 // before it is pressed and the page says so if the send fails.
-assert.match(reviewDialog, /reopens their onboarding link/u)
+assert.match(reviewDialog, /reopens their intake link/u)
 assert.match(onboardingPage, /result\.delivery\?\.status === 'sent'/u)
 assert.match(onboardingPage, /the email did not send/u)
 
@@ -125,12 +125,21 @@ assert.match(chase, /instance\.archived_at !== null/u)
 // An unusable date produces silence rather than a guessed age.
 assert.match(chase, /if \(settled \|\| ageDays === null\)/u)
 
-// The counts select the rows they count, and the table can be searched and
-// filtered rather than rendering every instance ever created.
-assert.match(onboardingPage, /aria-pressed=\{statusFilter === key\}/u)
-assert.match(onboardingPage, /aria-label="Filter onboarding by status"/u)
-assert.match(onboardingPage, /aria-label="Search onboarding"/u)
-assert.match(onboardingPage, /tableInstances\.map\(\(instance\) =>/u)
+// One status per intake, so the strip's counts add up to All, and the strip
+// sits inside the Intakes tab so it never filters a list that is off screen.
+// The table can be searched and filtered rather than rendering every
+// instance ever created.
+const intakeTable = readFileSync('src/components/onboarding/IntakeTable.tsx', 'utf8')
+const intakeStatusSource = readFileSync('src/lib/intakeStatus.ts', 'utf8')
+assert.match(intakeTable, /type="single"/u)
+assert.match(intakeTable, /aria-label="Filter intakes by status"/u)
+assert.match(intakeTable, /instances\.map\(\(instance\) =>/u)
+assert.match(intakeStatusSource, /export function intakeStatus\(/u)
+assert.match(onboardingPage, /aria-label="Search intakes"/u)
+assert.match(
+  onboardingPage,
+  /<TabsContent value="instances">[\s\S]*<IntakeFilterStrip[\s\S]*<TabsContent value="templates">/u,
+)
 // Archived rows are finished work: hidden unless asked for, never padding
 // another view.
 assert.match(
@@ -138,7 +147,7 @@ assert.match(
   /statusFilter === 'archived' \? !instance\.archived_at : Boolean\(instance\.archived_at\)/u,
 )
 // A filtered table says how much it is hiding.
-assert.match(onboardingPage, /\{tableInstances\.length\} of \{visibleInstances\.length\} shown/u)
+assert.match(onboardingPage, /\{tableInstances\.length\} of \{statusFilter === 'archived' \? counts\.archived : counts\.all\} shown/u)
 
 // A declared Content-Length over the cap is refused up front (Number('') is 0,
 // so only a real integer counts as declared). A body with no length is not
@@ -186,7 +195,7 @@ assert.match(staff, /rotateSendEmail = booleanValue\(body\.send_email, 'send_ema
 assert.match(onboardingPage, /resendOnboardingInvitation\(workspaceId, instance\.id\)/u)
 // Start is idempotent on a browser-minted key.
 assert.match(staff, /optionalUuid\(body\.idempotency_key, 'idempotency_key'\) \?\? crypto\.randomUUID\(\)/u)
-assert.match(onboardingPage, /idempotency_key: startKeyRef\.current/u)
+assert.match(readFileSync('src/components/onboarding/NewIntakeDialog.tsx', 'utf8'), /idempotency_key: startKeyRef\.current/u)
 // Extending a lapsed link counts from today.
 assert.match(staff, /Math\.max\(Date\.now\(\), currentExpiry\) \+ extensionDays \* 86_400_000/u)
 // Approval covers answers only, and the client is told exactly that.

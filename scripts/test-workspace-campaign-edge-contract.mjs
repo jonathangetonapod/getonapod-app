@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-client-campaigns/index.ts', 'utf8')
 const provider = readFileSync('supabase/functions/_shared/instantly.ts', 'utf8')
@@ -20,7 +20,17 @@ const leadInterestMigration = readFileSync(
   'supabase/migrations/20260728001500_inbox_lead_interest.sql',
   'utf8',
 )
-const masterInbox = readFileSync('src/components/workspace/MasterInboxPreview.tsx', 'utf8')
+// The Master Inbox is a shell plus its panes, a draft-autosave hook and shared
+// thread helpers; the guarantees below may live in any of them.
+const masterInbox = [
+  'src/components/workspace/MasterInboxPreview.tsx',
+  ...readdirSync('src/components/workspace/inbox')
+    .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
+    .sort()
+    .map((name) => `src/components/workspace/inbox/${name}`),
+  'src/hooks/useInboxDraftAutosave.ts',
+  'src/lib/inboxThreads.ts',
+].map((path) => readFileSync(path, 'utf8')).join('\n')
 const campaignDetail = readFileSync('src/pages/app/WorkspaceCampaignDetail.tsx', 'utf8')
 const outreachSuite = readFileSync('src/pages/app/WorkspaceOutreachSuite.tsx', 'utf8')
 const scheduleMigration = readFileSync(
@@ -804,6 +814,23 @@ assert.doesNotMatch(
 // via /leads/update-interest-status, while the bucket is decided by i_status on
 // the provider's EMAIL rows — different records, so the operator's decision is
 // recorded locally and read in preference to what the emails still say.
+// The inbox names a managed campaign by its local row id; Instantly only knows
+// its own. The id is resolved before the provider call, and one that belongs to
+// no campaign in this workspace is refused rather than passed through.
+const interestAction = edge.match(/action === "inbox-interest-set"[\s\S]*?action === "inbox-thread-state"/u)
+assert.ok(interestAction, 'inbox-interest-set action must exist')
+assert.match(interestAction[0], /from\("workspace_client_campaigns"\)[\s\S]*?\.eq\("id", interestCampaignId\)/u)
+assert.match(interestAction[0], /from\("client_instantly_campaign_links"\)[\s\S]*?\.eq\("instantly_campaign_id", interestCampaignId\)/u)
+assert.match(interestAction[0], /CAMPAIGN_NOT_FOUND/u)
+assert.match(interestAction[0], /campaign_id: providerInterestCampaignId/u)
+assert.doesNotMatch(interestAction[0], /\{ campaign_id: interestCampaignId \}/u)
+// Send-once covers a thread with no state row too: the row is created holding
+// the claim, so the primary key makes a second sender lose.
+assert.match(
+  edge,
+  /if \(replyThreadKey && !threadStateRow && replyClientId\) \{[\s\S]*?\.insert\(\{[\s\S]*?reply_sent_email_id: replyToId,[\s\S]*?claimInsertError\.code === "23505"/u,
+)
+assert.match(edge, /if \(replyThreadKey && threadStateRow && !replyClaimed\) \{/u)
 assert.match(edge, /action === "inbox-interest-set"[\s\S]*?from\("workspace_inbox_lead_interest"\)[\s\S]*?\.upsert\(\{[\s\S]*?contact_email: leadEmail\.trim\(\)\.toLowerCase\(\)/u)
 assert.match(edge, /interested: interestByLeadEmail\.has\(leadEmail\)\s+\? interestByLeadEmail\.get\(leadEmail\) === 1\s+: interestValue === 1/u)
 assert.match(edge, /interest_status: interestByLeadEmail\.has\(leadEmail\)/u)
@@ -815,8 +842,11 @@ assert.match(
 )
 assert.match(leadInterestMigration, /CREATE POLICY workspace_inbox_lead_interest_isolation/u)
 assert.match(leadInterestMigration, /FORCE ROW LEVEL SECURITY/u)
-// The conversation is followed into its new bucket rather than vanishing.
-assert.match(masterInbox, /const movedTo: InboxScope = input\.value === 1 \? 'interested' : 'other'[\s\S]*?setScope\(movedTo\)/u)
+// The conversation is followed into its new bucket rather than vanishing, and
+// every positive outcome — a booked meeting included — stays under Interested.
+assert.match(masterInbox, /const movedTo: InboxScope = isPositiveInterest\(input\.value\) \? 'interested' : 'other'[\s\S]*?setScope\(movedTo\)/u)
+assert.match(masterInbox, /export const isPositiveInterest = \(value: number \| null \| undefined\): boolean =>\s+typeof value === 'number' && value > 0/u)
+assert.match(masterInbox, /if \(inboxScopeOf\(thread\) !== scope\) return false/u)
 assert.match(masterInbox, /selectedThread\.interest_status \?\? leadDetail\?\.interest_status \?\? null/u)
 
 // An opt-out is usually only ever seen in the reply itself. The automatic
@@ -831,7 +861,7 @@ assert.match(masterInbox, /const archived = clientId\s*\?[\s\S]*?status: 'archiv
 assert.match(masterInbox, /toast\.warning\('Added to do not contact, but the conversation could not be archived/u)
 assert.match(masterInbox, /excluded from outreach for every client in this workspace/u)
 // An address already on the list is stated, not offered for suppressing again.
-assert.match(masterInbox, /selectedThread\.suppressed \?/u)
+assert.match(masterInbox, /if \(selectedThread\.suppressed\) \{[\s\S]{0,240}This address is on the do-not-contact list/u)
 assert.match(edge, /suppressed: suppressedEmails\.has\(leadEmail\)/u)
 assert.match(edge, /from\("workspace_outreach_suppressions"\)\s+\.select\("contact_email"\)/u)
 
@@ -913,8 +943,13 @@ assert.match(masterInbox, /This address is on the do-not-contact list/u)
 // A paged provider inbox shared by every campaign can push a client's reply
 // past the end. Silence would make a short window look like the whole inbox.
 assert.match(edge, /let truncated = false;/u)
-assert.match(edge, /if \(page === 2\) truncated = true;/u)
-assert.match(edge, /if \(page > 0 && error\.status === 429\) \{\s+truncated = true;/u)
+assert.match(edge, /if \(page === pagesPerScope - 1\) truncated = true;/u)
+assert.match(edge, /if \(requestsMade > 0 && error\.status === 429\) \{\s+truncated = true;/u)
+// Unclaimed campaigns must not crowd claimed replies out of the window: with
+// few enough claimed campaigns each is read on its own, inside the same budget.
+assert.match(edge, /const MAX_INBOX_REQUESTS = 3;/u)
+assert.match(edge, /claimedProviderCampaignIds\.length <= MAX_INBOX_REQUESTS\s+\? claimedProviderCampaignIds\s+: \[null\]/u)
+assert.match(edge, /if \(scopeCampaignId\) query\.set\("campaign_id", scopeCampaignId\);/u)
 assert.match(masterInbox, /Showing the most recent replies only/u)
 
 // Inbox replies: both provider-facing inputs arrive from the browser, so both
@@ -961,8 +996,13 @@ assert.ok(threadMessagesAction, 'inbox-thread-messages action must exist')
 assert.match(threadMessagesAction[0], /if \(!campaignId \|\| !claimed\.has\(campaignId\)\) return \[\]/u)
 assert.match(threadMessagesAction[0], /direction: email\.ue_type === 2 \? "inbound" : "outbound"/u)
 assert.match(masterInbox, /Show what we sent/u)
-// One provider call per thread, so it loads on request rather than with the list.
-assert.match(masterInbox, /enabled: showFullThread && Boolean\(workspaceId\) && Boolean\(selectedThread\?\.thread_key\)/u)
+// One provider call per thread, so it loads on request rather than with the list
+// — except for a reply that aged out of the window, whose mailbox and text only
+// the thread still has.
+assert.match(masterInbox, /enabled: \(showFullThread \|\| needsThreadRecovery\) && Boolean\(workspaceId\) && Boolean\(selectedThread\?\.thread_key\)/u)
+assert.match(threadMessagesAction[0], /eaccount: typeof email\.eaccount === "string"/u)
+assert.match(masterInbox, /export const recoverAgedOutThread = \(/u)
+assert.match(masterInbox, /eaccount: thread\.eaccount \|\| eaccount,/u)
 // History is per-conversation and must not carry across threads.
 assert.match(masterInbox, /setSelectedThreadId\(threadId\)[\s\S]{0,220}setShowFullThread\(false\)/u)
 

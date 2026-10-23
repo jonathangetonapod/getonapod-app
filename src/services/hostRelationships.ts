@@ -1,12 +1,17 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastName, withDecodedPodcastNames } from '@/lib/feedText'
 
 /** Outreach state the platform derives; never edited by hand. */
 export type HostRelationshipDerivedState =
   | 'none' | 'pitched' | 'replied' | 'declined' | 'in_conversation' | 'booked' | 'suppressed'
 
-/** The operator's own read of the relationship, independent of outreach. */
-export type HostRelationshipManualStage = 'nurturing' | 'warm' | 'do_not_contact'
+/**
+ * The operator's override of the stage outreach implies. 'warm' predates the
+ * shared vocabulary in lib/relationshipLabels and reads as Nurturing.
+ */
+export type HostRelationshipManualStage =
+  | 'new' | 'pitched' | 'in_conversation' | 'nurturing' | 'warm' | 'placed' | 'not_a_fit' | 'do_not_contact'
 
 export type HostRelationshipClientIntent =
   | 'considering' | 'pitched' | 'placed' | 'declined' | 'ruled_out'
@@ -24,8 +29,18 @@ export interface HostRelationshipSummary {
   touch_count: number
   booked_client_name: string | null
   client_count: number
+  /** Clients on this host by name. Absent from function builds before book v3. */
+  client_names?: string[]
   note_count: number
   last_note_at: string | null
+  /** The latest saved message on this host, if any thread was saved. */
+  last_message_body?: string | null
+  last_message_at?: string | null
+  /** 'inbound' when the host wrote it, 'outbound' when we did. */
+  last_message_direction?: 'inbound' | 'outbound' | null
+  /** The thread a reply should open in the inbox. */
+  last_thread_key?: string | null
+  last_thread_client_id?: string | null
   curated: boolean
 }
 
@@ -96,7 +111,10 @@ export interface HostRelationshipPage {
   offset: number
   has_more: boolean
   next_offset: number | null
-  /** Whole-book counts by derived state. */
+  /**
+   * Whole-book counts. From book v3, in_conversation and booked (Placed)
+   * follow the stage shown, including manual overrides.
+   */
   counts: { in_conversation: number; booked: number; engaged: number }
 }
 
@@ -118,9 +136,9 @@ export async function listHostRelationshipsPage(
     },
     'The relationship book could not be loaded.',
   )
-  const relationships = Array.isArray(data?.relationships)
-    ? data.relationships as HostRelationshipSummary[]
-    : []
+  const relationships = withDecodedPodcastNames(
+    Array.isArray(data?.relationships) ? data.relationships as HostRelationshipSummary[] : [],
+  )
   // An older function build sends neither totals nor paging: the page it
   // returned is then the whole known book.
   const total = typeof data?.total === 'number' ? count(data.total) : offset + relationships.length
@@ -168,7 +186,7 @@ export async function getHostRelationship(workspaceId: string, podcastId: string
     'The relationship could not be loaded.',
   )
   return {
-    relationship: data.relationship ?? null,
+    relationship: data.relationship ? withDecodedPodcastName(data.relationship) : null,
     derived: data.derived ?? null,
     clients: Array.isArray(data.clients) ? data.clients : [],
     events: Array.isArray(data.events) ? data.events : [],
@@ -180,7 +198,8 @@ export async function createHostRelationship(
   workspaceId: string,
   input: {
     podcastId?: string | null
-    podcastName: string
+    /** Optional when contactEmail is given: a host can be added by address. */
+    podcastName?: string | null
     hostName?: string | null
     contactEmail?: string | null
     manualStage?: HostRelationshipManualStage | null
@@ -194,7 +213,7 @@ export async function createHostRelationship(
     action: 'create',
     workspace_id: workspaceId.toLowerCase(),
     ...(input.podcastId ? { podcast_id: input.podcastId } : {}),
-    podcast_name: input.podcastName,
+    podcast_name: input.podcastName || null,
     host_name: input.hostName ?? null,
     contact_email: input.contactEmail ?? null,
     manual_stage: input.manualStage ?? null,
@@ -341,7 +360,7 @@ export async function listOutreachSuppressions(workspaceId: string): Promise<Out
     { action: 'suppression-list', workspace_id: workspaceId.toLowerCase() },
     'The do-not-contact list could not be loaded.',
   )
-  return Array.isArray(data.suppressions) ? data.suppressions : []
+  return withDecodedPodcastNames(data.suppressions)
 }
 
 export async function addOutreachSuppression(

@@ -542,7 +542,9 @@ export interface PodcastRelationship {
   replied_client_name: string | null
   contact_email: string | null
   same_contact_other_show: boolean
-  manual_stage: 'nurturing' | 'warm' | 'do_not_contact' | null
+  manual_stage:
+    | 'new' | 'pitched' | 'in_conversation' | 'nurturing' | 'warm' | 'placed' | 'not_a_fit' | 'do_not_contact'
+    | null
   summary: string | null
   cooldown: OutreachCooldown | null
 }

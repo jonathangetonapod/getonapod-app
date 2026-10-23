@@ -168,7 +168,7 @@ describe('WorkspaceOnboarding', () => {
     mockedList.mockResolvedValue(listData({ can_manage: false, viewer_role: 'member', templates: [template] }))
     renderPage()
     expect(await screen.findByText('Nothing has been shared with you yet')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Start onboarding/u })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /New intake/u })).not.toBeInTheDocument()
   })
 
   it('leaves archived rows out of the summary counts', async () => {
@@ -180,9 +180,55 @@ describe('WorkspaceOnboarding', () => {
       ],
     }))
     renderPage()
-    const approved = await screen.findByRole('button', { name: /^Approved/u })
+    const approved = await screen.findByRole('radio', { name: /^Approved/u })
     expect(approved).toHaveTextContent('Approved1')
-    expect(approved).toHaveAttribute('aria-pressed', 'false')
+    expect(approved).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('radio', { name: /^All/u })).toHaveTextContent('All1')
+  })
+
+  it('gives each intake one status, so the strip adds up to All', async () => {
+    const recent = new Date(Date.now() - 86_400_000).toISOString()
+    const quiet = new Date(Date.now() - 5 * 86_400_000).toISOString()
+    mockedList.mockResolvedValue(listData({
+      templates: [template],
+      instances: [
+        instance({ id: '77777777-7777-4777-8777-777777777771', status: 'invited', invited_at: quiet, capability_expires_at: new Date(Date.now() + 9 * 86_400_000).toISOString() }),
+        instance({ id: '77777777-7777-4777-8777-777777777772', status: 'in_progress', invited_at: quiet, viewed_at: recent, started_at: recent, capability_expires_at: new Date(Date.now() + 9 * 86_400_000).toISOString() }),
+        instance({ id: '77777777-7777-4777-8777-777777777773', status: 'submitted', submitted_at: recent }),
+      ],
+    }))
+    renderPage()
+    expect(await screen.findByRole('radio', { name: /^All/u })).toHaveTextContent('All3')
+    expect(screen.getByRole('radio', { name: /^Needs chasing/u })).toHaveTextContent('Needs chasing1')
+    expect(screen.getByRole('radio', { name: /^In progress/u })).toHaveTextContent('In progress1')
+    expect(screen.getByRole('radio', { name: /^Awaiting review/u })).toHaveTextContent('Awaiting review1')
+    expect(screen.getAllByText('Not opened').length).toBeGreaterThan(0)
+  })
+
+  it('lists existing clients when nothing has been sent, each a click from a preselected intake', async () => {
+    mockedList.mockImplementation(async (_workspaceId, include) => include?.includes('clients')
+      ? listData({ clients: [{ id: '88888888-8888-4888-8888-888888888888', workspace_id: workspaceId, name: 'Dallas Fontaine', email: 'dallas@example.com', contact_person: 'Dallas Fontaine', status: 'active' }] })
+      : listData({ templates: [template] }))
+    renderPage()
+    expect(await screen.findByText('No intakes sent yet')).toBeInTheDocument()
+    expect(await screen.findByText('Dallas Fontaine')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Send intake/u }))
+    expect(await screen.findByRole('heading', { name: 'New intake' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Contact email')).toHaveValue('dallas@example.com')
+    expect(screen.getByText('Form:').parentElement).toHaveTextContent('Form: Guest intake v1 (default)')
+    expect(screen.getByText('Branding: workspace defaults')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Welcome title')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create link and send' })).toBeInTheDocument()
+  })
+
+  it('asks for a reply-to address on the page when none is set', async () => {
+    mockedList.mockResolvedValue(listData({ templates: [template], instances: [instance({})] }))
+    renderPage()
+    expect(await screen.findByText('Client replies are not reaching you')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Add reply-to email' })).toHaveAttribute('href', '/app/settings#client-contact-email')
+    fireEvent.click(screen.getByRole('button', { name: 'What does this mean?' }))
+    expect(await screen.findByRole('heading', { name: 'Where client replies go' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /Add reply-to email/u }).at(-1)).toHaveAttribute('href', '/app/settings#client-contact-email')
   })
 
   it('says when invitation emails cannot be sent and when delivery is unknown', async () => {

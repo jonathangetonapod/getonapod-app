@@ -168,7 +168,7 @@ function openRowMenu(email: string) {
   fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
 }
 
-function renderPage(platformWorkspaceId?: string) {
+function renderPage(platformWorkspaceId?: string, hash = '') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -181,7 +181,7 @@ function renderPage(platformWorkspaceId?: string) {
         initialEntries={[
           platformWorkspaceId
             ? `/app/workspaces/${platformWorkspaceId}/settings`
-            : '/app/settings',
+            : `/app/settings${hash}`,
         ]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
@@ -306,6 +306,16 @@ describe('WorkspaceStaff', () => {
     })
     mockedMutate.mockResolvedValue({ ...admin, role: 'owner', allowed_actions: [] })
     mockedUpdateRole.mockResolvedValue({ ...admin, role: 'member' })
+  })
+
+  it('scrolls to and focuses the field another page linked to', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderPage(undefined, '#client-contact-email')
+
+    const field = await screen.findByLabelText('Email clients reply to')
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
   })
 
   it('takes a pasted scheduler link and says it will load on the page', async () => {

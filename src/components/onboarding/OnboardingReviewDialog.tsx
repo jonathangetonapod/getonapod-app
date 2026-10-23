@@ -147,7 +147,7 @@ const OnboardingReviewDialog = ({
         {showAssignments && !reviewing && (
           <fieldset className="rounded-xl border px-4 py-3">
             <legend className="flex items-center gap-2 px-1 text-sm font-semibold">
-              <Users className="h-4 w-4" />Teammates who can view this onboarding
+              <Users className="h-4 w-4" />Teammates who can view this intake
             </legend>
             <p className="text-xs text-muted-foreground">Owners and admins always have access. Members see only what is shared with them.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -180,7 +180,7 @@ const OnboardingReviewDialog = ({
 
         {reviewing && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
-            Sending these notes emails {detail.recipient_name} and reopens their onboarding link so they can edit and
+            Sending these notes emails {detail.recipient_name} and reopens their intake link so they can edit and
             resubmit. Their current answers are kept as a revision.
           </p>
         )}
@@ -254,7 +254,7 @@ const OnboardingReviewDialog = ({
               )}
               <Button type="button" disabled={busy || reviewing} onClick={onApprove}>
                 {busy && !reviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                Approve onboarding
+                Approve intake
               </Button>
             </div>
           )}

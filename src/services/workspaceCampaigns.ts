@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastName, withDecodedPodcastNamesIn } from '@/lib/feedText'
 import { defaultInstantlyTimezone } from '@/lib/instantlyTimezones'
 
 export type WorkspaceCampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'attention'
@@ -254,7 +255,8 @@ interface CampaignMutationResponse {
 async function invokeWorkspaceCampaigns<T>(body: Record<string, unknown>, fallback: string): Promise<T> {
   const { data, error } = await supabase.functions.invoke('workspace-client-campaigns', { body })
   if (error) throw await toFunctionError(error, fallback)
-  return data as T
+  // Every target the campaign pages draw passes here; decoded once for all of them.
+  return withDecodedPodcastNamesIn(data, ['targets', 'target']) as T
 }
 
 export async function getWorkspaceCampaignOverview(workspaceId: string): Promise<WorkspaceCampaignOverview> {
@@ -1077,6 +1079,8 @@ export interface WorkspaceInboxMessage {
   id: string
   /** 'outbound' is what this agency sent — the half the pane could not show. */
   direction: 'inbound' | 'outbound'
+  /** The workspace mailbox on this message; recovers the sender for aged-out replies. */
+  eaccount?: string | null
   subject: string
   from_email: string
   to_email: string
@@ -1118,7 +1122,12 @@ export async function getWorkspaceInboxThreads(
   ) {
     throw new Error('The inbox response could not be read. Try again.')
   }
-  return data
+  return {
+    ...data,
+    threads: data.threads.map((thread) => (
+      thread?.lead_context ? { ...thread, lead_context: withDecodedPodcastName(thread.lead_context) } : thread
+    )),
+  }
 }
 
 export interface WorkspaceInboxDraft {
@@ -1126,6 +1135,11 @@ export interface WorkspaceInboxDraft {
   body: string
   classification: WorkspaceInboxReplyClassification | null
   nudges: WorkspaceInboxNudge[]
+  /**
+   * The reply asked not to be contacted. No model ran, nothing was charged,
+   * and the address is now on the workspace do-not-contact list.
+   */
+  suppressed: boolean
 }
 
 export async function draftWorkspaceInboxReply(
@@ -1139,6 +1153,7 @@ export async function draftWorkspaceInboxReply(
     draft: { subject: string; body: string }
     classification?: WorkspaceInboxReplyClassification | null
     nudges?: WorkspaceInboxNudge[]
+    suppressed?: boolean
   }>({
     action: 'inbox-draft',
     workspace_id: workspaceId,
@@ -1151,6 +1166,7 @@ export async function draftWorkspaceInboxReply(
     ...data.draft,
     classification: data.classification ?? null,
     nudges: data.nudges ?? [],
+    suppressed: data.suppressed === true,
   }
 }
 

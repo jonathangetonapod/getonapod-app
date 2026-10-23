@@ -112,6 +112,40 @@ export function activitiesFromItems(items: ClientPodcastSystemItem[]): CalendarA
   })
 }
 
+/*
+ * A placement that is booked or further along but carries no date at all can
+ * not be drawn on any day, and used to vanish from the calendar without a
+ * trace: a Recorded show with no recording date left the month reading
+ * "Nothing scheduled" while the page counted it. These are listed instead,
+ * so the gap is visible and one click from being filled.
+ */
+export interface UndatedPlacement {
+  itemId: string
+  clientName: string
+  podcastName: string
+  stage: string
+}
+
+const DATED_STAGES = new Set(['booked', 'recorded', 'published'])
+
+export function undatedPlacements(items: ClientPodcastSystemItem[]): UndatedPlacement[] {
+  return items
+    .filter((item) => (
+      item.booking
+      && item.booking.status !== 'cancelled'
+      && DATED_STAGES.has(item.booking.status)
+      && !dayKey(item.booking.recording_date)
+      && !dayKey(item.booking.scheduled_date)
+      && !dayKey(item.booking.publish_date)
+    ))
+    .map((item) => ({
+      itemId: item.id,
+      clientName: item.client.name,
+      podcastName: decodeFeedText(item.podcast.name || 'Untitled show'),
+      stage: item.booking!.status,
+    }))
+}
+
 /**
  * The same calendar, built from a single client's bookings.
  *

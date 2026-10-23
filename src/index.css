@@ -254,3 +254,10 @@
     display: none;
   }
 }
+
+/* The Podcast Database's selection bar holds the bottom edge while shows are
+   picked; toasts (an add's Undo among them) lift clear of it rather than
+   covering its buttons. */
+body:has([data-podcast-selection-bar]) [data-sonner-toaster][data-y-position='bottom'] {
+  transform: translateY(-64px);
+}

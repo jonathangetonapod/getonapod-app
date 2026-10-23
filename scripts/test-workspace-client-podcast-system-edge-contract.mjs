@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-client-podcast-system/index.ts', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
@@ -35,7 +35,10 @@ assert.match(service, /response\.workspace\.id\.toLowerCase\(\) !== canonicalWor
 // tabs it used to carry live on the client record, and the opportunity sheet
 // is shared between the two.
 assert.match(page, />Pipeline</u)
-assert.match(page, /Needs attention/u)
+// One action queue: Today is the only list of things to do, and the old
+// per-podcast "Needs attention" list does not come back beside it.
+assert.match(page, /<TodayQueue/u)
+assert.doesNotMatch(page, /Needs attention/u)
 assert.match(page, /Client record/u)
 assert.doesNotMatch(page, /Private workspace overview/u)
 assert.match(layout, /id: 'client-podcast-system', name: 'Pipeline'[\s\S]+enabled: true/u)
@@ -64,7 +67,17 @@ console.log('workspace pipeline Edge contract passed')
 // The command center and Master Inbox now reach each other by host, not just
 // by client. A thread records the show it came from at ingestion, so this is a
 // join rather than a provider call.
-const masterInbox = readFileSync('src/components/workspace/MasterInboxPreview.tsx', 'utf8')
+// The Master Inbox is a shell plus its panes, a draft-autosave hook and shared
+// thread helpers; the guarantees below may live in any of them.
+const masterInbox = [
+  'src/components/workspace/MasterInboxPreview.tsx',
+  ...readdirSync('src/components/workspace/inbox')
+    .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
+    .sort()
+    .map((name) => `src/components/workspace/inbox/${name}`),
+  'src/hooks/useInboxDraftAutosave.ts',
+  'src/lib/inboxThreads.ts',
+].map((path) => readFileSync(path, 'utf8')).join('\n')
 
 assert.match(edge, /from\('workspace_inbox_thread_state'\)[\s\S]{0,220}\.eq\('workspace_id', workspaceId\)/u)
 assert.match(edge, /\.not\('podcast_id', 'is', null\)/u)

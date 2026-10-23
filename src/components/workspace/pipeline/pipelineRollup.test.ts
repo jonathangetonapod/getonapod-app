@@ -2,101 +2,115 @@ import { describe, expect, it } from 'vitest'
 import type { ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 import {
   actionQueue,
-  actionUrgency,
-  bottleneckIndex,
+  buildClientRollup,
   daysSince,
-  QUIET_CLIENT_DAYS,
-  quietLevel,
-  relativeDays,
+  funnelStages,
+  isStale,
+  kpiCounts,
   setupItems,
+  STALE_CLIENT_DAYS,
   type ClientRollup,
-  type FunnelStage,
 } from './pipelineRollup'
 
-function stages(...counts: number[]): FunnelStage[] {
-  return counts.map((count, index) => ({ label: `Stage ${index}`, count }))
-}
+const BASE = '/app'
 
-function rollup(
-  name: string,
-  overrides: Partial<ClientRollup['nextAction']> & { status?: string; lastActivityAt?: string | null; items?: Partial<ClientPodcastSystemItem>[] } = {},
-): ClientRollup {
-  const { status = 'active', lastActivityAt = null, items = [], ...nextAction } = overrides
+function client(name: string, overrides: Partial<ClientRollup['client']> = {}): ClientRollup['client'] {
   return {
-    client: { id: name, name, status } as ClientRollup['client'],
-    items: items as ClientPodcastSystemItem[],
-    awaitingReview: 0,
-    preparation: 0,
-    activeOutreach: 0,
-    conversations: 0,
-    placements: 0,
-    published: 0,
-    upcomingRecordings: 0,
-    needsAttentionItems: [],
-    needsAttention: true,
-    nextAction: { label: 'Do the work', detail: '', tone: 'work', target: null, ...nextAction },
-    lastActivityAt,
-    pipelineStarted: false,
-  }
+    id: name.toLowerCase(),
+    name,
+    status: 'active',
+    onboarding: { status: 'approved' },
+    profile: { ready: true, completed_fields: 6, total_fields: 6 },
+    last_activity_at: null,
+    ...overrides,
+  } as ClientRollup['client']
 }
 
-describe('bottleneckIndex', () => {
-  it('points at the stage that falls furthest below the one before it', () => {
-    // Podcasts, To review, Approved, Outreach, Replies, Placements
-    expect(bottleneckIndex(stages(400, 352, 7, 5, 1, 0))).toBe(2)
-  })
+function item(clientName: string, id: string, overrides: Partial<ClientPodcastSystemItem> = {}): ClientPodcastSystemItem {
+  return {
+    id,
+    client: { id: clientName.toLowerCase(), name: clientName },
+    podcast: { name: `Show ${id}` },
+    stage: 'awaiting_review',
+    terminal: false,
+    has_conflict: false,
+    campaign: null,
+    booking: null,
+    ...overrides,
+  } as ClientPodcastSystemItem
+}
 
-  it('never blames To review for being smaller than the total', () => {
-    expect(bottleneckIndex(stages(50, 0, 0, 0, 0, 0))).toBeNull()
-  })
-
-  it('flags nothing when no stage drops', () => {
-    expect(bottleneckIndex(stages(3, 0, 1, 1, 1, 1))).toBeNull()
-  })
-})
+const rollupFor = (owner: ClientRollup['client'], items: ClientPodcastSystemItem[]) => buildClientRollup(owner, items, '2026-10-23', BASE)
 
 describe('actionQueue', () => {
-  it('puts blocking work first, then the longest-untouched client, and leaves out clear and inactive clients', () => {
-    const conflict = rollup('Conflict', {
-      tone: 'urgent',
-      target: { kind: 'item', itemId: 'bad' },
-      lastActivityAt: '2026-10-19T00:00:00Z',
-      items: [{ id: 'bad', has_conflict: true, campaign: null }],
-    })
-    const reply = rollup('Reply', { tone: 'urgent', target: { kind: 'item', itemId: 'ok' }, items: [{ id: 'ok', has_conflict: false, campaign: null }] })
-    const staleWork = rollup('Stale', { lastActivityAt: '2026-08-01T00:00:00Z' })
-    const freshWork = rollup('Fresh', { lastActivityAt: '2026-10-01T00:00:00Z' })
-    const clear = rollup('Clear', { tone: 'clear' })
-    const churned = rollup('Churned', { status: 'churned' })
+  const dallas = client('Dallas', { last_activity_at: '2026-10-01T00:00:00Z' })
+  const items = [
+    ...Array.from({ length: 352 }, (_value, index) => item('Dallas', `review-${index}`)),
+    item('Dallas', 'reply-1', { stage: 'conversation' }),
+    item('Dallas', 'reply-2', { stage: 'conversation' }),
+    item('Dallas', 'reply-3', { stage: 'conversation' }),
+    item('Dallas', 'booked', { stage: 'booked', booking: { prep_sent: false, recording_date: '2026-11-04' } as ClientPodcastSystemItem['booking'] }),
+    item('Dallas', 'prepped', { stage: 'booked', booking: { prep_sent: true } as ClientPodcastSystemItem['booking'] }),
+    item('Dallas', 'recorded', { stage: 'recorded', booking: { publish_date: null } as ClientPodcastSystemItem['booking'] }),
+    item('Dallas', 'bad', { stage: 'outreach', has_conflict: true }),
+    item('Dallas', 'ready', { stage: 'ready' }),
+  ]
 
-    expect(actionUrgency(conflict)).toBe('blocking')
-    expect(actionUrgency(reply)).toBe('soon')
-    expect(actionUrgency(freshWork)).toBe('routine')
-    expect(actionQueue([freshWork, clear, staleWork, churned, reply, conflict]).map((entry) => entry.client.name))
-      .toEqual(['Conflict', 'Reply', 'Stale', 'Fresh'])
+  it('orders issues, recorded, booked, replies, then one review batch per client', () => {
+    const queue = actionQueue([rollupFor(dallas, items)])
+    expect(queue.map((action) => [action.kind, action.verb])).toEqual([
+      ['issue', 'Review 1 record'],
+      ['recorded', 'Confirm publish date'],
+      ['booked', 'Prep the client'],
+      ['conversation', 'Reply to 3 hosts'],
+      ['review', 'Open review batch'],
+    ])
+    expect(queue[4].title).toBe("352 podcasts waiting on Dallas's review")
+    // A review batch goes to the client's list, never to one podcast.
+    expect(queue[4].target).toEqual({ kind: 'record', tab: 'shortlist', filter: 'not_reviewed' })
+    // Several replies are read in the inbox; only the blocker is red.
+    expect(queue[3].target).toEqual({ kind: 'href', href: '/app/master-inbox?client=dallas' })
+    expect(queue.filter((action) => action.blocking).map((action) => action.kind)).toEqual(['issue'])
+  })
+
+  it('makes the Need attention count the queue length, and leaves paused clients out', () => {
+    const paused = rollupFor(client('Pat', { status: 'paused' }), [item('Pat', 'p1', { stage: 'conversation' })])
+    const rollups = [rollupFor(dallas, items), paused]
+    const queue = actionQueue(rollups)
+    expect(kpiCounts(rollups, queue).attention).toBe(queue.length)
+    expect(queue.some((action) => action.client.name === 'Pat')).toBe(false)
+  })
+
+  it('asks for the first podcasts and a submitted intake, and nothing for a quiet client', () => {
+    const fresh = rollupFor(client('Fresh', { onboarding: { status: 'submitted' } as ClientRollup['client']['onboarding'] }), [])
+    expect(fresh.actions.map((action) => action.verb)).toEqual(['Review onboarding', 'Add podcasts'])
+    expect(rollupFor(client('Calm'), [item('Calm', 'x', { stage: 'outreach' })]).actions).toEqual([])
   })
 })
 
-describe('quietLevel', () => {
+describe('funnelStages', () => {
+  it('links every count to that client\'s filtered list', () => {
+    expect(funnelStages(rollupFor(client('Dallas'), []), BASE).map((stage) => stage.href)).toEqual([
+      '/app/clients/dallas?tab=shortlist',
+      '/app/clients/dallas?tab=shortlist&filter=not_reviewed',
+      '/app/clients/dallas?tab=shortlist&filter=approved',
+      '/app/client-campaigns/dallas',
+      '/app/master-inbox?client=dallas',
+      '/app/clients/dallas?tab=placements',
+    ])
+  })
+})
+
+describe('isStale', () => {
   const now = Date.parse('2026-10-20T12:00:00Z')
   const ago = (days: number) => new Date(now - days * 86_400_000).toISOString()
 
-  it('turns amber after the warn threshold and red after the alert threshold', () => {
-    const active = rollup('Active')
-    expect(quietLevel(active, daysSince(ago(QUIET_CLIENT_DAYS.warn), now))).toBe('recent')
-    expect(quietLevel(active, daysSince(ago(QUIET_CLIENT_DAYS.warn + 1), now))).toBe('warn')
-    expect(quietLevel(active, daysSince(ago(QUIET_CLIENT_DAYS.alert + 1), now))).toBe('alert')
-  })
-
-  it('never flags a client who is not active', () => {
-    expect(quietLevel(rollup('Gone', { status: 'churned' }), 90)).toBe('recent')
-  })
-
-  it('reads as relative days', () => {
-    expect(relativeDays(null)).toBe('No activity recorded yet')
-    expect(relativeDays(0)).toBe('Today')
-    expect(relativeDays(1)).toBe('Yesterday')
-    expect(relativeDays(72)).toBe('72 days ago')
+  it('goes stale only past the threshold, and only for an active client', () => {
+    expect(isStale(rollupFor(client('A', { last_activity_at: ago(STALE_CLIENT_DAYS) }), []), now)).toBe(false)
+    expect(isStale(rollupFor(client('B', { last_activity_at: ago(STALE_CLIENT_DAYS + 1) }), []), now)).toBe(true)
+    expect(isStale(rollupFor(client('C', { status: 'churned', last_activity_at: ago(90) }), []), now)).toBe(false)
+    expect(isStale(rollupFor(client('D'), []), now)).toBe(false)
+    expect(daysSince(ago(80), now)).toBe(80)
   })
 })
 
