@@ -46,6 +46,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { CreditBalanceChip } from '@/components/workspace/CreditBalanceChip'
 import { JoinRequestsBadge } from '@/components/workspace/JoinRequestsBadge'
+import { describeWaitingJoinRequests, useWaitingJoinRequests } from '@/hooks/useWaitingJoinRequests'
 import { CreditBalanceWarning } from '@/components/workspace/CreditBalanceWarning'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -523,6 +524,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
   const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
+  const waitingJoinRequests = useWaitingJoinRequests(isPlatformAdmin)
   const clientsQuery = useQuery({
     queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
@@ -959,7 +961,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                       </Link>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent className="xl:hidden">Manage workspaces and join requests</TooltipContent>
+                  {/* Shown at every width: the label says where the button goes,
+                      but only the tooltip says what the number on it counts. */}
+                  <TooltipContent>
+                    {describeWaitingJoinRequests(waitingJoinRequests) ?? 'Manage workspaces and join requests'}
+                  </TooltipContent>
                 </Tooltip>
                 <JoinRequestsBadge enabled={isPlatformAdmin} />
               </div>
@@ -977,7 +983,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="xl:hidden">Billing administration: plans, credit grants and allowances</TooltipContent>
+                <TooltipContent>Billing administration: plans, credit grants and allowances</TooltipContent>
               </Tooltip>
             )}
             {isPlatformAdmin && (

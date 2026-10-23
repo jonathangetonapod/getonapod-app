@@ -41,7 +41,7 @@ describe('AgencyRelationshipNotice', () => {
     })} />)
 
     expect(screen.getByText('Relationship context saved')).toBeInTheDocument()
-    expect(screen.getByText('Relationship stage: Warm')).toBeInTheDocument()
+    expect(screen.getByText('Relationship stage: Nurturing')).toBeInTheDocument()
     expect(screen.getByText(/Met the producer at Podcast Movement/i)).toBeInTheDocument()
   })
 

@@ -3,34 +3,39 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { toast } from 'sonner'
 import {
   Activity,
-  Ban,
   BookUser,
   CalendarDays,
+  Check,
   ChevronLeft,
   ChevronRight,
-  Clock3,
-  Handshake,
-  Inbox,
   Loader2,
   Mail,
-  MailX,
-  MessageSquare,
-  Mic,
   NotebookPen,
   PhoneCall,
   Plus,
   Search,
   ShieldCheck,
   UserRoundPlus,
-  Users,
   X,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { OutreachSuppressionsDialog } from '@/components/workspace/OutreachSuppressionsDialog'
+import { RelationshipQuietBanner } from '@/components/workspace/RelationshipQuietBanner'
+import { RelationshipRow } from '@/components/workspace/RelationshipRow'
 import {
   WorkspaceLayout,
   type PlatformWorkspaceConfig,
 } from '@/components/workspace/WorkspaceLayout'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -47,13 +52,20 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/contexts/AuthContext'
 import { decodeFeedText } from '@/lib/feedText'
 import {
-  RELATIONSHIP_MANUAL_STAGE_VIEW as MANUAL_STAGE_VIEW,
-  RELATIONSHIP_STATE_VIEW as STATE_VIEW,
+  RELATIONSHIP_STAGES,
+  autoStage,
+  manualStage,
+  relationshipStage,
+  relationshipTitle,
+  stageLabel,
+  type RelationshipNextStep,
+  type RelationshipStage,
 } from '@/lib/relationshipLabels'
-import { describeQuiet, quietConversations } from '@/lib/relationshipAttention'
+import { needsAttention, quietConversations } from '@/lib/relationshipAttention'
 import { sortRelationships, type RelationshipSort } from '@/lib/relationshipSort'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -68,7 +80,6 @@ import {
   saveHostRelationship,
   unlinkHostRelationshipClient,
   type HostRelationshipClientIntent,
-  type HostRelationshipDerivedState,
   type HostRelationshipManualStage,
   type HostRelationshipSummary,
 } from '@/services/hostRelationships'
@@ -80,11 +91,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 // page hold enough to actually scan.
 const RELATIONSHIPS_PER_PAGE = 25
 
-/** How each derived state reads to an operator scanning the book. */
-type StageDraft = HostRelationshipManualStage | 'derived'
 type NoteKind = 'note' | 'call' | 'meeting'
-type RelationshipFilter = 'all' | 'active' | 'warm' | 'placed' | 'do_not_contact'
+type RelationshipFilter = 'all' | 'needs_attention' | RelationshipStage
 type RelationshipView = 'overview' | 'notes' | 'threads' | 'activity'
+type SaveState = 'idle' | 'saving' | 'saved'
 
 interface RelationshipActivityItem {
   id: string
@@ -93,14 +103,15 @@ interface RelationshipActivityItem {
   body: string | null
   occurredAt: string
   clientName: string | null
-  meta: string | null
+  campaignName: string | null
+  sendStatus: string | null
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return '—'
+  if (!value) return 'Date unavailable'
   const date = new Date(value)
   return Number.isNaN(date.getTime())
-    ? '—'
+    ? 'Date unavailable'
     : new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
@@ -118,66 +129,38 @@ function formatDateTime(value: string | null): string {
       }).format(date)
 }
 
+/**
+ * Campaign names carry their send status as a prefix, as in
+ * "(failed) Titan | (Sunnova, Mosaic)". Split it so the status never reads
+ * inline as if it were the activity itself.
+ */
+function splitCampaign(name: string | null): { campaignName: string | null; sendStatus: string | null } {
+  const trimmed = (name ?? '').trim()
+  if (!trimmed) return { campaignName: null, sendStatus: null }
+  const match = /^\(([a-z _-]+)\)\s*(.*)$/iu.exec(trimmed)
+  return match
+    ? { campaignName: match[2] || null, sendStatus: match[1].toLowerCase() }
+    : { campaignName: trimmed, sendStatus: null }
+}
+
 const EVENT_TITLES: Record<Exclude<RelationshipActivityItem['kind'], 'email'>, string> = {
   note: 'Internal note added',
   call: 'Call logged',
   meeting: 'Meeting logged',
-  stage_change: 'Relationship stage changed',
+  stage_change: 'Stage changed',
   system: 'Relationship updated',
 }
 
-function podcastInitials(name: string): string {
-  const words = decodeFeedText(name).trim().split(/\s+/u).filter(Boolean)
-  if (words.length === 0) return 'P'
-  return (words.length === 1 ? words[0].slice(0, 2) : `${words[0][0]}${words[1][0]}`).toUpperCase()
-}
-
-// A cover that never loads is routine rather than exceptional: a show can take
-// its artwork private or delete it long after the feed keeps pointing there,
-// which is why roughly one in four Buzzsprout-hosted covers 403s. The stand-in
-// therefore has to look deliberate instead of broken, and it has to separate
-// the two cases an operator can act on — a show we cannot name yet, versus a
-// named show whose cover simply is not reachable.
-function PodcastArtwork({ imageUrl, name, identified = true, large = false }: {
-  imageUrl: string | null
-  name: string
-  identified?: boolean
-  large?: boolean
-}) {
-  const [imageFailed, setImageFailed] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
-  const sizeClass = large ? 'h-20 w-20 rounded-xl text-lg' : 'h-12 w-12 rounded-lg text-xs'
-  const showImage = Boolean(imageUrl) && !imageFailed
-  const label = identified
-    ? (showImage ? `${decodeFeedText(name)} cover` : `${decodeFeedText(name)} — cover art unavailable`)
-    : 'Show not identified yet'
-
-  return (
-    <div
-      className={`relative ${sizeClass} flex shrink-0 items-center justify-center overflow-hidden border bg-primary/5 font-semibold text-primary`}
-      title={label}
-    >
-      {/* The stand-in stays mounted underneath the image rather than being
-          swapped in on error, so a cover that 403s degrades into it silently
-          instead of flashing the browser's broken-image glyph first. */}
-      {identified
-        ? <span aria-hidden="true">{podcastInitials(name)}</span>
-        : <Mic aria-hidden="true" className={large ? 'h-7 w-7 opacity-60' : 'h-4 w-4 opacity-60'} />}
-      {showImage
-        ? (
-          <img
-            src={imageUrl as string}
-            alt={`${decodeFeedText(name)} cover`}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onLoad={() => setImageLoaded(true)}
-            onError={() => setImageFailed(true)}
-          />
-        )
-        : <span className="sr-only">{label}</span>}
-    </div>
-  )
+const FILTER_LABELS: Record<RelationshipFilter, string> = {
+  all: 'All',
+  needs_attention: 'Needs attention',
+  new: stageLabel('new'),
+  pitched: stageLabel('pitched'),
+  in_conversation: stageLabel('in_conversation'),
+  nurturing: stageLabel('nurturing'),
+  placed: stageLabel('placed'),
+  not_a_fit: stageLabel('not_a_fit'),
+  do_not_contact: stageLabel('do_not_contact'),
 }
 
 function ActivityItemView({ item, compact = false }: { item: RelationshipActivityItem; compact?: boolean }) {
@@ -190,21 +173,32 @@ function ActivityItemView({ item, compact = false }: { item: RelationshipActivit
         : item.kind === 'note'
           ? NotebookPen
           : Activity
+  const meta = [item.clientName, formatDate(item.occurredAt)].filter(Boolean).join(' · ')
+  const details = [
+    item.campaignName ? `Campaign: ${item.campaignName}` : null,
+    item.sendStatus ? `Send status: ${item.sendStatus}` : null,
+  ].filter(Boolean)
   return (
     <div className="flex gap-3">
       <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground">
         <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="min-w-0 flex-1 pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-          <p className="text-sm font-medium">{item.title}</p>
-          <p className="shrink-0 text-xs text-muted-foreground">{formatDateTime(item.occurredAt)}</p>
-        </div>
-        {(item.clientName || item.meta) && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {[item.clientName, item.meta].filter(Boolean).join(' · ')}
-          </p>
-        )}
+        <p className="text-sm font-medium">{item.title}</p>
+        {details.length > 0
+          ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p tabIndex={0} className="mt-0.5 w-fit cursor-default text-xs text-muted-foreground underline decoration-dotted underline-offset-2">
+                  {meta}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {details.map((line) => <p key={line}>{line}</p>)}
+              </TooltipContent>
+            </Tooltip>
+          )
+          : <p className="mt-0.5 text-xs text-muted-foreground">{meta}</p>}
         {item.body && (
           <p className={`mt-1.5 whitespace-pre-wrap text-sm leading-6 text-foreground/80 ${compact ? 'line-clamp-2' : ''}`}>
             {item.body}
@@ -242,16 +236,20 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   const [noteDraft, setNoteDraft] = useState('')
   const [noteKind, setNoteKind] = useState<NoteKind>('note')
   const [summaryDraft, setSummaryDraft] = useState('')
-  const [stageDraft, setStageDraft] = useState<StageDraft>('derived')
+  const [summaryState, setSummaryState] = useState<SaveState>('idle')
   const [selectedClientId, setSelectedClientId] = useState('')
   const [clientIntent, setClientIntent] = useState<HostRelationshipClientIntent>('considering')
+  const [focusClientPicker, setFocusClientPicker] = useState(false)
+  const [confirmDoNotContact, setConfirmDoNotContact] = useState<{ podcastId: string; title: string } | null>(null)
+  const [confirmUnlink, setConfirmUnlink] = useState<{ podcastId: string; clientId: string; name: string } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [suppressionsOpen, setSuppressionsOpen] = useState(false)
   const [newShowName, setNewShowName] = useState('')
   const [newHostName, setNewHostName] = useState('')
   const [newContactEmail, setNewContactEmail] = useState('')
-  const [newStage, setNewStage] = useState<StageDraft>('nurturing')
+  const [newStage, setNewStage] = useState<RelationshipStage>('nurturing')
   const [newSummary, setNewSummary] = useState('')
+  const clientPickerRef = useRef<HTMLButtonElement>(null)
 
   const selectedWorkspaceQuery = useQuery({
     queryKey: ['platform', user?.id || 'unknown', 'workspace', selectedWorkspaceId, 'relationships'],
@@ -294,19 +292,18 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   const bookTotal = firstBookPage?.total ?? relationships.length
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
+    const now = new Date()
     return relationships.filter((row) => (
       (
         relationshipFilter === 'all'
-        || (relationshipFilter === 'active' && ['in_conversation', 'replied'].includes(row.derived_state))
-        || (relationshipFilter === 'warm' && ['warm', 'nurturing'].includes(row.manual_stage ?? ''))
-        || (relationshipFilter === 'placed' && row.derived_state === 'booked')
-        || (relationshipFilter === 'do_not_contact' && (row.manual_stage === 'do_not_contact' || row.derived_state === 'suppressed'))
+        || (relationshipFilter === 'needs_attention' ? needsAttention(row, now) : relationshipStage(row) === relationshipFilter)
       )
       && (
         !term
         || decodeFeedText(row.podcast_name ?? '').toLowerCase().includes(term)
         || decodeFeedText(row.host_name ?? '').toLowerCase().includes(term)
         || (row.contact_email ?? '').toLowerCase().includes(term)
+        || (row.client_names ?? []).some((name) => name.toLowerCase().includes(term))
       )
     ))
   }, [relationshipFilter, relationships, search])
@@ -322,9 +319,9 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   // Opening a row that the current page, search, or filter hides showed
   // nothing: the card only renders inside the visible slice, while the detail
   // request still ran for it. A freshly added relationship sorts last (it has
-  // no outreach yet) and a "going quiet" chip can point past the active
-  // filter. Widen the view once per opened row until it is on screen; paging
-  // away afterwards is left alone.
+  // no outreach yet) and a banner item can point past the active filter.
+  // Widen the view once per opened row until it is on screen; paging away
+  // afterwards is left alone.
   const revealedPodcastIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!openPodcastId) {
@@ -347,17 +344,35 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     setRelationshipPage(Math.floor(index / RELATIONSHIPS_PER_PAGE) + 1)
   }, [openPodcastId, relationships, sorted, visibleRelationships])
 
-  // Live and warm relationships are the ones worth acting on; count them so
-  // the header answers "what do we have" before any scrolling.
-  // The count of live conversations is not the actionable fact — which of
+  // "Pitch" lands on the client picker, once the panel has drawn it.
+  useEffect(() => {
+    if (!focusClientPicker || !detailQuery.data) return
+    clientPickerRef.current?.focus()
+    clientPickerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setFocusClientPicker(false)
+  }, [detailQuery.data, focusClientPicker])
+
+  // The count of live conversations is not the actionable fact; which of
   // them has gone silent is. Recency sort puts exactly those at the bottom.
   const quiet = useMemo(() => quietConversations(relationships), [relationships])
+  const attentionCount = useMemo(
+    () => relationships.filter((row) => needsAttention(row)).length,
+    [relationships],
+  )
   // Whole-book figures from the server, so the header is right before every
-  // page has loaded.
-  const counts = {
-    live: firstBookPage?.counts.in_conversation ?? 0,
-    placed: firstBookPage?.counts.booked ?? 0,
-    engaged: firstBookPage?.counts.engaged ?? 0,
+  // page has loaded. Needs attention depends on the clock, so it is counted
+  // over the rows loaded; live conversations sort first, so the first page
+  // holds them.
+  const chips: Array<{ filter: RelationshipFilter; count: number; className: string }> = [
+    { filter: 'in_conversation', count: firstBookPage?.counts.in_conversation ?? 0, className: 'border-sky-200 bg-sky-50 text-sky-900 data-[active=true]:bg-sky-700 data-[active=true]:text-white' },
+    { filter: 'placed', count: firstBookPage?.counts.booked ?? 0, className: 'border-emerald-200 bg-emerald-50 text-emerald-900 data-[active=true]:bg-emerald-700 data-[active=true]:text-white' },
+    { filter: 'needs_attention', count: attentionCount, className: 'border-amber-300 bg-amber-50 text-amber-900 data-[active=true]:bg-amber-600 data-[active=true]:text-white' },
+  ]
+
+  const applyFilter = (filter: RelationshipFilter) => {
+    setRelationshipFilter(filter)
+    setRelationshipPage(1)
+    setOpenPodcastId(null)
   }
 
   const invalidate = (podcastId: string) => {
@@ -377,15 +392,37 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The interaction could not be saved.'),
   })
-  const relationshipMutation = useMutation({
-    mutationFn: (input: { podcastId: string; summary: string; manualStage: HostRelationshipManualStage | null }) => (
+  const summaryMutation = useMutation({
+    mutationFn: (input: { podcastId: string; summary: string }) => saveHostRelationship(workspaceId, input),
+    onMutate: () => setSummaryState('saving'),
+    onSuccess: (_result, input) => {
+      setSummaryState('saved')
+      invalidate(input.podcastId)
+    },
+    onError: (error) => {
+      setSummaryState('idle')
+      toast.error(error instanceof Error ? error.message : 'The notes could not be saved.')
+    },
+  })
+  const stageMutation = useMutation({
+    mutationFn: (input: { podcastId: string; manualStage: HostRelationshipManualStage | null }) => (
       saveHostRelationship(workspaceId, input)
     ),
     onSuccess: (_result, input) => {
-      toast.success('Relationship details saved.')
+      toast.success(input.manualStage === 'do_not_contact'
+        ? 'Marked as do not contact. New pitches to this host are blocked.'
+        : 'Stage updated.')
       invalidate(input.podcastId)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The relationship could not be saved.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The stage could not be saved.'),
+  })
+  const renameMutation = useMutation({
+    mutationFn: (input: { podcastId: string; podcastName: string }) => saveHostRelationship(workspaceId, input),
+    onSuccess: (_result, input) => {
+      toast.success('Show name saved.')
+      invalidate(input.podcastId)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The show name could not be saved.'),
   })
   const clientMutation = useMutation({
     mutationFn: (input: { podcastId: string; clientId: string; intent: HostRelationshipClientIntent }) => (
@@ -394,10 +431,10 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     onSuccess: (_result, input) => {
       setSelectedClientId('')
       setClientIntent('considering')
-      toast.success('Client linked to this host.')
+      toast.success('Client added to this host.')
       invalidate(input.podcastId)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The client could not be linked.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The client could not be added.'),
   })
   const unlinkMutation = useMutation({
     mutationFn: (input: { podcastId: string; clientId: string }) => (
@@ -411,15 +448,16 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   })
   const createMutation = useMutation({
     mutationFn: () => createHostRelationship(workspaceId, {
-      podcastName: newShowName.trim(),
+      podcastName: newShowName.trim() || null,
       hostName: newHostName.trim() || null,
       contactEmail: newContactEmail.trim() || null,
-      manualStage: newStage === 'derived' ? null : newStage,
+      // For a host nobody has contacted, New is what activity already says;
+      // storing it would pin the host at New after the first pitch.
+      manualStage: newStage === 'new' ? null : newStage,
       summary: newSummary.trim() || null,
     }),
     onSuccess: (result) => {
       const summary = newSummary.trim()
-      const stage = newStage
       setAddOpen(false)
       setNewShowName('')
       setNewHostName('')
@@ -430,11 +468,11 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       setActiveView('overview')
       setThreadSearch('')
       setSummaryDraft(summary)
-      setStageDraft(stage)
-      toast.success(result.created ? 'Relationship added to the book.' : 'Existing relationship updated.')
+      setSummaryState('idle')
+      toast.success(result.created ? 'Host added.' : 'That host was already here, so we updated it.')
       invalidate(result.podcast_id)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The relationship could not be created.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The host could not be added.'),
   })
 
   const openRow = relationships.find((row) => row.podcast_id === openPodcastId) ?? null
@@ -465,7 +503,8 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       body: event.body,
       occurredAt: event.occurred_at,
       clientName: event.client_id ? clientNames.get(event.client_id) ?? null : null,
-      meta: null,
+      campaignName: null,
+      sendStatus: null,
     })),
     ...(detail?.threads ?? []).map((thread) => ({
       id: `thread:${thread.thread_key}`,
@@ -474,25 +513,17 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       body: thread.latest_message_body,
       occurredAt: thread.latest_message_at || thread.updated_at,
       clientName: thread.client_name,
-      meta: [thread.campaign_name, thread.from_email || thread.lead_email].filter(Boolean).join(' · ') || null,
+      ...splitCampaign(thread.campaign_name),
     })),
   ].sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
-  const selectedName = decodeFeedText(
-    detail?.relationship?.podcast_name
-    || openRow?.podcast_name
-    || 'Show not identified',
-  )
-  const selectedHost = decodeFeedText(
-    detail?.relationship?.host_name
-    || openRow?.host_name
-    || 'Host not identified',
-  )
-  const selectedState = detail?.derived?.state || openRow?.derived_state || 'none'
+
+  const baseHref = isPlatformWorkspace
+    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
+    : MY_WORKSPACE_BASE_HREF
   /*
    * The reply happens in the inbox; this page only knows about it. The
-   * quiet band and the saved threads named the conversation and stopped one
-   * click short of the place a follow-up is actually written — the inbox
-   * already links here, and this is the way back.
+   * banner, the rows and the saved threads all link to the exact thread, one
+   * click from the place a follow-up is actually written.
    */
   const inboxThreadHref = (thread: { thread_key: string; client_id: string | null }): string => {
     const params = new URLSearchParams()
@@ -500,9 +531,11 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     params.set('thread', thread.thread_key)
     return `${baseHref}/master-inbox?${params.toString()}`
   }
-  const baseHref = isPlatformWorkspace
-    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
-    : MY_WORKSPACE_BASE_HREF
+  const rowReplyHref = (row: HostRelationshipSummary): string | null => (
+    row.last_thread_key
+      ? inboxThreadHref({ thread_key: row.last_thread_key, client_id: row.last_thread_client_id ?? null })
+      : null
+  )
   const selectedWorkspace = selectedWorkspaceQuery.data?.workspace
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
     ? {
@@ -516,6 +549,35 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
         baseHref,
       }
     : undefined
+
+  const openRelationship = (podcastId: string | null, view: RelationshipView = 'overview') => {
+    const row = relationships.find((item) => item.podcast_id === podcastId)
+    setOpenPodcastId(podcastId)
+    setActiveView(view)
+    setThreadSearch('')
+    setSummaryDraft(row?.summary ?? '')
+    setSummaryState('idle')
+    setNoteDraft('')
+    setNoteKind('note')
+    setSelectedClientId('')
+    setClientIntent('considering')
+  }
+  const handleNextStep = (row: HostRelationshipSummary, step: RelationshipNextStep) => {
+    if (step === 'pitch') {
+      openRelationship(row.podcast_id)
+      if (canManage) {
+        setClientIntent('pitched')
+        setFocusClientPicker(true)
+      }
+      return
+    }
+    // A reply or follow-up with no known inbox thread opens what we have saved.
+    openRelationship(row.podcast_id, step === 'open' ? 'overview' : 'threads')
+  }
+  const saveSummary = (podcastId: string) => {
+    if (summaryDraft === (openRow?.summary ?? '') || summaryMutation.isPending) return
+    summaryMutation.mutate({ podcastId, summary: summaryDraft })
+  }
 
   if (isPlatformWorkspace && selectedWorkspaceQuery.isLoading && validWorkspaceId) {
     return (
@@ -544,8 +606,12 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     )
   }
 
+  const bookEmpty = !bookQuery.isLoading && !bookQuery.error && relationships.length === 0
+  const canAdd = Boolean(newShowName.trim() || newContactEmail.trim())
+
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
+      <TooltipProvider delayDuration={200}>
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -553,56 +619,42 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
               <BookUser className="h-6 w-6 text-primary" />Relationships
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Your agency's host CRM. Find a show, understand the relationship, and continue the right conversation.
+              Every host you pitch, who needs a reply, and what they last said.
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-900">{counts.live} in conversation</Badge>
-              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-900">{counts.placed} placed</Badge>
-              <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-900">{counts.engaged} engaged</Badge>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => setSuppressionsOpen(true)}>
-                <MailX className="mr-2 h-4 w-4" />Do not contact
+            {!bookEmpty && (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Quick filters">
+                {chips.map((chip) => {
+                  const active = relationshipFilter === chip.filter
+                  return (
+                    <button
+                      key={chip.filter}
+                      type="button"
+                      aria-pressed={active}
+                      data-active={active}
+                      onClick={() => applyFilter(active ? 'all' : chip.filter)}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${chip.className}`}
+                    >
+                      <span className="tabular-nums">{chip.count}</span> {FILTER_LABELS[chip.filter].toLowerCase()}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {canManage && !bookEmpty && (
+              <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />Add relationship
               </Button>
-              {canManage && (
-                <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />Add relationship
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
-        {quiet.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">
-              {quiet.length === 1
-                ? 'A live conversation is going quiet'
-                : `${quiet.length} live conversations are going quiet`}
-            </p>
-            <p className="mt-0.5 text-xs leading-5 text-amber-800">
-              Hosts mid-conversation with no touch in five days. Silence here is how a placement dies.
-            </p>
-            <div className="mt-2.5 flex flex-wrap gap-2">
-              {quiet.slice(0, 6).map((row) => (
-                <button
-                  key={row.podcast_id}
-                  type="button"
-                  onClick={() => { setOpenPodcastId(row.podcast_id); setActiveView('overview') }}
-                  className="flex items-center gap-2 rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100"
-                >
-                  <span className="max-w-48 truncate">{decodeFeedText(row.podcast_name ?? 'Show not identified')}</span>
-                  <span className="tabular-nums text-amber-700">{describeQuiet(row.last_contacted_at)}</span>
-                </button>
-              ))}
-              {quiet.length > 6 && (
-                <span className="self-center text-xs text-amber-800">and {quiet.length - 6} more</span>
-              )}
-            </div>
-          </div>
-        )}
+        <RelationshipQuietBanner
+          rows={quiet}
+          replyHref={rowReplyHref}
+          onOpen={(podcastId) => openRelationship(podcastId)}
+        />
 
         {!canManage && (
           <div className="flex gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
@@ -611,54 +663,58 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
           </div>
         )}
 
-        <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
-          <div className="relative min-w-0 flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label="Search relationships"
-              placeholder="Search podcasts, hosts, or emails"
-              className="pl-9"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value)
+        {!bookEmpty && (
+          <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label="Search relationships"
+                placeholder="Search shows, hosts, emails, or clients"
+                className="pl-9"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setRelationshipPage(1)
+                  setOpenPodcastId(null)
+                }}
+              />
+            </div>
+            <Select value={relationshipFilter} onValueChange={(value) => applyFilter(value as RelationshipFilter)}>
+              <SelectTrigger aria-label="Filter relationships" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{FILTER_LABELS.all}</SelectItem>
+                <SelectItem value="needs_attention">{FILTER_LABELS.needs_attention}</SelectItem>
+                {RELATIONSHIP_STAGES.map((stage) => (
+                  <SelectItem key={stage} value={stage}>{FILTER_LABELS[stage]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={relationshipSort}
+              onValueChange={(value) => {
+                setRelationshipSort(value as RelationshipSort)
                 setRelationshipPage(1)
                 setOpenPodcastId(null)
               }}
-            />
+            >
+              <SelectTrigger aria-label="Sort relationships" className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="recent">Recent contact</SelectItem>
+                <SelectItem value="show">Show name A–Z</SelectItem>
+                <SelectItem value="host">Host name A–Z</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select
-            value={relationshipFilter}
-            onValueChange={(value) => {
-              setRelationshipFilter(value as RelationshipFilter)
-              setRelationshipPage(1)
-              setOpenPodcastId(null)
-            }}
-          >
-            <SelectTrigger aria-label="Filter relationships" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All relationships</SelectItem>
-              <SelectItem value="active">Active conversations</SelectItem>
-              <SelectItem value="warm">Warm &amp; nurturing</SelectItem>
-              <SelectItem value="placed">Guest placements</SelectItem>
-              <SelectItem value="do_not_contact">Do not contact</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={relationshipSort}
-            onValueChange={(value) => {
-              setRelationshipSort(value as RelationshipSort)
-              setRelationshipPage(1)
-              setOpenPodcastId(null)
-            }}
-          >
-            <SelectTrigger aria-label="Sort relationships" className="w-full sm:w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="recent">Recent contact</SelectItem>
-              <SelectItem value="show">Show name A–Z</SelectItem>
-              <SelectItem value="host">Host name A–Z</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        )}
+
+        {relationshipFilter === 'do_not_contact' && (
+          <p className="text-sm text-muted-foreground">
+            Blocked addresses that are not in the book are on the{' '}
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => setSuppressionsOpen(true)}>
+              do-not-contact list
+            </button>.
+          </p>
+        )}
 
         {bookQuery.isLoading && (
           <div className="flex items-center gap-2 rounded-xl border p-6 text-sm text-muted-foreground">
@@ -673,92 +729,64 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             </CardContent>
           </Card>
         )}
-        {!bookQuery.isLoading && !bookQuery.error && filtered.length === 0 && (
+        {bookEmpty && (
+          <Card>
+            <CardContent className="flex flex-col items-center p-10 text-center">
+              <h2 className="text-base font-semibold">No hosts yet</h2>
+              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+                Hosts show up here automatically once outreach starts. You can also add one by hand.
+              </p>
+              {canManage && (
+                <Button type="button" size="sm" className="mt-4" onClick={() => setAddOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />Add relationship
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {!bookQuery.isLoading && !bookQuery.error && !bookEmpty && filtered.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-sm font-medium">
-                {relationships.length === 0 ? 'No host relationships yet' : 'No relationships match that search'}
-              </p>
+              <p className="text-sm font-medium">No relationships match</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                {relationships.length === 0
-                  ? 'Hosts appear here after outreach, a reply, a booking, or a relationship note.'
-                  : 'Try a different search or relationship filter.'}
+                Try a different search or filter.
               </p>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid items-start gap-3 xl:grid-cols-[22rem_minmax(0,1fr)]">
+        <div className="space-y-2">
           {visibleRelationships.map((row: HostRelationshipSummary) => {
-            const view = STATE_VIEW[row.derived_state] ?? STATE_VIEW.none
-            const manualView = row.manual_stage ? MANUAL_STAGE_VIEW[row.manual_stage] : null
             const open = row.podcast_id === openPodcastId
+            const { title } = relationshipTitle(row)
+            const storedStage = manualStage(row.manual_stage)
+            const shownStage = relationshipStage(row)
+            const contactLine = [
+              relationshipTitle(row).showKnown ? decodeFeedText(row.host_name ?? '').trim() : null,
+              row.contact_email && row.contact_email !== title ? row.contact_email : null,
+            ].filter(Boolean).join(' · ')
             return (
               <Card
                 key={row.podcast_id}
-                className={open
-                  ? 'overflow-hidden border-primary/40 ring-1 ring-primary/10 xl:col-span-2 xl:grid xl:grid-cols-[22rem_minmax(0,1fr)]'
-                  : 'xl:col-start-1'}
+                className={open ? 'overflow-hidden border-primary/40 ring-1 ring-primary/10' : 'transition-colors hover:bg-muted/20'}
               >
-                <CardHeader className={open ? 'pb-3' : 'p-3'}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <PodcastArtwork
-                        imageUrl={row.podcast_image_url}
-                        name={row.podcast_name ?? 'Show not identified'}
-                        identified={Boolean(row.podcast_name)}
-                      />
-                      <div className="min-w-0">
-                        <CardTitle className="truncate text-base">{decodeFeedText(row.podcast_name ?? 'Show not identified')}</CardTitle>
-                        <CardDescription className="mt-1 truncate">
-                          {decodeFeedText(row.host_name || 'Host not identified')}
-                          {row.contact_email ? ` · ${row.contact_email}` : ''}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className={view.className}>{view.label}</Badge>
-                      {manualView && (
-                        <Badge variant="outline" className={manualView.className}>
-                          {row.manual_stage === 'do_not_contact' && <Ban className="mr-1 h-3 w-3" />}
-                          {manualView.label}
-                        </Badge>
-                      )}
-                      <Button
-                        type="button"
-                        variant={open ? 'secondary' : 'outline'}
-                        size="sm"
-                        onClick={() => {
-                          const next = open ? null : row.podcast_id
-                          setOpenPodcastId(next)
-                          setActiveView('overview')
-                          setThreadSearch('')
-                          setSummaryDraft(next ? row.summary ?? '' : '')
-                          setStageDraft(next ? row.manual_stage ?? 'derived' : 'derived')
-                          setNoteDraft('')
-                          setNoteKind('note')
-                          setSelectedClientId('')
-                          setClientIntent('considering')
-                        }}
-                      >
-                        {open ? 'Close' : 'Open'}
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                    <span>Last contact {formatDate(row.last_contacted_at)}</span>
-                    <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{row.client_count} client{row.client_count === 1 ? '' : 's'}</span>
-                    <span className="inline-flex items-center gap-1"><MessageSquare className="h-3 w-3" />{row.note_count} note{row.note_count === 1 ? '' : 's'}</span>
-                    {row.booked_client_name && (
-                      <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
-                        <Handshake className="h-3 w-3" />Placed {row.booked_client_name}
-                      </span>
-                    )}
-                  </div>
-                </CardHeader>
+                <div className="p-3">
+                  <RelationshipRow
+                    row={row}
+                    open={open}
+                    canManage={canManage}
+                    replyHref={rowReplyHref(row)}
+                    onToggle={() => openRelationship(open ? null : row.podcast_id)}
+                    onNextStep={(step) => handleNextStep(row, step)}
+                    onRename={async (podcastName) => {
+                      await renameMutation.mutateAsync({ podcastId: row.podcast_id, podcastName })
+                    }}
+                    onMarkDoNotContact={() => setConfirmDoNotContact({ podcastId: row.podcast_id, title })}
+                  />
+                </div>
 
                 {open && (
-                  <CardContent className="space-y-5 border-t pt-4 xl:col-start-2 xl:row-start-1 xl:border-l xl:border-t-0">
+                  <CardContent className="space-y-5 border-t pt-4">
                     {detailQuery.isLoading && (
                       <p className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" />Loading history…
@@ -772,44 +800,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     )}
                     {detail && (
                       <Tabs value={activeView} onValueChange={(value) => setActiveView(value as RelationshipView)}>
-                        <div className="flex flex-col gap-4 rounded-xl border bg-muted/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex min-w-0 items-center gap-4">
-                            <PodcastArtwork
-                              imageUrl={openRow?.podcast_image_url ?? null}
-                              name={selectedName}
-                              identified={Boolean(detail.relationship?.podcast_name || openRow?.podcast_name)}
-                              large
-                            />
-                            <div className="min-w-0">
-                              <h2 className="truncate text-xl font-semibold">{selectedName}</h2>
-                              <p className="mt-1 truncate text-sm text-muted-foreground">
-                                {selectedHost}{(detail.relationship?.contact_email || openRow?.contact_email) ? ` · ${detail.relationship?.contact_email || openRow?.contact_email}` : ''}
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                <Badge variant="outline" className={STATE_VIEW[selectedState].className}>{STATE_VIEW[selectedState].label}</Badge>
-                                {openRow?.manual_stage && (
-                                  <Badge variant="outline" className={MANUAL_STAGE_VIEW[openRow.manual_stage].className}>
-                                    {MANUAL_STAGE_VIEW[openRow.manual_stage].label}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          {detail.threads[0] && (
-                            <Button asChild size="sm" variant="outline">
-                              <Link to={inboxThreadHref(detail.threads[0])}>
-                                <Inbox className="mr-2 h-4 w-4" />Reply in the inbox
-                              </Link>
-                            </Button>
-                          )}
-                          {canManage && (
-                            <Button type="button" size="sm" onClick={() => setActiveView('notes')}>
-                              <NotebookPen className="mr-2 h-4 w-4" />Add note
-                            </Button>
-                          )}
-                        </div>
-
-                        <div className="mt-4 overflow-x-auto border-b">
+                        <div className="overflow-x-auto border-b">
                           <TabsList aria-label="Relationship CRM sections" className="h-auto min-w-max justify-start bg-transparent p-0">
                             <TabsTrigger value="overview" className="rounded-b-none">Overview</TabsTrigger>
                             <TabsTrigger value="notes" className="rounded-b-none">
@@ -824,87 +815,87 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           </TabsList>
                         </div>
 
-                        <TabsContent value="overview" className="mt-5 space-y-5">
-                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                            <div className="rounded-lg border bg-background p-3">
-                              <p className="text-xs text-muted-foreground">Last contact</p>
-                              <p className="mt-1 text-sm font-medium">{formatDate(openRow?.last_contacted_at ?? null)}</p>
-                            </div>
-                            <div className="rounded-lg border bg-background p-3">
-                              <p className="text-xs text-muted-foreground">Clients</p>
-                              <p className="mt-1 text-sm font-medium">{detail.clients.length}</p>
-                            </div>
-                            <div className="rounded-lg border bg-background p-3">
-                              <p className="text-xs text-muted-foreground">Internal notes</p>
-                              <p className="mt-1 text-sm font-medium">{internalNotes.length}</p>
-                            </div>
-                            <div className="rounded-lg border bg-background p-3">
-                              <p className="text-xs text-muted-foreground">Saved threads</p>
-                              <p className="mt-1 text-sm font-medium">{detail.threads.length}</p>
-                            </div>
+                        <TabsContent value="overview" className="mt-5 space-y-6">
+                        <section className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor="relationship-summary">What we know about this host</Label>
+                            {summaryState !== 'idle' && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground" role="status">
+                                {summaryState === 'saving'
+                                  ? <><Loader2 className="h-3 w-3 animate-spin" />Saving…</>
+                                  : <><Check className="h-3 w-3" />Saved</>}
+                              </span>
+                            )}
                           </div>
-                        {canManage ? (
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_15rem]">
-                            <div className="space-y-2">
-                              <Label htmlFor="relationship-summary">What we know about this host</Label>
+                          {contactLine && <p className="text-xs text-muted-foreground">{contactLine}</p>}
+                          {canManage
+                            ? (
                               <Textarea
                                 id="relationship-summary"
                                 value={summaryDraft}
-                                onChange={(event) => setSummaryDraft(event.target.value)}
+                                onChange={(event) => {
+                                  setSummaryDraft(event.target.value)
+                                  setSummaryState('idle')
+                                }}
+                                onBlur={() => saveSummary(row.podcast_id)}
                                 placeholder="How they prefer to be pitched, what they cover, anything worth remembering next time."
-                                className="min-h-28 resize-y"
+                                className="min-h-24 resize-y"
                                 maxLength={5_000}
                               />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="relationship-stage">Relationship stage</Label>
-                              <Select value={stageDraft} onValueChange={(value) => setStageDraft(value as StageDraft)}>
-                                <SelectTrigger id="relationship-stage"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="derived">Use outreach activity</SelectItem>
-                                  <SelectItem value="nurturing">Nurturing</SelectItem>
-                                  <SelectItem value="warm">Warm relationship</SelectItem>
-                                  <SelectItem value="do_not_contact">Do not contact</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                Do not contact blocks new pitches to this show. Other stages and notes guide the next pitch while recorded activity remains the source of truth.
+                            )
+                            : (
+                              <p id="relationship-summary" className="whitespace-pre-wrap text-sm leading-6">
+                                {row.summary || 'Nothing recorded yet.'}
                               </p>
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="w-fit"
-                              disabled={
-                                relationshipMutation.isPending
-                                || (
-                                  summaryDraft === (openRow?.summary ?? '')
-                                  && stageDraft === (openRow?.manual_stage ?? 'derived')
-                                )
-                              }
-                              onClick={() => relationshipMutation.mutate({
-                                podcastId: row.podcast_id,
-                                summary: summaryDraft,
-                                manualStage: stageDraft === 'derived' ? null : stageDraft,
-                              })}
-                            >
-                              {relationshipMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}Save relationship
-                            </Button>
-                          </div>
-                        ) : (
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What we know</p>
-                            <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
-                              {openRow?.summary || 'No relationship summary has been recorded.'}
-                            </p>
-                          </div>
-                        )}
+                            )}
+                        </section>
 
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Clients on this host</p>
+                        <section className="max-w-sm space-y-2">
+                          <Label htmlFor="relationship-stage">Stage</Label>
+                          {canManage
+                            ? (
+                              <>
+                                <Select
+                                  value={storedStage ?? 'auto'}
+                                  disabled={stageMutation.isPending}
+                                  onValueChange={(value) => {
+                                    if (value === 'do_not_contact') {
+                                      setConfirmDoNotContact({ podcastId: row.podcast_id, title })
+                                      return
+                                    }
+                                    stageMutation.mutate({
+                                      podcastId: row.podcast_id,
+                                      manualStage: value === 'auto' ? null : value as HostRelationshipManualStage,
+                                    })
+                                  }}
+                                >
+                                  <SelectTrigger id="relationship-stage"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="auto">Auto (currently: {stageLabel(autoStage(row.derived_state))})</SelectItem>
+                                    {RELATIONSHIP_STAGES.map((stage) => (
+                                      <SelectItem key={stage} value={stage}>{stageLabel(stage)}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                  Auto follows your outreach activity. Pick a stage to override it.
+                                </p>
+                                {storedStage === 'nurturing' && shownStage !== 'nurturing' && (
+                                  <p className="text-xs leading-5 text-muted-foreground">
+                                    Showing {stageLabel(shownStage)} because outreach has started.
+                                  </p>
+                                )}
+                              </>
+                            )
+                            : <p id="relationship-stage" className="text-sm">{stageLabel(shownStage)}</p>}
+                        </section>
+
+                        <section>
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Clients on this host <span className="ml-1 font-normal tabular-nums">{detail.clients.length}</span>
+                          </h3>
                           {detail.clients.length === 0
-                            ? <p className="mt-1.5 text-sm text-muted-foreground">No client history is linked yet.</p>
+                            ? <p className="mt-1.5 text-sm text-muted-foreground">No clients on this host yet.</p>
                             : (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {detail.clients.map((client) => (
@@ -916,9 +907,10 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                                         className="-mr-1 ml-0.5 rounded-full p-0.5 hover:bg-background disabled:opacity-50"
                                         aria-label={`Unlink ${client.client_name ?? 'client'} from this host`}
                                         disabled={unlinkMutation.isPending}
-                                        onClick={() => unlinkMutation.mutate({
+                                        onClick={() => setConfirmUnlink({
                                           podcastId: row.podcast_id,
                                           clientId: client.client_id,
+                                          name: client.client_name ?? 'this client',
                                         })}
                                       >
                                         <X className="h-3 w-3" />
@@ -928,53 +920,52 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                                 ))}
                               </div>
                             )}
-                        </div>
-
-                        {canManage && (
-                          <div className="space-y-2 rounded-xl border bg-muted/10 p-4">
-                            <p className="text-sm font-medium">Add or update a client plan</p>
-                            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto]">
-                              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                                <SelectTrigger aria-label="Choose a client"><SelectValue placeholder="Choose a client" /></SelectTrigger>
-                                <SelectContent>
-                                  {activeClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                              <Select value={clientIntent} onValueChange={(value) => setClientIntent(value as HostRelationshipClientIntent)}>
-                                <SelectTrigger aria-label="Choose client intent"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="considering">Considering</SelectItem>
-                                  <SelectItem value="pitched">Pitched</SelectItem>
-                                  <SelectItem value="placed">Placed</SelectItem>
-                                  <SelectItem value="declined">Declined</SelectItem>
-                                  <SelectItem value="ruled_out">Ruled out</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                disabled={!selectedClientId || clientMutation.isPending}
-                                onClick={() => clientMutation.mutate({
-                                  podcastId: row.podcast_id,
-                                  clientId: selectedClientId,
-                                  intent: clientIntent,
-                                })}
-                              >
-                                {clientMutation.isPending
-                                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  : <UserRoundPlus className="mr-2 h-4 w-4" />}
-                                Save client
-                              </Button>
+                          {canManage && (
+                            <div className="mt-3 space-y-2 rounded-xl border bg-muted/10 p-4">
+                              <p className="text-sm font-medium">Add a client</p>
+                              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto]">
+                                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                                  <SelectTrigger ref={clientPickerRef} aria-label="Choose a client"><SelectValue placeholder="Choose a client" /></SelectTrigger>
+                                  <SelectContent>
+                                    {activeClients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                                <Select value={clientIntent} onValueChange={(value) => setClientIntent(value as HostRelationshipClientIntent)}>
+                                  <SelectTrigger aria-label="Choose client intent"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="considering">Considering</SelectItem>
+                                    <SelectItem value="pitched">Pitched</SelectItem>
+                                    <SelectItem value="placed">Placed</SelectItem>
+                                    <SelectItem value="declined">Declined</SelectItem>
+                                    <SelectItem value="ruled_out">Ruled out</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  disabled={!selectedClientId || clientMutation.isPending}
+                                  onClick={() => clientMutation.mutate({
+                                    podcastId: row.podcast_id,
+                                    clientId: selectedClientId,
+                                    intent: clientIntent,
+                                  })}
+                                >
+                                  {clientMutation.isPending
+                                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    : <UserRoundPlus className="mr-2 h-4 w-4" />}
+                                  Add
+                                </Button>
+                              </div>
+                              {tenantClientsQuery.error && !isPlatformWorkspace && (
+                                <p className="text-xs text-destructive">The client list could not be loaded.</p>
+                              )}
                             </div>
-                            {tenantClientsQuery.error && !isPlatformWorkspace && (
-                              <p className="text-xs text-destructive">The client list could not be loaded.</p>
-                            )}
-                          </div>
-                        )}
+                          )}
+                        </section>
 
-                        <div className="rounded-xl border p-4">
+                        <section className="rounded-xl border p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-medium">Recent activity</p>
+                            <h3 className="text-sm font-medium">Recent activity</h3>
                             <Button type="button" variant="ghost" size="sm" onClick={() => setActiveView('activity')}>
                               View all <ChevronRight className="ml-1 h-3.5 w-3.5" />
                             </Button>
@@ -982,7 +973,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           {activityItems.length === 0
                             ? <p className="mt-2 text-sm text-muted-foreground">No activity has been recorded yet.</p>
                             : <div className="mt-3 divide-y">{activityItems.slice(0, 4).map((item) => <ActivityItemView key={item.id} item={item} compact />)}</div>}
-                        </div>
+                        </section>
                         </TabsContent>
 
                         <TabsContent value="notes" className="mt-5 space-y-5">
@@ -1200,30 +1191,78 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
           onOpenChange={setSuppressionsOpen}
         />
 
+        <AlertDialog open={Boolean(confirmDoNotContact)} onOpenChange={(open) => { if (!open) setConfirmDoNotContact(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Block new pitches to this host?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmDoNotContact?.title} will be marked do not contact. You can undo this from the stage control.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (confirmDoNotContact) {
+                    stageMutation.mutate({ podcastId: confirmDoNotContact.podcastId, manualStage: 'do_not_contact' })
+                  }
+                  setConfirmDoNotContact(null)
+                }}
+              >
+                Block pitches
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={Boolean(confirmUnlink)} onOpenChange={(open) => { if (!open) setConfirmUnlink(null) }}>
+          <AlertDialogContent aria-describedby={undefined}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove {confirmUnlink?.name} from this host?</AlertDialogTitle>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmUnlink) {
+                    unlinkMutation.mutate({ podcastId: confirmUnlink.podcastId, clientId: confirmUnlink.clientId })
+                  }
+                  setConfirmUnlink(null)
+                }}
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogContent className="sm:max-w-xl">
             <form
               onSubmit={(event) => {
                 event.preventDefault()
-                if (newShowName.trim()) createMutation.mutate()
+                if (canAdd) createMutation.mutate()
               }}
             >
               <DialogHeader>
                 <DialogTitle>Add a relationship</DialogTitle>
                 <DialogDescription>
-                  Add a host before outreach exists. Their email lets the platform connect this context to a future canonical show when the match is unambiguous.
+                  Add a host before outreach starts. Once we see their email in a thread, we'll link it to the show automatically.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="new-relationship-show">Podcast or show</Label>
+                  <Label htmlFor="new-relationship-show">
+                    Show name <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="new-relationship-show"
                     value={newShowName}
                     onChange={(event) => setNewShowName(event.target.value)}
-                    placeholder="Founder & Operator"
+                    placeholder="Show name"
                     maxLength={500}
-                    required
+                    aria-describedby="new-relationship-required"
                     autoFocus
                   />
                 </div>
@@ -1233,56 +1272,67 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     id="new-relationship-host"
                     value={newHostName}
                     onChange={(event) => setNewHostName(event.target.value)}
-                    placeholder="Morgan Host"
+                    placeholder="Host name"
                     maxLength={300}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="new-relationship-email">Host email</Label>
+                  <Label htmlFor="new-relationship-email">
+                    Host email <span aria-hidden="true" className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="new-relationship-email"
                     type="email"
                     value={newContactEmail}
                     onChange={(event) => setNewContactEmail(event.target.value)}
-                    placeholder="morgan@example.com"
+                    placeholder="host@example.com"
                     maxLength={254}
+                    aria-describedby="new-relationship-required"
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="new-relationship-stage">Relationship stage</Label>
-                  <Select value={newStage} onValueChange={(value) => setNewStage(value as StageDraft)}>
+                  <Label htmlFor="new-relationship-stage">Stage</Label>
+                  <Select value={newStage} onValueChange={(value) => setNewStage(value as RelationshipStage)}>
                     <SelectTrigger id="new-relationship-stage"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="derived">Use recorded activity</SelectItem>
-                      <SelectItem value="nurturing">Nurturing</SelectItem>
-                      <SelectItem value="warm">Warm relationship</SelectItem>
-                      <SelectItem value="do_not_contact">Do not contact</SelectItem>
+                      {RELATIONSHIP_STAGES.map((stage) => (
+                        <SelectItem key={stage} value={stage}>{stageLabel(stage)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="new-relationship-summary">What should the team remember?</Label>
+                  <Label htmlFor="new-relationship-summary">Notes</Label>
                   <Textarea
                     id="new-relationship-summary"
                     value={newSummary}
                     onChange={(event) => setNewSummary(event.target.value)}
-                    placeholder="Prefers concise, operator-led ideas. Reconnect after their fall season planning call."
+                    placeholder="What should the team remember about this host?"
                     className="min-h-28 resize-y"
                     maxLength={5_000}
                   />
                 </div>
               </div>
-              <DialogFooter className="mt-5">
+              <DialogFooter className="mt-5 sm:items-start">
                 <Button type="button" variant="outline" onClick={() => setAddOpen(false)} disabled={createMutation.isPending}>Cancel</Button>
-                <Button type="submit" disabled={!newShowName.trim() || createMutation.isPending}>
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Add relationship
-                </Button>
+                <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+                  <Button type="submit" disabled={!canAdd || createMutation.isPending}>
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Add relationship
+                  </Button>
+                  <p
+                    id="new-relationship-required"
+                    className={`text-xs text-muted-foreground ${canAdd ? 'invisible' : ''}`}
+                  >
+                    Add a show name or a host email to continue.
+                  </p>
+                </div>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
+      </TooltipProvider>
     </WorkspaceLayout>
   )
 }

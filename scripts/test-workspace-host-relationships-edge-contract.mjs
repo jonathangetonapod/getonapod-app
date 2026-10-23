@@ -59,12 +59,14 @@ const masterInbox = [
 const workspaceNavigation = readFileSync('src/components/workspace/WorkspaceLayout.tsx', 'utf8')
 const adminNavigation = readFileSync('src/components/admin/DashboardLayout.tsx', 'utf8')
 const routes = readFileSync('src/App.tsx', 'utf8')
+const relationshipRow = readFileSync('src/components/workspace/RelationshipRow.tsx', 'utf8')
+const relationshipLabels = readFileSync('src/lib/relationshipLabels.ts', 'utf8')
 
 assert.match(edge, /requireAuthenticatedUser\(req\)/u)
 assert.match(edge, /workspaceCredentialIsFresh\(authContext\)/u)
 assert.match(edge, /requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
 assert.match(edge, /const MANAGER_ROLES = new Set\(\['owner', 'admin', 'platform_admin'\]\)/u)
-assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v2/u)
+assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v3/u)
 // The book is paged with whole-book totals; it used to stop at 500 rows
 // without saying so, and the header counted only what arrived.
 const pagingMigration = readFileSync('supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql', 'utf8')
@@ -72,6 +74,22 @@ assert.match(pagingMigration, /CREATE OR REPLACE FUNCTION public\.workspace_host
 assert.match(pagingMigration, /\(COUNT\(\*\) OVER \(\)\)::INTEGER AS total_count/u)
 assert.match(pagingMigration, /rel\.last_contacted_at DESC NULLS LAST,[\s\S]*?rel\.podcast_id\s*LIMIT[\s\S]*?OFFSET GREATEST\(0, COALESCE\(p_offset, 0\)\)/u)
 assert.match(pagingMigration, /REVOKE ALL ON FUNCTION public\.workspace_host_relationship_book_v2\(UUID, INTEGER, INTEGER\) FROM PUBLIC, anon, authenticated/u)
+// v3 keeps v2's paging and adds what a row shows: client names, the latest
+// saved message with its direction, and the thread a reply opens. Its counts
+// follow the stage operators see, which a manual override can change.
+const stagesMigration = readFileSync('supabase/migrations/20261023000100_relationship_stages_and_book_v3.sql', 'utf8')
+assert.match(stagesMigration, /CREATE OR REPLACE FUNCTION public\.workspace_host_relationship_book_v3\([\s\S]*?p_offset INTEGER DEFAULT 0/u)
+assert.match(stagesMigration, /client_names TEXT\[\][\s\S]*?last_message_direction TEXT[\s\S]*?last_thread_key TEXT/u)
+assert.match(stagesMigration, /WHEN rel\.state = 'suppressed' OR book\.manual_stage = 'do_not_contact' THEN 'do_not_contact'/u)
+assert.match(stagesMigration, /staged\.last_contacted_at DESC NULLS LAST,\s*staged\.podcast_id\s*LIMIT[\s\S]*?OFFSET GREATEST\(0, COALESCE\(p_offset, 0\)\)/u)
+assert.match(stagesMigration, /REVOKE ALL ON FUNCTION public\.workspace_host_relationship_book_v3\(UUID, INTEGER, INTEGER\) FROM PUBLIC, anon, authenticated/u)
+assert.match(stagesMigration, /CHECK \(manual_stage IN \([\s\S]*?'not_a_fit'[\s\S]*?\)\)/u)
+assert.match(edge, /const MANUAL_STAGES = new Set\(\[[\s\S]*?'not_a_fit', 'do_not_contact',[\s\S]*?\]\)/u)
+// A host can be added by address alone, but never with neither a show nor an address.
+assert.match(edge, /const showName = optionalString\(body\.podcast_name, 'podcast_name', 500\)/u)
+assert.match(edge, /if \(!showName && !contactEmail\) \{\s*throw new HttpError\(400, 'INVALID_FIELD', 'podcast_name or contact_email is required'\)/u)
+// A repeat add by address alone must not blank a name someone already gave the show.
+assert.match(edge, /if \(showName\) changes\.podcast_name = showName/u)
 assert.match(edge, /requireOnlyKeys\(body, \['action', 'workspace_id', 'limit', 'offset'\]\)/u)
 assert.match(edge, /has_more: nextOffset < total,/u)
 assert.match(service, /export async function listHostRelationshipsPage\(/u)
@@ -143,7 +161,10 @@ assert.match(masterInbox, /const isSelected = thread\.id === selectedThread\?\.i
 assert.match(masterInbox, /result\.show_identified === false/u)
 assert.match(edge, /show_identified: Boolean\(/u)
 assert.match(edge, /show_resolved_from_email: Boolean\(resolved\)/u)
-assert.match(page, /'Show not identified'/u)
+// An unresolved show is titled by its host or address, never by a placeholder.
+assert.doesNotMatch(page, /not identified/iu)
+assert.doesNotMatch(relationshipRow, /not identified/iu)
+assert.match(relationshipLabels, /return \{ title: host \|\| email \|\| 'Unnamed host', showKnown: false \}/u)
 assert.doesNotMatch(page, /Untitled show/u)
 assert.match(
   emailLookupMigration,
@@ -303,11 +324,11 @@ assert.match(pitchSignals, /declined: \{[\s\S]*?This host passed on an earlier i
 assert.match(pitchSignals, /Relationship note:/u)
 assert.match(masterInbox, /captureHostRelationshipThread/u)
 assert.match(masterInbox, /Save to relationships/u)
-assert.match(page, /Search podcasts, hosts, or emails/u)
+assert.match(page, /Search shows, hosts, emails, or clients/u)
 assert.match(page, /RELATIONSHIPS_PER_PAGE = 25/u)
 assert.match(page, /aria-label="Relationship pagination"/u)
 assert.match(page, /value="notes"[\s\S]*?value="threads"[\s\S]*?value="activity"/u)
-assert.match(page, /PodcastArtwork/u)
+assert.match(relationshipRow, /RelationshipAvatar/u)
 assert.match(workspaceNavigation, /name: 'Relationships', segment: 'relationships'/u)
 assert.match(adminNavigation, /name: 'Relationships', href: '\/app\/relationships'/u)
 
@@ -360,7 +381,11 @@ assert.match(
 assert.match(service, /export async function removeOutreachSuppression[\s\S]*?input: \{ contactEmail: string; note: string \}/u)
 assert.match(suppressionDialog, /disabled=\{reinstateNote\.trim\(\)\.length < 4 \|\| removeMutation\.isPending\}/u)
 assert.match(suppressionDialog, /An opt-out is directed at your agency, not at one campaign/u)
-assert.match(page, /Do not contact<\/Button>|<MailX className="mr-2 h-4 w-4" \/>Do not contact/u)
+// The header carries only Add relationship. The do-not-contact list is still
+// one click away, from the Do not contact filter, so it cannot be orphaned.
+assert.doesNotMatch(page, /<MailX className="mr-2 h-4 w-4" \/>Do not contact/u)
+assert.match(page, /relationshipFilter === 'do_not_contact' && \([\s\S]*?setSuppressionsOpen\(true\)[\s\S]*?do-not-contact list/u)
+assert.match(page, /<OutreachSuppressionsDialog/u)
 
 assert.match(config, /\[functions\.workspace-host-relationships\]\s+verify_jwt = true/u)
 assert.match(service, /functions\.invoke\('workspace-host-relationships'/u)
