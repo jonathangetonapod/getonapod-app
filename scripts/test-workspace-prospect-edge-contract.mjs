@@ -32,8 +32,16 @@ assert.match(studio, /if \(action === 'create'\)[\s\S]*?const dashboardId = requ
 assert.match(studio, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
 assert.match(studio, /if \(action === 'build'\)[\s\S]*?buildProspect\(context, workspaceId, dashboardId\)/u)
 assert.match(studio, /model: 'text-embedding-3-small'/u)
-assert.match(studio, /model: 'claude-haiku-4-5-20251001'/u)
+assert.match(studio, /const RANKING_MODEL = 'claude-haiku-4-5-20251001'/u)
 assert.match(studio, /function fallbackRankCandidates/u)
+// Fit explanations: the fallback no longer stamps one sentence per show, the
+// AI set is checked for repeated runs and rewritten, and a failure is logged.
+assert.doesNotMatch(studio, /which overlaps with \$\{prospect\.prospect_name\}/u, 'the fallback must not template one sentence across shows')
+assert.match(studio, /explanationsNeedingRewrite\(/u)
+assert.match(studio, /EXPLANATION_REWRITE_ATTEMPTS = 2/u)
+assert.match(studio, /console\.error\(`\[workspace-prospect-dashboards\] fit explanations still fail/u)
+assert.match(studio, /candidates = cleanCandidates\(candidates, dashboardId\)/u, 'duplicate feeds must be dropped before ranking')
+assert.match(studio, /podcast_name: decodeHtmlEntities\(requireString\(podcast\.podcast_name/u, 'Finder additions must be stored decoded')
 assert.match(studio, /ranking_source: rankingSource/u)
 assert.match(studio, /\.from\('prospect_dashboard_podcasts'\)[\s\S]*?\.upsert\(selected, \{ onConflict: 'prospect_dashboard_id,podcast_id' \}\)/u)
 assert.match(studio, /\.in\('match_source', \['legacy', 'sheet', 'semantic', 'ai_ranked'\]\)/u)
