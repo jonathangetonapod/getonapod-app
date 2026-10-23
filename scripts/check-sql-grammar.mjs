@@ -117,6 +117,7 @@ const SQL_INPUTS = [
   'supabase/migrations/20261011000500_security_definer_grants_and_confirmed_invites.sql',
   'supabase/migrations/20261011000600_portal_login_pair_backoff_and_grant_cleanup.sql',
   'supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql',
+  'supabase/migrations/20261023000100_relationship_stages_and_book_v3.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
   'supabase/tests/20260721_workspace_guest_resources_behavior.sql',
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',
