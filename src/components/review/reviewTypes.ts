@@ -1,3 +1,4 @@
+import { decodeHtmlEntities, dedupeShows } from '@/lib/showText'
 import type { PodcastDemographics } from '@/services/podscan'
 
 /*
@@ -70,14 +71,24 @@ export const REVIEW_CARDS_PER_PAGE = 10
 
 export const GENERIC_FIT_REASON = 'Selected for the overlap between your expertise and this show’s audience.'
 
-/** Drops accidental duplicates so no visible total counts a show twice. */
+/**
+ * Drops accidental duplicates so no visible total counts a show twice: the
+ * same id listed twice, and the same show listed under two feeds (kept as
+ * the larger one). Names are entity-decoded here, since every surface that
+ * shows a prospect or client their shortlist reads through this.
+ */
 export function uniqueReviewPodcasts<T extends ReviewPodcast>(podcasts: T[]): T[] {
   const seen = new Set<string>()
-  return podcasts.filter((podcast) => {
+  const byId = podcasts.filter((podcast) => {
     if (seen.has(podcast.podcast_id)) return false
     seen.add(podcast.podcast_id)
     return true
   })
+  return dedupeShows(byId.map((podcast) => ({
+    ...podcast,
+    podcast_name: decodeHtmlEntities(podcast.podcast_name),
+    publisher_name: decodeHtmlEntities(podcast.publisher_name),
+  })))
 }
 
 export function reviewCounts(podcasts: ReviewPodcast[], feedback: ReviewFeedbackMap): ReviewCounts {
