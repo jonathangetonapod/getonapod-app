@@ -10,6 +10,7 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 import { getWorkspaceClients } from '@/services/clients'
+import { countWaitingJoinRequests } from '@/services/accessRequests'
 import { readWorkingClient, writeWorkingClient } from '@/lib/workingClient'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -18,6 +19,7 @@ vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
 }))
 vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
+vi.mock('@/services/accessRequests', () => ({ countWaitingJoinRequests: vi.fn(async () => 0) }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedBillingOverview = vi.mocked(getWorkspaceBillingOverview)
@@ -685,6 +687,24 @@ describe('WorkspaceLayout', () => {
 
     const link = await screen.findByRole('link', { name: 'Billing administration' })
     expect(link).toHaveAttribute('href', '/app/platform/billing')
+  })
+
+  // A red "2" on an icon says nothing on its own; the tooltip says what it counts.
+  it('says what the number on the workspaces button counts', async () => {
+    vi.mocked(countWaitingJoinRequests).mockResolvedValue(2)
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com', user_metadata: {} },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: { full_name: 'Owner Name', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    renderLayout()
+
+    const link = await screen.findByRole('link', { name: 'Manage workspaces' })
+    await screen.findByText('2 requests to join are waiting')
+    fireEvent.focus(link)
+    expect(await screen.findByRole('tooltip', { name: '2 join requests waiting' })).toBeInTheDocument()
   })
 
   it('offers no billing administration to a workspace member', async () => {

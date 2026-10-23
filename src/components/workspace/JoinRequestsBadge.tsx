@@ -1,9 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
-
-import { countWaitingJoinRequests } from '@/services/accessRequests'
-
-/** Slow enough to be free, quick enough that you learn within the hour. */
-const CHECK_EVERY_MS = 120_000
+import { useWaitingJoinRequests } from '@/hooks/useWaitingJoinRequests'
 
 /**
  * How many people are waiting to hear back, on the way into the queue.
@@ -17,18 +12,7 @@ const CHECK_EVERY_MS = 120_000
  * screen reader, and the count is the whole message.
  */
 export function JoinRequestsBadge({ enabled }: { enabled: boolean }) {
-  const waitingQuery = useQuery({
-    queryKey: ['join-requests-waiting'],
-    queryFn: countWaitingJoinRequests,
-    // Platform admins only; nobody else can read the table anyway, and asking
-    // would be a request per page load that always comes back empty.
-    enabled,
-    retry: false,
-    refetchInterval: CHECK_EVERY_MS,
-    refetchOnWindowFocus: true,
-  })
-
-  const waiting = waitingQuery.data ?? 0
+  const waiting = useWaitingJoinRequests(enabled)
   if (!enabled || waiting < 1) return null
 
   return (
