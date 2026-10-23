@@ -40,7 +40,7 @@ import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
-import { generatePodcastQueries } from '@/services/queryGeneration'
+import { generatePodcastQueries, ProfileTooThinError, StrategyGenerationError } from '@/services/queryGeneration'
 import { searchPodcastsWithMeta, type PodcastData } from '@/services/podscan'
 import { InsufficientCreditsError, PartialScoringError, scoreCompatibilityBatch, type CompatibilityScore } from '@/services/compatibilityScoring'
 import {
@@ -84,7 +84,11 @@ interface ScanFailure {
   title: string
   reason: string
   credits: string
+  /** Where the fix is, when it is not a retry. */
+  action?: { label: string; href: string }
 }
+
+const PROFILE_TOO_THIN_COPY = 'Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.'
 
 // Thrown inside the scan for a failure that gets the failure panel rather
 // than a toast: the search itself broke, not the operator's input.
@@ -312,6 +316,9 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [aiStrategyLoaded, setAiStrategyLoaded] = useState(false)
   const [includeAiStrategy, setIncludeAiStrategy] = useState(true)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  // Set when the strategy was refused for a thin profile. The fix is on the
+  // client record, so the notice links there rather than offering a retry.
+  const [profileTooThin, setProfileTooThin] = useState(false)
   const [language, setLanguage] = useState('en')
   const [region, setRegion] = useState('any')
   const [activityDays, setActivityDays] = useState('90')
@@ -371,9 +378,15 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         .slice(0, MAX_QUERIES)
       setAiQueries(generated)
       setAiStrategyLoaded(true)
-      toast.success('Fresh AI search strategy is ready — edit it below before scanning.')
+      setProfileTooThin(false)
+      toast.success('New AI search strategy ready. Remove any query you do not want before scanning.')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The search strategy could not be generated.')
+      if (error instanceof ProfileTooThinError) {
+        setProfileTooThin(true)
+        toast.error(PROFILE_TOO_THIN_COPY)
+      } else {
+        toast.error(error instanceof StrategyGenerationError ? error.message : 'The AI search strategy could not be drafted. Try again in a moment.')
+      }
     } finally {
       setIsRegenerating(false)
     }
@@ -422,10 +435,28 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       // removed every query — only draft one when none was ever loaded.
       if (includeAiStrategy && strategyQueries.length === 0 && !aiStrategyLoaded) {
         setStatusMessage(`Reading ${selectedClient.name}’s profile and drafting search angles…`)
-        strategyQueries = (await generatePodcastQueries({ workspaceId, clientId }))
-          .map(normalizePodscanQuery)
-          .filter(Boolean)
-          .slice(0, MAX_QUERIES)
+        try {
+          strategyQueries = (await generatePodcastQueries({ workspaceId, clientId }))
+            .map(normalizePodscanQuery)
+            .filter(Boolean)
+            .slice(0, MAX_QUERIES)
+        } catch (error) {
+          // A failed or refused strategy is refunded by the function (and a
+          // thin profile is refused before any charge), so nothing was spent.
+          if (error instanceof ProfileTooThinError) setProfileTooThin(true)
+          throw new ScanFailedError(error instanceof ProfileTooThinError
+            ? {
+                title: 'Scan could not run.',
+                reason: PROFILE_TOO_THIN_COPY,
+                credits: scanFailureCreditLine(credits),
+                action: { label: 'Open client profile', href: `${baseHref}/clients/${selectedClient.id}` },
+              }
+            : {
+                title: 'Scan could not run.',
+                reason: error instanceof StrategyGenerationError ? error.message : 'The AI search strategy could not be drafted. Try again in a moment.',
+                credits: scanFailureCreditLine(credits),
+              })
+        }
         if (scanRunId.current !== runId) return
         setAiQueries(strategyQueries)
         setAiStrategyLoaded(true)
@@ -715,6 +746,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                   setResults([])
                   setAiQueries([])
                   setAiStrategyLoaded(false)
+                  setProfileTooThin(false)
                   setPhase('idle')
                 }}
                 disabled={scanning}
@@ -833,6 +865,14 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                   )}
                   {!includeAiStrategy && (
                     <p className="mt-1.5 text-xs text-muted-foreground">Off — only your keywords above will be searched.</p>
+                  )}
+                  {includeAiStrategy && profileTooThin && selectedClient && (
+                    <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+                      {PROFILE_TOO_THIN_COPY}{' '}
+                      <Link className="font-semibold underline underline-offset-2" to={`${baseHref}/clients/${selectedClient.id}`}>
+                        Open {selectedClient.name}’s profile
+                      </Link>
+                    </p>
                   )}
                 </div>
 
@@ -1100,7 +1140,12 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               <p className="max-w-lg text-sm text-muted-foreground">{failure.credits}</p>
               <p className="max-w-lg text-sm text-muted-foreground">Try again, or contact support if it keeps happening.</p>
               <div className="flex items-center gap-3">
-                <Button size="sm" onClick={() => void runScan()}>
+                {failure.action && (
+                  <Button asChild size="sm">
+                    <Link to={failure.action.href}>{failure.action.label}</Link>
+                  </Button>
+                )}
+                <Button size="sm" variant={failure.action ? 'outline' : 'default'} onClick={() => void runScan()}>
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
                   Retry
                 </Button>

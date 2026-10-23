@@ -23,6 +23,28 @@ export interface GenerateQueriesResponse {
 }
 
 /**
+ * The profile does not say enough to draft from. Nothing was charged; the fix
+ * is on the client record, not a retry.
+ */
+export class ProfileTooThinError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ProfileTooThinError'
+  }
+}
+
+/** A generation that failed after it started; the function refunds the credit. */
+export class StrategyGenerationError extends Error {
+  readonly code: string | null
+
+  constructor(message: string, code: string | null) {
+    super(message)
+    this.name = 'StrategyGenerationError'
+    this.code = code
+  }
+}
+
+/**
  * Generate AI-powered podcast search queries for a client OR prospect.
  * Strategic mix of precise, broad-synonym, wildcard and adjacent-category
  * searches. Count comes from the discovery strategy; the function defaults to
@@ -73,19 +95,19 @@ export async function generatePodcastQueries(
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      // Log detailed error info if available
-      if (error.raw_response || error.cleaned_text) {
-        console.error('Raw Claude response:', error.raw_response)
-        console.error('Cleaned text:', error.cleaned_text)
-      }
-      throw new Error(error.error || 'Failed to generate queries')
+      const error = await response.json().catch(() => ({})) as { error?: unknown; code?: unknown; status?: unknown }
+      const message = typeof error.error === 'string' && error.error ? error.error : 'Failed to generate queries'
+      if (error.status === 'profile_too_thin') throw new ProfileTooThinError(message)
+      throw new StrategyGenerationError(message, typeof error.code === 'string' ? error.code : null)
     }
 
     const data = await response.json()
     return data.queries
   } catch (error) {
     console.error('Error generating queries:', error)
+    // Typed refusals pass through as they are: callers branch on them, and
+    // their message is already written for the operator.
+    if (error instanceof ProfileTooThinError || error instanceof StrategyGenerationError) throw error
     throw new Error(`Failed to generate podcast queries: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }

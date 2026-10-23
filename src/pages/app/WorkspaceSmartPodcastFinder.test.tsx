@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import WorkspaceSmartPodcastFinder from '@/pages/app/WorkspaceSmartPodcastFinder'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
-import { generatePodcastQueries } from '@/services/queryGeneration'
+import { generatePodcastQueries, ProfileTooThinError, StrategyGenerationError } from '@/services/queryGeneration'
 import { searchPodcastsWithMeta } from '@/services/podscan'
 import { scoreCompatibilityBatch } from '@/services/compatibilityScoring'
 import { addClientShortlistPodcasts, searchClientPodcastCatalog } from '@/services/clientShortlist'
@@ -29,7 +29,10 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceResearchContext: vi.fn(),
 }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
-vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
+vi.mock('@/services/queryGeneration', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/queryGeneration')>(),
+  generatePodcastQueries: vi.fn(),
+}))
 vi.mock('@/services/podscan', () => ({ searchPodcastsWithMeta: vi.fn() }))
 vi.mock('@/services/compatibilityScoring', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/compatibilityScoring')>(),
@@ -352,6 +355,40 @@ describe('WorkspaceSmartPodcastFinder', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The shared podcast database did not answer 1 of 1 searches')
     expect(screen.queryByText(/Nothing new this time/u)).not.toBeInTheDocument()
+  })
+
+  it('sends a thin profile to the client record instead of scanning with a guessed strategy', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(new ProfileTooThinError('The profile has only 3 descriptive words.'))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    const panel = await screen.findByText('Scan could not run.')
+    const card = panel.closest('[role="alert"]') as HTMLElement
+    expect(card).toHaveTextContent('Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.')
+    expect(card).toHaveTextContent('No credits were charged for this scan.')
+    expect(screen.getByRole('link', { name: 'Open client profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(screen.getByRole('link', { name: 'Open Taylor Client’s profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(vi.mocked(searchPodcastsWithMeta)).not.toHaveBeenCalled()
+  })
+
+  it('says the strategy failed instead of searching with filler when the AI call fails', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(
+      new StrategyGenerationError('The AI could not draft a search strategy. Try again in a moment.', 'STRATEGY_PROVIDER_FAILED'),
+    )
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The AI could not draft a search strategy. Try again in a moment.')
+    expect(vi.mocked(searchPodcastsWithMeta)).not.toHaveBeenCalled()
+  })
+
+  it('flags a thin profile when previewing the strategy', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(new ProfileTooThinError('The profile has only 3 descriptive words.'))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /Preview strategy/ }))
+
+    expect(await screen.findByRole('link', { name: 'Open Taylor Client’s profile' })).toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.')
   })
 
   it('stops a running scan when the page is left, before any paid scoring', async () => {
