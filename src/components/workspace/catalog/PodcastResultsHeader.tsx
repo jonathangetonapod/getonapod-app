@@ -23,6 +23,7 @@ export const PodcastResultsHeader = ({
   from,
   to,
   total,
+  loading,
   catalogUpdated,
   fetching,
   onRefresh,
@@ -37,6 +38,7 @@ export const PodcastResultsHeader = ({
   from: number
   to: number
   total: number
+  loading: boolean
   catalogUpdated: string | null
   fetching: boolean
   onRefresh: () => void
@@ -59,7 +61,9 @@ export const PodcastResultsHeader = ({
         </div>
       )}
       <p className="text-sm text-muted-foreground" aria-live="polite">
-        {total === 0
+        {loading
+          ? 'Loading shows'
+          : total === 0
           ? 'No results'
           : `Showing ${from.toLocaleString()} to ${to.toLocaleString()} of ${total.toLocaleString()}`}
         {catalogUpdated && (

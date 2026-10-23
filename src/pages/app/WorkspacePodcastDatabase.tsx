@@ -468,6 +468,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             from={pageFrom}
             to={pageTo}
             total={total}
+            loading={catalogQuery.isLoading}
             catalogUpdated={pageCatalogUpdated}
             fetching={catalogQuery.isFetching}
             onRefresh={() => void catalogQuery.refetch()}
