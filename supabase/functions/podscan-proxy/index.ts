@@ -170,6 +170,13 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<Pod
         response.headers,
       )
     }
+    // A 403 means Podscan knew the key and refused it (a bad key is a 401), and
+    // only the body says why: plan, quota or a block. Logged without the key.
+    const upstreamDetail = raw
+      .replaceAll(requiredSecret(), '[redacted]')
+      .replace(/\s+/gu, ' ')
+      .slice(0, 200)
+    console.error(`[podscan-proxy] upstream ${response.status} on ${path}: ${upstreamDetail}`)
     throw new HttpError(
       502,
       `PODSCAN_UPSTREAM_${response.status}`,
@@ -195,7 +202,7 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<Pod
 serve(async (req) => {
   // A lookup that failed after the charge — the index refusing, a timeout —
   // delivered nothing to pay for, so the outer catch gives the debit back.
-  let chargedForRefund: { workspaceId: string; entryId: string } | null = null
+  let chargedForRefund: { workspaceId: string; entryId: string; credits: number } | null = null
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
@@ -221,7 +228,7 @@ serve(async (req) => {
         actorUserId: context.user.id,
       })
       if (lookupCharge.entryId && !lookupCharge.replayed) {
-        chargedForRefund = { workspaceId, entryId: lookupCharge.entryId }
+        chargedForRefund = { workspaceId, entryId: lookupCharge.entryId, credits: lookupCharge.charged }
         refundAdmin = context.admin
       }
     } else {
@@ -284,21 +291,28 @@ serve(async (req) => {
       meta: { rate_limit: result.rateLimit },
     })
   } catch (error) {
+    // Said in headers so the body shape callers depend on stays as it was, and
+    // only a refund the ledger confirmed counts as refunded.
+    let creditsCharged = 0
+    let creditsRefunded = 0
     if (chargedForRefund && refundAdmin) {
-      await refundCredits(refundAdmin, {
+      creditsCharged = chargedForRefund.credits
+      const refunded = await refundCredits(refundAdmin, {
         workspaceId: chargedForRefund.workspaceId,
         entryId: chargedForRefund.entryId,
         reason: 'the podcast index lookup failed after the charge',
       })
+      if (refunded) creditsRefunded = chargedForRefund.credits
     }
+    const response = errorResponse(req, METHODS, error)
+    const headers = new Headers(response.headers)
+    headers.set('Access-Control-Expose-Headers', 'Retry-After, X-Concurrency-Limit, X-Credits-Charged, X-Credits-Refunded')
+    headers.set('X-Credits-Charged', String(creditsCharged))
+    headers.set('X-Credits-Refunded', String(creditsRefunded))
     if (error instanceof PodscanRateLimitError) {
-      const response = errorResponse(req, METHODS, error)
-      const headers = new Headers(response.headers)
-      headers.set('Access-Control-Expose-Headers', 'Retry-After, X-Concurrency-Limit')
       if (error.retryAfter) headers.set('Retry-After', error.retryAfter)
       if (error.concurrencyLimit) headers.set('X-Concurrency-Limit', error.concurrencyLimit)
-      return new Response(response.body, { status: response.status, headers })
     }
-    return errorResponse(req, METHODS, error)
+    return new Response(response.body, { status: response.status, headers })
   }
 })
