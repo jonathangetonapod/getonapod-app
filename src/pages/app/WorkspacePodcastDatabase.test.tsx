@@ -131,7 +131,11 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByRole('combobox', { name: 'Any audience size' })).toHaveTextContent('Any audience size')
     expect(screen.getByRole('combobox', { name: 'Sort: Largest audience' })).toBeInTheDocument()
     expect(screen.getByText(/^Showing 1 to 1 of 1 ·/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /find and contribute podcasts/i })).toHaveAttribute('href', '/app/podcast-finder')
+    expect(screen.getByRole('link', { name: 'Find new podcasts' })).toHaveAttribute('href', '/app/podcast-finder')
+    // No internal names or how-it-works paragraphs on the page itself.
+    expect(screen.queryByText(/Scout|semantic|falls back/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('How the database grows')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'What is shared' })).toBeInTheDocument()
   })
 
   it('filters by email status, activity, and audience size, and keeps them in the address', async () => {
@@ -445,6 +449,20 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Add to client: The Founder Show' }))
     expect(await screen.findByRole('heading', { name: 'Add The Founder Show' })).toBeInTheDocument()
+  })
+
+  it('suggests picking a client until one is picked or the hint is dismissed', async () => {
+    renderPage()
+    expect(await screen.findByText('Pick a client in the top bar to add shows with one click.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByText('Pick a client in the top bar to add shows with one click.')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('podcastDb.clientHintDismissed')).toBe('1')
+  })
+
+  it('does not suggest a client when one is already working', async () => {
+    renderPage(`/app/podcast-database?client=${clientId}`)
+    await screen.findByText('The Founder Show')
+    expect(screen.queryByText('Pick a client in the top bar to add shows with one click.')).not.toBeInTheDocument()
   })
 
   // The catalog function rejects a search longer than 120 characters.

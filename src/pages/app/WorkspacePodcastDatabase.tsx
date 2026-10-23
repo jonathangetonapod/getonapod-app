@@ -4,19 +4,18 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   Database,
-  ExternalLink,
+  Info,
   Plus,
   Search,
-  Sparkles,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
 import { PodcastCatalogPagination } from '@/components/workspace/catalog/PodcastCatalogPagination'
 import { PodcastCatalogRow, PodcastCatalogRowHeader, PodcastCatalogRowSkeleton } from '@/components/workspace/catalog/PodcastCatalogRow'
@@ -42,6 +41,15 @@ import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspa
 import { oldestCatalogUpdate, shortClientName } from '@/lib/podcastCatalogDisplay'
 
 const VIEW_STORAGE_KEY = 'podcastDb.view'
+const CLIENT_HINT_STORAGE_KEY = 'podcastDb.clientHintDismissed'
+
+function readStoredFlag(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
 
 function readStoredView(): CatalogView {
   try {
@@ -83,6 +91,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   // button opened it.
   const [dialogPodcasts, setDialogPodcasts] = useState<WorkspacePodcastCatalogItem[]>([])
   const [view, setView] = useState<CatalogView>(readStoredView)
+  const [clientHintDismissed, setClientHintDismissed] = useState(() => readStoredFlag(CLIENT_HINT_STORAGE_KEY))
   const [detailsPodcast, setDetailsPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
 
   const catalogQuery = useQuery({
@@ -321,6 +330,15 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     return { kind: 'add', label: 'Add to client', onAdd: () => openAddDialog([podcast]) }
   }
 
+  const dismissClientHint = () => {
+    setClientHintDismissed(true)
+    try {
+      window.localStorage.setItem(CLIENT_HINT_STORAGE_KEY, '1')
+    } catch {
+      // Dismissed for this visit when storage is unavailable.
+    }
+  }
+
   const changeView = (next: CatalogView) => {
     setView(next)
     try {
@@ -391,24 +409,25 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <TooltipProvider delayDuration={200}>
       <div className={`space-y-6 ${selectedPodcasts.size > 0 ? 'pb-20' : ''}`}>
-        {/* A banner explaining the page every time it is opened is a cost paid
-            by the people who already know — which, after the first visit, is
-            everyone. The title and the badge carry it; the sentence that used
-            to sit under them is on the badge instead. */}
+        {/* What is shared and what is not is worth knowing once, not reading
+            on every visit, so it sits behind the info button. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
             <h1 className="text-2xl font-bold tracking-tight">Podcast Database</h1>
-            <Badge
-              variant="outline"
-              className="border-sky-200 bg-sky-50 text-sky-900"
-              title="One catalog for every client. A show added to any client or prospect shortlist becomes reusable across the Database."
-            >
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />Shared across every workspace
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label="What is shared">
+                  <Info className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Show details and public emails are shared across all workspaces. Client notes and campaign data stay private.
+              </TooltipContent>
+            </Tooltip>
           </div>
           <Button asChild size="sm" className="shrink-0">
             <Link to={`${baseHref}/podcast-finder`}>
-              <Plus className="mr-2 h-4 w-4" />Find and contribute podcasts
+              <Plus className="mr-2 h-4 w-4" />Find new podcasts
             </Link>
           </Button>
         </div>
@@ -431,6 +450,15 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           categories={catalog?.categories || []}
           searching={catalogQuery.isFetching}
         />
+
+        {canAddToClient && !targetClientId && !clientHintDismissed && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/[0.035] px-3 py-2 text-sm">
+            <p>Pick a client in the top bar to add shows with one click.</p>
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Dismiss" onClick={dismissClientHint}>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
 
         <div ref={resultsRef} className="scroll-mt-24 space-y-3">
           <PodcastResultsHeader
@@ -506,16 +534,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             </>
           )}
         </div>
-
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold">How the database grows</p>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">Every show anyone adds to a shortlist stays here, so the next person searching finds it already researched. Public show details and listed inboxes are shared across the workspace. What you write about a client — their profile, your notes, their campaign activity — is never shared.</p>
-            </div>
-            <Button asChild variant="outline" className="shrink-0"><Link to={`${baseHref}/podcast-finder`}>Open Finder<ExternalLink className="ml-2 h-4 w-4" /></Link></Button>
-          </CardContent>
-        </Card>
       </div>
 
       {canAddToClient && (
