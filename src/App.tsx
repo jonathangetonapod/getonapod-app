@@ -259,6 +259,14 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/app/prospects/:prospectId"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceProspectDashboards />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/app/prospect-dashboards" element={<Navigate to="/app/prospects" replace />} />
             <Route
               path="/app/clients/:clientId/podcast-finder"
@@ -367,6 +375,14 @@ const App = () => (
             />
             <Route
               path="/app/workspaces/:workspaceId/prospects"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceProspectDashboards />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/prospects/:prospectId"
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceProspectDashboards />

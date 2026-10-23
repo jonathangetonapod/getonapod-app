@@ -17,6 +17,8 @@ export async function toFunctionError(error: unknown, fallback: string): Promise
   let status: number | undefined
   let retryAfterSeconds: number | undefined
   let concurrencyLimit: number | undefined
+  let creditsCharged: number | undefined
+  let creditsRefunded: number | undefined
   const context = error && typeof error === 'object'
     ? (error as { context?: unknown }).context
     : null
@@ -25,6 +27,10 @@ export async function toFunctionError(error: unknown, fallback: string): Promise
     status = context.status
     retryAfterSeconds = responseHeaderNumber(context.headers, 'Retry-After')
     concurrencyLimit = responseHeaderNumber(context.headers, 'X-Concurrency-Limit')
+    // Set by functions that charge before calling a provider, so a failure can
+    // say what it cost and what came back.
+    creditsCharged = responseHeaderNumber(context.headers, 'X-Credits-Charged')
+    creditsRefunded = responseHeaderNumber(context.headers, 'X-Credits-Refunded')
     try {
       const payload = await context.clone().json() as FunctionErrorPayload
       if (typeof payload.error === 'string' && payload.error.trim()) message = payload.error
@@ -42,6 +48,6 @@ export async function toFunctionError(error: unknown, fallback: string): Promise
   // the code without a sentinel check on `name`.
   const result = new Error(message)
   result.name = code || 'EdgeFunctionError'
-  Object.assign(result, { code, status, retryAfterSeconds, concurrencyLimit })
+  Object.assign(result, { code, status, retryAfterSeconds, concurrencyLimit, creditsCharged, creditsRefunded })
   return result
 }

@@ -3938,55 +3938,70 @@ serve(async (req) => {
         return jsonResponse(req, METHODS, 200, { connected: true, threads: [] });
       }
 
-      // Replies for attributed campaigns can sit deeper than the newest
-      // page when other campaigns are busier, so paginate the unibox.
-      // Three pages of 100 stay well inside the endpoint's 20 req/min
-      // budget while widening the window sixfold over a single page.
+      // Three requests of 100 stay well inside the endpoint's 20 req/min
+      // budget. How they are spent depends on how many campaigns are claimed:
+      // the provider inbox is shared by every campaign on the key, so an
+      // unfiltered read lets busy unclaimed campaigns crowd a client's replies
+      // out of the window before attribution filters them away. With few
+      // enough claimed campaigns, each is read on its own (campaign_id
+      // filter), so only replies this inbox can show use up the budget.
+      const MAX_INBOX_REQUESTS = 3;
+      const claimedProviderCampaignIds = [...campaignByProviderId.keys()];
+      const readScopes: Array<string | null> = claimedProviderCampaignIds.length <= MAX_INBOX_REQUESTS
+        ? claimedProviderCampaignIds
+        : [null];
+      const pagesPerScope = Math.max(1, Math.floor(MAX_INBOX_REQUESTS / readScopes.length));
       const items: Array<Record<string, unknown>> = [];
-      let startingAfter: string | null = null;
       let authFailure: "key_rejected" | "scope_missing" | null = null;
       // Whether older replies exist beyond what we read. Silence here would
       // make a truncated inbox look like a complete one, and a reply that fell
       // off the end is indistinguishable from a reply that never arrived.
       let truncated = false;
-      for (let page = 0; page < 3; page += 1) {
-        const query = new URLSearchParams({ limit: "100", email_type: "received" });
-        if (startingAfter) query.set("starting_after", startingAfter);
-        let payload: { items?: Array<Record<string, unknown>>; next_starting_after?: unknown };
-        try {
-          payload = await instantlyRequest<{
-            items?: Array<Record<string, unknown>>;
-            next_starting_after?: unknown;
-          }>(apiKey, "/emails", { query });
-        } catch (error) {
-          if (error instanceof InstantlyApiError) {
-            // A rejected or under-scoped key is a connection state, not a
-            // request failure — the inbox renders it as "reconnect Instantly".
-            if (error.status === 401) {
-              authFailure = "key_rejected";
-              break;
+      let requestsMade = 0;
+      readLoop: for (const scopeCampaignId of readScopes) {
+        let startingAfter: string | null = null;
+        for (let page = 0; page < pagesPerScope; page += 1) {
+          const query = new URLSearchParams({ limit: "100", email_type: "received" });
+          if (scopeCampaignId) query.set("campaign_id", scopeCampaignId);
+          if (startingAfter) query.set("starting_after", startingAfter);
+          let payload: { items?: Array<Record<string, unknown>>; next_starting_after?: unknown };
+          try {
+            payload = await instantlyRequest<{
+              items?: Array<Record<string, unknown>>;
+              next_starting_after?: unknown;
+            }>(apiKey, "/emails", { query });
+          } catch (error) {
+            if (error instanceof InstantlyApiError) {
+              // A rejected or under-scoped key is a connection state, not a
+              // request failure — the inbox renders it as "reconnect Instantly".
+              if (error.status === 401) {
+                authFailure = "key_rejected";
+                break readLoop;
+              }
+              if (error.status === 403) {
+                authFailure = "scope_missing";
+                break readLoop;
+              }
+              // Rate-limited after a successful read: keep what we already
+              // have, but say that the window is short rather than implying
+              // it is all.
+              if (requestsMade > 0 && error.status === 429) {
+                truncated = true;
+                break readLoop;
+              }
+              throw providerHttpError(error);
             }
-            if (error.status === 403) {
-              authFailure = "scope_missing";
-              break;
-            }
-            // Rate-limited mid-pagination: keep the pages we already have,
-            // but say that the window is short rather than implying it is all.
-            if (page > 0 && error.status === 429) {
-              truncated = true;
-              break;
-            }
-            throw providerHttpError(error);
+            throw error;
           }
-          throw error;
+          requestsMade += 1;
+          const pageItems = payload.items ?? [];
+          items.push(...pageItems);
+          const next = typeof payload.next_starting_after === "string" ? payload.next_starting_after : null;
+          if (!next || pageItems.length === 0) break;
+          startingAfter = next;
+          // A cursor still outstanding on this scope's last page means there is more.
+          if (page === pagesPerScope - 1) truncated = true;
         }
-        const pageItems = payload.items ?? [];
-        items.push(...pageItems);
-        const next = typeof payload.next_starting_after === "string" ? payload.next_starting_after : null;
-        if (!next || pageItems.length === 0) break;
-        startingAfter = next;
-        // A cursor still outstanding on the final page means there is more.
-        if (page === 2) truncated = true;
       }
       if (authFailure) {
         return jsonResponse(req, METHODS, 200, {
@@ -4355,6 +4370,11 @@ serve(async (req) => {
           // ue_type 2 is inbound. Anything else is ours, which is the half of
           // the conversation the reading pane could never show.
           direction: email.ue_type === 2 ? "inbound" : "outbound",
+          // The workspace mailbox on this conversation. A reply whose list row
+          // aged out of the window carries no mailbox, and this is where the
+          // inbox recovers it to send from; inbox-reply still checks it
+          // against the connected accounts.
+          eaccount: typeof email.eaccount === "string" ? email.eaccount.slice(0, 320) : null,
           subject: text(email.subject, 300),
           from_email: text(email.from_address_email, 320),
           to_email: text(email.to_address_email_list, 320),
@@ -4753,7 +4773,45 @@ serve(async (req) => {
        * have gone out and a duplicate is worse than a manual follow-up.
        */
       let replyClaimed = false;
-      if (replyThreadKey && threadStateRow) {
+      /*
+       * A thread nobody has touched has no state row, and the conditional
+       * update below can only claim a row that exists — so the first reply on
+       * such a thread (a campaign built directly in Instantly, with no local
+       * target to stamp an identity row) went out with no claim at all, and
+       * two tabs could both send it. Creating the row WITH the claim makes the
+       * primary key the lock: whoever inserts second gets a unique violation
+       * and falls through to the conditional claim, which then refuses.
+       */
+      if (replyThreadKey && !threadStateRow && replyClientId) {
+        await requireWorkspaceClient(context.admin, workspaceId, replyClientId);
+        const { error: claimInsertError } = await context.admin
+          .from("workspace_inbox_thread_state")
+          .insert({
+            workspace_id: workspaceId,
+            thread_key: replyThreadKey,
+            client_id: replyClientId,
+            status: "needs_reply",
+            // A manual reply has no staged plan; pause nudging so the tick
+            // never scans an empty plan forever.
+            nudges_paused: true,
+            ...(replyLeadEmail ? { lead_email: replyLeadEmail } : {}),
+            reply_sent_email_id: replyToId,
+            updated_by: context.user.id,
+            updated_at: new Date().toISOString(),
+          });
+        if (!claimInsertError) {
+          replyClaimed = true;
+        } else if (claimInsertError.code === "23505") {
+          threadStateRow = {};
+        } else {
+          throw new HttpError(
+            503,
+            "INBOX_STATE_UNAVAILABLE",
+            "The conversation could not be prepared for sending. Try again shortly",
+          );
+        }
+      }
+      if (replyThreadKey && threadStateRow && !replyClaimed) {
         const { data: claimedRows } = await context.admin
           .from("workspace_inbox_thread_state")
           .update({
@@ -4928,13 +4986,51 @@ serve(async (req) => {
         throw new HttpError(409, "INSTANTLY_NOT_CONNECTED", "Connect Instantly before updating lead status");
       }
       const apiKey = await integrationApiKey(connection, false);
+      /*
+       * The inbox names a campaign by its own id: a managed campaign's local
+       * row id, or a linked campaign's Instantly id. Instantly only knows the
+       * second kind, and it was handed the first verbatim — so on every
+       * managed campaign the status update was scoped to a campaign that does
+       * not exist there. Resolve to the provider id, and refuse an id that
+       * belongs to no campaign in this workspace rather than pass it on.
+       */
+      let providerInterestCampaignId: string | null = null;
+      if (interestCampaignId) {
+        const [{ data: managedCampaign }, { data: linkedCampaign }] = await Promise.all([
+          context.admin
+            .from("workspace_client_campaigns")
+            .select("instantly_campaign_id")
+            .eq("workspace_id", workspaceId)
+            .eq("id", interestCampaignId)
+            .maybeSingle(),
+          context.admin
+            .from("client_instantly_campaign_links")
+            .select("instantly_campaign_id")
+            .eq("workspace_id", workspaceId)
+            .eq("instantly_campaign_id", interestCampaignId)
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        providerInterestCampaignId = typeof managedCampaign?.instantly_campaign_id === "string"
+          ? managedCampaign.instantly_campaign_id
+          : typeof linkedCampaign?.instantly_campaign_id === "string"
+            ? linkedCampaign.instantly_campaign_id
+            : null;
+        if (!providerInterestCampaignId) {
+          throw new HttpError(
+            404,
+            "CAMPAIGN_NOT_FOUND",
+            "That campaign is not connected to Instantly in this workspace",
+          );
+        }
+      }
       try {
         await instantlyRequest(apiKey, "/leads/update-interest-status", {
           method: "POST",
           body: {
             lead_email: leadEmail,
             interest_value: interestValue,
-            ...(interestCampaignId ? { campaign_id: interestCampaignId } : {}),
+            ...(providerInterestCampaignId ? { campaign_id: providerInterestCampaignId } : {}),
           },
         });
       } catch (error) {

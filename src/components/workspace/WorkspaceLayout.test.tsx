@@ -10,6 +10,7 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 import { getWorkspaceClients } from '@/services/clients'
+import { countWaitingJoinRequests } from '@/services/accessRequests'
 import { readWorkingClient, writeWorkingClient } from '@/lib/workingClient'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -18,6 +19,7 @@ vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
 }))
 vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
+vi.mock('@/services/accessRequests', () => ({ countWaitingJoinRequests: vi.fn(async () => 0) }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedBillingOverview = vi.mocked(getWorkspaceBillingOverview)
@@ -184,8 +186,10 @@ describe('WorkspaceLayout', () => {
 
     const disabledModules = within(navigation).queryAllByRole('button').filter((button) => button.hasAttribute('disabled'))
     expect(disabledModules).toHaveLength(0)
-    // Sidebar name, header name, and the mobile header name.
-    expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
+    // The sidebar names the workspace; the header names the page, so the
+    // workspace is not said twice across the top of the screen.
+    expect(screen.getAllByText('Acme Workspace')).toHaveLength(1)
+    expect(within(screen.getByRole('banner')).getAllByText('Clients')).toHaveLength(2)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     openAccountMenu()
     expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
@@ -194,7 +198,7 @@ describe('WorkspaceLayout', () => {
   // "Workspace dashboard" under the name was filler on every page. The page
   // the person is actually on is worth the space; nothing is, when no module
   // matches.
-  it('names the active module under the workspace name', () => {
+  it('names the active module in the header', () => {
     const { unmount } = renderLayout(undefined, '/app/master-inbox')
 
     const header = screen.getByRole('banner')
@@ -304,7 +308,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Relationships' })).toHaveAttribute('href', '/app/relationships')
-    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', '/app/onboarding')
+    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
 
     chooseWorkingClient('All clients')
@@ -699,6 +703,61 @@ describe('WorkspaceLayout', () => {
 
     const link = await screen.findByRole('link', { name: 'Billing administration' })
     expect(link).toHaveAttribute('href', '/app/platform/billing')
+  })
+
+  // On a phone the header had no room for them, and the switcher ran off the screen.
+  it('moves a platform admin\'s workspace controls into the drawer on a phone', async () => {
+    vi.mocked(countWaitingJoinRequests).mockResolvedValue(2)
+    const original = window.matchMedia
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: (query: string) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) })
+    try {
+      mockedUseAuth.mockReturnValue({
+        user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com', user_metadata: {} },
+        workspace: { id: workspaceId, name: 'Acme Workspace' },
+        membership: { full_name: 'Owner Name', role: 'owner' },
+        isPlatformAdmin: true,
+        signOut,
+      } as never)
+      renderLayout()
+
+      const drawer = document.getElementById('workspace-sidebar') as HTMLElement
+      expect(await within(drawer).findByRole('link', { name: /^Workspaces\b.*2 join requests waiting$/, hidden: true })).toHaveAttribute('href', '/app/manage-workspaces')
+      expect(within(drawer).getByRole('link', { name: 'Billing admin', hidden: true })).toHaveAttribute('href', '/app/platform/billing')
+      expect(within(drawer).getByText('Workspace switcher')).toBeInTheDocument()
+      const header = document.querySelector('header') as HTMLElement
+      expect(within(header).queryByRole('link', { name: 'Billing administration' })).not.toBeInTheDocument()
+      expect(within(header).queryByRole('link', { name: 'Manage workspaces' })).not.toBeInTheDocument()
+      expect(within(header).queryByText('Workspace switcher')).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: original })
+    }
+  })
+
+  // A red "2" on an icon says nothing on its own; the tooltip says what it counts.
+  it('says what the number on the workspaces button counts', async () => {
+    vi.mocked(countWaitingJoinRequests).mockResolvedValue(2)
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com', user_metadata: {} },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: { full_name: 'Owner Name', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    renderLayout()
+
+    const link = await screen.findByRole('link', { name: 'Manage workspaces' })
+    await screen.findByText('2 requests to join are waiting')
+    fireEvent.focus(link)
+    expect(await screen.findByRole('tooltip', { name: '2 join requests waiting' })).toBeInTheDocument()
   })
 
   it('offers no billing administration to a workspace member', async () => {

@@ -23,6 +23,7 @@ import {
   onboardingEmailConfigured,
   onboardingUrl,
   sendOnboardingEmail,
+  prefillOnboardingAnswers,
   validateOnboardingDefinition,
   validatePitchProfile,
 } from '../_shared/workspaceOnboarding.ts'
@@ -746,6 +747,42 @@ serve(async (req) => {
         rpcError(error)
       }
       const instance = ensureWorkspaceResponse(data, workspaceId)
+      /*
+       * Seed the client's empty draft with what the operator already typed
+       * (and the client record's links), so the first section arrives half
+       * done. lock_version 0 means the client has not saved yet; a failure
+       * only costs the convenience, never the onboarding.
+       */
+      try {
+        let clientRow: Record<string, unknown> | null = null
+        if (clientId) {
+          const { data: row } = await admin
+            .from('clients')
+            .select('name, website, linkedin_url')
+            .eq('workspace_id', workspaceId)
+            .eq('id', clientId)
+            .maybeSingle()
+          clientRow = row
+        }
+        const prefill = prefillOnboardingAnswers(validateOnboardingDefinition(instance.definition), {
+          recipientName,
+          recipientEmail,
+          clientName: typeof clientRow?.name === 'string' ? clientRow.name : (newClient?.name as string | undefined) ?? null,
+          website: typeof clientRow?.website === 'string' ? clientRow.website : null,
+          linkedinUrl: typeof clientRow?.linkedin_url === 'string' ? clientRow.linkedin_url : null,
+        })
+        if (Object.keys(prefill).length > 0) {
+          const { error: prefillError } = await admin
+            .from('workspace_onboarding_drafts')
+            .update({ answers: prefill })
+            .eq('instance_id', instanceId)
+            .eq('workspace_id', workspaceId)
+            .eq('lock_version', 0)
+          if (prefillError) console.error('[workspace-onboarding] Draft prefill failed', prefillError.code ?? '')
+        }
+      } catch (prefillError) {
+        console.error('[workspace-onboarding] Draft prefill failed', prefillError instanceof Error ? prefillError.name : '')
+      }
       const link = onboardingUrl(capability.token, linkOrigin)
       const delivery: Delivery = sendEmail
         ? await sendOnboardingEmail({
@@ -948,6 +985,7 @@ serve(async (req) => {
         replyTo: await workspaceReplyTo(admin, workspaceId),
         experienceTitle: typeof instance.experience_title === 'string' ? instance.experience_title : null,
         experienceBody: typeof instance.experience_body === 'string' ? instance.experience_body : null,
+        reminder: true,
       })
       const recorded = changesRequested
         ? await recordChangeRequestDelivery(admin, instanceId, delivery)

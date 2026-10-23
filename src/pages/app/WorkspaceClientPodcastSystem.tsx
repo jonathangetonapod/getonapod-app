@@ -4,9 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertCircle,
-  ArrowRight,
   ChevronDown,
-  ListChecks,
   Loader2,
   RefreshCw,
   Search,
@@ -14,8 +12,6 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ClientActivityCalendar } from '@/components/workspace/ClientActivityCalendar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,20 +19,19 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ClientBookingDialog } from '@/components/workspace/ClientBookingDialog'
-import { ConversationBadge, OpportunityDetailSheet, StageBadge } from '@/components/workspace/OpportunityDetailSheet'
+import { OpportunityDetailSheet } from '@/components/workspace/OpportunityDetailSheet'
 import { ClientPipelineRow } from '@/components/workspace/pipeline/ClientPipelineRow'
 import { PipelineKpiRow } from '@/components/workspace/pipeline/PipelineKpiRow'
-import { TodayQueue } from '@/components/workspace/pipeline/TodayQueue'
+import { TodayQueue, type QueueReveal } from '@/components/workspace/pipeline/TodayQueue'
 import {
   actionQueue,
-  initials,
+  buildClientRollup,
   kpiCounts,
   matchesKpi,
-  onboardingLabel,
+  topActionRank,
   type ClientRollup,
   type PipelineKpi,
 } from '@/components/workspace/pipeline/pipelineRollup'
-import { safeExternalUrl } from '@/lib/externalUrl'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import {
@@ -52,220 +47,11 @@ interface WorkspaceClientPodcastSystemProps {
 /** 'current' is every client still being served: active and paused, not churned. */
 type ClientStatusFilter = 'current' | 'active' | 'paused' | 'churned' | 'all'
 
-// Stages that mean the client is already underway, so a missing intake was done some other way.
-const STARTED_STAGES = new Set(['outreach', 'conversation', 'booked', 'recorded', 'published'])
-
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const ATTENTION_PREVIEW = 12
 
 function localToday(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-function PodcastIdentity({ item }: { item: ClientPodcastSystemItem }) {
-  const imageUrl = safeExternalUrl(item.podcast.image_url)
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <Avatar className="h-10 w-10 shrink-0 rounded-lg border">
-        {imageUrl && <AvatarImage src={imageUrl} alt="" className="object-cover" />}
-        <AvatarFallback className="rounded-lg text-xs">{initials(item.podcast.name)}</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0">
-        <p className="truncate font-medium">{item.podcast.name}</p>
-        <p className="truncate text-xs text-muted-foreground">{item.client.name} · {item.podcast.host_name || item.podcast.publisher_name || 'Host not identified'}</p>
-      </div>
-    </div>
-  )
-}
-
-function buildClientRollup(
-  client: ClientPodcastSystemClient,
-  allItems: ClientPodcastSystemItem[],
-  today: string,
-): ClientRollup {
-  const items = allItems.filter((item) => item.client.id === client.id)
-  const conflicts = items.filter((item) => item.has_conflict || item.campaign?.status === 'failed')
-  const conversations = items.filter((item) => !item.terminal && item.stage === 'conversation')
-  const unpreparedBooking = items.find((item) => (
-    !item.terminal
-    && item.stage === 'booked'
-    && item.booking
-    && !item.booking.prep_sent
-  ))
-  const awaitingReview = items.filter((item) => !item.terminal && item.stage === 'awaiting_review')
-  const contactNeeded = items.filter((item) => !item.terminal && item.stage === 'contact_needed')
-  const researchNeeded = items.filter((item) => !item.terminal && item.stage === 'research_needed')
-  const ready = items.filter((item) => !item.terminal && item.stage === 'ready')
-  const recorded = items.filter((item) => !item.terminal && item.stage === 'recorded')
-  const onboardingNeedsWork = client.onboarding && ['invited', 'in_progress', 'submitted', 'changes_requested'].includes(client.onboarding.status)
-
-  let nextAction: ClientRollup['nextAction']
-  if (client.status !== 'active') {
-    nextAction = {
-      label: client.status === 'paused' ? 'Client work is paused' : 'Client is no longer active',
-      detail: 'No new operational work is being prioritized.',
-      tone: 'clear',
-      target: null,
-    }
-  } else if (conflicts[0]) {
-    nextAction = {
-      label: 'Resolve an outreach history issue',
-      detail: `${conflicts.length} podcast ${conflicts.length === 1 ? 'record needs' : 'records need'} review before more activity.`,
-      tone: 'urgent',
-      target: { kind: 'item', itemId: conflicts[0].id },
-    }
-  } else if (conversations[0]) {
-    nextAction = {
-      label: 'Respond to a podcast host',
-      detail: `${conversations.length} active ${conversations.length === 1 ? 'conversation needs' : 'conversations need'} attention.`,
-      tone: 'urgent',
-      target: { kind: 'item', itemId: conversations[0].id },
-    }
-  } else if (unpreparedBooking) {
-    nextAction = {
-      label: 'Prepare the client for a recording',
-      detail: `${unpreparedBooking.podcast.name} is booked and preparation is not marked complete.`,
-      tone: 'urgent',
-      target: { kind: 'item', itemId: unpreparedBooking.id },
-    }
-  } else if (client.onboarding?.status === 'submitted') {
-    nextAction = {
-      label: 'Review submitted onboarding',
-      detail: 'The client has submitted their information for workspace review.',
-      tone: 'work',
-      target: { kind: 'record', tab: 'intake' },
-    }
-  } else if (!client.profile.ready) {
-    nextAction = {
-      label: 'Complete the reply brief',
-      detail: `${client.profile.completed_fields} of ${client.profile.total_fields} host-ready context sections are complete.`,
-      tone: 'work',
-      target: { kind: 'record', tab: 'profile' },
-    }
-  } else if (onboardingNeedsWork) {
-    nextAction = {
-      label: 'Move onboarding forward',
-      detail: `The current onboarding status is ${onboardingLabel(client, true).toLowerCase()}.`,
-      tone: 'work',
-      target: { kind: 'record', tab: 'intake' },
-    }
-  } else if (awaitingReview[0]) {
-    nextAction = {
-      label: 'Get client podcast decisions',
-      detail: `${awaitingReview.length} ${awaitingReview.length === 1 ? 'podcast is' : 'podcasts are'} awaiting review.`,
-      tone: 'work',
-      target: { kind: 'item', itemId: awaitingReview[0].id },
-    }
-  } else if (contactNeeded[0]) {
-    nextAction = {
-      label: 'Find a host email',
-      detail: `${contactNeeded.length} approved ${contactNeeded.length === 1 ? 'podcast needs' : 'podcasts need'} a usable contact.`,
-      tone: 'work',
-      target: { kind: 'item', itemId: contactNeeded[0].id },
-    }
-  } else if (researchNeeded[0]) {
-    nextAction = {
-      label: 'Finish a host-ready pitch',
-      detail: `${researchNeeded.length} ${researchNeeded.length === 1 ? 'opportunity needs' : 'opportunities need'} research or pitch review.`,
-      tone: 'work',
-      target: { kind: 'item', itemId: researchNeeded[0].id },
-    }
-  } else if (ready[0]) {
-    nextAction = {
-      label: 'Launch reviewed outreach',
-      detail: `${ready.length} ${ready.length === 1 ? 'pitch is' : 'pitches are'} ready to launch.`,
-      tone: 'work',
-      target: { kind: 'item', itemId: ready[0].id },
-    }
-  } else if (recorded[0]) {
-    nextAction = {
-      label: 'Confirm publication details',
-      detail: `${recorded.length} recorded ${recorded.length === 1 ? 'appearance is' : 'appearances are'} awaiting publication.`,
-      tone: 'work',
-      target: { kind: 'item', itemId: recorded[0].id },
-    }
-  } else if (items.length === 0) {
-    nextAction = {
-      label: 'Add the first podcasts',
-      detail: 'Start building a focused shortlist for this client.',
-      tone: 'work',
-      target: { kind: 'record', tab: 'shortlist' },
-    }
-  } else {
-    nextAction = {
-      label: 'No urgent action',
-      detail: 'The current client workflow has no blocked or time-sensitive work.',
-      tone: 'clear',
-      target: null,
-    }
-  }
-
-  const needsAttentionItems = items.filter((item) => (
-    !item.terminal
-    && (
-      item.has_conflict
-      || item.campaign?.status === 'failed'
-      || ['awaiting_review', 'contact_needed', 'research_needed', 'ready', 'conversation', 'recorded'].includes(item.stage)
-      || (item.stage === 'booked' && !item.booking?.prep_sent)
-    )
-  ))
-
-  return {
-    client,
-    items,
-    awaitingReview: awaitingReview.length,
-    preparation: items.filter((item) => !item.terminal && ['approved', 'contact_needed', 'research_needed', 'ready'].includes(item.stage)).length,
-    activeOutreach: items.filter((item) => !item.terminal && item.stage === 'outreach').length,
-    conversations: conversations.length,
-    placements: items.filter((item) => item.booking && item.booking.status !== 'cancelled').length,
-    published: items.filter((item) => item.stage === 'published').length,
-    upcomingRecordings: items.filter((item) => (
-      !item.terminal
-      && Boolean(item.booking?.recording_date)
-      && item.booking!.recording_date! >= today
-    )).length,
-    needsAttentionItems,
-    needsAttention: client.status === 'active' && nextAction.tone !== 'clear',
-    nextAction,
-    // The server's client-level value counts only real events; folding in
-    // each item's last_activity_at brought back shortlist edits and backfills.
-    lastActivityAt: client.last_activity_at,
-    pipelineStarted: items.some((item) => (
-      Boolean(item.booking || item.legacy_outreach_at || item.campaign?.launched_at)
-      || STARTED_STAGES.has(item.stage)
-    )),
-  }
-}
-
-function OpportunityList({
-  items,
-  onOpen,
-}: {
-  items: ClientPodcastSystemItem[]
-  onOpen: (item: ClientPodcastSystemItem) => void
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed px-6 text-center">
-        <ListChecks className="h-8 w-8 text-muted-foreground/50" />
-        <p className="mt-3 font-medium">Nothing needs attention here</p>
-        <p className="mt-1 text-sm text-muted-foreground">New decisions, conversations, and delivery work will appear here.</p>
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <button key={item.id} type="button" onClick={() => onOpen(item)} className="flex w-full flex-col gap-3 rounded-xl border p-3 text-left transition-colors hover:border-primary/40 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1"><PodcastIdentity item={item} /></div>
-          <div className="flex flex-wrap gap-1.5"><StageBadge stage={item.stage} /><ConversationBadge item={item} />{item.has_conflict && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Check history</Badge>}</div>
-          <p className="w-full text-xs text-muted-foreground sm:w-52">{item.next_action || 'No action required'}</p>
-          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-      ))}
-    </div>
-  )
 }
 
 function AllClientsView({
@@ -291,7 +77,7 @@ function AllClientsView({
   const [status, setStatus] = useState<ClientStatusFilter>('current')
   const [kpi, setKpi] = useState<PipelineKpi | null>(null)
   const [churnedOpen, setChurnedOpen] = useState(false)
-  const [attentionExpanded, setAttentionExpanded] = useState(false)
+  const [reveal, setReveal] = useState<QueueReveal | null>(null)
   const normalizedSearch = search.trim().toLowerCase()
   const focused = focusClientId ? rollups.filter((rollup) => rollup.client.id === focusClientId) : rollups
   const matching = focused.filter((rollup) => {
@@ -323,19 +109,25 @@ function AllClientsView({
   const chooseKpi = (next: PipelineKpi | null) => {
     setKpi(next)
     if (next) setStatus('all')
+    // The count on that tile is the queue's length, so it leads to the queue.
+    if (next === 'attention') {
+      setPortfolioView('clients')
+      window.requestAnimationFrame(() => document.getElementById('pipeline-today')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
+    }
   }
+  // One queue, one count: the tile, the heading and the card chips all read this.
   const queue = actionQueue(focused)
-  // Attention follows the client filters, so narrowing to one client narrows
-  // the work list with it. Clients are already ordered by urgency.
-  const attentionItems = filtered
-    .filter((rollup) => rollup.client.status === 'active')
-    .flatMap((rollup) => rollup.needsAttentionItems)
-  const visibleAttention = attentionExpanded ? attentionItems : attentionItems.slice(0, ATTENTION_PREVIEW)
   const focusRollup = focusClientId ? rollups.find((rollup) => rollup.client.id === focusClientId) || null : null
+  // The calendar follows the header's "Working on" the way the queue does.
+  const scopedItems = focusClientId ? items.filter((item) => item.client.id === focusClientId) : items
+  const showActions = (clientId: string) => {
+    setPortfolioView('clients')
+    setReveal((current) => ({ clientId, nonce: (current?.nonce ?? 0) + 1 }))
+  }
 
   return (
     <div className="space-y-4">
-      <PipelineKpiRow counts={kpiCounts(rollups)} selected={kpi} onSelect={chooseKpi} />
+      <PipelineKpiRow counts={kpiCounts(focused, queue)} selected={kpi} onSelect={chooseKpi} />
 
       <Tabs value={portfolioView} onValueChange={(value) => setPortfolioView(value as 'clients' | 'calendar')}>
         <TabsList className="h-auto justify-start">
@@ -344,7 +136,14 @@ function AllClientsView({
         </TabsList>
 
         <TabsContent value="calendar" className="mt-4">
-          <ClientActivityCalendar items={items} onOpenItem={onOpenItem} />
+          <ClientActivityCalendar
+            items={scopedItems}
+            onOpenItem={onOpenItem}
+            showClientFilter={false}
+            description={focusRollup
+              ? `Recordings, release dates, and the day outreach went out for ${focusRollup.client.name}. Change who is shown with Working on in the header.`
+              : undefined}
+          />
         </TabsContent>
 
         <TabsContent value="clients" className="mt-4 space-y-4">
@@ -358,7 +157,13 @@ function AllClientsView({
             </div>
           )}
 
-          <TodayQueue queue={queue} baseHref={baseHref} onOpenItem={onOpenItem} />
+          <TodayQueue
+            queue={queue}
+            baseHref={baseHref}
+            onOpenItem={onOpenItem}
+            reveal={reveal}
+            allPodcastsHref={focusRollup ? `${baseHref}/clients/${encodeURIComponent(focusRollup.client.id)}?tab=shortlist` : null}
+          />
 
           <Card>
             <CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between lg:space-y-0">
@@ -394,7 +199,7 @@ function AllClientsView({
               ) : (
                 <div className="space-y-2">
                   {filtered.map((rollup) => (
-                    <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onOpenItem={onOpenItem} />
+                    <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onShowActions={showActions} />
                   ))}
                 </div>
               )}
@@ -415,7 +220,7 @@ function AllClientsView({
                   {churnedOpen && (
                     <div id="pipeline-churned-clients" className="mt-2 space-y-2">
                       {churned.map((rollup) => (
-                        <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onOpenItem={onOpenItem} />
+                        <ClientPipelineRow key={rollup.client.id} rollup={rollup} baseHref={baseHref} canManage={canManage} onShowActions={showActions} />
                       ))}
                     </div>
                   )}
@@ -424,20 +229,6 @@ function AllClientsView({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <h2 className="text-2xl font-semibold leading-none tracking-tight">Needs attention</h2>
-              <CardDescription>The podcast work most likely to need a decision or follow-up next{focusRollup ? ` for ${focusRollup.client.name}` : ', across every active client'}.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <OpportunityList items={visibleAttention} onOpen={(item) => onOpenItem(item.id)} />
-              {attentionItems.length > ATTENTION_PREVIEW && (
-                <Button type="button" variant="outline" size="sm" onClick={() => setAttentionExpanded((current) => !current)}>
-                  {attentionExpanded ? 'Show fewer' : `Show all ${attentionItems.length}`}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
@@ -469,14 +260,17 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
   const system = systemQuery.data
   const canManage = Boolean(system?.can_manage || isPlatformAdmin || membership?.role === 'owner' || membership?.role === 'admin')
   const rollups = useMemo(() => (system?.clients || [])
-    .map((client) => buildClientRollup(client, system?.items || [], today))
+    .map((client) => buildClientRollup(client, system?.items || [], today, baseHref))
     .sort((left, right) => {
       const statusOrder = { active: 0, paused: 1, churned: 2 } as Record<string, number>
       const statusDifference = (statusOrder[left.client.status] ?? 3) - (statusOrder[right.client.status] ?? 3)
       if (statusDifference !== 0) return statusDifference
-      if (left.needsAttention !== right.needsAttention) return left.needsAttention ? -1 : 1
+      // Clients in the order of their most pressing queue row, matching Today.
+      const leftRank = topActionRank(left)
+      const rightRank = topActionRank(right)
+      if (leftRank !== rightRank) return leftRank < rightRank ? -1 : 1
       return (right.lastActivityAt || '').localeCompare(left.lastActivityAt || '') || left.client.name.localeCompare(right.client.name)
-    }), [system?.clients, system?.items, today])
+    }), [system?.clients, system?.items, today, baseHref])
   const focusRollup = UUID_PATTERN.test(requestedClientId)
     ? rollups.find((rollup) => rollup.client.id === requestedClientId) || null
     : null
@@ -546,7 +340,8 @@ const WorkspaceClientPodcastSystem = ({ platformWorkspaceId }: WorkspaceClientPo
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pipeline</h1>
-          <div className="flex flex-wrap gap-2"><Button asChild><Link to={`${baseHref}/podcast-finder`}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button></div>
+          {/* Secondary on purpose: the queue below is what this page is for. */}
+          <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link to={`${baseHref}/podcast-finder`}><Search className="mr-2 h-4 w-4" />Find podcasts</Link></Button></div>
         </div>
 
         {systemQuery.isLoading ? (

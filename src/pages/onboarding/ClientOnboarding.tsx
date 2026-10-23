@@ -453,7 +453,7 @@ const BrandHeader = ({ workspace, accent, logoUnavailable, onLogoError }: { work
     <div className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
     <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
       {workspace.logo_url && !logoUnavailable ? <div className="relative flex h-20 w-full max-w-56 items-center justify-center rounded-xl border border-white/30 bg-white p-3 shadow-lg sm:h-16 sm:w-52"><img src={workspace.logo_url} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" onError={onLogoError} /></div> : <div className="relative flex h-14 w-14 items-center justify-center rounded-xl bg-white/15 text-lg font-black ring-1 ring-white/25">{onboardingWorkspaceInitials(workspace.name)}</div>}
-      <div className="relative min-w-0"><p className="text-[11px] font-bold uppercase tracking-[.16em] text-white/70">Client onboarding</p><h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">{workspace.name}</h1><p className="mt-0.5 text-xs text-white/80">Secure client intake</p></div>
+      <div className="relative min-w-0"><p className="text-[11px] font-bold uppercase tracking-[.16em] text-white/70">Client intake</p><h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">{workspace.name}</h1><p className="mt-0.5 text-xs text-white/80">Secure client intake</p></div>
     </div>
   </header>
 )

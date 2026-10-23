@@ -504,5 +504,23 @@ describe('inbox draft package', () => {
 
     expect(result.classification).toBeNull()
     expect(result.nudges).toEqual([])
+    expect(result.suppressed).toBe(false)
+  })
+
+  it('reports an opt-out caught while drafting', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        draft: { subject: '', body: '' },
+        classification: { label: 'not_interested', confidence: 100, reasoning: 'Opt-out language.' },
+        nudges: [],
+        suppressed: true,
+      },
+      error: null,
+    } as never)
+
+    const result = await draftWorkspaceInboxReply(workspaceId, clientId, 'hi', 'Please remove me from your list')
+
+    expect(result.suppressed).toBe(true)
+    expect(result.body).toBe('')
   })
 })

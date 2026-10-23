@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   onboardingEmailConfigured,
+  prefillOnboardingAnswers,
   sendOnboardingEmail,
   validateOnboardingAnswers,
   validateOnboardingDefinition,
@@ -146,5 +147,45 @@ describe('sendOnboardingEmail', () => {
     expect(body.reply_to).toBeUndefined()
     expect(body.subject).toBe('Acme Agency invited you to complete onboarding')
     expect(body.html).toContain('podcast guest onboarding')
+  })
+})
+
+describe('prefillOnboardingAnswers', () => {
+  const field = (id: string, type: string, mapping: string | null) => ({ ...question(id), type, mapping })
+  const form = validateOnboardingDefinition(definition([{
+    id: 'basics',
+    questions: [
+      field('full_name', 'short_text', 'client.name'),
+      field('email', 'email', 'client.email'),
+      field('company', 'short_text', null),
+      field('website', 'url', 'client.website'),
+      field('linkedin_url', 'url', 'client.linkedin_url'),
+      field('bio', 'long_text', 'client.bio'),
+    ] as never,
+  }]))
+
+  it('fills the contact, company and links the operator already has', () => {
+    expect(prefillOnboardingAnswers(form, {
+      recipientName: ' Jane Smith ',
+      recipientEmail: 'jane@example.com',
+      clientName: 'Acme',
+      website: 'https://acme.example',
+      linkedinUrl: 'linkedin.com/in/jane',
+    })).toEqual({
+      full_name: 'Jane Smith',
+      email: 'jane@example.com',
+      company: 'Acme',
+      website: 'https://acme.example',
+    })
+  })
+
+  it('leaves out anything empty', () => {
+    expect(prefillOnboardingAnswers(form, {
+      recipientName: '',
+      recipientEmail: 'jane@example.com',
+      clientName: null,
+      website: null,
+      linkedinUrl: null,
+    })).toEqual({ email: 'jane@example.com' })
   })
 })

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastNamesIn } from '@/lib/feedText'
 
 export type ProspectLifecycleStatus =
   | 'draft'
@@ -63,6 +64,8 @@ export interface WorkspaceProspect {
   content_ready: boolean
   view_count: number
   last_viewed_at: string | null
+  /** Views in the last seven days; null when the count could not be read. List only. */
+  views_last_7_days?: number | null
   created_at: string
   updated_at: string
   readiness: ProspectReadiness
@@ -197,7 +200,8 @@ type ProspectActionBody = Record<string, unknown> & {
 async function invokeProspectStudio<T>(body: ProspectActionBody, fallback: string): Promise<T> {
   const { data, error } = await supabase.functions.invoke('workspace-prospect-dashboards', { body })
   if (error) throw await toFunctionError(error, fallback)
-  return data as T
+  // Every show the studio draws passes here; decoded once for all of them.
+  return withDecodedPodcastNamesIn(data, ['podcasts', 'podcast']) as T
 }
 
 function cleanProfile(input: WorkspaceProspectProfileInput): WorkspaceProspectProfileInput {

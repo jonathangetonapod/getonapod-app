@@ -76,3 +76,14 @@ export function creditCostSuffix(
   if (credits <= 0) return '· Included'
   return options.units && options.units > 1 ? `· up to ${creditsLabel(credits)}` : `· ${creditsLabel(credits)}`
 }
+
+/**
+ * What a single credit pays for, from the same table every button quotes, so
+ * the header tooltip moves when the ledger does.
+ */
+export function oneCreditBuys(): string {
+  const singles = (Object.keys(CREDIT_COSTS) as MeteredOperation[])
+    .filter((operation) => CREDIT_COSTS[operation] === 1)
+    .map((operation) => OPERATION_NAMES[operation].charAt(0).toLowerCase() + OPERATION_NAMES[operation].slice(1))
+  return `One credit covers one of: ${singles.join('; ')}. Researching a podcast takes ${creditsLabel(CREDIT_COSTS.research_run)}.`
+}

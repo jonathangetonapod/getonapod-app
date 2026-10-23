@@ -105,6 +105,19 @@ describe('clientPodcastSystem service', () => {
     expect(complete.truncated_sources).toEqual([])
   })
 
+  it('decodes feed titles once, so no surface renders an entity', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        ...response,
+        items: [{ id: 'row', podcast: { name: 'Angels, Exits, &amp; Acquisitions', description: '<p>Deals &amp; founders</p>' } }],
+      },
+      error: null,
+    } as never)
+    const system = await getWorkspaceClientPodcastSystem(workspaceId)
+    expect(system.items[0].podcast.name).toBe('Angels, Exits, & Acquisitions')
+    expect(system.items[0].podcast.description).toBe('Deals & founders')
+  })
+
   it('rejects a response for a different workspace', async () => {
     invoke.mockResolvedValueOnce({
       data: {

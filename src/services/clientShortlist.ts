@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { decodeFeedText } from '@/lib/feedText'
+import type { HostRelationshipManualStage } from '@/services/hostRelationships'
 
 export type ClientShortlistVisibility = 'visible' | 'archived'
 export type ClientShortlistFeedbackStatus = 'approved' | 'rejected' | null
@@ -105,7 +106,7 @@ export interface ClientShortlistAgencyRelationship {
   replied_client_name: string | null
   contact_email: string | null
   same_contact_other_show: boolean
-  manual_stage: 'nurturing' | 'warm' | 'do_not_contact' | null
+  manual_stage: HostRelationshipManualStage | null
   summary: string | null
   cooldown?: ClientShortlistOutreachCooldown | null
 }

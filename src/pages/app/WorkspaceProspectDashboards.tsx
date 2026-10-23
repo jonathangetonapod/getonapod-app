@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
+  ArrowLeft,
   ArrowUpRight,
   Building2,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   Copy,
   Eye,
@@ -43,12 +46,28 @@ import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/contexts/AuthContext'
 import { openExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { creditCostSuffix } from '@/lib/creditCosts'
 import { cn } from '@/lib/utils'
+import { plural } from '@/lib/plural'
+import { decodeHtmlEntities, dedupeShows } from '@/lib/showText'
+import {
+  compareProspects,
+  findDuplicateProspect,
+  parseProspectFilter,
+  parseProspectSort,
+  prospectFilterCounts,
+  prospectMatchesFilter,
+  prospectStage,
+  stageLabel,
+  type ProspectListFilter,
+  type ProspectSort,
+} from '@/lib/prospectStage'
+import { ProspectList } from '@/components/workspace/prospects/ProspectList'
 import {
   archiveWorkspaceProspect,
   buildWorkspaceProspect,
@@ -80,8 +99,6 @@ const BUILD_STALE_AFTER_MS = 10 * 60 * 1000
 interface WorkspaceProspectDashboardsProps {
   platformWorkspaceId?: string
 }
-
-type ProspectListFilter = 'all' | 'needs_action' | 'ready' | 'live' | 'viewed'
 
 interface ProspectProfileForm {
   name: string
@@ -163,36 +180,6 @@ function profileInputFor(form: ProspectProfileForm): WorkspaceProspectProfileInp
   }
 }
 
-function lifecycleLabel(status: ProspectLifecycleStatus): string {
-  const labels: Record<ProspectLifecycleStatus, string> = {
-    draft: 'Draft',
-    researching: 'Researching',
-    matching: 'Matching',
-    analyzing: 'Analyzing',
-    review: 'Needs review',
-    ready: 'Live',
-    sent: 'Sent',
-    viewed: 'Viewed',
-    engaged: 'Engaged',
-    converted: 'Converted',
-    failed: 'Build failed',
-    archived: 'Archived',
-  }
-  return labels[status]
-}
-
-function lifecycleClass(status: ProspectLifecycleStatus): string {
-  if (['ready', 'sent', 'viewed', 'engaged', 'converted'].includes(status)) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  }
-  if (['matching', 'analyzing', 'researching'].includes(status)) {
-    return 'border-blue-200 bg-blue-50 text-blue-700'
-  }
-  if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700'
-  if (status === 'review') return 'border-amber-200 bg-amber-50 text-amber-700'
-  return 'border-slate-200 bg-slate-50 text-slate-600'
-}
-
 function formatDate(value: string | null): string {
   if (!value) return 'Never'
   const date = new Date(value)
@@ -214,20 +201,64 @@ function readinessPercent(readiness: ProspectReadiness): number {
   ].filter(Boolean).length / 4) * 100)
 }
 
-function prospectMatchesFilter(prospect: WorkspaceProspect, filter: ProspectListFilter): boolean {
-  if (filter === 'needs_action') {
-    return !prospect.published_at
-      && (prospect.lifecycle_status === 'failed' || !prospect.readiness.publishable)
-  }
-  if (filter === 'ready') return !prospect.published_at && prospect.readiness.publishable
-  if (filter === 'live') return Boolean(prospect.published_at)
-  if (filter === 'viewed') return (prospect.view_count || 0) > 0
-  return true
-}
-
 function publicProspectUrl(slug: string): string {
   return `${window.location.origin}/prospect/${encodeURIComponent(slug)}`
 }
+
+const SORT_STORAGE_KEY = 'goap:prospect-studio:sort'
+
+/** The last sort chosen in this browser; storage can be unavailable, so it is optional. */
+function readStoredSort(): ProspectSort {
+  try {
+    return parseProspectSort(window.localStorage.getItem(SORT_STORAGE_KEY)) || 'last_activity'
+  } catch {
+    return 'last_activity'
+  }
+}
+
+function writeStoredSort(sort: ProspectSort): void {
+  try {
+    window.localStorage.setItem(SORT_STORAGE_KEY, sort)
+  } catch {
+    // A private window or blocked storage just means the choice is not remembered.
+  }
+}
+
+/** A summary number that is also the way to filter the list to it. */
+const StatButton = ({
+  pressed,
+  onClick,
+  icon,
+  value,
+  label,
+}: {
+  pressed: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  value: number
+  label: string
+}) => (
+  <button
+    type="button"
+    aria-pressed={pressed}
+    onClick={onClick}
+    className={cn(
+      'flex h-10 items-center gap-2 rounded-lg border px-3 text-left text-sm transition-colors',
+      pressed ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:border-primary/30',
+    )}
+  >
+    {icon}
+    <span className="font-semibold">{value.toLocaleString()}</span>
+    <span className="text-muted-foreground">{label}</span>
+  </button>
+)
+
+/** Previous or next within the current list; a plain disabled button at either end. */
+const StepLink = ({ label, to, children }: { label: string; to: string | null; children: React.ReactNode }) => (
+  to
+    ? <Button asChild variant="outline" size="icon" className="h-8 w-8"><Link to={to} aria-label={label}>{children}</Link></Button>
+    : <Button variant="outline" size="icon" className="h-8 w-8" disabled aria-label={label}>{children}</Button>
+)
 
 function ReadinessItem({ complete, children }: { complete: boolean; children: React.ReactNode }) {
   return (
@@ -251,7 +282,11 @@ function ProspectProfileDialog({
   onSubmit,
   onUploadPhoto,
   onRemovePhoto,
+  duplicate,
+  onOpenDuplicate,
 }: {
+  duplicate: { name: string; href: string } | null
+  onOpenDuplicate: () => void
   open: boolean
   editing: boolean
   form: ProspectProfileForm
@@ -285,6 +320,15 @@ function ProspectProfileDialog({
                   <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="prospect-name">Name</Label>
                     <Input id="prospect-name" required autoFocus value={form.name} onChange={(event) => onChange({ ...form, name: event.target.value })} placeholder="Dallas Fontaine" />
+                    {duplicate && (
+                      <Alert className="border-amber-200 bg-amber-50">
+                        <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-amber-900">
+                          <span>A prospect named {duplicate.name} already exists.</span>
+                          <Link to={duplicate.href} className="font-medium underline" onClick={onOpenDuplicate}>Open existing</Link>
+                          <span className="text-amber-900/70">or create anyway.</span>
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                   <div className="space-y-3 rounded-xl border bg-muted/20 p-4 sm:col-span-2">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -444,69 +488,12 @@ function ProspectProfileDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={saving || !form.name.trim()}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editing ? 'Save profile' : 'Create draft'}
+              {editing ? 'Save profile' : duplicate ? 'Create anyway' : 'Create draft'}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function ProspectListCard({
-  prospect,
-  selected,
-  onSelect,
-}: {
-  prospect: WorkspaceProspect
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'w-full rounded-xl border px-3 py-3 text-left transition-all',
-        selected
-          ? 'border-primary bg-primary/[0.04] shadow-sm ring-1 ring-primary/20'
-          : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{prospect.prospect_name}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {[prospect.prospect_title, prospect.prospect_company].filter(Boolean).join(' · ') || 'Profile draft'}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge variant="outline" className={cn('font-normal', lifecycleClass(prospect.lifecycle_status))}>
-            {lifecycleLabel(prospect.lifecycle_status)}
-          </Badge>
-          {/* Live and edited look identical without this. */}
-          {prospect.pending_review_at && (
-            <Badge variant="outline" className="border-amber-200 bg-amber-50 font-normal text-amber-700">
-              To review
-            </Badge>
-          )}
-        </div>
-      </div>
-      {/* The link is stored on the client, so a prospect page could not say
-          whether it converted without reading it back. */}
-      {prospect.linked_client && (
-        <p className="mt-2 flex items-center gap-1.5 truncate text-[11px] font-medium text-emerald-700">
-          <UserCheck className="h-3 w-3 shrink-0" />
-          Became {prospect.linked_client.name}
-        </p>
-      )}
-      <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{prospect.readiness.visible_count} matches</span>
-        <span>{prospect.view_count || 0} views</span>
-        <span>{readinessPercent(prospect.readiness)}% ready</span>
-      </div>
-      <Progress value={readinessPercent(prospect.readiness)} className="mt-1.5 h-1" />
-    </button>
   )
 }
 
@@ -552,6 +539,32 @@ function compareShortlist(sort: ShortlistSort) {
   }
 }
 
+/** An icon-only button says what it does on hover and to a screen reader. */
+function IconAction({
+  label,
+  tooltip,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  tooltip: string
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={label} onClick={onClick}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ShortlistRow({
   podcast,
   disabled,
@@ -594,26 +607,37 @@ function ShortlistRow({
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {podcast.podcast_url && (
-                <Button type="button" size="icon" variant="ghost" aria-label={`Open ${podcast.podcast_name}`} onClick={() => openExternalUrl(podcast.podcast_url!)}>
+                <IconAction label={`Open ${podcast.podcast_name}`} tooltip="Open show" onClick={() => openExternalUrl(podcast.podcast_url!)}>
                   <ArrowUpRight className="h-4 w-4" />
-                </Button>
+                </IconAction>
               )}
               {podcast.visibility === 'visible' && (
-                <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={podcast.is_featured ? `Unfeature ${podcast.podcast_name}` : `Feature ${podcast.podcast_name}`} onClick={onFeature}>
+                <IconAction
+                  label={podcast.is_featured ? `Unfeature ${podcast.podcast_name}` : `Feature ${podcast.podcast_name}`}
+                  tooltip={podcast.is_featured ? 'Unfeature' : 'Feature'}
+                  disabled={disabled}
+                  onClick={onFeature}
+                >
                   <Star className={cn('h-4 w-4', podcast.is_featured && 'fill-amber-400 text-amber-500')} />
-                </Button>
+                </IconAction>
               )}
-              <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={podcast.visibility === 'visible' ? `Remove ${podcast.podcast_name}` : `Restore ${podcast.podcast_name}`} onClick={onVisibility}>
+              <IconAction
+                label={podcast.visibility === 'visible' ? `Remove ${podcast.podcast_name} from shortlist` : `Restore ${podcast.podcast_name} to shortlist`}
+                tooltip={podcast.visibility === 'visible' ? 'Remove from shortlist' : 'Restore to shortlist'}
+                disabled={disabled}
+                onClick={onVisibility}
+              >
                 {podcast.visibility === 'visible' ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              </IconAction>
             </div>
           </div>
           {description && <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{description}</p>}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>{formatNumber(podcast.audience_size)} listeners</span>
-            <span>{podcast.episode_count || '—'} episodes</span>
+            <span>{formatNumber(podcast.audience_size)} {podcast.audience_size === 1 ? 'listener' : 'listeners'}</span>
+            <span>{podcast.episode_count ? plural(podcast.episode_count, 'episode') : '— episodes'}</span>
             {podcast.itunes_rating && <span>{Number(podcast.itunes_rating).toFixed(1)} rating</span>}
-            <span className="capitalize">{podcast.match_source.replace('_', ' ')}</span>
+            {/* How a match was made is for debugging, not for operators. */}
+            {import.meta.env.MODE === 'development' && <span className="capitalize">{podcast.match_source.replace('_', ' ')}</span>}
           </div>
         </div>
       </div>
@@ -625,7 +649,10 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const { user, workspace } = useAuth()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const requestedProspectId = (searchParams.get('prospect') || '').toLowerCase()
+  const navigate = useNavigate()
+  const { prospectId: routeProspectId = '' } = useParams()
+  // Old links carried the prospect as ?prospect=; they are moved to the path below.
+  const legacyProspectId = (searchParams.get('prospect') || '').toLowerCase()
   const requestedShortlistView = searchParams.get('view') === 'all'
     ? 'all'
     : searchParams.get('view') === 'removed'
@@ -633,9 +660,15 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
       : searchParams.get('view') === 'new'
         ? 'new'
         : 'featured'
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [prospectFilter, setProspectFilter] = useState<ProspectListFilter>('all')
+  const selectedId = UUID_PATTERN.test(routeProspectId) ? routeProspectId.toLowerCase() : null
+  // Filter, sort and search live in the address so the way back from a
+  // prospect, and the previous and next buttons, keep the same list.
+  const prospectFilter = parseProspectFilter(searchParams.get('filter'))
+  const [storedSort, setStoredSort] = useState<ProspectSort>(readStoredSort)
+  const prospectSort = parseProspectSort(searchParams.get('sort')) || storedSort
+  const search = searchParams.get('q') || ''
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
+  const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState<ProspectProfileForm>(emptyProfileForm)
@@ -645,7 +678,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const [shortlistSearch, setShortlistSearch] = useState('')
   const [shortlistCategory, setShortlistCategory] = useState('all')
   const [shortlistSort, setShortlistSort] = useState<ShortlistSort>('curated')
-  const [shortlistUnanalyzedOnly, setShortlistUnanalyzedOnly] = useState(false)
   const [shortlistLimit, setShortlistLimit] = useState(SHORTLIST_PAGE_SIZE)
   const [shortlistView, setShortlistView] = useState<'featured' | 'all' | 'removed' | 'new'>(requestedShortlistView)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
@@ -662,39 +694,60 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   })
 
   const prospects = useMemo(() => listQuery.data?.dashboards || [], [listQuery.data?.dashboards])
-  const orderedProspects = useMemo(() => [...prospects].sort((left, right) => {
-    const publicationPriority = Number(Boolean(right.published_at)) - Number(Boolean(left.published_at))
-    if (publicationPriority !== 0) return publicationPriority
-    return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
-  }), [prospects])
+  const workspaceBaseHref = isPlatformWorkspace
+    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
+    : '/app'
+  const prospectsHref = `${workspaceBaseHref}/prospects`
+  const listParams = new URLSearchParams()
+  if (prospectFilter !== 'all') listParams.set('filter', prospectFilter)
+  if (searchParams.get('sort')) listParams.set('sort', prospectSort)
+  if (search) listParams.set('q', search)
+  const listQueryString = listParams.toString() ? `?${listParams.toString()}` : ''
+  const listHref = `${prospectsHref}${listQueryString}`
+  const prospectHref = (id: string) => `${prospectsHref}/${encodeURIComponent(id)}${listQueryString}`
+
+  const updateListParams = (changes: Record<string, string | null>) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      for (const [key, value] of Object.entries(changes)) {
+        if (value) next.set(key, value)
+        else next.delete(key)
+      }
+      return next
+    }, { replace: true })
+  }
+  const setProspectFilter = (filter: ProspectListFilter) => {
+    updateListParams({ filter: filter === 'all' ? null : filter })
+    setCheckedIds(new Set())
+  }
+  const setProspectSort = (sort: ProspectSort) => {
+    setStoredSort(sort)
+    writeStoredSort(sort)
+    updateListParams({ sort })
+  }
+  const setSearch = (value: string) => updateListParams({ q: value || null })
+
   useEffect(() => {
-    if (orderedProspects.length === 0) {
-      setSelectedId(null)
-      return
-    }
-    if (requestedProspectId && orderedProspects.some((prospect) => prospect.id === requestedProspectId)) {
-      if (selectedId !== requestedProspectId) setSelectedId(requestedProspectId)
-      return
-    }
-    if (!selectedId || !orderedProspects.some((prospect) => prospect.id === selectedId)) {
-      setSelectedId(orderedProspects[0].id)
-    }
-  }, [orderedProspects, requestedProspectId, selectedId])
+    if (routeProspectId || !UUID_PATTERN.test(legacyProspectId)) return
+    const view = searchParams.get('view')
+    navigate(`${prospectsHref}/${legacyProspectId}${view ? `?view=${encodeURIComponent(view)}` : ''}`, { replace: true })
+  }, [legacyProspectId, navigate, prospectsHref, routeProspectId, searchParams])
+
+  // Each prospect opens on the tab its address names, Featured by default.
   useEffect(() => {
-    if (requestedProspectId) setShortlistView(requestedShortlistView)
-  }, [requestedProspectId, requestedShortlistView])
+    if (selectedId) setShortlistView(requestedShortlistView)
+  }, [selectedId, requestedShortlistView])
 
   // Another prospect's shortlist has its own categories, so a filter carried
   // across would silently show nothing.
   useEffect(() => {
     setShortlistSearch('')
     setShortlistCategory('all')
-    setShortlistUnanalyzedOnly(false)
   }, [selectedId])
 
   useEffect(() => {
     setShortlistLimit(SHORTLIST_PAGE_SIZE)
-  }, [selectedId, shortlistView, shortlistSearch, shortlistCategory, shortlistSort, shortlistUnanalyzedOnly])
+  }, [selectedId, shortlistView, shortlistSearch, shortlistCategory, shortlistSort])
 
 
   const detailQueryKey = ['workspace-prospect', user?.id || 'unknown', workspaceId, selectedId] as const
@@ -739,12 +792,9 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         queryClient.setQueryData(detailQueryKey, result.detail)
       }
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
-      // Selected through the address as well: a ?prospect= left over from the
-      // previous selection would otherwise win and snap the view back to it.
       if (result.created && result.prospect) {
-        setSelectedId(result.prospect.id)
         setShortlistView('featured')
-        setSearchParams({ prospect: result.prospect.id, view: 'featured' }, { replace: true })
+        navigate(prospectHref(result.prospect.id))
       }
       toast.success(result.created ? 'Prospect draft created.' : 'Prospect profile updated.')
     },
@@ -852,16 +902,40 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     },
     onSuccess: async () => {
       setArchiveDialogOpen(false)
-      setSelectedId(null)
+      navigate(listHref)
       await queryClient.invalidateQueries({ queryKey: listQueryKey })
       toast.success('Prospect dashboard archived.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospect could not be archived.'),
   })
 
+  // One at a time through the existing action, so each archive is audited
+  // exactly as a single one is, and a failure part way says what landed.
+  const bulkArchiveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      let archived = 0
+      for (const id of ids) {
+        try {
+          await archiveWorkspaceProspect(workspaceId, id)
+          archived += 1
+        } catch (error) {
+          throw new Error(`${plural(archived, 'prospect')} archived before an error: ${error instanceof Error ? error.message : 'unknown error'}`)
+        }
+      }
+      return archived
+    },
+    onSuccess: (archived) => {
+      setBulkArchiveOpen(false)
+      setCheckedIds(new Set())
+      toast.success(`${plural(archived, 'prospect')} archived.`)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The prospects could not be archived.'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: listQueryKey }),
+  })
+
   const filteredProspects = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return orderedProspects.filter((prospect) => {
+    return prospects.filter((prospect) => {
       if (!prospectMatchesFilter(prospect, prospectFilter)) return false
       if (!query) return true
       return [
@@ -870,15 +944,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         prospect.prospect_company,
         prospect.prospect_title,
       ].some((value) => value?.toLowerCase().includes(query))
-    })
-  }, [orderedProspects, prospectFilter, search])
-  const prospectFilterOptions: Array<{ value: ProspectListFilter; label: string; count: number }> = [
-    { value: 'all', label: 'All', count: prospects.length },
-    { value: 'needs_action', label: 'Needs action', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'needs_action')).length },
-    { value: 'ready', label: 'Ready', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'ready')).length },
-    { value: 'live', label: 'Live', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'live')).length },
-    { value: 'viewed', label: 'Viewed', count: prospects.filter((prospect) => prospectMatchesFilter(prospect, 'viewed')).length },
-  ]
+    }).sort(compareProspects(prospectSort))
+  }, [prospects, prospectFilter, prospectSort, search])
+  const filterCounts = useMemo(() => prospectFilterCounts(prospects), [prospects])
+  const selectedPosition = selectedId ? filteredProspects.findIndex((prospect) => prospect.id === selectedId) : -1
+  const previousProspect = selectedPosition > 0 ? filteredProspects[selectedPosition - 1] : null
+  const nextProspect = selectedPosition >= 0 ? filteredProspects[selectedPosition + 1] ?? null : null
 
   const workspaceSummary = listQuery.data?.workspace
   const platformWorkspace = isPlatformWorkspace
@@ -889,9 +960,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         baseHref: selectedWorkspaceBaseHref(selectedWorkspaceId),
       }
     : undefined
-  const workspaceBaseHref = isPlatformWorkspace
-    ? selectedWorkspaceBaseHref(selectedWorkspaceId)
-    : '/app'
   /*
    * A prospect has to be handed to the finder that knows what a prospect is.
    * The plain address is the one-click Smart Finder, and it reads ?client= and
@@ -940,8 +1008,22 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     }
   }
 
-  const visiblePodcasts = detail?.podcasts.filter((podcast) => podcast.visibility === 'visible') || []
-  const removedPodcasts = detail?.podcasts.filter((podcast) => podcast.visibility === 'archived') || []
+  /*
+   * Rows stored before names were decoded on the way in still carry entities.
+   * The same show under two feeds is shown once, as the larger feed, so it
+   * cannot take two of the featured five; the build drops these too, so one
+   * here came from an older build or the Finder.
+   */
+  const shortlist = useMemo(() => (detail?.podcasts || []).map((podcast) => ({
+    ...podcast,
+    podcast_name: decodeHtmlEntities(podcast.podcast_name),
+    publisher_name: decodeHtmlEntities(podcast.publisher_name),
+  })), [detail?.podcasts])
+  const visiblePodcasts = useMemo(
+    () => dedupeShows(shortlist.filter((podcast) => podcast.visibility === 'visible')),
+    [shortlist],
+  )
+  const removedPodcasts = shortlist.filter((podcast) => podcast.visibility === 'archived')
   const featuredPodcasts = visiblePodcasts.filter((podcast) => podcast.is_featured)
   /*
    * Additions from the Finder land hidden so a prospect never sees an
@@ -958,7 +1040,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     if (shortlistView === 'new' && pendingAdditions.length === 0) setShortlistView('all')
     if (shortlistView === 'removed' && removedByHand.length === 0) setShortlistView('all')
   }, [pendingAdditions.length, removedByHand.length, shortlistView])
-  const allPodcasts = detail?.podcasts || []
+  const allPodcasts = shortlist
   const browseBase = shortlistView === 'new'
     ? pendingAdditions
     : shortlistView === 'removed'
@@ -970,7 +1052,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
           : visiblePodcasts.slice(0, 5)
 
   const shortlistQuery = shortlistSearch.trim().toLowerCase()
-  const shortlistFiltered = shortlistQuery !== '' || shortlistCategory !== 'all' || shortlistUnanalyzedOnly
+  const shortlistFiltered = shortlistQuery !== '' || shortlistCategory !== 'all'
 
   /*
    * Searching looks through the whole shortlist, not the open tab. The tabs are
@@ -994,18 +1076,16 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const filteredPodcasts = useMemo(() => {
     const matches = shortlistBase.filter((podcast) => {
       if (shortlistCategory !== 'all' && !podcastCategoryNames(podcast).includes(shortlistCategory)) return false
-      if (shortlistUnanalyzedOnly && podcast.ai_analyzed_at) return false
       if (!shortlistQuery) return true
       return shortlistHaystack(podcast).includes(shortlistQuery)
     })
     return shortlistSort === 'curated' ? matches : [...matches].sort(compareShortlist(shortlistSort))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail?.podcasts, shortlistView, shortlistCategory, shortlistQuery, shortlistSort, shortlistUnanalyzedOnly])
+  }, [detail?.podcasts, shortlistView, shortlistCategory, shortlistQuery, shortlistSort])
   const displayedPodcasts = filteredPodcasts.slice(0, shortlistLimit)
   const clearShortlistFilters = () => {
     setShortlistSearch('')
     setShortlistCategory('all')
-    setShortlistUnanalyzedOnly(false)
   }
 
   /*
@@ -1019,17 +1099,15 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     setShortlistView(view)
     if (shortlistFiltered) clearShortlistFilters()
   }
-  const publishedCount = prospects.filter((prospect) => prospect.published_at).length
-  /*
-   * A live dashboard with unreviewed edits keeps a live lifecycle_status, so
-   * counting only 'review' and 'failed' meant the summary and the list looked
-   * identical whether or not anything was waiting. Nobody would find it without
-   * opening every prospect in turn.
-   */
-  const reviewCount = prospects.filter((prospect) => (
-    ['review', 'failed'].includes(prospect.lifecycle_status) || Boolean(prospect.pending_review_at)
-  )).length
+  const createDuplicate = profileDialogOpen && !editingProfile
+    ? findDuplicateProspect(prospects, profileForm.name, profileForm.email)
+    : null
+  const showStats = !selectedId && !listQuery.isLoading && !listQuery.error && prospects.length > 0
   const totalViews = prospects.reduce((total, prospect) => total + (prospect.view_count || 0), 0)
+  // Null when the server could not count recent views; the all-time total stands in.
+  const recentViews = prospects.some((prospect) => prospect.views_last_7_days === null || prospect.views_last_7_days === undefined)
+    ? null
+    : prospects.reduce((total, prospect) => total + (prospect.views_last_7_days || 0), 0)
   const buildInProgress = ['matching', 'analyzing'].includes(selected?.lifecycle_status || '')
   const buildStartedAt = selected?.build_started_at || selected?.updated_at || null
   const buildStale = buildInProgress && Boolean(buildStartedAt) && Date.now() - Date.parse(buildStartedAt) > BUILD_STALE_AFTER_MS
@@ -1095,90 +1173,112 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
+        {/* The summary sits in the header so the list starts higher: twelve
+            rows have to fit on a 764px screen without scrolling. */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-primary">
               <Sparkles className="h-4 w-4" />
               Lead magnet workspace
             </div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Prospect Studio</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground sm:text-base">
-              Turn a strong guest profile into a focused, share-ready podcast shortlist in minutes.
-            </p>
           </div>
-          {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {showStats && (
+              <div className="flex flex-wrap items-center gap-2">
+                <StatButton pressed={prospectFilter === 'all'} onClick={() => setProspectFilter('all')} icon={<Users className="h-4 w-4 text-blue-700" />} value={prospects.length} label={prospects.length === 1 ? 'prospect' : 'prospects'} />
+                <StatButton pressed={prospectFilter === 'live'} onClick={() => setProspectFilter('live')} icon={<Globe2 className="h-4 w-4 text-emerald-700" />} value={filterCounts.live} label="live" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatButton
+                        pressed={prospectFilter === 'live_viewed'}
+                        onClick={() => setProspectFilter('live_viewed')}
+                        icon={<Eye className="h-4 w-4 text-violet-700" />}
+                        value={recentViews ?? totalViews}
+                        label={recentViews === null ? (totalViews === 1 ? 'view' : 'views') : (recentViews === 1 ? 'view, last 7 days' : 'views, last 7 days')}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{plural(totalViews, 'view')} all time</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            {canManage && <Button className="shrink-0" onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+          </div>
         </div>
 
         {listQuery.isLoading ? (
           <Card><CardContent className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></CardContent></Card>
         ) : listQuery.error ? (
           <Card><CardContent className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">Prospect Studio could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{listQuery.error instanceof Error ? listQuery.error.message : 'Check your connection and try again.'}</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Try again</Button></CardContent></Card>
+        ) : prospects.length === 0 && !selectedId ? (
+          <Card>
+            <CardContent className="flex min-h-72 flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="rounded-full bg-primary/10 p-4 text-primary"><Target className="h-7 w-7" /></div>
+              <div>
+                <p className="font-semibold">Create your first lead magnet</p>
+                <p className="mt-1 max-w-md text-sm text-muted-foreground">Turn a strong guest profile into a focused, share-ready podcast shortlist in minutes.</p>
+              </div>
+              {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
+            </CardContent>
+          </Card>
+        ) : !selectedId ? (
+          <ProspectList
+            prospects={filteredProspects}
+            counts={filterCounts}
+            filter={prospectFilter}
+            onFilterChange={setProspectFilter}
+            sort={prospectSort}
+            onSortChange={setProspectSort}
+            search={search}
+            onSearchChange={setSearch}
+            hrefFor={prospectHref}
+            checkedIds={canManage ? checkedIds : undefined}
+            onCheckedIdsChange={canManage ? setCheckedIds : undefined}
+            onArchiveChecked={() => setBulkArchiveOpen(true)}
+          />
         ) : (
-          <>
-            <Card>
-              <CardContent className="flex flex-wrap items-center gap-x-7 gap-y-3 px-4 py-3">
-                <div className="flex items-center gap-2"><Users className="h-4 w-4 text-blue-700" /><span className="font-semibold">{prospects.length}</span><span className="text-sm text-muted-foreground">prospects</span></div>
-                <div className="flex items-center gap-2"><Globe2 className="h-4 w-4 text-emerald-700" /><span className="font-semibold">{publishedCount}</span><span className="text-sm text-muted-foreground">live</span></div>
-                <div className="flex items-center gap-2"><Eye className="h-4 w-4 text-violet-700" /><span className="font-semibold">{totalViews}</span><span className="text-sm text-muted-foreground">views</span></div>
-                {reviewCount > 0 && <Badge variant="secondary" className="ml-auto">{reviewCount} to review</Badge>}
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 xl:h-[calc(100dvh-290px)] xl:min-h-[620px] xl:grid-cols-[320px_minmax(0,1fr)] xl:overflow-hidden">
-              <Card className="flex max-h-[420px] min-h-0 flex-col overflow-hidden xl:max-h-none">
-                <CardHeader className="p-4 pb-3">
-                  <CardTitle className="text-base">Prospects</CardTitle>
-                  <CardDescription>Find the prospects that need your attention.</CardDescription>
-                  <div className="relative pt-2">
-                    <Search className="absolute left-3 top-1/2 mt-1 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search prospects" className="pl-9" />
+          /*
+           * Two panes from xl up, as before, now driven by the address: the
+           * list beside the open prospect. Below xl the prospect has the page
+           * to itself, with a way back to the list and through it.
+           */
+          <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)] xl:items-start">
+            <aside className="hidden xl:sticky xl:top-4 xl:block xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
+              <ProspectList
+                compact
+                prospects={filteredProspects}
+                counts={filterCounts}
+                filter={prospectFilter}
+                onFilterChange={setProspectFilter}
+                sort={prospectSort}
+                onSortChange={setProspectSort}
+                search={search}
+                onSearchChange={setSearch}
+                hrefFor={prospectHref}
+                selectedId={selectedId}
+              />
+            </aside>
+            <div className="min-w-0 space-y-4">
+              <nav aria-label="Prospect navigation" className="flex items-center justify-between gap-2">
+                <Button asChild variant="ghost" size="sm" className="-ml-2">
+                  <Link to={listHref}><ArrowLeft className="mr-1.5 h-4 w-4" />All prospects</Link>
+                </Button>
+                {selectedPosition >= 0 && (
+                  <div className="flex items-center gap-1">
+                    <span className="mr-1 text-sm text-muted-foreground">{selectedPosition + 1} of {filteredProspects.length}</span>
+                    <StepLink label="Previous prospect" to={previousProspect ? prospectHref(previousProspect.id) : null}><ChevronLeft className="h-4 w-4" /></StepLink>
+                    <StepLink label="Next prospect" to={nextProspect ? prospectHref(nextProspect.id) : null}><ChevronRight className="h-4 w-4" /></StepLink>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1" aria-label="Filter prospects">
-                    {prospectFilterOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={prospectFilter === option.value}
-                        onClick={() => setProspectFilter(option.value)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                          prospectFilter === option.value
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                        )}
-                      >
-                        {option.label} <span className="ml-1 opacity-75">{option.count}</span>
-                      </button>
-                    ))}
-                  </div>
-                </CardHeader>
-                <CardContent className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-                  {prospects.length === 0 ? (
-                    <div className="flex min-h-72 flex-col items-center justify-center gap-4 rounded-2xl border border-dashed p-6 text-center">
-                      <div className="rounded-full bg-primary/10 p-4 text-primary"><Target className="h-7 w-7" /></div>
-                      <div><p className="font-semibold">Create your first lead magnet</p><p className="mt-1 text-sm text-muted-foreground">Add a profile, let Scout build the shortlist, review it, and publish.</p></div>
-                      {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New prospect</Button>}
-                    </div>
-                  ) : filteredProspects.length === 0 ? (
-                    <div className="py-12 text-center text-sm text-muted-foreground">
-                      {search ? `No prospects match “${search}”.` : 'No prospects in this view.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {filteredProspects.map((prospect) => <ProspectListCard key={prospect.id} prospect={prospect} selected={prospect.id === selectedId} onSelect={() => { setSelectedId(prospect.id); setShortlistView('featured'); setSearchParams({ prospect: prospect.id, view: 'featured' }, { replace: true }) }} />)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {!selected ? (
-                <Card><CardContent className="flex min-h-[520px] items-center justify-center text-center text-muted-foreground">Choose a prospect to get started.</CardContent></Card>
-              ) : detailQuery.isLoading ? (
+                )}
+              </nav>
+              {detailQuery.isLoading ? (
                 <Card><CardContent className="flex min-h-[520px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></CardContent></Card>
-              ) : detailQuery.error || !detail ? (
-                <Card><CardContent className="flex min-h-[520px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">This prospect could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{detailQuery.error instanceof Error ? detailQuery.error.message : 'Refresh and try again.'}</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>Try again</Button></CardContent></Card>
+              ) : detailQuery.error || !detail || !selected ? (
+                <Card><CardContent className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center"><p className="font-semibold text-destructive">This prospect could not be loaded</p><p className="max-w-md text-sm text-muted-foreground">{detailQuery.error instanceof Error ? detailQuery.error.message : 'It may have been archived. Go back to the list and try again.'}</p><div className="flex gap-2"><Button variant="outline" onClick={() => void detailQuery.refetch()}>Try again</Button><Button asChild variant="ghost"><Link to={listHref}>All prospects</Link></Button></div></CardContent></Card>
               ) : (
-                <div className="min-h-0 space-y-4 xl:overflow-y-auto xl:overscroll-contain xl:pr-2">
+                <div className="space-y-4">
                   <Card className="overflow-hidden">
                     <div className="border-b bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 px-4 py-4 text-white sm:px-5">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1191,7 +1291,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <h2 className="truncate text-xl font-bold sm:text-2xl">{selected.prospect_name}</h2>
-                              <Badge variant="outline" className={cn('border-white/20 bg-white/10 text-white', selected.published_at && 'border-emerald-400/40 bg-emerald-400/15 text-emerald-100')}>{lifecycleLabel(selected.lifecycle_status)}</Badge>
+                              <Badge variant="outline" className={cn('border-white/20 bg-white/10 text-white', selected.published_at && 'border-emerald-400/40 bg-emerald-400/15 text-emerald-100')}>{stageLabel(prospectStage(selected))}</Badge>
                             </div>
                             <p className="mt-1 truncate text-sm text-white/75">{[selected.prospect_title, selected.prospect_company].filter(Boolean).join(' · ') || 'Prospect dashboard'}</p>
                             <p className="mt-0.5 text-xs text-white/50">Updated {formatDate(selected.updated_at)}</p>
@@ -1305,8 +1405,8 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           <Progress value={readinessPercent(selected.readiness)} className="my-2.5 h-1.5" />
                           <div className="space-y-1.5">
                             <ReadinessItem complete={selected.readiness.profile_ready}>Focused profile (80+ characters)</ReadinessItem>
-                            <ReadinessItem complete={selected.readiness.visible_count >= 5}>{selected.readiness.visible_count}/5 visible matches</ReadinessItem>
-                            <ReadinessItem complete={selected.readiness.analyzed_count >= 5}>{selected.readiness.analyzed_count}/5 explained matches</ReadinessItem>
+                            <ReadinessItem complete={selected.readiness.visible_count >= 5}>{plural(selected.readiness.visible_count, 'visible match', 'visible matches')} (min 5)</ReadinessItem>
+                            <ReadinessItem complete={selected.readiness.analyzed_count >= 5}>{plural(selected.readiness.analyzed_count, 'explained match', 'explained matches')} (min 5)</ReadinessItem>
                             <ReadinessItem complete={selected.readiness.cta_ready}>Next step configured</ReadinessItem>
                           </div>
                         </div>
@@ -1412,14 +1512,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                               Showing {displayedPodcasts.length} of {filteredPodcasts.length}
                               {shortlistFiltered && ` across the whole shortlist (${allPodcasts.length} shows, removed included)`}
                             </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={cn('h-6 px-2 text-xs', shortlistUnanalyzedOnly && 'bg-muted text-foreground')}
-                              onClick={() => setShortlistUnanalyzedOnly((current) => !current)}
-                            >
-                              Not analyzed yet
-                            </Button>
                             {shortlistFiltered && (
                               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clearShortlistFilters}>
                                 Clear filters
@@ -1478,7 +1570,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -1495,7 +1587,24 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
         onSubmit={() => saveMutation.mutate()}
         onUploadPhoto={(photo) => photoMutation.mutate({ photo })}
         onRemovePhoto={() => photoMutation.mutate({})}
+        duplicate={createDuplicate ? { name: createDuplicate.prospect_name, href: prospectHref(createDuplicate.id) } : null}
+        onOpenDuplicate={() => setProfileDialogOpen(false)}
       />
+
+      <Dialog open={bulkArchiveOpen} onOpenChange={(open) => { if (!open && !bulkArchiveMutation.isPending) setBulkArchiveOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive {plural(checkedIds.size, 'prospect')}?</DialogTitle>
+            <DialogDescription>Their private links stop working. The prospects and their shortlists stay in the database for reporting.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkArchiveOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={bulkArchiveMutation.isPending} onClick={() => bulkArchiveMutation.mutate(Array.from(checkedIds))}>
+              {bulkArchiveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rebuildDialogOpen} onOpenChange={(open) => { if (!open && !building) setRebuildDialogOpen(false) }}>
         <DialogContent>
@@ -1525,7 +1634,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
 
       <Dialog open={rotateLinkDialogOpen} onOpenChange={(open) => { if (!open && !rotateLinkMutation.isPending) setRotateLinkDialogOpen(false) }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Regenerate the private link for {selected?.prospect_name}?</DialogTitle><DialogDescription>The current link stops working immediately, including in any email already sent. Share the new link with anyone who should still see this dashboard. The shortlist and feedback are unchanged.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Regenerate private link</DialogTitle><DialogDescription>This replaces the current private link. Anyone with the old link will lose access. Continue?</DialogDescription></DialogHeader>
           <DialogFooter><Button variant="outline" onClick={() => setRotateLinkDialogOpen(false)}>Cancel</Button><Button disabled={rotateLinkMutation.isPending} onClick={() => rotateLinkMutation.mutate()}>{rotateLinkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Regenerate link</Button></DialogFooter>
         </DialogContent>
       </Dialog>

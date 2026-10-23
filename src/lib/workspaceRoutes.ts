@@ -53,6 +53,8 @@ export function clientPitchHref(baseHref: string, clientId: string, shortlistPod
 export function workspaceModuleFromPath(pathname: string): WorkspaceModule {
   if (pathname.includes('/podcast-finder')) return 'podcast-finder'
   if (pathname.includes('/prospect-dashboards')) return 'prospects'
+  // An open prospect belongs to its workspace; switching lands on the other's list.
+  if (/\/prospects(\/|$)/u.test(pathname)) return 'prospects'
   if (pathname.includes('/client-campaigns')) return 'client-campaigns'
   if (pathname.includes('/settings')) return 'settings'
 

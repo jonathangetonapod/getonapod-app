@@ -133,7 +133,7 @@ describe('OnboardingReviewDialog', () => {
     expect(screen.queryByText(/AI draft unavailable/u)).not.toBeInTheDocument()
     expect(screen.queryByText(/old review note/u)).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve onboarding' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve intake' }))
     expect(onApprove).toHaveBeenCalledTimes(1)
   })
 
@@ -186,12 +186,12 @@ describe('OnboardingReviewDialog', () => {
 
   it('says that sending emails the client and reopens their link', () => {
     renderDialog()
-    expect(screen.getByRole('status')).toHaveTextContent(/emails Jonathan and reopens their onboarding link/u)
+    expect(screen.getByRole('status')).toHaveTextContent(/emails Jonathan and reopens their intake link/u)
   })
 
   it('leaves approval out of reach while changes are being written', () => {
     renderDialog()
-    expect(screen.getByRole('button', { name: 'Approve onboarding' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve intake' })).toBeDisabled()
   })
 
   it('lists every file uploaded for a question', () => {
@@ -232,7 +232,7 @@ describe('OnboardingReviewDialog', () => {
         onUpdateAssignments={onUpdateAssignments}
       />,
     )
-    expect(screen.getByRole('group', { name: /Teammates who can view this onboarding/u })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /Teammates who can view this intake/u })).toBeInTheDocument()
     const save = screen.getByRole('button', { name: 'Save access' })
     expect(save).toBeDisabled()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Riley Teammate' }))

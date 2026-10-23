@@ -20,6 +20,8 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
+import { decodeHtmlEntities, dedupeShows } from '../_shared/showText.ts'
+import { explanationsNeedingRewrite, MAX_FIT_EXPLANATION_CHARS } from '../_shared/fitExplanations.ts'
 
 const METHODS = ['POST'] as const
 const PROSPECT_IMAGE_BUCKET = 'prospect-images'
@@ -31,6 +33,7 @@ const PROSPECT_IMAGE_TYPES = new Map([
 const MAX_PROSPECT_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_PROSPECT_IMAGE_MULTIPART_BYTES = MAX_PROSPECT_IMAGE_BYTES + (64 * 1024)
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+const RECENT_VIEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 const PROFILE_FIELDS = [
   'name',
   'email',
@@ -320,11 +323,11 @@ function prospectShortlistPodcast(value: unknown, index: number): ProspectShortl
   }
   return {
     podcast_id: id,
-    podcast_name: requireString(podcast.podcast_name, `podcasts[${index}].podcast_name`, { max: 500 }),
+    podcast_name: decodeHtmlEntities(requireString(podcast.podcast_name, `podcasts[${index}].podcast_name`, { max: 500 })),
     podcast_description: optionalString(podcast.podcast_description, `podcasts[${index}].podcast_description`, 50_000),
     podcast_image_url: optionalHttpUrl(podcast.podcast_image_url, `podcasts[${index}].podcast_image_url`),
     podcast_url: optionalHttpUrl(podcast.podcast_url, `podcasts[${index}].podcast_url`),
-    publisher_name: optionalString(podcast.publisher_name, `podcasts[${index}].publisher_name`, 500),
+    publisher_name: decodeHtmlEntities(optionalString(podcast.publisher_name, `podcasts[${index}].publisher_name`, 500)),
     itunes_rating: optionalNumber(podcast.itunes_rating, `podcasts[${index}].itunes_rating`, { min: 0, max: 5 }),
     episode_count: optionalNumber(podcast.episode_count, `podcasts[${index}].episode_count`, { min: 0, max: 10_000_000, integer: true }),
     audience_size: optionalNumber(podcast.audience_size, `podcasts[${index}].audience_size`, { min: 0, max: 2_000_000_000, integer: true }),
@@ -606,6 +609,67 @@ function parseRankedCandidates(value: unknown, candidateCount: number): RankedCa
   return ranked.sort((left, right) => right.score - left.score).slice(0, 12)
 }
 
+const RANKING_MODEL = 'claude-haiku-4-5-20251001'
+/** Rewrites allowed when explanations repeat each other or break the rules. */
+const EXPLANATION_REWRITE_ATTEMPTS = 2
+
+const FIT_EXPLANATION_RULES = `Rules for every "reason":
+- At most 2 sentences and under ${MAX_FIT_EXPLANATION_CHARS} characters.
+- Sentence 1 names something specific about the show: who listens, a recurring theme, or a topic it keeps returning to. Take it from the description, not from the categories.
+- Sentence 2 gives one angle the guest could bring to that show. Every show gets a different angle; never reuse an angle or its wording.
+- Never quote category labels as subjects (no "covers Clients", "covers Executive"). If the categories look like junk, ignore them.
+- Do not start with the show's name followed by "covers". Plain, specific language; no hype.`
+
+function categoryNamesOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((category) => (category && typeof category === 'object'
+      ? String((category as Record<string, unknown>).category_name || '').trim()
+      : ''))
+    .filter(Boolean)
+}
+
+/** The JSON array in a model reply, tolerating prose or fences around it. */
+function extractJsonArray(text: string): unknown {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start < 0 || end <= start) throw new Error('ranking response did not contain a JSON array')
+  return JSON.parse(text.slice(start, end + 1))
+}
+
+async function anthropicText(
+  apiKey: string,
+  prompt: string,
+  maxTokens: number,
+  timeoutMs = 55_000,
+): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: RANKING_MODEL,
+      max_tokens: maxTokens,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!response.ok) throw new Error(`ranking request failed with ${response.status}`)
+  const payload = await response.json()
+  if (payload?.stop_reason === 'max_tokens') throw new Error('ranking response was cut off at the token limit')
+  const text = payload?.content?.find((block: { type?: string }) => block.type === 'text')?.text
+  if (typeof text !== 'string') throw new Error('ranking response was empty')
+  return {
+    text,
+    inputTokens: Number(payload?.usage?.input_tokens) || 0,
+    outputTokens: Number(payload?.usage?.output_tokens) || 0,
+  }
+}
+
 async function rankCandidates(
   prospectText: string,
   candidates: PodcastCandidate[],
@@ -618,7 +682,7 @@ async function rankCandidates(
     name: candidate.podcast_name,
     publisher: candidate.publisher_name,
     description: candidate.podcast_description?.slice(0, 650) || '',
-    categories: candidate.podcast_categories,
+    categories: categoryNamesOf(candidate.podcast_categories),
     audience_size: candidate.audience_size,
     rating: candidate.itunes_rating,
     episodes: candidate.episode_count,
@@ -634,46 +698,120 @@ ${JSON.stringify(candidateText)}
 
 Judge topical alignment, audience overlap, guest format, show activity, and whether the prospect has a credible story for the room. Avoid generic business shows when a more specific fit exists. Return at least 8 candidates and no more than 12.
 
+${FIT_EXPLANATION_RULES}
+
 Return ONLY a JSON array:
 [
   {
     "index": 0,
     "score": 8.7,
-    "reason": "Two specific sentences explaining the fit.",
+    "reason": "Sentence about the show. Sentence with this guest's angle for it.",
     "pitch_angles": [
       {"title": "Specific episode angle", "description": "One-sentence angle grounded in the prospect profile."}
     ]
   }
 ]`
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4_096,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-    signal: AbortSignal.timeout(55_000),
-  })
-  if (!response.ok) throw new Error(`ranking request failed with ${response.status}`)
-  const payload = await response.json()
-  const text = payload?.content?.find((block: { type?: string }) => block.type === 'text')?.text
-  if (typeof text !== 'string') throw new Error('ranking response was empty')
-  const json = text.trim().replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, '')
-  const ranked = parseRankedCandidates(JSON.parse(json), candidates.length)
+  const reply = await anthropicText(apiKey, prompt, 8_192)
+  const ranked = parseRankedCandidates(extractJsonArray(reply.text), candidates.length)
   if (ranked.length < 5) throw new Error('ranking response did not contain enough qualified matches')
-  return {
-    ranked,
-    inputTokens: Number(payload?.usage?.input_tokens) || 0,
-    outputTokens: Number(payload?.usage?.output_tokens) || 0,
-  }
+  return { ranked, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens }
 }
 
+/**
+ * Rewrites the explanations that repeat each other or break the rules, until
+ * the set passes or the attempts run out. A set that still fails is saved
+ * anyway (a build is paid for and otherwise good) but logged as an error, so
+ * the prompt can be fixed rather than the problem discovered by a prospect.
+ */
+async function enforceDistinctExplanations(
+  prospectText: string,
+  candidates: PodcastCandidate[],
+  ranked: RankedCandidate[],
+  apiKey: string,
+  dashboardId: string,
+): Promise<{ inputTokens: number; outputTokens: number }> {
+  const usage = { inputTokens: 0, outputTokens: 0 }
+  const check = () => explanationsNeedingRewrite(ranked.map((rank) => ({
+    reason: rank.reason,
+    categoryNames: categoryNamesOf(candidates[rank.index].podcast_categories),
+  })))
+  let failing = check()
+  for (let attempt = 1; attempt <= EXPLANATION_REWRITE_ATTEMPTS && failing.indexes.length > 0; attempt += 1) {
+    const flagged = new Set(failing.indexes)
+    const keep = ranked.filter((_, position) => !flagged.has(position)).map((rank) => rank.reason)
+    const shows = failing.indexes.map((position) => {
+      const candidate = candidates[ranked[position].index]
+      return {
+        key: position,
+        name: candidate.podcast_name,
+        publisher: candidate.publisher_name,
+        description: candidate.podcast_description?.slice(0, 650) || '',
+        audience_size: candidate.audience_size,
+        current_reason: ranked[position].reason,
+      }
+    })
+    const prompt = `Rewrite the "why this show fits" explanation for each show below. The current ones are too long, quote category labels, or repeat each other.
+
+PROSPECT PROFILE
+${prospectText}
+
+SHOWS TO REWRITE
+${JSON.stringify(shows)}
+
+EXPLANATIONS ALREADY USED FOR OTHER SHOWS (do not reuse their angles or wording)
+${JSON.stringify(keep)}
+${failing.phrases.length > 0 ? `\nPHRASES THAT MUST NOT APPEAR\n${JSON.stringify(failing.phrases)}\n` : ''}
+${FIT_EXPLANATION_RULES}
+
+Return ONLY a JSON array: [{"key": 0, "reason": "..."}]`
+    try {
+      // Short: these run after a full ranking call, inside one request.
+      const reply = await anthropicText(apiKey, prompt, 2_048, 25_000)
+      usage.inputTokens += reply.inputTokens
+      usage.outputTokens += reply.outputTokens
+      const rewrites = extractJsonArray(reply.text)
+      if (!Array.isArray(rewrites)) throw new Error('rewrite response was not an array')
+      for (const raw of rewrites) {
+        if (!raw || typeof raw !== 'object') continue
+        const record = raw as Record<string, unknown>
+        const position = Number(record.key)
+        if (!flagged.has(position) || typeof record.reason !== 'string' || record.reason.trim().length < 20) continue
+        ranked[position] = { ...ranked[position], reason: record.reason.trim().slice(0, 2_000) }
+      }
+    } catch (error) {
+      console.warn(`[workspace-prospect-dashboards] fit explanation rewrite ${attempt} failed for dashboard ${dashboardId}: ${error instanceof Error ? error.message : 'unknown error'}`)
+    }
+    failing = check()
+  }
+  if (failing.indexes.length > 0) {
+    console.error(`[workspace-prospect-dashboards] fit explanations still fail the uniqueness and length checks after ${EXPLANATION_REWRITE_ATTEMPTS} rewrites for dashboard ${dashboardId}: positions ${failing.indexes.join(',')}; repeated phrases ${JSON.stringify(failing.phrases)}`)
+  }
+  return usage
+}
+
+/** The first sentence of a show description, when it is short enough to quote. */
+function showLead(description: string | null): string | null {
+  const text = (decodeHtmlEntities(description) || '')
+    .replace(/<[^>]+>/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+  if (!text) return null
+  const sentence = text.split(/(?<=[.!?])\s/u)[0].trim()
+  if (sentence.length < 25 || sentence.length > 130) return null
+  return /[.!?]$/u.test(sentence) ? sentence : `${sentence}.`
+}
+
+function compactNumber(value: number): string {
+  return new Intl.NumberFormat('en-US', { notation: value >= 1_000 ? 'compact' : 'standard' }).format(value)
+}
+
+/**
+ * Used only when the AI ranking is unavailable. It used to produce one
+ * sentence per show with the noun swapped ("X covers Clients, which overlaps
+ * with..."). Sentence one now comes from the show itself, sentence two rotates
+ * the guest's topics through differently worded angles, and categories are
+ * never quoted.
+ */
 function fallbackRankCandidates(
   prospect: ProspectDashboardRow,
   candidates: PodcastCandidate[],
@@ -705,31 +843,32 @@ function fallbackRankCandidates(
     ...(prospect.prospect_expertise || []),
     prospect.prospect_industry || '',
   ].map((value) => value.trim()).filter(Boolean)
-  const profileTerms = topTerms(prospect.prospect_bio || '', 12)
-  const primaryFocus = explicitFocus[0]
-    || profileTerms.slice(0, 2).map(humanize).join(' and ')
-    || 'practical leadership'
-  const secondaryFocus = explicitFocus[1]
-    || profileTerms.slice(2, 4).map(humanize).join(' and ')
-    || primaryFocus
-  const prospectTermSet = new Set(words(prospectEmbeddingText(prospect)))
+  const focuses = explicitFocus.length > 0
+    ? explicitFocus
+    : topTerms(prospect.prospect_bio || '', 6)
+  if (focuses.length === 0) focuses.push('what they have learned building their business')
+  const firstName = (typeof prospect.first_name === 'string' && prospect.first_name.trim())
+    || prospect.prospect_name.trim().split(/\s+/u)[0]
+  const companyContext = prospect.prospect_company
+    ? `their work at ${prospect.prospect_company}`
+    : 'their professional track record'
+  // Fixed wording stays under eight words, so no run of eight repeats.
+  const angles = [
+    (focus: string) => `${firstName} could bring a practical take on ${focus}.`,
+    (focus: string) => `Pitch ${firstName} on ${focus}, with real numbers.`,
+    (focus: string) => `A fit for ${firstName}'s view on ${focus}.`,
+    (focus: string) => `${firstName} can walk listeners through ${focus}.`,
+    (focus: string) => `Lead with ${focus} and ${firstName}'s own results.`,
+  ]
 
   return candidates.slice(0, 12).map((candidate, index) => {
-    const candidateTerms = topTerms([
-      candidate.podcast_name,
-      candidate.podcast_description || '',
-      JSON.stringify(candidate.podcast_categories || ''),
-    ].join(' '), 16)
-    const sharedTerms = candidateTerms
-      .filter((term) => prospectTermSet.has(term))
-      .slice(0, 2)
-      .map(humanize)
-    const podcastFocus = sharedTerms.join(' and ')
-      || candidateTerms.slice(0, 2).map(humanize).join(' and ')
-      || 'the show’s core subject matter'
-    const companyContext = prospect.prospect_company
-      ? `their work at ${prospect.prospect_company}`
-      : 'their professional track record'
+    const lead = showLead(candidate.podcast_description)
+      || (candidate.audience_size
+        ? `${candidate.podcast_name} reaches about ${compactNumber(candidate.audience_size)} listeners${candidate.episode_count ? ` across ${candidate.episode_count} episodes` : ''}.`
+        : `${candidate.podcast_name} regularly features guest interviews.`)
+    const focus = focuses[index % focuses.length]
+    const angle = angles[index % angles.length](focus)
+    const reason = `${lead} ${angle}`.length <= MAX_FIT_EXPLANATION_CHARS ? `${lead} ${angle}` : angle
     const score = Number(Math.max(
       6.8,
       Math.min(9.4, 7.4 + Math.min(1.4, candidate.similarity / 5) - index * 0.03),
@@ -737,13 +876,30 @@ function fallbackRankCandidates(
     return {
       index,
       score,
-      reason: `${candidate.podcast_name} covers ${podcastFocus}, which overlaps with ${prospect.prospect_name}'s experience in ${primaryFocus}. The conversation can stay practical by connecting ${secondaryFocus} to ${companyContext}.`,
+      reason,
       pitch_angles: [{
-        title: `${humanize(primaryFocus)}: What Actually Works`.slice(0, 160),
+        title: `${humanize(focus)}: What Actually Works`.slice(0, 160),
         description: `${prospect.prospect_name} can share specific lessons from ${companyContext}, including what changed their approach and what listeners can apply.`.slice(0, 800),
       }],
     }
   })
+}
+
+/**
+ * Same show, two feeds: drop the smaller one before ranking so both cannot
+ * reach the featured five. Logged so the catalog duplicate can be fixed.
+ */
+function cleanCandidates(candidates: PodcastCandidate[], dashboardId: string): PodcastCandidate[] {
+  const decoded = candidates.map((candidate) => ({
+    ...candidate,
+    podcast_name: decodeHtmlEntities(candidate.podcast_name),
+    publisher_name: decodeHtmlEntities(candidate.publisher_name),
+  }))
+  const { shows, duplicates } = dedupeShows(decoded)
+  for (const { kept, dropped } of duplicates) {
+    console.warn(`[workspace-prospect-dashboards] duplicate show feed dropped for dashboard ${dashboardId}: "${dropped.podcast_name}" ${dropped.podscan_id} (${dropped.audience_size ?? 0} listeners) kept ${kept.podscan_id} (${kept.audience_size ?? 0} listeners)`)
+  }
+  return shows
 }
 
 function buildFailureMessage(error: unknown): string {
@@ -898,6 +1054,7 @@ async function buildProspect(
         prospectText,
       )
     }
+    candidates = cleanCandidates(candidates, dashboardId)
     if (candidates.length < 5) throw new Error('not enough active guest podcasts matched this profile')
 
     await context.admin
@@ -913,10 +1070,28 @@ async function buildProspect(
       ranked = ranking.ranked
       buildUsage.anthropicInputTokens += ranking.inputTokens
       buildUsage.anthropicOutputTokens += ranking.outputTokens
-    } catch {
-      console.warn('Workspace prospect AI ranking was unavailable; using deterministic ranking')
+    } catch (error) {
+      // The reason used to be discarded, so a build that quietly fell back
+      // to template explanations looked the same in the logs as a good one.
+      console.warn(`[workspace-prospect-dashboards] AI ranking was unavailable for dashboard ${dashboardId}; using deterministic ranking: ${error instanceof Error ? error.message : 'unknown error'}`)
       rankingSource = 'semantic'
       ranked = fallbackRankCandidates(prospect, candidates)
+    }
+    if (rankingSource === 'ai_ranked') {
+      const rewriteUsage = await enforceDistinctExplanations(
+        prospectText,
+        candidates,
+        ranked,
+        (anthropicKey?.apiKey ?? Deno.env.get('ANTHROPIC_API_KEY')?.trim())!,
+        dashboardId,
+      )
+      buildUsage.anthropicInputTokens += rewriteUsage.inputTokens
+      buildUsage.anthropicOutputTokens += rewriteUsage.outputTokens
+    } else {
+      const failing = explanationsNeedingRewrite(ranked.map((rank) => ({ reason: rank.reason })))
+      if (failing.indexes.length > 0) {
+        console.error(`[workspace-prospect-dashboards] fallback fit explanations fail the uniqueness and length checks for dashboard ${dashboardId}: positions ${failing.indexes.join(',')}`)
+      }
     }
     if (ranked.length < 5) throw new Error('ranking response did not contain enough qualified matches')
     await logOperationCost(context.admin, {
@@ -1014,7 +1189,7 @@ async function buildProspect(
       metadata: {
         shortlist_count: selected.length,
         ranking_source: rankingSource,
-        model: rankingSource === 'ai_ranked' ? 'claude-haiku-4-5-20251001' : null,
+        model: rankingSource === 'ai_ranked' ? RANKING_MODEL : null,
       },
     })
     buildDelivered = true
@@ -1167,6 +1342,25 @@ serve(async (req) => {
           status: String(row.status ?? ''),
         })
       }
+      // Views in the last seven days, from the per-view log. A failure here
+      // (or a database without the log yet) leaves the counts unknown rather
+      // than failing the whole list; the all-time counter is still there.
+      const recentViews = new Map<string, number>()
+      let recentViewsKnown = false
+      if (ids.length > 0) {
+        const { data: viewCounts, error: viewCountError } = await context.admin.rpc('prospect_dashboard_view_counts_v1', {
+          p_dashboard_ids: ids,
+          p_since: new Date(Date.now() - RECENT_VIEW_WINDOW_MS).toISOString(),
+        })
+        if (viewCountError) {
+          console.warn('[workspace-prospect-dashboards] recent view counts were unavailable')
+        } else {
+          recentViewsKnown = true
+          for (const row of (viewCounts || []) as Array<{ prospect_dashboard_id: string; views: number | string }>) {
+            recentViews.set(String(row.prospect_dashboard_id), Number(row.views) || 0)
+          }
+        }
+      }
       // Which providers the workspace pays for itself: a build on the
       // workspace's own key is not charged, and the button says so.
       const aiKeys = await workspaceAiKeyStatus(context.admin, workspaceId)
@@ -1181,6 +1375,7 @@ serve(async (req) => {
           ...dashboard,
           readiness: readinessForRows(dashboard, shortlistByDashboard.get(dashboard.id) || []),
           linked_client: clientBySlug.get(dashboard.slug) ?? null,
+          views_last_7_days: recentViewsKnown ? recentViews.get(dashboard.id) ?? 0 : null,
         })),
       })
     }

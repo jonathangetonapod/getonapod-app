@@ -677,7 +677,7 @@ describe('PodcastFinder', () => {
     expect(screen.queryByRole('combobox', { name: 'Research for' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Back to Studio' })).toHaveAttribute(
       'href',
-      `/app/prospects?prospect=${prospectId}&view=all`,
+      `/app/prospects/${prospectId}?view=all`,
     )
     expect(mockedProspect).toHaveBeenCalledWith(myWorkspace.id, prospectId)
 

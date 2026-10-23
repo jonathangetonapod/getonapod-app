@@ -16,6 +16,7 @@ export const CLIENT_SCOPED_SEGMENTS = new Set([
   'podcast-database',
   'client-podcast-system',
   'master-inbox',
+  'onboarding',
 ])
 
 export function workingClientStorageKey(workspaceId: string): string {

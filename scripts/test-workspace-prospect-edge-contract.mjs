@@ -32,8 +32,23 @@ assert.match(studio, /if \(action === 'create'\)[\s\S]*?const dashboardId = requ
 assert.match(studio, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
 assert.match(studio, /if \(action === 'build'\)[\s\S]*?buildProspect\(context, workspaceId, dashboardId\)/u)
 assert.match(studio, /model: 'text-embedding-3-small'/u)
-assert.match(studio, /model: 'claude-haiku-4-5-20251001'/u)
+assert.match(studio, /const RANKING_MODEL = 'claude-haiku-4-5-20251001'/u)
 assert.match(studio, /function fallbackRankCandidates/u)
+// Fit explanations: the fallback no longer stamps one sentence per show, the
+// AI set is checked for repeated runs and rewritten, and a failure is logged.
+assert.doesNotMatch(studio, /which overlaps with \$\{prospect\.prospect_name\}/u, 'the fallback must not template one sentence across shows')
+assert.match(studio, /explanationsNeedingRewrite\(/u)
+assert.match(studio, /EXPLANATION_REWRITE_ATTEMPTS = 2/u)
+assert.match(studio, /console\.error\(`\[workspace-prospect-dashboards\] fit explanations still fail/u)
+// Views in the last seven days come from the per-view log, and a missing log
+// degrades to unknown instead of failing the list.
+const viewsMigration = readFileSync('supabase/migrations/20261023000200_prospect_dashboard_views.sql', 'utf8')
+assert.match(studio, /rpc\('prospect_dashboard_view_counts_v1'/u)
+assert.match(studio, /views_last_7_days: recentViewsKnown \? recentViews\.get\(dashboard\.id\) \?\? 0 : null/u)
+assert.match(viewsMigration, /INSERT INTO public\.prospect_dashboard_views \(prospect_dashboard_id\)\s+SELECT counted\.id FROM counted/u, 'a view is logged only when the counter moved')
+assert.match(viewsMigration, /REVOKE ALL ON TABLE public\.prospect_dashboard_views FROM PUBLIC, anon, authenticated/u)
+assert.match(studio, /candidates = cleanCandidates\(candidates, dashboardId\)/u, 'duplicate feeds must be dropped before ranking')
+assert.match(studio, /podcast_name: decodeHtmlEntities\(requireString\(podcast\.podcast_name/u, 'Finder additions must be stored decoded')
 assert.match(studio, /ranking_source: rankingSource/u)
 assert.match(studio, /\.from\('prospect_dashboard_podcasts'\)[\s\S]*?\.upsert\(selected, \{ onConflict: 'prospect_dashboard_id,podcast_id' \}\)/u)
 assert.match(studio, /\.in\('match_source', \['legacy', 'sheet', 'semantic', 'ai_ranked'\]\)/u)
@@ -85,8 +100,14 @@ for (const edge of [queryGeneration, compatibilityScoring]) {
   assert.match(edge, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
   assert.match(edge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 }
-assert.match(queryGeneration, /function fallbackQueries/u)
-assert.match(queryGeneration, /source: 'deterministic'/u)
+// A failed or unusable generation is an error the caller sees and is refunded,
+// never template filler: the old fallback shipped "and the" as a strategy.
+assert.doesNotMatch(queryGeneration, /function fallbackQueries|source: 'deterministic'/u)
+assert.match(queryGeneration, /'STRATEGY_PROVIDER_FAILED'/u)
+assert.match(queryGeneration, /filterQueries\(/u)
+assert.match(queryGeneration, /status: 'profile_too_thin'/u)
+// The thin-profile refusal comes before the charge.
+assert.match(queryGeneration, /assessProfile\([\s\S]*?profile_too_thin[\s\S]*?chargeCredits\(/u)
 assert.match(compatibilityScoring, /function deterministicScore/u)
 
 assert.match(migration, /ADD COLUMN IF NOT EXISTS workspace_id UUID/u)

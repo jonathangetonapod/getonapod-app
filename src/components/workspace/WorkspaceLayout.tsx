@@ -46,6 +46,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { CreditBalanceChip } from '@/components/workspace/CreditBalanceChip'
 import { JoinRequestsBadge } from '@/components/workspace/JoinRequestsBadge'
+import { describeWaitingJoinRequests, useWaitingJoinRequests } from '@/hooks/useWaitingJoinRequests'
 import { CreditBalanceWarning } from '@/components/workspace/CreditBalanceWarning'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -129,7 +130,7 @@ function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: strin
  * the address under it would not move it; the Pipeline filters on every read,
  * and the Podcast Database's add buttons name whichever client is chosen.
  */
-const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'podcast-database']
+const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'onboarding', 'podcast-database']
 
 // Radix Select needs a non-empty value for the "no client" choice.
 const ALL_CLIENTS = 'all-clients'
@@ -387,6 +388,20 @@ export const WorkspaceBrandLogo = ({
   </Avatar>
 )
 
+/** Below Tailwind's md, where the sidebar is a drawer. False wherever matchMedia is missing. */
+function useBelowMd(): boolean {
+  const [below, setBelow] = useState(false)
+  useEffect(() => {
+    const query = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null
+    if (!query || typeof query.addEventListener !== 'function') return
+    const update = () => setBelow(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return below
+}
+
 export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayoutProps) => {
   const { isPlatformAdmin, membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
@@ -509,6 +524,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    */
   const workspaceSubtitle = activeNavItem?.name
     || (workspaceDisplayName === workspaceName ? '' : workspaceName)
+  const headerTitle = activeNavItem?.name || workspaceDisplayName
 
   /*
    * The working client. One choice in the header that every client-scoped
@@ -523,6 +539,15 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
   const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
+  const waitingJoinRequests = useWaitingJoinRequests(isPlatformAdmin)
+  /*
+   * Below md a platform admin's header held the menu, the working client,
+   * credits, two admin buttons and the workspace switcher: about 590px of
+   * controls in a 358px bar, so the switcher ran off the screen. There the
+   * admin controls live at the top of the drawer instead. Rendered in one
+   * place or the other, never both, so there is one switcher to find.
+   */
+  const adminControlsInDrawer = useBelowMd() && isPlatformAdmin
   const clientsQuery = useQuery({
     queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
@@ -761,6 +786,30 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
             </Button>
           </div>
 
+          {adminControlsInDrawer && (
+            <div className="space-y-2 border-b border-border px-3 py-3">
+              <WorkspaceSwitcher />
+              <div className="grid gap-2">
+                <Button variant="outline" size="sm" className="justify-start" asChild>
+                  <Link to="/app/manage-workspaces" onClick={handleSidebarNavigate}>
+                    <Building2 className="h-4 w-4" />Workspaces
+                    {waitingJoinRequests > 0 && (
+                      <span className="ml-auto rounded-full bg-red-600 px-1.5 text-[11px] font-semibold leading-4 text-white">
+                        <span aria-hidden="true">{waitingJoinRequests > 9 ? '9+' : waitingJoinRequests}</span>
+                        <span className="sr-only">, {describeWaitingJoinRequests(waitingJoinRequests)}</span>
+                      </span>
+                    )}
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" className="justify-start" asChild>
+                  <Link to="/app/platform/billing" onClick={handleSidebarNavigate}>
+                    <ShieldCheck className="h-4 w-4" />Billing admin
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          )}
+
           <nav
             ref={navigationRef}
             aria-label="Workspace navigation"
@@ -884,19 +933,22 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <div className="hidden min-w-0 lg:block">
-            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
+          {/* The page, not the workspace again: the workspace is named in the
+              sidebar and, for a platform admin, in the switcher on the right,
+              so the header said "My Workspace" twice. */}
+          {/* A page name is short, so it keeps its width; only a long
+              workspace name, the fallback, truncates. */}
+          <div className={activeNavItem ? 'hidden shrink-0 lg:block' : 'hidden min-w-0 lg:block'}>
+            <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
           <div className="min-w-0 flex-1 lg:hidden">
-            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
+            <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
           {workingClientWorkspaceId && (
             <div className="flex min-w-0 shrink items-center gap-2 lg:ml-4">
               <span className="hidden whitespace-nowrap text-xs font-medium text-muted-foreground md:inline">Working on</span>
               <Select value={workingClientId ?? ALL_CLIENTS} onValueChange={handleWorkingClientChange}>
-                <SelectTrigger aria-label="Working client" className="h-9 w-40 sm:w-52">
+                <SelectTrigger aria-label="Working client" className="h-9 w-36 sm:w-52">
                   {/* The name is known once the list loads; before that the
                       trigger says so rather than sitting blank. */}
                   <SelectValue placeholder="All clients">
@@ -947,7 +999,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 billingHref="/app/settings/billing"
               />
             )}
-            {isPlatformAdmin && (
+            {isPlatformAdmin && !adminControlsInDrawer && (
               // Relative, so the waiting-count bubble can sit on the corner.
               <div className="relative">
                 <Tooltip>
@@ -958,7 +1010,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                       </Link>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent className="xl:hidden">Manage workspaces and join requests</TooltipContent>
+                  {/* Shown at every width: the label says where the button goes,
+                      but only the tooltip says what the number on it counts. */}
+                  <TooltipContent>
+                    {describeWaitingJoinRequests(waitingJoinRequests) ?? 'Manage workspaces and join requests'}
+                  </TooltipContent>
                 </Tooltip>
                 <JoinRequestsBadge enabled={isPlatformAdmin} />
               </div>
@@ -967,7 +1023,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 reachable through a link inside the platform owner's own
                 billing page — so the tools for every other workspace lived
                 behind one workspace's balance. */}
-            {isPlatformAdmin && (
+            {isPlatformAdmin && !adminControlsInDrawer && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="outline" size="sm" asChild>
@@ -976,11 +1032,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="xl:hidden">Billing administration: plans, credit grants and allowances</TooltipContent>
+                <TooltipContent>Billing administration: plans, credit grants and allowances</TooltipContent>
               </Tooltip>
             )}
-            {isPlatformAdmin && (
-              <div className="w-44 min-w-0 sm:w-60 lg:w-72">
+            {isPlatformAdmin && !adminControlsInDrawer && (
+              <div className="w-60 min-w-0 lg:w-72">
                 <WorkspaceSwitcher />
               </div>
             )}
