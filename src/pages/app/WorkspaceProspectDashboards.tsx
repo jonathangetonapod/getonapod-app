@@ -43,12 +43,15 @@ import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/contexts/AuthContext'
 import { openExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { creditCostSuffix } from '@/lib/creditCosts'
 import { cn } from '@/lib/utils'
+import { plural } from '@/lib/plural'
+import { decodeHtmlEntities, dedupeShows } from '@/lib/showText'
 import {
   archiveWorkspaceProspect,
   buildWorkspaceProspect,
@@ -501,8 +504,8 @@ function ProspectListCard({
         </p>
       )}
       <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{prospect.readiness.visible_count} matches</span>
-        <span>{prospect.view_count || 0} views</span>
+        <span>{plural(prospect.readiness.visible_count, 'match', 'matches')}</span>
+        <span>{plural(prospect.view_count, 'view')}</span>
         <span>{readinessPercent(prospect.readiness)}% ready</span>
       </div>
       <Progress value={readinessPercent(prospect.readiness)} className="mt-1.5 h-1" />
@@ -552,6 +555,32 @@ function compareShortlist(sort: ShortlistSort) {
   }
 }
 
+/** An icon-only button says what it does on hover and to a screen reader. */
+function IconAction({
+  label,
+  tooltip,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  tooltip: string
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={label} onClick={onClick}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ShortlistRow({
   podcast,
   disabled,
@@ -594,26 +623,37 @@ function ShortlistRow({
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {podcast.podcast_url && (
-                <Button type="button" size="icon" variant="ghost" aria-label={`Open ${podcast.podcast_name}`} onClick={() => openExternalUrl(podcast.podcast_url!)}>
+                <IconAction label={`Open ${podcast.podcast_name}`} tooltip="Open show" onClick={() => openExternalUrl(podcast.podcast_url!)}>
                   <ArrowUpRight className="h-4 w-4" />
-                </Button>
+                </IconAction>
               )}
               {podcast.visibility === 'visible' && (
-                <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={podcast.is_featured ? `Unfeature ${podcast.podcast_name}` : `Feature ${podcast.podcast_name}`} onClick={onFeature}>
+                <IconAction
+                  label={podcast.is_featured ? `Unfeature ${podcast.podcast_name}` : `Feature ${podcast.podcast_name}`}
+                  tooltip={podcast.is_featured ? 'Unfeature' : 'Feature'}
+                  disabled={disabled}
+                  onClick={onFeature}
+                >
                   <Star className={cn('h-4 w-4', podcast.is_featured && 'fill-amber-400 text-amber-500')} />
-                </Button>
+                </IconAction>
               )}
-              <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={podcast.visibility === 'visible' ? `Remove ${podcast.podcast_name}` : `Restore ${podcast.podcast_name}`} onClick={onVisibility}>
+              <IconAction
+                label={podcast.visibility === 'visible' ? `Remove ${podcast.podcast_name} from shortlist` : `Restore ${podcast.podcast_name} to shortlist`}
+                tooltip={podcast.visibility === 'visible' ? 'Remove from shortlist' : 'Restore to shortlist'}
+                disabled={disabled}
+                onClick={onVisibility}
+              >
                 {podcast.visibility === 'visible' ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
+              </IconAction>
             </div>
           </div>
           {description && <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">{description}</p>}
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>{formatNumber(podcast.audience_size)} listeners</span>
-            <span>{podcast.episode_count || '—'} episodes</span>
+            <span>{formatNumber(podcast.audience_size)} {podcast.audience_size === 1 ? 'listener' : 'listeners'}</span>
+            <span>{podcast.episode_count ? plural(podcast.episode_count, 'episode') : '— episodes'}</span>
             {podcast.itunes_rating && <span>{Number(podcast.itunes_rating).toFixed(1)} rating</span>}
-            <span className="capitalize">{podcast.match_source.replace('_', ' ')}</span>
+            {/* How a match was made is for debugging, not for operators. */}
+            {import.meta.env.MODE === 'development' && <span className="capitalize">{podcast.match_source.replace('_', ' ')}</span>}
           </div>
         </div>
       </div>
@@ -645,7 +685,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const [shortlistSearch, setShortlistSearch] = useState('')
   const [shortlistCategory, setShortlistCategory] = useState('all')
   const [shortlistSort, setShortlistSort] = useState<ShortlistSort>('curated')
-  const [shortlistUnanalyzedOnly, setShortlistUnanalyzedOnly] = useState(false)
   const [shortlistLimit, setShortlistLimit] = useState(SHORTLIST_PAGE_SIZE)
   const [shortlistView, setShortlistView] = useState<'featured' | 'all' | 'removed' | 'new'>(requestedShortlistView)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
@@ -689,12 +728,11 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   useEffect(() => {
     setShortlistSearch('')
     setShortlistCategory('all')
-    setShortlistUnanalyzedOnly(false)
   }, [selectedId])
 
   useEffect(() => {
     setShortlistLimit(SHORTLIST_PAGE_SIZE)
-  }, [selectedId, shortlistView, shortlistSearch, shortlistCategory, shortlistSort, shortlistUnanalyzedOnly])
+  }, [selectedId, shortlistView, shortlistSearch, shortlistCategory, shortlistSort])
 
 
   const detailQueryKey = ['workspace-prospect', user?.id || 'unknown', workspaceId, selectedId] as const
@@ -940,8 +978,22 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     }
   }
 
-  const visiblePodcasts = detail?.podcasts.filter((podcast) => podcast.visibility === 'visible') || []
-  const removedPodcasts = detail?.podcasts.filter((podcast) => podcast.visibility === 'archived') || []
+  /*
+   * Rows stored before names were decoded on the way in still carry entities.
+   * The same show under two feeds is shown once, as the larger feed, so it
+   * cannot take two of the featured five; the build drops these too, so one
+   * here came from an older build or the Finder.
+   */
+  const shortlist = useMemo(() => (detail?.podcasts || []).map((podcast) => ({
+    ...podcast,
+    podcast_name: decodeHtmlEntities(podcast.podcast_name),
+    publisher_name: decodeHtmlEntities(podcast.publisher_name),
+  })), [detail?.podcasts])
+  const visiblePodcasts = useMemo(
+    () => dedupeShows(shortlist.filter((podcast) => podcast.visibility === 'visible')),
+    [shortlist],
+  )
+  const removedPodcasts = shortlist.filter((podcast) => podcast.visibility === 'archived')
   const featuredPodcasts = visiblePodcasts.filter((podcast) => podcast.is_featured)
   /*
    * Additions from the Finder land hidden so a prospect never sees an
@@ -958,7 +1010,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     if (shortlistView === 'new' && pendingAdditions.length === 0) setShortlistView('all')
     if (shortlistView === 'removed' && removedByHand.length === 0) setShortlistView('all')
   }, [pendingAdditions.length, removedByHand.length, shortlistView])
-  const allPodcasts = detail?.podcasts || []
+  const allPodcasts = shortlist
   const browseBase = shortlistView === 'new'
     ? pendingAdditions
     : shortlistView === 'removed'
@@ -970,7 +1022,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
           : visiblePodcasts.slice(0, 5)
 
   const shortlistQuery = shortlistSearch.trim().toLowerCase()
-  const shortlistFiltered = shortlistQuery !== '' || shortlistCategory !== 'all' || shortlistUnanalyzedOnly
+  const shortlistFiltered = shortlistQuery !== '' || shortlistCategory !== 'all'
 
   /*
    * Searching looks through the whole shortlist, not the open tab. The tabs are
@@ -994,18 +1046,16 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const filteredPodcasts = useMemo(() => {
     const matches = shortlistBase.filter((podcast) => {
       if (shortlistCategory !== 'all' && !podcastCategoryNames(podcast).includes(shortlistCategory)) return false
-      if (shortlistUnanalyzedOnly && podcast.ai_analyzed_at) return false
       if (!shortlistQuery) return true
       return shortlistHaystack(podcast).includes(shortlistQuery)
     })
     return shortlistSort === 'curated' ? matches : [...matches].sort(compareShortlist(shortlistSort))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail?.podcasts, shortlistView, shortlistCategory, shortlistQuery, shortlistSort, shortlistUnanalyzedOnly])
+  }, [detail?.podcasts, shortlistView, shortlistCategory, shortlistQuery, shortlistSort])
   const displayedPodcasts = filteredPodcasts.slice(0, shortlistLimit)
   const clearShortlistFilters = () => {
     setShortlistSearch('')
     setShortlistCategory('all')
-    setShortlistUnanalyzedOnly(false)
   }
 
   /*
@@ -1117,9 +1167,9 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
           <>
             <Card>
               <CardContent className="flex flex-wrap items-center gap-x-7 gap-y-3 px-4 py-3">
-                <div className="flex items-center gap-2"><Users className="h-4 w-4 text-blue-700" /><span className="font-semibold">{prospects.length}</span><span className="text-sm text-muted-foreground">prospects</span></div>
+                <div className="flex items-center gap-2"><Users className="h-4 w-4 text-blue-700" /><span className="font-semibold">{prospects.length}</span><span className="text-sm text-muted-foreground">{prospects.length === 1 ? 'prospect' : 'prospects'}</span></div>
                 <div className="flex items-center gap-2"><Globe2 className="h-4 w-4 text-emerald-700" /><span className="font-semibold">{publishedCount}</span><span className="text-sm text-muted-foreground">live</span></div>
-                <div className="flex items-center gap-2"><Eye className="h-4 w-4 text-violet-700" /><span className="font-semibold">{totalViews}</span><span className="text-sm text-muted-foreground">views</span></div>
+                <div className="flex items-center gap-2"><Eye className="h-4 w-4 text-violet-700" /><span className="font-semibold">{totalViews}</span><span className="text-sm text-muted-foreground">{totalViews === 1 ? 'view' : 'views'}</span></div>
                 {reviewCount > 0 && <Badge variant="secondary" className="ml-auto">{reviewCount} to review</Badge>}
               </CardContent>
             </Card>
@@ -1305,8 +1355,8 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           <Progress value={readinessPercent(selected.readiness)} className="my-2.5 h-1.5" />
                           <div className="space-y-1.5">
                             <ReadinessItem complete={selected.readiness.profile_ready}>Focused profile (80+ characters)</ReadinessItem>
-                            <ReadinessItem complete={selected.readiness.visible_count >= 5}>{selected.readiness.visible_count}/5 visible matches</ReadinessItem>
-                            <ReadinessItem complete={selected.readiness.analyzed_count >= 5}>{selected.readiness.analyzed_count}/5 explained matches</ReadinessItem>
+                            <ReadinessItem complete={selected.readiness.visible_count >= 5}>{plural(selected.readiness.visible_count, 'visible match', 'visible matches')} (min 5)</ReadinessItem>
+                            <ReadinessItem complete={selected.readiness.analyzed_count >= 5}>{plural(selected.readiness.analyzed_count, 'explained match', 'explained matches')} (min 5)</ReadinessItem>
                             <ReadinessItem complete={selected.readiness.cta_ready}>Next step configured</ReadinessItem>
                           </div>
                         </div>
@@ -1412,14 +1462,6 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                               Showing {displayedPodcasts.length} of {filteredPodcasts.length}
                               {shortlistFiltered && ` across the whole shortlist (${allPodcasts.length} shows, removed included)`}
                             </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={cn('h-6 px-2 text-xs', shortlistUnanalyzedOnly && 'bg-muted text-foreground')}
-                              onClick={() => setShortlistUnanalyzedOnly((current) => !current)}
-                            >
-                              Not analyzed yet
-                            </Button>
                             {shortlistFiltered && (
                               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={clearShortlistFilters}>
                                 Clear filters
@@ -1525,7 +1567,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
 
       <Dialog open={rotateLinkDialogOpen} onOpenChange={(open) => { if (!open && !rotateLinkMutation.isPending) setRotateLinkDialogOpen(false) }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Regenerate the private link for {selected?.prospect_name}?</DialogTitle><DialogDescription>The current link stops working immediately, including in any email already sent. Share the new link with anyone who should still see this dashboard. The shortlist and feedback are unchanged.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Regenerate private link</DialogTitle><DialogDescription>This replaces the current private link. Anyone with the old link will lose access. Continue?</DialogDescription></DialogHeader>
           <DialogFooter><Button variant="outline" onClick={() => setRotateLinkDialogOpen(false)}>Cancel</Button><Button disabled={rotateLinkMutation.isPending} onClick={() => rotateLinkMutation.mutate()}>{rotateLinkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Regenerate link</Button></DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   fitAnalysisFor,
   formatListeners,
@@ -50,6 +50,19 @@ describe('uniqueReviewPodcasts', () => {
   it('keeps the first occurrence of a duplicated show', () => {
     const first = podcast('a', { podcast_name: 'First' })
     expect(uniqueReviewPodcasts([first, podcast('b'), podcast('a', { podcast_name: 'Second' })])).toEqual([first, podcast('b')])
+  })
+
+  it('keeps one feed of a show listed twice, the one with more listeners', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const small = podcast('a', { podcast_name: 'You Turn Podcast w/ Ashley Stahl', publisher_name: 'Ashley Stahl', audience_size: 100 })
+    const large = podcast('b', { podcast_name: 'You Turn Podcast w/ Ashley Stahl', publisher_name: 'Ashley Stahl', audience_size: 600 })
+    expect(uniqueReviewPodcasts([small, podcast('c'), large]).map((item) => item.podcast_id)).toEqual(['b', 'c'])
+  })
+
+  it('decodes HTML entities in show and publisher names', () => {
+    const [decoded] = uniqueReviewPodcasts([podcast('a', { podcast_name: 'Self-Awareness &amp; Mindset', publisher_name: 'Tom &#39;n Jerry' })])
+    expect(decoded.podcast_name).toBe('Self-Awareness & Mindset')
+    expect(decoded.publisher_name).toBe("Tom 'n Jerry")
   })
 })
 

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceProspectDashboards from '@/pages/app/WorkspaceProspectDashboards'
 import { useAuth } from '@/contexts/AuthContext'
 import {
+  archiveWorkspaceProspect,
   createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
@@ -182,7 +183,7 @@ describe('WorkspaceProspectDashboards finder link', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Regenerate private link/i }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/current link stops working immediately/i)).toBeInTheDocument()
+    expect(within(dialog).getByText('This replaces the current private link. Anyone with the old link will lose access. Continue?')).toBeInTheDocument()
     expect(rotateWorkspaceProspectLink).not.toHaveBeenCalled()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Regenerate link' }))
@@ -497,5 +498,100 @@ describe('WorkspaceProspectDashboards shortlist search and filters', () => {
 
     const headings = screen.getAllByRole('heading', { level: 4 })
     expect(within(headings[0]).getByText('Private Practice Owners Club')).toBeInTheDocument()
+  })
+})
+
+describe('WorkspaceProspectDashboards shortlist display', () => {
+  const featured = (index: number, overrides: Partial<ProspectShortlistPodcast> = {}) => shortlistPodcast(index, {
+    is_featured: true,
+    featured_order: index,
+    podcast_url: `https://example.com/${index}`,
+    ...overrides,
+  })
+
+  function renderWith(podcasts: ProspectShortlistPodcast[], readiness: Partial<WorkspaceProspect['readiness']> = {}, extra: Partial<WorkspaceProspect> = {}) {
+    const dashboard = { ...prospect, ...extra, readiness: { ...prospect.readiness, ...readiness } }
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'owner@example.com' },
+      workspace: { id: workspaceId, name: 'Tenant Workspace', slug: 'tenant-workspace', status: 'active', is_default: false },
+      membership: { role: 'owner' },
+      signOut: vi.fn(),
+    } as never)
+    mockedList.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboards: [dashboard] })
+    mockedDetail.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboard, podcasts })
+    renderPage()
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('decodes HTML entities in show titles and publishers', async () => {
+    renderWith([featured(1, { podcast_name: 'Self-Awareness &amp; Mindset', publisher_name: 'Tom &amp; Jerry' })])
+
+    expect(await screen.findByText('Self-Awareness & Mindset')).toBeInTheDocument()
+    expect(screen.getByText('Tom & Jerry')).toBeInTheDocument()
+    expect(screen.queryByText(/&amp;/u)).not.toBeInTheDocument()
+  })
+
+  it('shows a show listed under two feeds once, as the larger feed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    renderWith([
+      featured(1, { podcast_name: 'You Turn Podcast w/ Ashley Stahl', publisher_name: 'Ashley Stahl', audience_size: 100 }),
+      featured(2),
+      featured(3, { podcast_name: 'You Turn Podcast w/ Ashley Stahl', publisher_name: 'Ashley Stahl', audience_size: 600 }),
+    ])
+
+    expect(await screen.findAllByText('You Turn Podcast w/ Ashley Stahl')).toHaveLength(1)
+    expect(screen.getByText('600 listeners')).toBeInTheDocument()
+    expect(screen.queryByText('100 listeners')).not.toBeInTheDocument()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('labels the icon buttons and keeps internal match labels off the card', async () => {
+    renderWith([featured(1, { match_source: 'semantic' })])
+
+    expect(await screen.findByRole('button', { name: 'Open Operations Show 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unfeature Operations Show 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Operations Show 1 from shortlist' })).toBeInTheDocument()
+    expect(screen.queryByText(/^semantic$/iu)).not.toBeInTheDocument()
+  })
+
+  it('pluralizes counts on the shortlist and the prospect list', async () => {
+    renderWith(
+      [featured(1, { audience_size: 1, episode_count: 1 })],
+      { visible_count: 1 },
+      { view_count: 1 },
+    )
+
+    expect(await screen.findByText('1 listener')).toBeInTheDocument()
+    expect(screen.getByText('1 episode')).toBeInTheDocument()
+    expect(screen.getByText('1 match')).toBeInTheDocument()
+    expect(screen.getByText('1 view')).toBeInTheDocument()
+  })
+
+  it('states readiness minimums instead of a fraction', async () => {
+    renderWith([featured(1)], { visible_count: 12, analyzed_count: 1 })
+
+    expect(await screen.findByText('12 visible matches (min 5)')).toBeInTheDocument()
+    expect(screen.getByText('1 explained match (min 5)')).toBeInTheDocument()
+    expect(screen.queryByText(/12\/5/u)).not.toBeInTheDocument()
+  })
+
+  it('no longer offers the internal "Not analyzed yet" filter', async () => {
+    renderWith(Array.from({ length: 10 }, (_, index) => shortlistPodcast(index, { ai_analyzed_at: null })))
+
+    expect(await screen.findByLabelText(/search this shortlist/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /not analyzed yet/i })).not.toBeInTheDocument()
+  })
+
+  it('confirms before archiving a prospect', async () => {
+    renderWith([featured(1)])
+
+    fireEvent.click(await screen.findByRole('button', { name: /archive prospect/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: /archive dashboard/i })).toBeInTheDocument()
+    expect(archiveWorkspaceProspect).not.toHaveBeenCalled()
   })
 })
