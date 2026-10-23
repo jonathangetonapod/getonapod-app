@@ -106,3 +106,7 @@ assert.match(edge, /from\('outreach_messages'\)[\s\S]{0,200}\.eq\('status', 'sen
 assert.match(edge, /\.is\('podcast_id', null\)/u)
 assert.match(edge, /last_activity_at: clientActivity\.get\(client\.id\) \|\| null/u)
 assert.doesNotMatch(edge, /last_activity_at: latestTimestamp\(\[\s*client\.updated_at/u)
+// A placement logged from the shortlist joins its own row before any id or
+// name match, so an unresolved show is not listed twice.
+assert.match(edge, /select\('id,client_id,podcast_id,shortlist_podcast_id,podcast_name/u)
+assert.match(edge, /const booking = linkedBooking\s*\|\| bookingById\.get/u)

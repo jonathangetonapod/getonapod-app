@@ -168,6 +168,7 @@ interface BookingRow {
   id: string
   client_id: string
   podcast_id: string | null
+  shortlist_podcast_id: string | null
   podcast_name: string
   podcast_url: string | null
   host_name: string | null
@@ -631,7 +632,7 @@ serve(async (req) => {
       loadForClients<BookingRow>('CLIENT_PODCAST_BOOKINGS_UNAVAILABLE', clientIds, (ids, from, to) => (
         context.admin
           .from('bookings')
-          .select('id,client_id,podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
+          .select('id,client_id,podcast_id,shortlist_podcast_id,podcast_name,podcast_url,host_name,scheduled_date,recording_date,publish_date,status,episode_url,prep_sent,notes,created_at,updated_at')
           .in('client_id', ids)
           .order('updated_at', { ascending: false })
           .range(from, to) as unknown as PromiseLike<PageResult<BookingRow>>
@@ -757,9 +758,19 @@ serve(async (req) => {
         onboardingByClientId.set(row.client_id, row)
       }
     }
+    // A placement logged from the shortlist names the row it came from, which
+    // beats matching on the podcast id or name: a show the catalog never
+    // resolved would otherwise appear twice, once per side of a failed match.
+    const shortlistIds = new Set(shortlist.map((row) => row.id))
+    const bookingByShortlistId = new Map<string, BookingRow>()
     const bookingById = new Map<string, BookingRow>()
     const bookingByName = new Map<string, BookingRow>()
     bookings.forEach((booking) => {
+      if (booking.shortlist_podcast_id && shortlistIds.has(booking.shortlist_podcast_id)) {
+        // Claimed by its own row; never offered to another by id or name.
+        if (!bookingByShortlistId.has(booking.shortlist_podcast_id)) bookingByShortlistId.set(booking.shortlist_podcast_id, booking)
+        return
+      }
       if (booking.podcast_id) {
         const key = recordKey(booking.client_id, booking.podcast_id)
         if (!bookingById.has(key)) bookingById.set(key, booking)
@@ -802,12 +813,14 @@ serve(async (req) => {
         ? analysisByKey.get(recordKey(row.client_id, podcast.id)) || null
         : null
       const directContact = podcast ? directContactByPodcastId.get(podcast.id) || null : null
-      const booking = bookingById.get(recordKey(row.client_id, row.podcast_id))
+      const linkedBooking = bookingByShortlistId.get(row.id) || null
+      const booking = linkedBooking
+        || bookingById.get(recordKey(row.client_id, row.podcast_id))
         || (podcast ? bookingById.get(recordKey(row.client_id, podcast.id)) : null)
         || bookingByName.get(recordKey(row.client_id, normalizedName(podcast?.podcast_name || row.podcast_name)))
         || null
       const bookingMatch = booking
-        ? booking.podcast_id && [row.podcast_id.toLowerCase(), podcast?.id.toLowerCase()].filter(Boolean).includes(booking.podcast_id.toLowerCase())
+        ? linkedBooking || booking.podcast_id && [row.podcast_id.toLowerCase(), podcast?.id.toLowerCase()].filter(Boolean).includes(booking.podcast_id.toLowerCase())
           ? 'podcast_id'
           : 'podcast_name'
         : null
