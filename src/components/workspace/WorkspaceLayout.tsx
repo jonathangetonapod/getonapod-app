@@ -128,7 +128,7 @@ function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: strin
  * other way round. Podcast Finder reads ?client= once on arrival, so changing
  * the address under it would not move it; the Pipeline filters on every read.
  */
-const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system']
+const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'onboarding']
 
 // Radix Select needs a non-empty value for the "no client" choice.
 const ALL_CLIENTS = 'all-clients'

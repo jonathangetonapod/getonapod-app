@@ -304,7 +304,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Relationships' })).toHaveAttribute('href', '/app/relationships')
-    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', '/app/onboarding')
+    expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
 
     chooseWorkingClient('All clients')

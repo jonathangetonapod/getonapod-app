@@ -349,6 +349,44 @@ export function validateOnboardingAnswers(
   return result
 }
 
+/*
+ * The operator already typed the contact's name, email and company into the
+ * invitation; asking the client for them again is friction on the first
+ * screen. These seed the empty draft so the client only confirms them. Text
+ * questions only, and only when the value is a usable single line.
+ */
+export function prefillOnboardingAnswers(
+  definition: OnboardingDefinition,
+  source: {
+    recipientName: string
+    recipientEmail: string
+    clientName: string | null
+    website: string | null
+    linkedinUrl: string | null
+  },
+): Record<string, string> {
+  const byMapping: Partial<Record<OnboardingMapping, string | null>> = {
+    'client.name': source.recipientName,
+    'client.contact_person': source.recipientName,
+    'client.email': source.recipientEmail,
+    'client.website': source.website,
+    'client.linkedin_url': source.linkedinUrl,
+  }
+  const result: Record<string, string> = {}
+  for (const question of definition.sections.flatMap((section) => section.questions)) {
+    if (!['short_text', 'email', 'url'].includes(question.type)) continue
+    // The starter and default forms ask for the company without a mapping.
+    const raw = question.mapping
+      ? byMapping[question.mapping]
+      : question.id === 'company' ? source.clientName : null
+    const value = typeof raw === 'string' ? raw.trim() : ''
+    if (!value || value.length > (question.type === 'url' ? 2_048 : 500) || /[\r\n]/u.test(value)) continue
+    if (question.type === 'url' && !/^https?:\/\//iu.test(value)) continue
+    result[question.id] = value
+  }
+  return result
+}
+
 function profileList(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 30) {
     throw new HttpError(400, 'INVALID_FIELD', `${field} must be a list of between 1 and 30 items`)
@@ -495,6 +533,8 @@ export async function sendOnboardingEmail(input: {
   /** The welcome title and message chosen for this client's link. */
   experienceTitle?: string | null
   experienceBody?: string | null
+  /** A resend of an invitation the client already has: say so in the subject. */
+  reminder?: boolean
 }): Promise<{
   status: 'sent' | 'failed' | 'skipped'
   providerMessageId: string | null
@@ -524,11 +564,12 @@ export async function sendOnboardingEmail(input: {
   // form is about something else. The fixed text remains the fallback.
   const customTitle = changesRequested ? '' : (input.experienceTitle ?? '').replace(/[\r\n]+/gu, ' ').trim().slice(0, 300)
   const customBody = changesRequested ? '' : (input.experienceBody ?? '').trim().slice(0, 3000)
-  const subject = changesRequested
+  const baseSubject = changesRequested
     ? `${input.workspaceName} requested onboarding updates`
     : customTitle
       ? `${customTitle} | ${input.workspaceName}`
       : `${input.workspaceName} invited you to complete onboarding`
+  const subject = input.reminder && !changesRequested ? `Reminder: ${baseSubject}` : baseSubject
   const heading = changesRequested
     ? 'A few onboarding updates are needed'
     : customTitle ? escapeHtml(customTitle) : 'Let’s build your podcast profile'

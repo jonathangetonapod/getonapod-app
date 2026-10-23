@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Archive, ClipboardCheck, Clock3, Copy, ExternalLink, FilePlus2, ImagePlus, Link2, Loader2, LogOut, Mail, MailWarning, MoreHorizontal, Palette, Plus, RefreshCw, Search, Send, Share2, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Copy, ExternalLink, FilePlus2, Loader2, LogOut, MailWarning, Plus, RefreshCw, Search, Send, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
-import ClientOnboardingPreview from '@/components/onboarding/ClientOnboardingPreview'
+import IntakeTable, { IntakeFilterStrip, type IntakeFilter, type IntakeRowAction } from '@/components/onboarding/IntakeTable'
+import NewIntakeDialog, { type CreatedIntake } from '@/components/onboarding/NewIntakeDialog'
 import OnboardingReviewDialog, { type OnboardingReviewComment } from '@/components/onboarding/OnboardingReviewDialog'
 import OnboardingTemplateBuilder, { type OnboardingTemplateDraft } from '@/components/onboarding/OnboardingTemplateBuilder'
 import { starterOnboardingTemplate } from '@/components/onboarding/starterTemplate'
@@ -13,19 +14,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/contexts/AuthContext'
-import { DEFAULT_ONBOARDING_ACCENT, renderOnboardingBrandText } from '@/lib/onboardingBrand'
-import { onboardingActivityStage, onboardingStatusLabel, type OnboardingActivityStage } from '@/lib/onboardingActivity'
-import { EXPIRING_SOON_DAYS, onboardingChaseState } from '@/lib/onboardingChase'
+import { CHASE_AFTER_DAYS, intakeStatus, type IntakeStatus } from '@/lib/intakeStatus'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
@@ -47,7 +43,6 @@ import {
   setDefaultOnboardingTemplate,
   startWorkspaceOnboarding,
   updateOnboardingAssignments,
-  type OnboardingInstanceDetail,
   type OnboardingInstanceSummary,
   type OnboardingInvitationResult,
   type OnboardingTemplate,
@@ -57,181 +52,38 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+/** The empty state lists this many clients before asking for a search. */
+const EMPTY_STATE_CLIENT_LIMIT = 5
+const REPLY_TO_BANNER_KEY = 'intake-reply-to-banner-dismissed-v1'
+
 interface Props {
   platformWorkspaceId?: string
 }
 
-interface StartForm {
-  template_id: string
-  client_choice: string
-  client_name: string
-  contact_person: string
-  recipient_name: string
-  recipient_email: string
-  expires_in_days: string
-  assigned_membership_ids: string[]
-  send_email: boolean
-  experience_title: string
-  experience_body: string
-  experience_completion_message: string
-  accent_color: string
-  logo_file: File | null
-}
-
 type ConfirmationAction = 'revoke' | 'archive' | 'purge'
 type TemplateConfirmationAction = 'default' | 'archive'
-
-const blankStartForm: StartForm = {
-  template_id: '',
-  client_choice: 'new',
-  client_name: '',
-  contact_person: '',
-  recipient_name: '',
-  recipient_email: '',
-  expires_in_days: '14',
-  assigned_membership_ids: [],
-  send_email: true,
-  experience_title: '',
-  experience_body: '',
-  experience_completion_message: '',
-  accent_color: DEFAULT_ONBOARDING_ACCENT,
-  logo_file: null,
-}
-
-// Named so a screen reader announces a colour rather than a hex code.
-const ACCENT_PRESETS = [
-  { color: '#665CF2', name: 'Violet' },
-  { color: '#2563EB', name: 'Blue' },
-  { color: '#0F766E', name: 'Teal' },
-  { color: '#C2410C', name: 'Orange' },
-  { color: '#BE185D', name: 'Pink' },
-  { color: '#334155', name: 'Slate' },
-] as const
+type LinkAction = 'copy' | 'preview' | 'remind' | 'rotate' | 'extend'
 
 const linkIsLive = (instance: OnboardingInstanceSummary) => instance.status !== 'expired'
   && new Date(instance.capability_expires_at).valueOf() > Date.now()
-
-/*
- * The agency's own accent from Settings when it has one. Every template
- * change used to reset this to the platform violet, so an agency that had
- * already chosen its colour had to pick it again for every client.
- */
-function experienceFromTemplate(template: OnboardingTemplate | undefined, workspaceName: string, agencyAccent: string | null) {
-  return {
-    experience_title: renderOnboardingBrandText(template?.definition.intro_title ?? 'Welcome', workspaceName),
-    experience_body: renderOnboardingBrandText(
-      template?.definition.intro_body ?? 'Please share a few details so we can prepare your profile.',
-      workspaceName,
-    ),
-    experience_completion_message: renderOnboardingBrandText(
-      template?.definition.completion_message ?? `Thank you. ${workspaceName || 'Our team'} will review your answers and follow up.`,
-      workspaceName,
-    ),
-    accent_color: agencyAccent ?? DEFAULT_ONBOARDING_ACCENT,
-  }
-}
-
-const statusStyles: Record<OnboardingInstanceSummary['status'], string> = {
-  invited: 'bg-blue-50 text-blue-700 border-blue-200',
-  in_progress: 'bg-blue-50 text-blue-700 border-blue-200',
-  submitted: 'bg-amber-50 text-amber-800 border-amber-200',
-  changes_requested: 'bg-blue-50 text-blue-700 border-blue-200',
-  approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  expired: 'bg-slate-50 text-slate-600 border-slate-200',
-  revoked: 'bg-slate-50 text-slate-600 border-slate-200',
-}
-
-const activityLabels: Record<OnboardingActivityStage, string> = {
-  not_viewed: 'Not viewed',
-  viewed: 'Viewed',
-  started: 'Started',
-  completed: 'Completed',
-}
-
-const activityStyles: Record<OnboardingActivityStage, string> = {
-  not_viewed: 'bg-slate-50 text-slate-600 border-slate-200',
-  viewed: 'bg-blue-50 text-blue-700 border-blue-200',
-  started: 'bg-violet-50 text-violet-700 border-violet-200',
-  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-}
-
-function activityDate(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function OnboardingActivity({ instance }: { instance: OnboardingInstanceSummary }) {
-  const stage = onboardingActivityStage(instance)
-  const events = [
-    ['Viewed', instance.viewed_at],
-    ['Started', instance.started_at],
-    ['Completed', instance.submitted_at],
-  ] as const
-  const recordedEvents = events.flatMap(([label, value]) => value ? [{ label, value }] : [])
-
-  return (
-    <div className="min-w-40 space-y-1.5">
-      <Badge variant="outline" className={activityStyles[stage]}>{activityLabels[stage]}</Badge>
-      <div className="space-y-0.5 text-xs text-muted-foreground">
-        {recordedEvents.length > 0 ? recordedEvents.map(({ label, value }) => (
-          <p key={label}><span className="font-medium text-foreground/75">{label}</span>{' '}<time dateTime={value}>{activityDate(value)}</time></p>
-        )) : instance.delivery && (instance.delivery.status === 'failed' || instance.delivery.status === 'skipped') ? (
-          <p className="font-medium text-red-700" title={instance.delivery.last_error ?? undefined}>
-            {instance.delivery.status === 'failed' ? 'Email failed' : 'Email not sent'}{' '}
-            <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time>
-          </p>
-        ) : instance.delivery?.status === 'sent' ? (
-          <p>Sent <time dateTime={instance.delivery.sent_at ?? instance.invited_at}>{activityDate(instance.delivery.sent_at ?? instance.invited_at)}</time></p>
-        ) : (
-          // No readable record of the send, or one still pending: "Sent"
-          // would be a guess.
-          <p>Delivery unknown <time dateTime={instance.invited_at}>{activityDate(instance.invited_at)}</time></p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-type OnboardingTableFilter = 'all' | 'chasing' | 'review' | 'active' | 'approved' | 'expired' | 'archived'
-
-function OnboardingAge({ instance }: { instance: OnboardingInstanceSummary }) {
-  const state = onboardingChaseState(instance, Date.now())
-  if (state.ageDays === null) return null
-  const settled = ['approved', 'expired', 'revoked'].includes(instance.status) || Boolean(instance.archived_at)
-  return (
-    <div className="min-w-32 space-y-1 text-xs text-muted-foreground">
-      <p>{(() => {
-        // "Sent" is a lie when the delivery record says the email never left.
-        const verb = instance.viewed_at || instance.delivery?.status === 'sent' ? 'Sent' : 'Created'
-        return state.ageDays === 0 ? `${verb} today` : `${verb} ${state.ageDays} day${state.ageDays === 1 ? '' : 's'} ago`
-      })()}</p>
-      {!settled && state.expiresInDays !== null && (
-        <p className={state.expiresInDays <= EXPIRING_SOON_DAYS ? 'font-medium text-amber-700' : undefined}>
-          {state.expiresInDays < 0
-            ? 'Link expired'
-            : state.expiresInDays === 0
-              ? 'Link expires today'
-              : `Link expires in ${state.expiresInDays} day${state.expiresInDays === 1 ? '' : 's'}`}
-        </p>
-      )}
-      {state.reason && (
-        <p className="flex items-start gap-1 font-medium text-amber-800">
-          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{state.reason}
-        </p>
-      )}
-    </div>
-  )
-}
 
 function nextCopyName(template: OnboardingTemplate, templates: OnboardingTemplate[]): string {
   const names = new Set(templates.map((candidate) => candidate.name.toLowerCase()))
   let index = 1
   while (names.has(`${template.name} copy ${index}`.toLowerCase())) index += 1
   return `${template.name} Copy ${index}`
+}
+
+function staffPreviewUrl(link: string): string {
+  return `${link}${link.includes('?') ? '&' : '?'}preview=staff`
+}
+
+function readDismissed(workspaceId: string): boolean {
+  try {
+    return window.localStorage.getItem(`${REPLY_TO_BANNER_KEY}:${workspaceId}`) === '1'
+  } catch {
+    return false
+  }
 }
 
 const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
@@ -244,13 +96,11 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const validWorkspaceId = UUID_PATTERN.test(workspaceId)
   const queryKey = [isPlatformWorkspace ? 'platform' : 'tenant', user?.id || 'unknown', 'workspace', workspaceId, 'onboarding'] as const
   const [startOpen, setStartOpen] = useState(false)
-  const [startForm, setStartForm] = useState<StartForm>(blankStartForm)
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+  const [dialogClientId, setDialogClientId] = useState<string | null>(null)
+  const [created, setCreated] = useState<CreatedIntake | null>(null)
+  // The link dialog for row actions that hand the operator a link (rotate, a
+  // failed reminder, a failed change-request email).
   const [invitation, setInvitation] = useState<OnboardingInvitationResult | null>(null)
-  // Whether the operator ticked "Email this invitation" for the invitation on
-  // screen. delivery.status 'skipped' alone cannot distinguish "didn't ask"
-  // from "asked and sending is unconfigured" — and only the second deserves a
-  // warning.
   const [invitationEmailRequested, setInvitationEmailRequested] = useState(false)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<OnboardingTemplate | null>(null)
@@ -258,19 +108,19 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const openedRequestedInstanceRef = useRef<string | null>(null)
   const [confirmation, setConfirmation] = useState<{ action: ConfirmationAction; instance: OnboardingInstanceSummary } | null>(null)
   const [templateConfirmation, setTemplateConfirmation] = useState<{ action: TemplateConfirmationAction; template: OnboardingTemplate } | null>(null)
-  // One per opening of the Start dialog, sent with every attempt from it, so
-  // a retry after a lost response cannot create a second onboarding.
-  const startKeyRef = useRef('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<OnboardingTableFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<IntakeFilter>('all')
+  const [tab, setTab] = useState('instances')
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const [remindedIds, setRemindedIds] = useState<Set<string>>(() => new Set())
+  const [clientSearch, setClientSearch] = useState('')
+  const [replyToDismissed, setReplyToDismissed] = useState(() => readDismissed(workspaceId))
 
   /*
    * The 30-second poll used to carry every client and every template
    * definition, data that changes only when someone edits it. Now the first
    * load and every explicit refresh read templates and instances; the poll in
    * between reads instances only and keeps the templates it already has.
-   * Clients are needed only to start an onboarding, so they load when the
-   * Start dialog opens.
    */
   const fullListRef = useRef(true)
   const onboardingQuery = useQuery({
@@ -291,91 +141,41 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     refetchInterval: startOpen || builderOpen || selectedInstanceId ? false : 30_000,
   })
   const data = onboardingQuery.data
+  const canManage = data?.can_manage === true
+  // ?client= comes from a client's record or from the header's "Working on".
   const requestedClientId = (searchParams.get('client') || '').toLowerCase()
   const requestedInstanceId = (searchParams.get('instance') || '').toLowerCase()
   const clientFilter = UUID_PATTERN.test(requestedClientId) ? requestedClientId : null
+  const visibleInstances = useMemo(
+    () => data?.instances.filter((instance) => !clientFilter || instance.client_id === clientFilter) ?? [],
+    [clientFilter, data?.instances],
+  )
+  const publishedTemplates = useMemo(
+    () => data?.templates.filter((template) => template.status === 'published') ?? [],
+    [data?.templates],
+  )
+  // The empty state offers the clients the workspace already has, so they
+  // load for it too, not only when the dialog opens.
+  const emptyStateNeedsClients = canManage && publishedTemplates.length > 0 && visibleInstances.length === 0
   const clientsQuery = useQuery({
     queryKey: [...queryKey, 'clients'],
     queryFn: () => listWorkspaceOnboarding(workspaceId, ['clients']),
-    enabled: validWorkspaceId && (startOpen || Boolean(clientFilter)),
+    enabled: validWorkspaceId && (startOpen || Boolean(clientFilter) || emptyStateNeedsClients),
     staleTime: 60_000,
     retry: false,
     gcTime: isPlatformWorkspace ? 0 : undefined,
   })
   const clients = useMemo(() => clientsQuery.data?.clients ?? [], [clientsQuery.data?.clients])
-  const visibleInstances = useMemo(
-    () => data?.instances.filter((instance) => !clientFilter || instance.client_id === clientFilter) ?? [],
-    [clientFilter, data?.instances],
-  )
   const filteredClient = clientFilter
     ? clients.find((client) => client.id === clientFilter)
       || (visibleInstances[0] ? { id: clientFilter, name: visibleInstances[0].client_name } : null)
     : null
-  const canManage = data?.can_manage === true
-  const publishedTemplates = useMemo(
-    () => data?.templates.filter((template) => template.status === 'published') ?? [],
-    [data?.templates],
-  )
-  const selectedStartTemplate = useMemo(
-    () => publishedTemplates.find((template) => template.id === startForm.template_id),
-    [publishedTemplates, startForm.template_id],
-  )
   const agencyLogoUrl = workspaceLogoUrl(
     data?.workspace.id,
     data?.workspace.logo_path,
     data?.workspace.logo_updated_at,
   )
-  const activePreviewLogoUrl = logoPreviewUrl || agencyLogoUrl
-  const agencyAccent = data?.workspace.client_brand_accent_color ?? null
   const emailConfigured = data?.email_delivery.configured !== false
-
-  // The reset reads the list through refs so a background refetch while the
-  // dialog is open (focus, invalidation) cannot wipe what the operator typed.
-  const startDataRef = useRef({ data, publishedTemplates, clients })
-  startDataRef.current = { data, publishedTemplates, clients }
-  useEffect(() => {
-    const { data, publishedTemplates, clients } = startDataRef.current
-    if (!startOpen || !data) return
-    startKeyRef.current = crypto.randomUUID()
-    const defaultTemplate = publishedTemplates.find((template) => template.is_default) ?? publishedTemplates[0]
-    const requestedClient = clientFilter
-      ? clients.find((client) => client.id === clientFilter)
-      : undefined
-    setLogoPreviewUrl(null)
-    setStartForm({
-      ...blankStartForm,
-      template_id: defaultTemplate?.id ?? '',
-      send_email: data.email_delivery.configured !== false,
-      ...(requestedClient ? {
-        client_choice: requestedClient.id,
-        client_name: requestedClient.name,
-        contact_person: requestedClient.contact_person || '',
-        recipient_name: requestedClient.contact_person || requestedClient.name,
-        recipient_email: requestedClient.email || '',
-      } : {}),
-      ...experienceFromTemplate(defaultTemplate, data.workspace.name, data.workspace.client_brand_accent_color),
-    })
-  }, [clientFilter, startOpen])
-
-  // Clients load when the dialog opens, so a client-scoped page may open it
-  // before they arrive. Fill the requested client in once they do, unless the
-  // operator has already started typing a new one.
-  const clientsLoaded = clientsQuery.isSuccess
-  useEffect(() => {
-    if (!startOpen || !clientsLoaded || !clientFilter) return
-    const client = startDataRef.current.clients.find((candidate) => candidate.id === clientFilter)
-    if (!client) return
-    setStartForm((current) => current.client_choice !== 'new' || current.client_name.trim() || current.recipient_email.trim()
-      ? current
-      : {
-          ...current,
-          client_choice: client.id,
-          client_name: client.name,
-          contact_person: client.contact_person || '',
-          recipient_name: client.contact_person || client.name,
-          recipient_email: client.email || '',
-        })
-  }, [clientFilter, clientsLoaded, startOpen])
 
   const detailQuery = useQuery({
     queryKey: [...queryKey, 'detail', selectedInstanceId || 'none'],
@@ -388,7 +188,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const detailError = detailQuery.isError ? detailQuery.error : null
   useEffect(() => {
     if (!detailError) return
-    toast.error(detailError instanceof Error ? detailError.message : 'Unable to load this onboarding.')
+    toast.error(detailError instanceof Error ? detailError.message : 'Unable to load this intake.')
     setSelectedInstanceId(null)
   }, [detailError])
 
@@ -402,26 +202,45 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     setSelectedInstanceId(requestedInstanceId)
   }, [requestedInstanceId, visibleInstances])
 
+  useEffect(() => {
+    if (!highlightId) return
+    const timer = window.setTimeout(() => setHighlightId(null), 2_000)
+    return () => window.clearTimeout(timer)
+  }, [highlightId])
+
   const refresh = async () => {
     fullListRef.current = true
     await queryClient.invalidateQueries({ queryKey })
+  }
+
+  const openNewIntake = (clientId: string | null = clientFilter) => {
+    setDialogClientId(clientId)
+    setCreated(null)
+    setStartOpen(true)
+  }
+
+  const finishNewIntake = () => {
+    const createdId = created?.result.instance.id ?? null
+    setStartOpen(false)
+    setCreated(null)
+    if (!createdId) return
+    setTab('instances')
+    setStatusFilter('all')
+    setSearch('')
+    setHighlightId(createdId)
   }
 
   const startMutation = useMutation({
     mutationFn: (input: StartOnboardingInput) => startWorkspaceOnboarding(workspaceId, input),
     onSuccess: async (result, variables) => {
       await refresh()
-      setStartOpen(false)
-      setInvitationEmailRequested(Boolean(variables.send_email))
-      setInvitation(result)
-      toast.success(result.replayed
-        ? 'This onboarding was already created. Here is its link.'
-        : result.delivery.status === 'sent' ? 'Onboarding invitation sent.' : 'Onboarding link created.')
+      setCreated({ result, emailRequested: Boolean(variables.send_email) })
+      if (result.replayed) toast.info('This intake was already created. Here is its link.')
       if (result.duplicate_client) {
         toast.warning(`${result.duplicate_client.name || 'Another client'} already uses this email. Check that you did not create a duplicate client.`)
       }
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to start onboarding.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to create the intake.'),
   })
 
   const templateMutation = useMutation({
@@ -442,7 +261,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       await refresh()
       setBuilderOpen(false)
       setEditingTemplate(null)
-      toast.success('Onboarding template saved.')
+      toast.success('Form template saved.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to save the template.'),
   })
@@ -489,20 +308,20 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
   const approveMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
+      if (!selectedInstanceId) throw new Error('No intake is selected.')
       return approveOnboardingAnswers(workspaceId, selectedInstanceId)
     },
     onSuccess: async () => {
       await refresh()
       await detailQuery.refetch()
-      toast.success('Onboarding approved.')
+      toast.success('Intake approved.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to approve onboarding.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to approve the intake.'),
   })
 
   const requestChangesMutation = useMutation({
     mutationFn: async (comments: OnboardingReviewComment[]) => {
-      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
+      if (!selectedInstanceId) throw new Error('No intake is selected.')
       return requestOnboardingChanges(workspaceId, selectedInstanceId, comments)
     },
     onSuccess: async (result) => {
@@ -528,12 +347,25 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to request changes.'),
   })
 
+  const copyLink = async (link: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(link)
+      toast.success('Link copied.')
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // The tab for Open preview is opened inside the click, before the link is
+  // fetched, or a popup blocker would stop it.
+  const previewWindowRef = useRef<Window | null>(null)
   const linkMutation = useMutation({
-    mutationFn: async ({ action, instance }: { action: 'get_link' | 'rotate' | 'extend' | 'resend'; instance: OnboardingInstanceSummary }) => {
-      if (action === 'get_link') return getOnboardingLink(workspaceId, instance.id)
+    mutationFn: async ({ action, instance }: { action: LinkAction; instance: OnboardingInstanceSummary }) => {
+      if (action === 'copy' || action === 'preview') return getOnboardingLink(workspaceId, instance.id)
       // A lapsed link is never emailed as-is: resending it rotates to a fresh
       // 14-day link and emails that one.
-      if (action === 'resend') {
+      if (action === 'remind') {
         return linkIsLive(instance)
           ? resendOnboardingInvitation(workspaceId, instance.id)
           : rotateOnboardingLink(workspaceId, instance.id, 14, true)
@@ -543,45 +375,64 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         : extendOnboardingLink(workspaceId, instance.id, 14)
     },
     onSuccess: async (result, variables) => {
-      await refresh()
-      if (result.onboarding_url && result.instance) {
-        const nextInvitation = {
+      const showLink = (emailRequested: boolean) => {
+        if (!result.onboarding_url || !result.instance) return
+        setInvitationEmailRequested(emailRequested)
+        setInvitation({
           instance: result.instance,
           onboarding_url: result.onboarding_url,
-          delivery: result.delivery ?? { status: 'skipped' as const },
-        }
-        // Only a resend asked for an email; the other actions must not leave
-        // a warning about one behind from an earlier invitation.
-        setInvitationEmailRequested(variables.action === 'resend')
-        setInvitation((current) => current?.instance.id === nextInvitation.instance.id
-          && current.instance.capability_generation > nextInvitation.instance.capability_generation
-          ? current
-          : nextInvitation)
+          delivery: result.delivery ?? { status: 'skipped' },
+        })
       }
-      if (variables.action === 'resend') {
-        if (result.delivery?.status === 'sent') toast.success(`Invitation emailed to ${variables.instance.recipient_name}.`)
-        else toast.warning('The invitation email did not send. Share the link below with the client.')
+      if (variables.action === 'copy') {
+        // Clipboard access can lapse while the link loads; show it instead.
+        if (result.onboarding_url && !(await copyLink(result.onboarding_url))) showLink(false)
         return
       }
-      toast.success(variables.action === 'get_link'
-        ? 'Current secure link is ready.'
-        : variables.action === 'rotate'
-          ? 'Secure link rotated. Older links no longer work.'
-          : 'Link extended by 14 days.')
+      if (variables.action === 'preview') {
+        const target = previewWindowRef.current
+        previewWindowRef.current = null
+        if (result.onboarding_url && target && !target.closed) target.location.href = staffPreviewUrl(result.onboarding_url)
+        else if (result.onboarding_url) showLink(false)
+        return
+      }
+      await refresh()
+      if (variables.action === 'remind') {
+        if (result.delivery?.status === 'sent') {
+          setRemindedIds((current) => new Set(current).add(variables.instance.id))
+          toast.success('Reminder sent')
+        } else {
+          toast.warning('The reminder did not send. Share the link below with the client.')
+          showLink(true)
+        }
+        return
+      }
+      if (variables.action === 'rotate') {
+        showLink(false)
+        toast.success('Secure link rotated. Older links no longer work.')
+        return
+      }
+      toast.success('Link extended by 14 days.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the secure link.'),
+    onError: (error, variables) => {
+      if (variables.action === 'preview') {
+        previewWindowRef.current?.close()
+        previewWindowRef.current = null
+      }
+      toast.error(error instanceof Error ? error.message : 'Unable to update the secure link.')
+    },
   })
 
   const assignmentsMutation = useMutation({
     mutationFn: async (membershipIds: string[]) => {
-      if (!selectedInstanceId) throw new Error('No onboarding is selected.')
+      if (!selectedInstanceId) throw new Error('No intake is selected.')
       return updateOnboardingAssignments(workspaceId, selectedInstanceId, membershipIds)
     },
     onSuccess: async () => {
       await detailQuery.refetch()
       toast.success('Access updated.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update who can view this onboarding.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update who can view this intake.'),
   })
 
   const lifecycleMutation = useMutation({
@@ -594,182 +445,101 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       await refresh()
       setConfirmation(null)
       if (variables.action === 'purge' && selectedInstanceId === variables.instance.id) setSelectedInstanceId(null)
-      toast.success(variables.action === 'revoke' ? 'Secure link revoked.' : variables.action === 'archive' ? 'Onboarding archived.' : 'Onboarding answers and files permanently deleted. The client record was kept.')
+      toast.success(variables.action === 'revoke' ? 'Secure link revoked.' : variables.action === 'archive' ? 'Intake archived.' : 'Intake answers and files permanently deleted. The client record was kept.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update onboarding.'),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to update the intake.'),
   })
 
-  // Recomputed whenever the list is refetched, which is every 30 seconds while
-  // the page is idle. A day boundary is not worth a timer of its own.
-  const chaseByInstance = useMemo(() => {
-    const now = Date.now()
-    return new Map(visibleInstances.map((instance) => [instance.id, onboardingChaseState(instance, now)]))
-  }, [visibleInstances])
-
-  // Archived rows are finished work; the cards count only what is live, the
-  // same rows their filters show.
-  const counts = useMemo(() => {
-    const instances = visibleInstances.filter((instance) => !instance.archived_at)
-    return {
-      chasing: instances.filter((instance) => chaseByInstance.get(instance.id)?.needsChasing).length,
-      active: instances.filter((instance) => ['invited', 'in_progress', 'changes_requested'].includes(instance.status)).length,
-      review: instances.filter((instance) => instance.status === 'submitted').length,
-      approved: instances.filter((instance) => instance.status === 'approved').length,
-      expired: instances.filter((instance) => instance.status === 'expired' || instance.status === 'revoked').length,
+  const handleRowAction = (action: IntakeRowAction, instance: OnboardingInstanceSummary) => {
+    if (action === 'review') setSelectedInstanceId(instance.id)
+    else if (action === 'revoke' || action === 'archive' || action === 'purge') setConfirmation({ action, instance })
+    else {
+      if (action === 'preview') {
+        const opened = window.open('about:blank', '_blank')
+        if (opened) opened.opener = null
+        previewWindowRef.current = opened
+      }
+      linkMutation.mutate({ action, instance })
     }
-  }, [chaseByInstance, visibleInstances])
+  }
+
+  // Measured from the last fetch, which is every 30 seconds while the page is
+  // idle. A day boundary is not worth a timer of its own.
+  const now = onboardingQuery.dataUpdatedAt || Date.now()
+  const statusById = useMemo(
+    () => new Map<string, IntakeStatus>(visibleInstances.map((instance) => [instance.id, intakeStatus(instance, now)])),
+    [now, visibleInstances],
+  )
+
+  // Archived rows are finished work; the strip counts only what is live, and
+  // every live row has exactly one status, so the statuses add up to All.
+  const counts = useMemo(() => {
+    const result = { all: 0, chasing: 0, in_progress: 0, review: 0, approved: 0, expired: 0, archived: 0 }
+    for (const instance of visibleInstances) {
+      if (instance.archived_at) {
+        result.archived += 1
+        continue
+      }
+      result.all += 1
+      result[statusById.get(instance.id) ?? 'in_progress'] += 1
+    }
+    return result
+  }, [statusById, visibleInstances])
 
   const tableInstances = useMemo(() => {
     const query = search.trim().toLowerCase()
     return visibleInstances.filter((instance) => {
-      if (statusFilter === 'chasing' && !chaseByInstance.get(instance.id)?.needsChasing) return false
-      if (statusFilter === 'review' && instance.status !== 'submitted') return false
-      if (statusFilter === 'active' && !['invited', 'in_progress', 'changes_requested'].includes(instance.status)) return false
-      if (statusFilter === 'approved' && instance.status !== 'approved') return false
-      if (statusFilter === 'expired' && !['expired', 'revoked'].includes(instance.status)) return false
       // Archived rows are the only ones a filter hides rather than selects:
       // they are finished work and would otherwise pad every other view.
       if (statusFilter === 'archived' ? !instance.archived_at : Boolean(instance.archived_at)) return false
+      if (statusFilter !== 'all' && statusFilter !== 'archived' && statusById.get(instance.id) !== statusFilter) return false
       if (!query) return true
       return instance.client_name.toLowerCase().includes(query)
         || instance.recipient_email.toLowerCase().includes(query)
         || instance.recipient_name.toLowerCase().includes(query)
         || instance.template_name.toLowerCase().includes(query)
     })
-  }, [chaseByInstance, search, statusFilter, visibleInstances])
-  const archivedCount = visibleInstances.filter((instance) => instance.archived_at).length
+  }, [search, statusById, statusFilter, visibleInstances])
   const filtering = statusFilter !== 'all' || search.trim().length > 0
 
-  const handleClientChoice = (choice: string) => {
-    if (choice === 'new') {
-      setLogoPreviewUrl(null)
-      setStartForm((current) => ({
-        ...current,
-        client_choice: 'new',
-        client_name: '',
-        contact_person: '',
-        recipient_name: '',
-        recipient_email: '',
-        logo_file: null,
-      }))
-      return
-    }
-    const client = clients.find((candidate) => candidate.id === choice)
-    if (!client) return
-    setLogoPreviewUrl(null)
-    setStartForm((current) => ({
-      ...current,
-      client_choice: choice,
-      client_name: client.name,
-      contact_person: client.contact_person || '',
-      recipient_name: client.contact_person || client.name,
-      recipient_email: client.email || '',
-      logo_file: null,
-    }))
-  }
-
-  const handleTemplateChoice = (templateId: string) => {
-    const template = publishedTemplates.find((candidate) => candidate.id === templateId)
-    setStartForm((current) => ({
-      ...current,
-      template_id: templateId,
-      ...experienceFromTemplate(template, data?.workspace.name ?? '', agencyAccent),
-    }))
-  }
-
-  const handleLogoChoice = (file: File | undefined) => {
-    if (!file) return
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size < 1 || file.size > 2_097_152) {
-      toast.error('Choose a PNG, JPEG, or WebP logo up to 2 MB.')
-      return
-    }
-    const reader = new FileReader()
-    reader.onerror = () => toast.error('The logo preview could not be opened.')
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      setLogoPreviewUrl(reader.result)
-      setStartForm((current) => ({ ...current, logo_file: file }))
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const submitStart = () => {
-    const expiry = Number(startForm.expires_in_days)
-    if (!startForm.template_id || !startForm.recipient_name.trim() || !startForm.recipient_email.trim()) {
-      toast.error('Choose a template and enter the invited contact name and email.')
-      return
-    }
-    if (!Number.isSafeInteger(expiry) || expiry < 1 || expiry > 90) {
-      toast.error('Link expiry must be between 1 and 90 days.')
-      return
-    }
-    if (startForm.client_choice === 'new' && !startForm.client_name.trim()) {
-      toast.error('Enter the new client name.')
-      return
-    }
-    if (
-      !startForm.experience_title.trim()
-      || !startForm.experience_body.trim()
-      || !startForm.experience_completion_message.trim()
-    ) {
-      toast.error('Complete the client-facing welcome and completion messages.')
-      return
-    }
-    startMutation.mutate({
-      template_id: startForm.template_id,
-      client_id: startForm.client_choice === 'new' ? null : startForm.client_choice,
-      new_client: startForm.client_choice === 'new'
-        ? { name: startForm.client_name, email: startForm.recipient_email, contact_person: startForm.contact_person }
-        : null,
-      recipient_name: startForm.recipient_name,
-      recipient_email: startForm.recipient_email,
-      expires_in_days: expiry,
-      assigned_membership_ids: startForm.assigned_membership_ids,
-      send_email: startForm.send_email && emailConfigured,
-      idempotency_key: startKeyRef.current || undefined,
-      experience: {
-        intro_title: startForm.experience_title,
-        intro_body: startForm.experience_body,
-        completion_message: startForm.experience_completion_message,
-        accent_color: startForm.accent_color,
-        logo_file: startForm.logo_file,
-      },
-    })
-  }
-
-  const accentSwatches = agencyAccent && !ACCENT_PRESETS.some((preset) => preset.color === agencyAccent)
-    ? [{ color: agencyAccent, name: 'Your brand' }, ...ACCENT_PRESETS]
-    : ACCENT_PRESETS
-  const typedEmail = startForm.recipient_email.trim().toLowerCase()
-  const duplicateClient = startForm.client_choice === 'new' && typedEmail
-    ? clients.find((client) => client.email?.trim().toLowerCase() === typedEmail) ?? null
-    : null
-
-  const copyLink = async (link: string) => {
-    try {
-      await navigator.clipboard.writeText(link)
-      toast.success('Secure onboarding link copied.')
-    } catch {
-      toast.error('Copy failed. Select and copy the link manually.')
-    }
-  }
+  const emptyStateClients = useMemo(() => {
+    const scoped = clientFilter ? clients.filter((client) => client.id === clientFilter) : clients
+    const query = clientSearch.trim().toLowerCase()
+    return query
+      ? scoped.filter((client) => client.name.toLowerCase().includes(query) || (client.email ?? '').toLowerCase().includes(query))
+      : scoped
+  }, [clientFilter, clientSearch, clients])
 
   const shareLink = async (link: string) => {
     const agencyName = data?.workspace.name?.trim() || 'Our agency'
     if (!navigator.share) {
-      await copyLink(link)
+      if (!(await copyLink(link))) toast.error('Copy failed. Select and copy the link manually.')
       return
     }
     try {
       await navigator.share({
-        title: `${agencyName} · Client onboarding`,
-        text: `${agencyName} sent you a secure client intake form.`,
+        title: `${agencyName} · Client intake`,
+        text: `${agencyName} sent you a private client intake form.`,
         url: link,
       })
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
       toast.error('Sharing could not be opened. Copy the link instead.')
     }
+  }
+
+  const dismissReplyToBanner = () => {
+    setReplyToDismissed(true)
+    try {
+      window.localStorage.setItem(`${REPLY_TO_BANNER_KEY}:${workspaceId}`, '1')
+    } catch {
+      // Dismissed for this visit only when storage is unavailable.
+    }
+  }
+
+  const openBuilder = (template: OnboardingTemplate | null) => {
+    setEditingTemplate(template)
+    setBuilderOpen(true)
   }
 
   if (!isPlatformWorkspace && !workspace) {
@@ -786,17 +556,58 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         baseHref: workspaceBaseHref,
       }
     : undefined
+  const hasDefaultTemplate = publishedTemplates.some((template) => template.is_default)
+  const settingsHref = `${workspaceBaseHref}/settings#client-branding`
+
+  const emptyState = () => {
+    if (!canManage) {
+      return <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Nothing has been shared with you yet</p><p className="text-sm text-muted-foreground">When an owner or admin gives you access to a client’s intake, it appears here.</p></div></div>
+    }
+    if (publishedTemplates.length === 0) {
+      // No published form means a new intake has nothing to send, so the
+      // empty state offers the form first.
+      return <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Set up your intake form first</p><p className="max-w-md text-sm text-muted-foreground">Use the starter form (name, bio, links, headshot, and speaking topics) and edit it later, or build your own.</p></div><div className="flex flex-wrap justify-center gap-2"><Button disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Use the starter form</Button><Button variant="outline" onClick={() => openBuilder(data?.templates.find((template) => template.status !== 'archived') ?? null)}><Plus className="mr-2 h-4 w-4" />Build your own</Button></div></div>
+    }
+    const scopedClientCount = clientFilter ? clients.filter((client) => client.id === clientFilter).length : clients.length
+    if (clientsQuery.isLoading) {
+      return <div className="space-y-3 py-4" aria-label="Loading clients">{[0, 1, 2].map((row) => <Skeleton key={row} className="h-10 w-full" />)}</div>
+    }
+    if (scopedClientCount === 0) {
+      return <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No intakes sent yet</p><p className="text-sm text-muted-foreground">Add your first client and send them the intake form.</p></div><Button onClick={() => openNewIntake(null)}><Plus className="mr-2 h-4 w-4" />New intake</Button></div>
+    }
+    return (
+      <div className="space-y-4 py-2">
+        <div><p className="font-medium">No intakes sent yet</p><p className="text-sm text-muted-foreground">Send the intake form to a client you already have, or add a new one.</p></div>
+        {scopedClientCount > EMPTY_STATE_CLIENT_LIMIT && (
+          <div className="relative max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Search clients" aria-label="Search clients" className="pl-9" />
+          </div>
+        )}
+        <ul className="divide-y rounded-lg border">
+          {emptyStateClients.slice(0, EMPTY_STATE_CLIENT_LIMIT).map((client) => (
+            <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+              <div className="min-w-0"><p className="truncate text-sm font-medium">{client.name}</p>{client.email && <p className="truncate text-xs text-muted-foreground">{client.email}</p>}</div>
+              <Button size="sm" variant="outline" onClick={() => openNewIntake(client.id)}><Send className="mr-2 h-3.5 w-3.5" />Send intake</Button>
+            </li>
+          ))}
+          {emptyStateClients.length === 0 && <li className="px-4 py-3 text-sm text-muted-foreground">No client matches that search.</li>}
+        </ul>
+        <Button variant="outline" onClick={() => openNewIntake(null)}><Plus className="mr-2 h-4 w-4" />New client intake</Button>
+      </div>
+    )
+  }
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div><h1 className="text-3xl font-bold tracking-tight">{filteredClient ? `${filteredClient.name} onboarding` : 'Client Onboarding'}</h1><p className="mt-1 text-muted-foreground">{filteredClient ? 'Review this client’s intake and answers.' : 'Create branded intake forms, invite clients, and review their completed answers.'}</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">{filteredClient ? `${filteredClient.name} intake` : 'Client intake'}</h1><p className="mt-1 text-muted-foreground">{filteredClient ? 'Review this client’s intake and answers.' : 'Send clients a private intake form, track who has finished, and review answers.'}</p></div>
           <div className="flex flex-wrap gap-2">
             {filteredClient && <Button asChild variant="outline"><Link to={`${workspaceBaseHref}/clients/${filteredClient.id}`}>Back to client</Link></Button>}
             {canManage && (publishedTemplates.length > 0
-              ? <Button onClick={() => setStartOpen(true)}><Send className="mr-2 h-4 w-4" />Start onboarding</Button>
-              : <Button onClick={() => { setEditingTemplate(data?.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Set up a template</Button>)}
+              ? <Button onClick={() => openNewIntake()}><Send className="mr-2 h-4 w-4" />New intake</Button>
+              : <Button onClick={() => openBuilder(data?.templates.find((template) => template.status !== 'archived') ?? null)}><Plus className="mr-2 h-4 w-4" />Set up a form</Button>)}
           </div>
         </div>
 
@@ -805,7 +616,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         ) : onboardingQuery.isLoading ? (
           <div className="flex min-h-72 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : onboardingQuery.error ? (
-          <Card><CardHeader><CardTitle>Onboarding unavailable</CardTitle><CardDescription>{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : 'Try again.'}</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2">
+          <Card><CardHeader><CardTitle>Client intake unavailable</CardTitle><CardDescription>{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : 'Try again.'}</CardDescription></CardHeader><CardContent className="flex flex-wrap gap-2">
             {/* A stale sign-in will not fix itself on retry; the way out is
                 signing in again, so offer it directly. */}
             {(onboardingQuery.error as { code?: unknown }).code === 'REAUTHENTICATION_REQUIRED' && (
@@ -815,248 +626,141 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           </CardContent></Card>
         ) : data ? (
           <>
-            {!canManage && <Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Assigned onboarding access</AlertTitle><AlertDescription>You can review only the onboarding records assigned to you. Owners and admins manage templates and invitations.</AlertDescription></Alert>}
+            {!canManage && <Alert><ShieldAlert className="h-4 w-4" /><AlertTitle>Assigned intake access</AlertTitle><AlertDescription>You can review only the intakes assigned to you. Owners and admins manage forms and invitations.</AlertDescription></Alert>}
             {canManage && !emailConfigured && (
               <Alert className="border-amber-200 bg-amber-50 text-amber-900">
                 <MailWarning className="h-4 w-4" />
                 <AlertTitle>Invitation emails are not set up</AlertTitle>
-                <AlertDescription>Email sending is not configured on this platform yet, so no invitation will be emailed. You can still create each secure link and share it from your own inbox. Contact support to turn sending on.</AlertDescription>
+                <AlertDescription>Email sending is not configured on this platform yet, so no invitation will be emailed. You can still create each private link and share it from your own inbox. Contact support to turn sending on.</AlertDescription>
+              </Alert>
+            )}
+            {/* A setup gap is cheaper to find here than at the moment of
+                sending, which is where the dialog used to say it. */}
+            {canManage && emailConfigured && !data.workspace.client_contact_email && !replyToDismissed && (
+              <Alert className="border-amber-200 bg-amber-50 pr-12 text-amber-900">
+                <MailWarning className="h-4 w-4" />
+                <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>Client replies have nowhere to go yet. Set a reply-to address so clients can answer your invitation emails.</span>
+                  <Link className="font-medium underline underline-offset-2" to={settingsHref}>Set it in Settings</Link>
+                </AlertDescription>
+                <button type="button" className="absolute right-3 top-3 rounded p-1 text-amber-900/70 hover:text-amber-900" aria-label="Dismiss" onClick={dismissReplyToBanner}><X className="h-4 w-4" /></button>
+              </Alert>
+            )}
+            {canManage && publishedTemplates.length === 0 && visibleInstances.length > 0 && (
+              <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+                <FilePlus2 className="h-4 w-4" />
+                <AlertDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span>No published form template. Publish one before sending another intake.</span>
+                  <button type="button" className="font-medium underline underline-offset-2" onClick={() => setTab('templates')}>Go to Form templates</button>
+                </AlertDescription>
               </Alert>
             )}
 
-            {/* Each card selects the rows it counts. A number you cannot open
-                is a number you have to go looking for. */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              {([
-                { key: 'chasing', label: 'Needs chasing', value: counts.chasing, icon: AlertTriangle, tone: 'text-amber-600' },
-                { key: 'active', label: 'Active intake', value: counts.active, icon: Clock3, tone: 'text-violet-500' },
-                { key: 'review', label: 'Awaiting review', value: counts.review, icon: ClipboardCheck, tone: 'text-amber-500' },
-                { key: 'approved', label: 'Approved', value: counts.approved, icon: Sparkles, tone: 'text-emerald-500' },
-                { key: 'expired', label: 'Expired', value: counts.expired, icon: Link2, tone: 'text-slate-500' },
-              ] as const).map(({ key, label, value, icon: Icon, tone }) => (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={statusFilter === key}
-                  onClick={() => setStatusFilter((current) => (current === key ? 'all' : key))}
-                  className={`flex flex-col gap-2 rounded-lg border bg-card p-6 text-left text-card-foreground shadow-sm transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${statusFilter === key ? 'border-primary ring-1 ring-primary' : ''}`}
-                >
-                  <span className="text-sm text-muted-foreground">{label}</span>
-                  <span className="text-3xl font-semibold leading-none tracking-tight">{value}</span>
-                  <Icon className={`mt-3 h-5 w-5 ${tone}`} aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-
-            <Tabs defaultValue="instances" className="space-y-4">
-              <TabsList><TabsTrigger value="instances">Client onboarding</TabsTrigger>{canManage && <TabsTrigger value="templates">Form templates</TabsTrigger>}</TabsList>
+            <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+              <TabsList><TabsTrigger value="instances">Intakes</TabsTrigger>{canManage && <TabsTrigger value="templates">Form templates</TabsTrigger>}</TabsList>
+              {/* The status strip lives inside this tab, so a filter can never
+                  be chosen while the list it filters is off screen. */}
               <TabsContent value="instances">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Onboarding activity</CardTitle>
-                    <CardDescription>See when the private link was first viewed, when the client first saved progress, and when they completed the form. Nothing chases a client automatically, so anything gone quiet is flagged here.</CardDescription>
-                    <div className="flex flex-col gap-2 pt-3 sm:flex-row">
-                      <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          value={search}
-                          onChange={(event) => setSearch(event.target.value)}
-                          placeholder="Search client, contact, or template"
-                          aria-label="Search onboarding"
-                          className="pl-9"
-                        />
-                      </div>
-                      <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as OnboardingTableFilter)}>
-                        <SelectTrigger className="sm:w-56" aria-label="Filter onboarding by status"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All active ({visibleInstances.length - archivedCount})</SelectItem>
-                          <SelectItem value="chasing">Needs chasing ({counts.chasing})</SelectItem>
-                          <SelectItem value="active">Active intake ({counts.active})</SelectItem>
-                          <SelectItem value="review">Awaiting review ({counts.review})</SelectItem>
-                          <SelectItem value="approved">Approved ({counts.approved})</SelectItem>
-                          <SelectItem value="expired">Expired ({counts.expired})</SelectItem>
-                          <SelectItem value="archived">Archived ({archivedCount})</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {visibleInstances.length === 0 ? (
-                      !canManage ? (
-                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Nothing has been shared with you yet</p><p className="text-sm text-muted-foreground">When an owner or admin gives you access to a client’s onboarding, it appears here.</p></div></div>
-                      ) : publishedTemplates.length > 0 ? (
-                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">No onboarding invitations yet</p><p className="text-sm text-muted-foreground">Start with an existing client or create a minimal client while inviting them.</p></div><Button variant="outline" onClick={() => setStartOpen(true)}><Plus className="mr-2 h-4 w-4" />Start onboarding</Button></div>
-                      ) : (
-                        // No published form means Start onboarding has nothing to
-                        // send, so the empty state offers the form first.
-                        <div className="flex min-h-52 flex-col items-center justify-center gap-3 text-center"><FilePlus2 className="h-10 w-10 text-muted-foreground" /><div><p className="font-medium">Set up your intake form first</p><p className="max-w-md text-sm text-muted-foreground">Use the starter form (name, bio, links, headshot, and speaking topics) and edit it later, or build your own.</p></div><div className="flex flex-wrap justify-center gap-2"><Button disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Use the starter form</Button><Button variant="outline" onClick={() => { setEditingTemplate(data.templates.find((template) => template.status !== 'archived') ?? null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />Build your own</Button></div></div>
-                      )
-                    ) : (
-                      <div className="overflow-x-auto">
+                  <CardContent className="space-y-4 px-3 pt-6 sm:px-6">
+                    {visibleInstances.length === 0 ? emptyState() : (
+                      <>
+                        <IntakeFilterStrip value={statusFilter} onChange={setStatusFilter} counts={counts} />
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            placeholder="Search by client, contact, or form"
+                            aria-label="Search intakes"
+                            className="pl-9"
+                          />
+                        </div>
                         {filtering && (
-                          <p className="pb-3 text-xs text-muted-foreground">
-                            {tableInstances.length} of {visibleInstances.length} shown
+                          <p className="text-xs text-muted-foreground">
+                            {tableInstances.length} of {statusFilter === 'archived' ? counts.archived : counts.all} shown
                             <button type="button" className="ml-2 font-medium underline underline-offset-2" onClick={() => { setSearch(''); setStatusFilter('all') }}>Clear</button>
                           </p>
                         )}
                         {tableInstances.length === 0 ? (
                           <p className="py-10 text-center text-sm text-muted-foreground">
-                            {statusFilter === 'chasing'
-                              ? 'Nothing has gone quiet. Every live onboarding was opened recently and has time on its link.'
-                              : 'No onboarding matches this filter.'}
+                            {statusFilter === 'chasing' && !search.trim()
+                              ? `Nothing has gone quiet. Every live intake had activity in the last ${CHASE_AFTER_DAYS} days.`
+                              : 'No intakes match this filter.'}
                           </p>
                         ) : (
-                        <Table>
-                          <TableHeader><TableRow><TableHead>Client</TableHead><TableHead>Template</TableHead><TableHead>Activity</TableHead><TableHead>Timing</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                          <TableBody>{tableInstances.map((instance) => (
-                            <TableRow key={instance.id} className={instance.archived_at ? 'opacity-60' : undefined}>
-                              <TableCell><p className="font-medium">{instance.client_name}</p><p className="text-xs text-muted-foreground">{instance.recipient_email}</p>{instance.archived_at && <Badge variant="outline" className="mt-1">Archived</Badge>}</TableCell>
-                              <TableCell><p>{instance.template_name}</p><p className="text-xs text-muted-foreground">Version {instance.template_version}</p></TableCell>
-                              <TableCell><OnboardingActivity instance={instance} /></TableCell>
-                              <TableCell><OnboardingAge instance={instance} /></TableCell>
-                              <TableCell><Badge variant="outline" className={statusStyles[instance.status]}>{onboardingStatusLabel(instance.status)}</Badge></TableCell>
-                              <TableCell className="text-right"><div className="inline-flex items-center gap-1"><Button size="sm" variant="outline" onClick={() => setSelectedInstanceId(instance.id)}>View</Button>{canManage && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-                                {!['approved', 'revoked', 'submitted', 'expired'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'get_link', instance })}><ExternalLink className="mr-2 h-4 w-4" />Open or copy current link</DropdownMenuItem>}
-                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && !instance.archived_at && <DropdownMenuItem disabled={linkMutation.isPending || !emailConfigured} title={emailConfigured ? undefined : 'Email sending is not set up'} onClick={() => linkMutation.mutate({ action: 'resend', instance })}><Mail className="mr-2 h-4 w-4" />{linkIsLive(instance) ? 'Resend invitation' : 'Email a new 14-day link'}</DropdownMenuItem>}
-                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'rotate', instance })}>Rotate secure link</DropdownMenuItem>}
-                                {!['submitted', 'approved', 'revoked'].includes(instance.status) && <DropdownMenuItem disabled={linkMutation.isPending} onClick={() => linkMutation.mutate({ action: 'extend', instance })}>Extend 14 days</DropdownMenuItem>}
-                                {!['approved', 'revoked', 'submitted'].includes(instance.status) && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'revoke', instance })}>Revoke link</DropdownMenuItem>}
-                                <DropdownMenuSeparator />
-                                {!instance.archived_at && <DropdownMenuItem onClick={() => setConfirmation({ action: 'archive', instance })}><Archive className="mr-2 h-4 w-4" />Archive</DropdownMenuItem>}
-                                {instance.archived_at && <DropdownMenuItem className="text-destructive" onClick={() => setConfirmation({ action: 'purge', instance })}>Permanently delete their answers and files</DropdownMenuItem>}
-                              </DropdownMenuContent></DropdownMenu>}</div></TableCell>
-                            </TableRow>
-                          ))}</TableBody>
-                        </Table>
+                          <IntakeTable
+                            instances={tableInstances}
+                            statusById={statusById}
+                            templates={data.templates}
+                            now={now}
+                            canManage={canManage}
+                            emailConfigured={emailConfigured}
+                            busy={linkMutation.isPending}
+                            highlightId={highlightId}
+                            remindedIds={remindedIds}
+                            workspaceBaseHref={workspaceBaseHref}
+                            onAction={handleRowAction}
+                          />
                         )}
-                      </div>
+                      </>
                     )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
               {canManage && <TabsContent value="templates">
-                <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Editing never changes a form a client already has. Publishing creates the next version for new links.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}Use the starter form</Button><Button variant="outline" onClick={() => { setEditingTemplate(null); setBuilderOpen(true) }}><Plus className="mr-2 h-4 w-4" />New template</Button></div></div>
-                <div className="grid gap-4 lg:grid-cols-2">{data.templates.map((template) => (
-                  <Card key={template.id} className={template.status === 'archived' ? 'opacity-60' : undefined}>
-                    <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{template.name}</CardTitle>{template.is_default && <Badge>Default</Badge>}<Badge variant="outline" className="capitalize">{template.status}</Badge></div><CardDescription className="mt-2">{template.description || 'No internal description'}</CardDescription></div></div></CardHeader>
-                    <CardContent><div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{(template.published_definition ?? template.definition).sections.length} sections</span><span>{(template.published_definition ?? template.definition).sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span>{template.has_unpublished_changes && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Unpublished changes</Badge>}</div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => { setEditingTemplate(template); setBuilderOpen(true) }}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => setTemplateConfirmation({ action: 'default', template })}>Make default</Button>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => setTemplateConfirmation({ action: 'archive', template })}>Archive</Button></div>}</CardContent>
-                  </Card>
-                ))}</div>
+                <TooltipProvider delayDuration={200}>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">Reusable form templates</h2><p className="text-sm text-muted-foreground">Editing never changes a form a client already has. Publishing creates the next version for new links.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" disabled={starterMutation.isPending} onClick={() => starterMutation.mutate()}>{starterMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{hasDefaultTemplate ? 'Add another starter copy' : 'Use the starter form'}</Button><Button variant="outline" onClick={() => openBuilder(null)}><Plus className="mr-2 h-4 w-4" />New template</Button></div></div>
+                  <div className="grid gap-4 lg:grid-cols-2">{data.templates.map((template) => {
+                    // Archiving the default (or the last published form) would
+                    // leave New intake with nothing to send.
+                    const archiveBlocked = template.is_default || (template.status === 'published' && publishedTemplates.length === 1)
+                    return (
+                      <Card key={template.id} className={template.status === 'archived' ? 'opacity-60' : undefined}>
+                        <CardHeader><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><CardTitle>{template.name}</CardTitle>{template.is_default && <Badge>Default</Badge>}<Badge variant="outline" className="capitalize">{template.status}</Badge></div><CardDescription className="mt-2">{template.description || 'No internal description'}</CardDescription></div></div></CardHeader>
+                        <CardContent><div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground"><span>{(template.published_definition ?? template.definition).sections.length} sections</span><span>{(template.published_definition ?? template.definition).sections.reduce((total, section) => total + section.questions.length, 0)} questions</span><span>Version {template.published_version || 'draft'}</span>{template.has_unpublished_changes && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Unpublished changes</Badge>}</div>{template.status !== 'archived' && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => openBuilder(template)}>Edit builder</Button><Button size="sm" variant="outline" onClick={() => templateActionMutation.mutate({ action: 'duplicate', template })}><Copy className="mr-2 h-4 w-4" />Duplicate</Button>{template.status === 'published' && !template.is_default && <Button size="sm" variant="outline" onClick={() => setTemplateConfirmation({ action: 'default', template })}>Make default</Button>}{archiveBlocked ? (
+                          <Tooltip><TooltipTrigger asChild><span tabIndex={0}><Button size="sm" variant="ghost" className="text-destructive" disabled>Archive</Button></span></TooltipTrigger><TooltipContent>Set another template as default first.</TooltipContent></Tooltip>
+                        ) : <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setTemplateConfirmation({ action: 'archive', template })}>Archive</Button>}</div>}</CardContent>
+                      </Card>
+                    )
+                  })}</div>
+                </TooltipProvider>
               </TabsContent>}
             </Tabs>
-
           </>
         ) : null}
       </div>
 
-      <Dialog open={startOpen} onOpenChange={setStartOpen}>
-        {/* Header and footer are pinned and the body is the only thing that
-            scrolls, so the actions stay put and no dead band opens up around a
-            body that is shorter or taller than the dialog. */}
-        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-7xl flex-col gap-0 overflow-hidden p-0 sm:w-[96vw] sm:max-w-7xl">
-          <DialogHeader className="shrink-0 border-b px-6 pb-5 pt-6">
-            <DialogTitle>Start client onboarding</DialogTitle>
-            <DialogDescription>Choose the client and personalize the exact branded experience they will receive.</DialogDescription>
-          </DialogHeader>
-
-          {/* Side by side, the two columns have nothing to do with each other's
-              height: the form is as tall as its fields, the preview as tall as
-              the experience it renders. Sharing one scroll meant the shorter one
-              left a long white run beside the taller. Each column scrolls itself
-              instead, bounded by the dialog, so neither can strand the other.
-              Below lg they stack and the body scrolls as one. */}
-          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-5 lg:flex-row lg:overflow-hidden">
-            <div className="min-w-0 space-y-6 lg:w-[45%] lg:overflow-y-auto lg:pr-1">
-              <section className="space-y-4">
-                <div><h3 className="font-semibold">Client and form</h3><p className="text-sm text-muted-foreground">Create one private intake link for this client. The questions stay pinned to this published template version.</p></div>
-                {/* What the client will see is decided in Settings; a missing
-                    logo is easy to miss until the client points it out. */}
-                {!data?.workspace.logo_path && !startForm.logo_file && (
-                  <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                    Your clients will see {data?.workspace.name || 'your workspace name'} with no logo. <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-branding`}>Add your logo and client-facing name in Settings</Link>, or upload a logo for this link below.
-                  </p>
-                )}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-template">Template</Label><Select value={startForm.template_id} onValueChange={handleTemplateChoice}><SelectTrigger id="start-template"><SelectValue placeholder="Choose a published template" /></SelectTrigger><SelectContent>{publishedTemplates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name} · v{template.published_version}{template.is_default ? ' · Default' : ''}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="start-client">Client</Label><Select value={startForm.client_choice} onValueChange={handleClientChoice}><SelectTrigger id="start-client"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">Create a new client</SelectItem>{clients.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}{client.email ? ` · ${client.email}` : ''}</SelectItem>)}</SelectContent></Select></div>
-                  {startForm.client_choice === 'new' ? <>
-                    <div className="space-y-2"><Label htmlFor="new-client-name">Client or company name</Label><Input id="new-client-name" placeholder="Acme Company" value={startForm.client_name} onChange={(event) => setStartForm((current) => ({ ...current, client_name: event.target.value }))} /></div>
-                    <div className="space-y-2"><Label htmlFor="new-contact">Contact name</Label><Input id="new-contact" placeholder="Jane Smith" value={startForm.contact_person} onChange={(event) => setStartForm((current) => ({ ...current, contact_person: event.target.value, recipient_name: event.target.value }))} /></div>
-                  </> : <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-name">Contact name</Label><Input id="recipient-name" value={startForm.recipient_name} onChange={(event) => setStartForm((current) => ({ ...current, recipient_name: event.target.value }))} /></div>}
-                  <div className="space-y-2 sm:col-span-2"><Label htmlFor="recipient-email">Contact email</Label><Input id="recipient-email" type="email" placeholder="jane@example.com" value={startForm.recipient_email} onChange={(event) => setStartForm((current) => ({ ...current, recipient_email: event.target.value }))} /></div>
-                  {clientsQuery.isLoading && <p className="text-xs text-muted-foreground sm:col-span-2">Loading your clients…</p>}
-                  {duplicateClient && (
-                    <p className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:col-span-2" role="status">
-                      {duplicateClient.name} already uses this email.
-                      <button type="button" className="font-medium underline underline-offset-2" onClick={() => handleClientChoice(duplicateClient.id)}>Use {duplicateClient.name} instead</button>
-                    </p>
-                  )}
-                </div>
-              </section>
-
-              <section className="space-y-4 rounded-2xl border bg-muted/20 p-4 sm:p-5">
-                <div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2 text-primary"><Palette className="h-5 w-5" /></div><div><h3 className="font-semibold">Customize this client’s experience</h3><p className="text-sm text-muted-foreground">These choices apply only to this secure link. The client sees your branding, never the platform brand.</p></div></div>
-                <div className="space-y-2"><Label htmlFor="experience-title">Welcome title</Label><Input id="experience-title" maxLength={300} value={startForm.experience_title} onChange={(event) => setStartForm((current) => ({ ...current, experience_title: event.target.value }))} /></div>
-                <div className="space-y-2"><Label htmlFor="experience-body">Welcome message</Label><Textarea id="experience-body" rows={4} maxLength={3000} value={startForm.experience_body} onChange={(event) => setStartForm((current) => ({ ...current, experience_body: event.target.value }))} /></div>
-                <div className="space-y-2"><Label htmlFor="experience-completion">Completion message</Label><Textarea id="experience-completion" rows={3} maxLength={2000} value={startForm.experience_completion_message} onChange={(event) => setStartForm((current) => ({ ...current, experience_completion_message: event.target.value }))} /></div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <fieldset className="space-y-2"><legend className="text-sm font-medium leading-none">Accent color</legend><div className="flex flex-wrap items-center gap-2">{accentSwatches.map(({ color, name }) => <button key={color} type="button" aria-label={`${name} accent`} title={`${name} (${color})`} aria-pressed={startForm.accent_color === color} className="h-8 w-8 rounded-full border-2 border-background shadow ring-ring ring-offset-2 transition focus-visible:outline-none focus-visible:ring-2" style={{ backgroundColor: color, boxShadow: startForm.accent_color === color ? `0 0 0 2px ${color}` : undefined }} onClick={() => setStartForm((current) => ({ ...current, accent_color: color }))} />)}<Input aria-label="Custom accent color" type="color" value={startForm.accent_color} className="h-9 w-12 cursor-pointer p-1" onChange={(event) => setStartForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))} /></div></fieldset>
-                  {/* The file input is visually hidden, so its focus is shown
-                      on the button-styled label that follows it. */}
-                  <div className="space-y-2"><Label htmlFor="client-onboarding-logo">Client logo override</Label><div className="flex flex-wrap items-center gap-2"><input id="client-onboarding-logo" type="file" accept="image/png,image/jpeg,image/webp" className="peer sr-only" onChange={(event) => { handleLogoChoice(event.target.files?.[0]); event.currentTarget.value = '' }} /><Button type="button" variant="outline" size="sm" asChild><label htmlFor="client-onboarding-logo" className="cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2"><ImagePlus className="mr-2 h-4 w-4" />{startForm.logo_file ? 'Replace logo' : 'Upload logo'}</label></Button>{startForm.logo_file && <Button type="button" variant="ghost" size="sm" onClick={() => { setLogoPreviewUrl(null); setStartForm((current) => ({ ...current, logo_file: null })) }}><X className="mr-1 h-4 w-4" />Use agency logo</Button>}</div><p className="text-xs text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Leave empty to use {data?.workspace.name}’s logo.</p></div>
-                </div>
-              </section>
-
-              <section className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label htmlFor="expiry-days">Link expires in days</Label><Input id="expiry-days" type="number" min={1} max={90} value={startForm.expires_in_days} onChange={(event) => setStartForm((current) => ({ ...current, expires_in_days: event.target.value }))} /></div>
-                <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={startForm.send_email && emailConfigured} disabled={!emailConfigured} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, send_email: checked === true }))} /><span>Email this invitation to the client</span></label>
-                {!emailConfigured ? (
-                  <p className="text-xs text-amber-800 sm:col-span-2">Email sending is not set up on this platform, so you will share the link yourself after creating it.</p>
-                ) : startForm.send_email && !data?.workspace.client_contact_email ? (
-                  <p className="text-xs text-muted-foreground sm:col-span-2">Replies to this email will not reach you until you set an address clients reply to. <Link className="font-medium text-foreground underline underline-offset-2" to={`${workspaceBaseHref}/settings#client-branding`}>Set it in Settings</Link>.</p>
-                ) : null}
-                {data?.assignable_members.length ? <fieldset className="space-y-2 sm:col-span-2"><legend className="text-sm font-medium leading-none">Let these teammates view it</legend><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-2">{data.assignable_members.map((member) => <label key={member.id} className="flex items-center gap-2 text-sm"><Checkbox checked={startForm.assigned_membership_ids.includes(member.id)} onCheckedChange={(checked) => setStartForm((current) => ({ ...current, assigned_membership_ids: checked === true ? [...current.assigned_membership_ids, member.id] : current.assigned_membership_ids.filter((id) => id !== member.id) }))} /><span>{member.full_name || member.email}</span></label>)}</div></fieldset> : null}
-              </section>
-            </div>
-
-            <aside className="min-w-0 lg:w-[55%] lg:overflow-y-auto">
-              {selectedStartTemplate ? (
-                <ClientOnboardingPreview
-                  key={selectedStartTemplate.id}
-                  definition={{
-                    ...(selectedStartTemplate.published_definition ?? selectedStartTemplate.definition),
-                    intro_title: startForm.experience_title,
-                    intro_body: startForm.experience_body,
-                    completion_message: startForm.experience_completion_message,
-                  }}
-                  workspaceName={data?.workspace.name ?? ''}
-                  workspaceLogoUrl={activePreviewLogoUrl}
-                  accentColor={startForm.accent_color}
-                  recipientName={startForm.recipient_name}
-                />
-              ) : (
-                <Card><CardHeader><CardTitle className="text-base">Choose a template to preview</CardTitle><CardDescription>The complete client experience will appear here.</CardDescription></CardHeader></Card>
-              )}
-            </aside>
-          </div>
-
-          <DialogFooter className="shrink-0 border-t bg-background px-6 py-4"><Button variant="outline" onClick={() => setStartOpen(false)}>Cancel</Button><Button disabled={startMutation.isPending} onClick={submitStart}>{startMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create secure link</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {data && (
+        <NewIntakeDialog
+          open={startOpen}
+          onOpenChange={(open) => { if (open) setStartOpen(true); else finishNewIntake() }}
+          data={data}
+          publishedTemplates={publishedTemplates}
+          clients={clients}
+          clientsLoading={clientsQuery.isLoading}
+          initialClientId={dialogClientId}
+          workspaceBaseHref={workspaceBaseHref}
+          agencyLogoUrl={agencyLogoUrl}
+          submitting={startMutation.isPending}
+          onSubmit={(input) => startMutation.mutate(input)}
+          created={created}
+          onDone={finishNewIntake}
+        />
+      )}
 
       <Dialog open={Boolean(invitation)} onOpenChange={(open) => { if (!open) setInvitation(null) }}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>Your client intake link is ready</DialogTitle><DialogDescription>Share it from your agency’s usual client communication channel.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Intake link</DialogTitle><DialogDescription>Share it from your agency’s usual client channel.</DialogDescription></DialogHeader>
           {invitation && invitation.delivery.status === 'sent' && (
             <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
-              Invitation emailed to {invitation.instance.recipient_name}. You can still share the link directly below.
+              Invitation emailed to {invitation.instance.recipient_email}. You can still share the link directly below.
             </p>
           )}
           {invitation && invitation.delivery.status === 'failed' && (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-              The invitation email could not be delivered — share the link below manually.
+              The email could not be delivered. Share the link below yourself.
             </p>
           )}
           {invitation && invitation.delivery.status === 'skipped' && invitationEmailRequested && (
@@ -1071,8 +775,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
               We could not confirm whether the email was sent. Share the link below to be sure the client has it.
             </p>
           )}
-          {invitation && <div className="space-y-4"><div className="overflow-hidden rounded-2xl border bg-muted/20"><div className="h-1.5 bg-gradient-to-r from-primary via-violet-500 to-fuchsia-400" /><div className="p-5"><div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Share2 className="h-5 w-5" /></div><div><p className="font-semibold">Ready for {invitation.instance.recipient_name}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">When shared in a messaging app, the link preview can show your agency name and logo.</p></div></div></div></div><div className="space-y-2"><Label htmlFor="onboarding-link">Private onboarding link</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}><Share2 className="mr-2 h-4 w-4" />Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url)}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
-          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={`${invitation.onboarding_url}${invitation.onboarding_url.includes('?') ? '&' : '?'}preview=staff`} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open client form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
+          {invitation && <div className="space-y-2"><Label htmlFor="onboarding-link">Private intake link for {invitation.instance.recipient_name}</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}>Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url).then((copied) => { if (!copied) toast.error('Copy failed. Select and copy the link manually.') })}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
+          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={staffPreviewUrl(invitation.onboarding_url)} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open preview</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1091,15 +795,15 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         onUpdateAssignments={(membershipIds) => assignmentsMutation.mutate(membershipIds)}
       />
 
-      {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20" role="status" aria-label="Loading onboarding details"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden="true" /><span className="sr-only">Loading onboarding details</span></div></div>}
+      {selectedInstanceId && detailQuery.isLoading && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20" role="status" aria-label="Loading intake details"><div className="rounded-xl bg-background p-6 shadow-xl"><Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden="true" /><span className="sr-only">Loading intake details</span></div></div>}
 
       <AlertDialog open={Boolean(templateConfirmation)} onOpenChange={(open) => { if (!open && !templateActionMutation.isPending) setTemplateConfirmation(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{templateConfirmation?.action === 'archive' ? `Archive ${templateConfirmation.template.name}?` : `Make ${templateConfirmation?.template.name} the default?`}</AlertDialogTitle>
             <AlertDialogDescription>{templateConfirmation?.action === 'archive'
-              ? 'It can no longer be chosen for new onboarding. Clients who already have a link keep their form.'
-              : 'New onboarding will start with this form selected. Links already sent are not changed.'}</AlertDialogDescription>
+              ? 'It can no longer be chosen for new intakes. Clients who already have a link keep their form.'
+              : 'New intakes will start with this form selected. Links already sent are not changed.'}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel disabled={templateActionMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction className={templateConfirmation?.action === 'archive' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined} disabled={templateActionMutation.isPending} onClick={(event) => { event.preventDefault(); if (templateConfirmation) templateActionMutation.mutate(templateConfirmation) }}>{templateActionMutation.isPending ? 'Working…' : templateConfirmation?.action === 'archive' ? 'Archive template' : 'Make default'}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
@@ -1107,7 +811,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
 
       <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !lifecycleMutation.isPending) setConfirmation(null) }}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>{confirmation?.action === 'purge' ? 'Permanently delete their answers and files?' : confirmation?.action === 'archive' ? 'Archive this onboarding?' : 'Revoke this secure link?'}</AlertDialogTitle><AlertDialogDescription>{confirmation?.action === 'purge' ? 'This permanently deletes every onboarding draft, saved answer revision, review note, AI draft, notification record, and private upload. It cannot be undone. The separate client record remains.' : confirmation?.action === 'archive' ? 'Archiving removes this record from active work, revokes any live client link, and is required before their answers and files can be permanently deleted. The draft and uploads remain retained.' : 'The client will immediately lose access to this link. Their existing draft and files remain retained.'}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>{confirmation?.action === 'purge' ? 'Permanently delete their answers and files?' : confirmation?.action === 'archive' ? 'Archive this intake?' : 'Revoke this secure link?'}</AlertDialogTitle><AlertDialogDescription>{confirmation?.action === 'purge' ? 'This permanently deletes every intake draft, saved answer revision, review note, AI draft, notification record, and private upload. It cannot be undone. The separate client record remains.' : confirmation?.action === 'archive' ? 'Archiving removes this record from active work, revokes any live client link, and is required before their answers and files can be permanently deleted. The draft and uploads remain retained.' : 'The client will immediately lose access to this link. Their existing draft and files remain retained.'}</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel disabled={lifecycleMutation.isPending}>Cancel</AlertDialogCancel><AlertDialogAction className={confirmation?.action === 'archive' ? undefined : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'} disabled={lifecycleMutation.isPending} onClick={(event) => { event.preventDefault(); if (confirmation) lifecycleMutation.mutate(confirmation) }}>{lifecycleMutation.isPending ? 'Working…' : confirmation?.action === 'purge' ? 'Permanently purge' : confirmation?.action === 'archive' ? 'Archive' : 'Revoke link'}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -27,7 +27,7 @@ export const starterOnboardingTemplate = (workspaceName: string): StarterOnboard
       schema_version: 1,
       intro_title: 'Welcome. Let’s get your details',
       intro_body: 'A few short questions so we can introduce you well. Your progress saves as you go, and you can come back with this secure link.',
-      completion_message: `Thank you. ${agency} will review your answers and follow up if anything needs clarification.`,
+      completion_message: `Thank you. ${agency} will review your answers within 2 business days and follow up if anything needs clarification.`,
       sections: [
         {
           id: 'about_you',
