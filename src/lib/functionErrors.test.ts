@@ -63,6 +63,25 @@ describe('toFunctionError', () => {
     expect(result.message).toBe('Request failed.')
   })
 
+  // The finder shows what was given back for a failed paid call, so the
+  // refund the server confirmed has to reach it.
+  it('carries the refunded credit count the server reported', async () => {
+    const context = new Response(JSON.stringify({
+      error: 'Podscan API error: 403',
+      code: 'PODSCAN_UPSTREAM_403',
+      credits_charged: 1,
+      credits_refunded: 1,
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } })
+
+    const result = await toFunctionError({ context }, 'Request failed.') as Error & {
+      creditsCharged?: number
+      creditsRefunded?: number
+    }
+
+    expect(result.creditsCharged).toBe(1)
+    expect(result.creditsRefunded).toBe(1)
+  })
+
   it('does not mistake missing numeric headers for zero-valued limits', async () => {
     const context = new Response(JSON.stringify({ error: 'Upstream unavailable' }), {
       status: 502,

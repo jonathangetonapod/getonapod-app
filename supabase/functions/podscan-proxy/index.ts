@@ -195,7 +195,7 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<Pod
 serve(async (req) => {
   // A lookup that failed after the charge — the index refusing, a timeout —
   // delivered nothing to pay for, so the outer catch gives the debit back.
-  let chargedForRefund: { workspaceId: string; entryId: string } | null = null
+  let chargedForRefund: { workspaceId: string; entryId: string; amount: number } | null = null
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
@@ -221,7 +221,7 @@ serve(async (req) => {
         actorUserId: context.user.id,
       })
       if (lookupCharge.entryId && !lookupCharge.replayed) {
-        chargedForRefund = { workspaceId, entryId: lookupCharge.entryId }
+        chargedForRefund = { workspaceId, entryId: lookupCharge.entryId, amount: lookupCharge.charged }
         refundAdmin = context.admin
       }
     } else {
@@ -284,21 +284,31 @@ serve(async (req) => {
       meta: { rate_limit: result.rateLimit },
     })
   } catch (error) {
+    // Reported back so the finder can say what was given back rather than
+    // assume it. Only a refund that actually landed counts.
+    let creditsRefunded = 0
     if (chargedForRefund && refundAdmin) {
-      await refundCredits(refundAdmin, {
+      const refunded = await refundCredits(refundAdmin, {
         workspaceId: chargedForRefund.workspaceId,
         entryId: chargedForRefund.entryId,
         reason: 'the podcast index lookup failed after the charge',
       })
+      if (refunded) creditsRefunded = chargedForRefund.amount
     }
+    if (!(error instanceof HttpError)) return errorResponse(req, METHODS, error)
+    const response = jsonResponse(req, METHODS, error.status, {
+      error: error.message,
+      code: error.code,
+      credits_charged: chargedForRefund?.amount ?? 0,
+      credits_refunded: creditsRefunded,
+    })
     if (error instanceof PodscanRateLimitError) {
-      const response = errorResponse(req, METHODS, error)
       const headers = new Headers(response.headers)
       headers.set('Access-Control-Expose-Headers', 'Retry-After, X-Concurrency-Limit')
       if (error.retryAfter) headers.set('Retry-After', error.retryAfter)
       if (error.concurrencyLimit) headers.set('X-Concurrency-Limit', error.concurrencyLimit)
       return new Response(response.body, { status: response.status, headers })
     }
-    return errorResponse(req, METHODS, error)
+    return response
   }
 })

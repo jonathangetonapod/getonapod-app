@@ -58,7 +58,7 @@ function podcast(id: string, name: string) {
     podcast_url: `https://example.com/${id}`,
     podcast_description: `${name} description`,
     episode_count: 100,
-    last_posted_at: '2026-07-20',
+    last_posted_at: recentlyPosted,
     reach: { audience_size: 12_000 },
     podcast_categories: [{ category_id: 'business', category_name: 'Business' }],
   }
@@ -76,6 +76,26 @@ function renderFinder(
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+// Relative, not fixed: the finder drops shows quiet for 90 days by default,
+// so a hard-coded date started failing once it aged past the window.
+const recentlyPosted = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+
+const researchContext: Awaited<ReturnType<typeof getWorkspaceResearchContext>> = {
+  workspace: { id: workspaceId, name: 'Agency One', slug: null, status: 'active', is_default: false, logo_path: null, logo_updated_at: null },
+  client: {
+    id: clientId,
+    workspace_id: workspaceId,
+    name: 'Taylor Client',
+    email: null,
+    website: null,
+    status: 'active',
+    bio: 'Taylor helps founders scale.',
+    photo_url: null,
+    updated_at: '2026-07-01T00:00:00.000Z',
+  },
+  existing_podcast_ids: ['pd-existing'],
 }
 
 describe('WorkspaceSmartPodcastFinder', () => {
@@ -96,21 +116,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
         updated_at: '2026-07-01T00:00:00.000Z',
       },
     ])
-    vi.mocked(getWorkspaceResearchContext).mockResolvedValue({
-      workspace: { id: workspaceId, name: 'Agency One', slug: null, status: 'active', is_default: false, logo_path: null, logo_updated_at: null },
-      client: {
-        id: clientId,
-        workspace_id: workspaceId,
-        name: 'Taylor Client',
-        email: null,
-        website: null,
-        status: 'active',
-        bio: 'Taylor helps founders scale.',
-        photo_url: null,
-        updated_at: '2026-07-01T00:00:00.000Z',
-      },
-      existing_podcast_ids: ['pd-existing'],
-    })
+    vi.mocked(getWorkspaceResearchContext).mockResolvedValue(researchContext)
     vi.mocked(generatePodcastQueries).mockResolvedValue(['founder stories'])
     vi.mocked(searchPodcastsWithMeta).mockResolvedValue({
       data: {
@@ -142,7 +148,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
         itunes_rating: null,
         episode_count: 80,
         audience_size: 9_000,
-        last_posted_at: '2026-07-18',
+        last_posted_at: recentlyPosted,
         podcast_categories: null,
         language: 'en',
         region: null,
@@ -307,10 +313,84 @@ describe('WorkspaceSmartPodcastFinder', () => {
     renderFinder()
     fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
 
-    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringMatching(/Every search failed/u)), { timeout: 5_000 })
+    // A lost connection is retried twice (1s, then 2s) before the scan gives up.
+    expect(await screen.findByText('Scan could not run.', undefined, { timeout: 8_000 })).toBeInTheDocument()
+    expect(screen.getByText('The podcast index could not be reached.')).toBeInTheDocument()
+    expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringMatching(/^Scan could not run\./u))
     expect(vi.mocked(toast.info)).not.toHaveBeenCalledWith(expect.stringMatching(/No new podcasts/u))
+    expect(screen.queryByText(/Nothing new this time/u)).not.toBeInTheDocument()
     expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
   }, 15_000)
+
+  /*
+   * The 2026-10-23 audit: the index refused every request with a 403, the
+   * scan kept paging through all of them for most of a minute, and then said
+   * every podcast found was already on the list.
+   */
+  it('stops at the first refusal from the index and shows why, with the refund', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockResolvedValue([] as never)
+    vi.mocked(generatePodcastQueries).mockResolvedValue(['founder stories', 'startup * podcast', 'sales leaders'])
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(Object.assign(new Error('Podscan API error: 403'), {
+      code: 'PODSCAN_UPSTREAM_403',
+      status: 502,
+      creditsCharged: 1,
+      creditsRefunded: 1,
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByText('Scan could not run.')).toBeInTheDocument()
+    expect(screen.getByText('The podcast index rejected the request (error 403).')).toBeInTheDocument()
+    expect(screen.getByText(/1 credit for the failed searches was refunded\./u)).toBeInTheDocument()
+    expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Contact support' }).getAttribute('href')).toMatch(/^mailto:/u)
+    expect(screen.queryByText(/Nothing new this time/u)).not.toBeInTheDocument()
+    expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
+  })
+
+  it('says no credits were charged only when every failed charge came back', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockResolvedValue([] as never)
+    // A workspace on its own AI key is not charged for the strategy.
+    vi.mocked(getWorkspaceResearchContext).mockResolvedValue({ ...researchContext, ai_keys: { anthropic: true } } as never)
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(Object.assign(new Error('Podscan API error: 403'), {
+      code: 'PODSCAN_UPSTREAM_403',
+      creditsCharged: 1,
+      creditsRefunded: 1,
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByText(
+      'No credits were charged for this scan. 1 credit for the failed searches was refunded.',
+    )).toBeInTheDocument()
+
+    cleanup()
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValue(Object.assign(new Error('Podscan API error: 403'), {
+      code: 'PODSCAN_UPSTREAM_403',
+      creditsCharged: 1,
+      creditsRefunded: 0,
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByText(/1 credit could not be refunded automatically/u)).toBeInTheDocument()
+    expect(screen.queryByText(/No credits were charged/u)).not.toBeInTheDocument()
+  })
+
+  it('retries the scan from the failure panel', async () => {
+    vi.mocked(searchClientPodcastCatalog).mockResolvedValue([] as never)
+    vi.mocked(searchPodcastsWithMeta).mockRejectedValueOnce(Object.assign(new Error('Podscan API error: 403'), {
+      code: 'PODSCAN_UPSTREAM_403',
+    }))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
+    expect(screen.queryByText('Scan could not run.')).not.toBeInTheDocument()
+  })
 
   it('counts failed searches when some of them fail', async () => {
     vi.mocked(searchClientPodcastCatalog).mockRejectedValue(new Error('catalog down'))

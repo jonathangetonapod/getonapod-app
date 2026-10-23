@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ExternalLink,
@@ -42,6 +43,15 @@ import {
   type ClientShortlistPodcastInput,
 } from '@/services/clientShortlist'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { PLATFORM_SUPPORT_EMAIL } from '@/lib/config'
+import {
+  creditsMovedBy,
+  podscanFailureReason,
+  PodscanSearchError,
+  stopsScan,
+  withPodscanRetry,
+  type PodscanFailure,
+} from '@/lib/podscanRetry'
 
 // One normalized shape for both discovery sources: the shared internal
 // catalog and live Podscan search.
@@ -70,7 +80,33 @@ interface ScanResult {
   reasoning: string | null
 }
 
-type ScanPhase = 'idle' | 'strategy' | 'search' | 'score' | 'done'
+type ScanPhase = 'idle' | 'strategy' | 'search' | 'score' | 'done' | 'failed'
+
+/*
+ * A scan that could not search. Kept apart from "done with nothing new": the
+ * audit scan was refused by the index on every request and then told the
+ * operator every podcast found was already on the list.
+ */
+interface ScanFailure {
+  reason: string
+  kind: PodscanFailure['kind'] | 'every_search_failed'
+  /** Charged for index calls that failed, and how much of that came back. */
+  creditsCharged: number
+  creditsRefunded: number
+  /** Credits this scan spent on work it did deliver (a drafted strategy). */
+  creditsKept: number
+}
+
+/** Thrown inside runScan when searching stopped and nothing new was found. */
+class ScanFailedError extends Error {
+  readonly failure: ScanFailure
+
+  constructor(failure: ScanFailure) {
+    super(failure.reason)
+    this.name = 'ScanFailedError'
+    this.failure = failure
+  }
+}
 
 const MAX_QUERIES = 6
 const PAGES_PER_QUERY = 3
@@ -149,7 +185,7 @@ const ACTIVITY_OPTIONS = [
   { value: 'any', label: 'Any activity' },
 ]
 
-const phaseSteps: Array<{ id: Exclude<ScanPhase, 'idle' | 'done'>; label: string }> = [
+const phaseSteps: Array<{ id: Exclude<ScanPhase, 'idle' | 'done' | 'failed'>; label: string }> = [
   { id: 'strategy', label: 'Building the search strategy from the client profile' },
   { id: 'search', label: 'Searching the shared database and the live podcast index' },
   { id: 'score', label: 'Scoring every match against the client with AI' },
@@ -191,6 +227,31 @@ const FieldHint = ({ text }: { text: string }) => (
     </Tooltip>
   </TooltipProvider>
 )
+
+/*
+ * The money line of the failure panel. "No credits were charged" is only said
+ * when it is true: what the failed calls charged all came back and the scan
+ * kept nothing for work it delivered.
+ */
+function scanFailureCreditLine(failure: ScanFailure): string {
+  const unrefunded = Math.max(0, failure.creditsCharged - failure.creditsRefunded)
+  const wasWere = (credits: number) => (credits === 1 ? 'was' : 'were')
+  const refundedNote = failure.creditsRefunded > 0
+    ? `${creditsLabel(failure.creditsRefunded)} for the failed searches ${wasWere(failure.creditsRefunded)} refunded.`
+    : ''
+  if (unrefunded === 0 && failure.creditsKept === 0) {
+    return ['No credits were charged for this scan.', refundedNote].filter(Boolean).join(' ')
+  }
+  return [
+    refundedNote,
+    failure.creditsKept > 0
+      ? `The AI search strategy (${creditsLabel(failure.creditsKept)}) was drafted and stays charged.`
+      : '',
+    unrefunded > 0
+      ? `${creditsLabel(unrefunded)} could not be refunded automatically. Contact support and we will put it back.`
+      : '',
+  ].filter(Boolean).join(' ')
+}
 
 function scoreBadgeClass(score: number | null): string {
   if (score === null) return 'border-border bg-muted text-muted-foreground'
@@ -270,6 +331,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [results, setResults] = useState<ScanResult[]>([])
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [isAdding, setIsAdding] = useState(false)
+  const [scanFailure, setScanFailure] = useState<ScanFailure | null>(null)
   const scanRunId = useRef(0)
   // Leaving the page cancels a running scan, so it stops searching and never
   // starts paid scoring for a page nobody is looking at.
@@ -291,7 +353,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [maxAudience, setMaxAudience] = useState('')
   const [minEpisodes, setMinEpisodes] = useState('')
 
-  const scanning = phase !== 'idle' && phase !== 'done'
+  const scanning = phase !== 'idle' && phase !== 'done' && phase !== 'failed'
   /*
    * What the click can cost, said on the button. Scoring is charged per
    * request of SCORING_BATCH_SIZE, and the scan scores at most MAX_SCORED, so
@@ -383,6 +445,12 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     setResults([])
     setAddedIds(new Set())
     setProgress(null)
+    setScanFailure(null)
+    // What the failure panel reports: refunds the server confirmed, and what
+    // this run spent on work it did get (a strategy it drafted).
+    let creditsCharged = 0
+    let creditsRefunded = 0
+    let creditsKept = 0
 
     try {
       setPhase('strategy')
@@ -396,6 +464,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           .filter(Boolean)
           .slice(0, MAX_QUERIES)
         if (scanRunId.current !== runId) return
+        if (!contextQuery.data?.ai_keys?.anthropic) creditsKept += CREDIT_COSTS.query_generation
         setAiQueries(strategyQueries)
         setAiStrategyLoaded(true)
       }
@@ -453,12 +522,16 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
 
       const totalRequests = queries.length * PAGES_PER_QUERY
       let completedRequests = 0
+      // Set when the index refuses or stays down past its retries. Every later
+      // page would fail the same way, so the search ends there.
+      let searchStop: PodscanFailure | null = null
       for (const query of queries) {
+        if (searchStop) break
         for (let page = 1; page <= PAGES_PER_QUERY; page += 1) {
           if (scanRunId.current !== runId) return
           podscanAttempts += 1
           try {
-            const response = await searchPodcastsWithMeta({
+            const response = await withPodscanRetry(() => searchPodcastsWithMeta({
               query,
               page,
               per_page: 50,
@@ -472,7 +545,14 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               ...(minAudience ? { min_audience_size: Number.parseInt(minAudience, 10) } : {}),
               ...(maxAudience ? { max_audience_size: Number.parseInt(maxAudience, 10) } : {}),
               ...(minEpisodes ? { min_episode_count: Number.parseInt(minEpisodes, 10) } : {}),
-            }, workspaceId)
+            }, workspaceId), {
+              onFailedAttempt: (error) => {
+                const moved = creditsMovedBy(error)
+                creditsCharged += moved.charged
+                creditsRefunded += moved.refunded
+              },
+              isCancelled: () => scanRunId.current !== runId,
+            })
             const podcasts = response.data.podcasts || []
             for (const podcast of podcasts) collect(fromPodscan(podcast))
             const lastPage = Number.parseInt(String(response.data.pagination?.last_page ?? PAGES_PER_QUERY), 10)
@@ -481,6 +561,11 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               break
             }
           } catch (error) {
+            if (error instanceof PodscanSearchError && stopsScan(error.failure)) {
+              searchStop = error.failure
+              console.error('Smart scan stopped searching:', error.failure.message)
+              break
+            }
             podscanFailures += 1
             console.error('Smart scan search page failed:', error)
           }
@@ -499,7 +584,13 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         ? `${failedSearches} search${failedSearches === 1 ? '' : 'es'} failed, so this may not be everything.`
         : ''
       if (everySearchFailed && collected.size === 0) {
-        throw new Error('Every search failed, so nothing could be found. Check your connection and try the scan again.')
+        throw new ScanFailedError({
+          reason: 'Every search failed, so nothing could be found.',
+          kind: 'every_search_failed',
+          creditsCharged,
+          creditsRefunded,
+          creditsKept,
+        })
       }
       const fresh = [...collected.values()]
         .filter((podcast) => !existingPodcastIds.has(podcast.podcast_id.toLowerCase()))
@@ -507,6 +598,16 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       discoveredCandidates = candidates
       const droppedCount = fresh.length - candidates.length
       if (candidates.length === 0) {
+        // Nothing new is only a finding when the search actually ran.
+        if (searchStop) {
+          throw new ScanFailedError({
+            reason: podscanFailureReason(searchStop),
+            kind: searchStop.kind,
+            creditsCharged,
+            creditsRefunded,
+            creditsKept,
+          })
+        }
         setPhase('done')
         setStatusMessage('')
         if (failedSearches > 0) {
@@ -584,11 +685,20 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         unscored > 0 ? `${unscored} could not be scored` : null,
         droppedCount > 0 ? `${droppedCount} more found but not scored` : null,
         failedSearches > 0 ? `${failedSearches} search${failedSearches === 1 ? '' : 'es'} failed` : null,
+        searchStop ? 'the index search stopped early' : null,
       ].filter(Boolean).join(', ')
       if (notes) toast.warning(`${ranked.length - unscored} ranked for ${selectedClient.name} — ${notes}.`)
       else toast.success(`${ranked.length} podcasts ranked for ${selectedClient.name}.`)
     } catch (error) {
       if (scanRunId.current !== runId) return
+      if (error instanceof ScanFailedError) {
+        setScanFailure(error.failure)
+        setPhase('failed')
+        setStatusMessage('')
+        setProgress(null)
+        toast.error(`Scan could not run. ${error.failure.reason}`)
+        return
+      }
       // A scoring failure must not bin discovery the workspace already paid
       // for. Show what was found (with any partial scores) and say plainly
       // what did not score, mirroring the advanced Finder.
@@ -664,6 +774,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                   setResults([])
                   setAiQueries([])
                   setAiStrategyLoaded(false)
+                  setScanFailure(null)
                   setPhase('idle')
                 }}
                 disabled={scanning}
@@ -957,6 +1068,39 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               )}
               {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
               <p className="text-xs text-muted-foreground">About a minute.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {phase === 'failed' && scanFailure && (
+          <Card role="alert" className="border-destructive/40">
+            <CardContent className="space-y-3 pt-6">
+              <p className="flex items-center gap-2 font-semibold">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                Scan could not run.
+              </p>
+              <p className="text-sm">{scanFailure.reason}</p>
+              <p className="text-sm text-muted-foreground">{scanFailureCreditLine(scanFailure)}</p>
+              <p className="text-sm text-muted-foreground">
+                {scanFailure.kind === 'insufficient_credits'
+                  ? 'Add credits, then try again.'
+                  : 'Try again, or contact support if it keeps happening.'}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button size="sm" onClick={() => void runScan()} disabled={!selectedClient}>
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  Retry
+                </Button>
+                {scanFailure.kind === 'insufficient_credits' ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`${baseHref}/settings/billing`}>Add credits</Link>
+                  </Button>
+                ) : (
+                  <Button asChild size="sm" variant="outline">
+                    <a href={`mailto:${PLATFORM_SUPPORT_EMAIL}?subject=${encodeURIComponent('Podcast Finder scan failed')}`}>Contact support</a>
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
