@@ -1046,6 +1046,8 @@ assert.match(campaignsPage, /result\.missing > 0/u)
 // they send for, and connecting one writes the campaign that does the sending.
 const mailboxInfra = readFileSync('supabase/functions/workspace-mailbox-infra/index.ts', 'utf8')
 const mailboxesTable = readFileSync('src/components/workspace/MailboxesTable.tsx', 'utf8')
+const mailboxView = readFileSync('src/lib/mailboxView.ts', 'utf8')
+const mailboxRow = readFileSync('src/components/workspace/mailboxes/MailboxRow.tsx', 'utf8')
 
 // A UTC day rolls over during the American sending window, so an afternoon of
 // sending read as zero from late afternoon onwards.
@@ -1098,11 +1100,13 @@ assert.match(mailboxInfra, /action === 'warming-retry'/u)
 // The page states the Winnr requirement instead of offering a wizard that
 // cannot run, and never offers the purchase flow to a non-manager.
 
-// Problems first, and the SMTP reason on the row rather than in a hover title.
-assert.match(mailboxesTable, /function severity\(account: WorkspaceMailboxAccount\)/u)
-assert.match(mailboxesTable, /severity\(left\) - severity\(right\) \|\| left\.email\.localeCompare/u)
-assert.match(mailboxesTable, /\{account\.status_message\}/u)
-assert.match(mailboxesTable, /daily capacity used/u)
+// Problems first, by one derived status rather than the warmup score, and the
+// SMTP reason on the row as a label and hint with the raw text one click away.
+assert.match(mailboxView, /export function effectiveStatus\(account: WorkspaceMailboxAccount\): EffectiveStatus/u)
+assert.match(mailboxView, /sign \* compareBy\(sort\.key, left, right\) \|\| left\.email\.localeCompare/u)
+assert.match(mailboxRow, /linkifyText\(error\.raw\)/u)
+assert.match(mailboxRow, /rel="noopener noreferrer"/u)
+assert.match(mailboxesTable, /useMailboxList\(allAccounts\)/u)
 
 // Why a campaign is not sending. The provider reports it on every sync and it
 // used to be discarded, so an Active campaign that sent nothing all day

@@ -241,8 +241,8 @@ describe('WorkspaceOutreachSuite', () => {
     expect(within(table).getByRole('columnheader', { name: 'Email' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Sent today' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Client' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Warmup emails' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Health score' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Warmup' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: /^Status/ })).toHaveAttribute('aria-sort', 'ascending')
     await within(table).findByText('admin@solaraccountreview.help')
     expect(within(table).getAllByRole('row')).toHaveLength(11)
     expect(within(table).getAllByText('Solar - CI 04/23/2026')).toHaveLength(10)
@@ -251,8 +251,10 @@ describe('WorkspaceOutreachSuite', () => {
     const account = within(table).getByText('admin@solaraccountreview.help').closest('tr')
     expect(account).not.toBeNull()
     expect(within(account as HTMLElement).getByText('0 of 15')).toBeInTheDocument()
-    expect(within(account as HTMLElement).getByText('70')).toBeInTheDocument()
-    expect(within(account as HTMLElement).getByText('100%')).toBeInTheDocument()
+    // Warmup total and per-day target are different things, so each is named.
+    expect(within(account as HTMLElement).getByText('70 sent · target 70/day')).toBeInTheDocument()
+    expect(account).toHaveTextContent('Healthy')
+    expect(account).toHaveTextContent('Health 100%')
     expect(screen.queryByText('No mailboxes synced yet')).not.toBeInTheDocument()
     expect(screen.queryByText('Mailbox health signals')).not.toBeInTheDocument()
     expect(screen.queryByText(/layout preview/i)).not.toBeInTheDocument()
@@ -292,7 +294,7 @@ describe('WorkspaceOutreachSuite', () => {
 
     // Seven of ten accounts are active at 15/day.
     const summary = await screen.findByTestId('mailbox-capacity')
-    expect(summary).toHaveTextContent('0 of 105 daily capacity used (America/Chicago)')
+    expect(summary).toHaveTextContent('0 / 105 sent today, resets midnight America/Chicago')
     expect(summary).toHaveTextContent('3 mailboxes cannot send')
     expect(summary).toHaveTextContent('9 not connected to any client')
   })
@@ -318,11 +320,14 @@ describe('WorkspaceOutreachSuite', () => {
 
     const table = await screen.findByRole('table', { name: 'Mailbox accounts' })
     const assigned = within(table).getByText('admin@solaraccountreview.help').closest('tr') as HTMLElement
-    expect(within(assigned).getByText('Dallas Fontaine')).toBeInTheDocument()
+    expect(assigned).toHaveTextContent('Dallas Fontaine')
 
-    // Dallas is already connected, so only the other client is offered.
-    fireEvent.click(within(assigned).getByLabelText('Connect admin@solaraccountreview.help to a client'))
-    fireEvent.click(await screen.findByRole('option', { name: 'Rae Whitfield' }))
+    // The client cell is the menu; Dallas is already checked.
+    const trigger = within(assigned).getByRole('button', { name: 'Client for admin@solaraccountreview.help: Dallas Fontaine' })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Dallas Fontaine' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
 
     const clientReads = mockedClients.mock.calls.length
     const mailboxReads = mockedMailboxes.mock.calls.length
@@ -337,7 +342,7 @@ describe('WorkspaceOutreachSuite', () => {
     expect(mockedClients.mock.calls.length).toBe(clientReads)
   })
 
-  it('takes a mailbox back off a client from the badge that says it is on them', async () => {
+  it('takes a mailbox back off a client by unchecking it in the client cell', async () => {
     mockedClients.mockResolvedValue([
       { id: 'client-one', name: 'Dallas Fontaine', status: 'active' },
     ] as never)
@@ -346,7 +351,10 @@ describe('WorkspaceOutreachSuite', () => {
 
     const table = await screen.findByRole('table', { name: 'Mailbox accounts' })
     const assigned = within(table).getByText('admin@solaraccountreview.help').closest('tr') as HTMLElement
-    fireEvent.click(within(assigned).getByLabelText('Disconnect Dallas Fontaine from admin@solaraccountreview.help'))
+    const trigger = within(assigned).getByRole('button', { name: 'Client for admin@solaraccountreview.help: Dallas Fontaine' })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Dallas Fontaine' }))
 
     await waitFor(() => expect(vi.mocked(setWorkspaceMailboxClient)).toHaveBeenCalledWith({
       workspaceId: defaultWorkspaceId,
