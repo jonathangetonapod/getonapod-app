@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceProspectDashboards from '@/pages/app/WorkspaceProspectDashboards'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -99,21 +99,37 @@ const prospect: WorkspaceProspect = {
   },
 }
 
-function renderPage(props: { platformWorkspaceId?: string } = {}, initialEntry = '/app/prospect-dashboards') {
+/** Opens a prospect by default, the way a row click does; pass a list address to start on the list. */
+function renderPage(props: { platformWorkspaceId?: string } = {}, initialEntry?: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   })
+  const base = props.platformWorkspaceId ? `/app/workspaces/${props.platformWorkspaceId}` : '/app'
+  const page = <WorkspaceProspectDashboards {...props} />
 
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <WorkspaceProspectDashboards {...props} />
+      <MemoryRouter initialEntries={[initialEntry ?? `${base}/prospects/${prospectId}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/app/prospect-dashboards" element={page} />
+          <Route path="/app/prospects" element={page} />
+          <Route path="/app/prospects/:prospectId" element={page} />
+          <Route path="/app/workspaces/:workspaceId/prospects" element={page} />
+          <Route path="/app/workspaces/:workspaceId/prospects/:prospectId" element={page} />
+        </Routes>
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+/** Where the page has navigated to, for assertions about the address. */
+const LocationProbe = () => {
+  const location = useLocation()
+  return <output data-testid="location">{`${location.pathname}${location.search}`}</output>
 }
 
 describe('WorkspaceProspectDashboards finder link', () => {
@@ -558,17 +574,11 @@ describe('WorkspaceProspectDashboards shortlist display', () => {
     expect(screen.queryByText(/^semantic$/iu)).not.toBeInTheDocument()
   })
 
-  it('pluralizes counts on the shortlist and the prospect list', async () => {
-    renderWith(
-      [featured(1, { audience_size: 1, episode_count: 1 })],
-      { visible_count: 1 },
-      { view_count: 1 },
-    )
+  it('pluralizes counts on the shortlist', async () => {
+    renderWith([featured(1, { audience_size: 1, episode_count: 1 })])
 
     expect(await screen.findByText('1 listener')).toBeInTheDocument()
     expect(screen.getByText('1 episode')).toBeInTheDocument()
-    expect(screen.getByText('1 match')).toBeInTheDocument()
-    expect(screen.getByText('1 view')).toBeInTheDocument()
   })
 
   it('states readiness minimums instead of a fraction', async () => {
@@ -593,5 +603,158 @@ describe('WorkspaceProspectDashboards shortlist display', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('button', { name: /archive dashboard/i })).toBeInTheDocument()
     expect(archiveWorkspaceProspect).not.toHaveBeenCalled()
+  })
+})
+
+describe('WorkspaceProspectDashboards list', () => {
+  const published = '2026-10-01T00:00:00.000Z'
+  const ready = { profile_ready: true, visible_count: 12, analyzed_count: 12, featured_count: 5, cta_ready: true, publishable: true }
+  const list: WorkspaceProspect[] = [
+    { ...prospect, id: 'aaaaaaaa-0000-4000-8000-000000000001', prospect_name: 'Dana Draft', prospect_title: null, updated_at: '2026-10-20T00:00:00.000Z', readiness: { ...prospect.readiness, profile_ready: false } },
+    { ...prospect, id: 'aaaaaaaa-0000-4000-8000-000000000002', prospect_name: 'Rory Review', lifecycle_status: 'review', updated_at: '2026-10-19T00:00:00.000Z', readiness: ready },
+    { ...prospect, id: 'aaaaaaaa-0000-4000-8000-000000000003', prospect_name: 'Lee Live', lifecycle_status: 'ready', published_at: published, updated_at: '2026-10-18T00:00:00.000Z', readiness: ready, views_last_7_days: 0 },
+    { ...prospect, id: 'aaaaaaaa-0000-4000-8000-000000000004', prospect_name: 'Vic Viewed', lifecycle_status: 'viewed', published_at: published, view_count: 3, last_viewed_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), updated_at: '2026-10-17T00:00:00.000Z', readiness: ready, views_last_7_days: 2 },
+  ].map((item) => ({ views_last_7_days: 0, ...item }) as WorkspaceProspect)
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'owner@example.com' },
+      workspace: { id: workspaceId, name: 'Tenant Workspace', slug: 'tenant-workspace', status: 'active', is_default: false },
+      membership: { role: 'owner' },
+      signOut: vi.fn(),
+    } as never)
+    mockedList.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboards: list })
+    mockedDetail.mockImplementation(async (_workspace, id) => ({
+      workspace: workspaceSummary,
+      viewer_role: 'owner',
+      can_manage: true,
+      dashboard: list.find((item) => item.id === id) || list[0],
+      podcasts: [],
+    }))
+  })
+
+  afterEach(() => window.localStorage.clear())
+
+  const location = () => screen.getByTestId('location').textContent
+  const filterChip = (name: RegExp) => within(screen.getByRole('group', { name: 'Filter prospects' })).getByRole('button', { name })
+
+  it('keeps a viewed prospect live and says how it was viewed', async () => {
+    renderPage({}, '/app/prospects')
+
+    const row = (await screen.findByText('Vic Viewed')).closest('a')!
+    expect(within(row).getByText('Live')).toBeInTheDocument()
+    expect(within(row).getByText('Viewed 3x, last 2d ago')).toBeInTheDocument()
+    expect(within(screen.getByText('Lee Live').closest('a')!).getByText('Not viewed yet')).toBeInTheDocument()
+  })
+
+  it('shows what a draft is missing', async () => {
+    renderPage({}, '/app/prospects')
+
+    const row = (await screen.findByText('Dana Draft')).closest('a')!
+    expect(within(row).getByText('Draft')).toBeInTheDocument()
+    expect(within(row).getByText('Missing title, bio, shortlist')).toBeInTheDocument()
+  })
+
+  it('counts each prospect in exactly one filter', async () => {
+    renderPage({}, '/app/prospects')
+
+    await screen.findByText('Dana Draft')
+    expect(filterChip(/^All 4$/u)).toBeInTheDocument()
+    expect(filterChip(/^Drafts 1$/u)).toBeInTheDocument()
+    expect(filterChip(/^Needs review 1$/u)).toBeInTheDocument()
+    expect(filterChip(/^Live, not viewed 1$/u)).toBeInTheDocument()
+    expect(filterChip(/^Live, viewed 1$/u)).toBeInTheDocument()
+    expect(screen.queryByText(/to review$/u)).not.toBeInTheDocument()
+  })
+
+  it('filters through the address and carries the filter into a prospect and back', async () => {
+    renderPage({}, '/app/prospects')
+
+    await screen.findByText('Dana Draft')
+    fireEvent.click(filterChip(/^Live, viewed/u))
+    await waitFor(() => expect(location()).toBe('/app/prospects?filter=live_viewed'))
+    expect(screen.queryByText('Lee Live')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Vic Viewed'))
+    await waitFor(() => expect(location()).toBe('/app/prospects/aaaaaaaa-0000-4000-8000-000000000004?filter=live_viewed'))
+    expect(await screen.findByRole('link', { name: /all prospects/i })).toHaveAttribute('href', '/app/prospects?filter=live_viewed')
+  })
+
+  it('moves to the previous and next prospect within the list', async () => {
+    renderPage({}, '/app/prospects/aaaaaaaa-0000-4000-8000-000000000002')
+
+    // Last activity counts views, so Vic's view two days ago puts Vic first.
+    expect(await screen.findByText('3 of 4')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Previous prospect' })).toHaveAttribute('href', '/app/prospects/aaaaaaaa-0000-4000-8000-000000000001')
+    expect(screen.getByRole('link', { name: 'Next prospect' })).toHaveAttribute('href', '/app/prospects/aaaaaaaa-0000-4000-8000-000000000003')
+  })
+
+  it('moves an old ?prospect= link onto the prospect path', async () => {
+    renderPage({}, '/app/prospects?prospect=aaaaaaaa-0000-4000-8000-000000000003&view=all')
+
+    await waitFor(() => expect(location()).toBe('/app/prospects/aaaaaaaa-0000-4000-8000-000000000003?view=all'))
+  })
+
+  it('remembers the chosen sort', async () => {
+    renderPage({}, '/app/prospects')
+
+    fireEvent.click(await screen.findByLabelText('Sort prospects'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Name' }))
+
+    await waitFor(() => expect(location()).toBe('/app/prospects?sort=name'))
+    expect(window.localStorage.getItem('goap:prospect-studio:sort')).toBe('name')
+    const names = screen.getAllByRole('link').map((link) => link.textContent).filter((text) => /Dana|Rory|Lee|Vic/u.test(text || ''))
+    expect(names[0]).toMatch(/^Dana Draft/u)
+    expect(names[1]).toMatch(/^Lee Live/u)
+  })
+
+  it('makes the summary numbers filters and shows views for the last week', async () => {
+    renderPage({}, '/app/prospects')
+
+    fireEvent.click(await screen.findByRole('button', { name: /2\s*views, last 7 days/u }))
+    await waitFor(() => expect(location()).toBe('/app/prospects?filter=live_viewed'))
+    fireEvent.click(screen.getByRole('button', { name: /^2\s*live$/u }))
+    await waitFor(() => expect(location()).toBe('/app/prospects?filter=live'))
+    expect(screen.queryByText('Dana Draft')).not.toBeInTheDocument()
+    expect(screen.getByText('Lee Live')).toBeInTheDocument()
+  })
+
+  it('keeps the tagline for the empty state only', async () => {
+    renderPage({}, '/app/prospects')
+    await screen.findByText('Dana Draft')
+    expect(screen.queryByText(/share-ready podcast shortlist/u)).not.toBeInTheDocument()
+
+    cleanup()
+    mockedList.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboards: [] })
+    renderPage({}, '/app/prospects')
+    expect(await screen.findByText(/share-ready podcast shortlist/u)).toBeInTheDocument()
+  })
+
+  it('warns before creating a prospect that already exists', async () => {
+    renderPage({}, '/app/prospects')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /new prospect/i }))[0])
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: '  lee   live ' } })
+
+    expect(await screen.findByText('A prospect named Lee Live already exists.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open existing' })).toHaveAttribute('href', '/app/prospects/aaaaaaaa-0000-4000-8000-000000000003')
+    expect(screen.getByRole('button', { name: 'Create anyway' })).toBeInTheDocument()
+  })
+
+  it('archives every selected prospect in the current view after confirming', async () => {
+    vi.mocked(archiveWorkspaceProspect).mockResolvedValue(undefined)
+    renderPage({}, '/app/prospects?filter=live')
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select all prospects in this view' }))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Archive' }))
+
+    await waitFor(() => expect(archiveWorkspaceProspect).toHaveBeenCalledTimes(2))
+    expect(archiveWorkspaceProspect).toHaveBeenCalledWith(workspaceId, 'aaaaaaaa-0000-4000-8000-000000000003')
+    expect(archiveWorkspaceProspect).toHaveBeenCalledWith(workspaceId, 'aaaaaaaa-0000-4000-8000-000000000004')
   })
 })

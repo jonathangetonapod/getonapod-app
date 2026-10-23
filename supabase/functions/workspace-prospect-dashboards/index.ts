@@ -33,6 +33,7 @@ const PROSPECT_IMAGE_TYPES = new Map([
 const MAX_PROSPECT_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_PROSPECT_IMAGE_MULTIPART_BYTES = MAX_PROSPECT_IMAGE_BYTES + (64 * 1024)
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+const RECENT_VIEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 const PROFILE_FIELDS = [
   'name',
   'email',
@@ -1341,6 +1342,25 @@ serve(async (req) => {
           status: String(row.status ?? ''),
         })
       }
+      // Views in the last seven days, from the per-view log. A failure here
+      // (or a database without the log yet) leaves the counts unknown rather
+      // than failing the whole list; the all-time counter is still there.
+      const recentViews = new Map<string, number>()
+      let recentViewsKnown = false
+      if (ids.length > 0) {
+        const { data: viewCounts, error: viewCountError } = await context.admin.rpc('prospect_dashboard_view_counts_v1', {
+          p_dashboard_ids: ids,
+          p_since: new Date(Date.now() - RECENT_VIEW_WINDOW_MS).toISOString(),
+        })
+        if (viewCountError) {
+          console.warn('[workspace-prospect-dashboards] recent view counts were unavailable')
+        } else {
+          recentViewsKnown = true
+          for (const row of (viewCounts || []) as Array<{ prospect_dashboard_id: string; views: number | string }>) {
+            recentViews.set(String(row.prospect_dashboard_id), Number(row.views) || 0)
+          }
+        }
+      }
       // Which providers the workspace pays for itself: a build on the
       // workspace's own key is not charged, and the button says so.
       const aiKeys = await workspaceAiKeyStatus(context.admin, workspaceId)
@@ -1355,6 +1375,7 @@ serve(async (req) => {
           ...dashboard,
           readiness: readinessForRows(dashboard, shortlistByDashboard.get(dashboard.id) || []),
           linked_client: clientBySlug.get(dashboard.slug) ?? null,
+          views_last_7_days: recentViewsKnown ? recentViews.get(dashboard.id) ?? 0 : null,
         })),
       })
     }

@@ -63,6 +63,8 @@ export interface WorkspaceProspect {
   content_ready: boolean
   view_count: number
   last_viewed_at: string | null
+  /** Views in the last seven days; null when the count could not be read. List only. */
+  views_last_7_days?: number | null
   created_at: string
   updated_at: string
   readiness: ProspectReadiness

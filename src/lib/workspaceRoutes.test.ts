@@ -21,6 +21,13 @@ describe('workspace routes', () => {
     )).toBe('podcast-finder')
   })
 
+  it('keeps Prospect Studio without carrying a prospect across workspaces', () => {
+    expect(workspaceModuleFromPath(
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/prospects/22222222-2222-4222-8222-222222222222',
+    )).toBe('prospects')
+    expect(workspaceModuleFromPath('/app/prospects')).toBe('prospects')
+  })
+
   it('preserves the shared Podcast Database while switching workspaces', () => {
     expect(workspaceModuleFromPath('/app/podcast-database')).toBe('podcast-database')
     expect(workspaceModuleHref('/app', 'podcast-database')).toBe('/app/podcast-database')

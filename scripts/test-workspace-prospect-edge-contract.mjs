@@ -40,6 +40,13 @@ assert.doesNotMatch(studio, /which overlaps with \$\{prospect\.prospect_name\}/u
 assert.match(studio, /explanationsNeedingRewrite\(/u)
 assert.match(studio, /EXPLANATION_REWRITE_ATTEMPTS = 2/u)
 assert.match(studio, /console\.error\(`\[workspace-prospect-dashboards\] fit explanations still fail/u)
+// Views in the last seven days come from the per-view log, and a missing log
+// degrades to unknown instead of failing the list.
+const viewsMigration = readFileSync('supabase/migrations/20261023000200_prospect_dashboard_views.sql', 'utf8')
+assert.match(studio, /rpc\('prospect_dashboard_view_counts_v1'/u)
+assert.match(studio, /views_last_7_days: recentViewsKnown \? recentViews\.get\(dashboard\.id\) \?\? 0 : null/u)
+assert.match(viewsMigration, /INSERT INTO public\.prospect_dashboard_views \(prospect_dashboard_id\)\s+SELECT counted\.id FROM counted/u, 'a view is logged only when the counter moved')
+assert.match(viewsMigration, /REVOKE ALL ON TABLE public\.prospect_dashboard_views FROM PUBLIC, anon, authenticated/u)
 assert.match(studio, /candidates = cleanCandidates\(candidates, dashboardId\)/u, 'duplicate feeds must be dropped before ranking')
 assert.match(studio, /podcast_name: decodeHtmlEntities\(requireString\(podcast\.podcast_name/u, 'Finder additions must be stored decoded')
 assert.match(studio, /ranking_source: rankingSource/u)

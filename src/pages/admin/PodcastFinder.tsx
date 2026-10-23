@@ -1457,7 +1457,7 @@ export default function PodcastFinder({
     : MY_WORKSPACE_BASE_HREF
   const clientsHref = `${clientBaseHref}/clients`
   const onboardingHref = `${clientBaseHref}/onboarding`
-  const prospectStudioHref = `${clientBaseHref}/prospects?prospect=${encodeURIComponent(canonicalProspectId)}&view=all`
+  const prospectStudioHref = `${clientBaseHref}/prospects/${encodeURIComponent(canonicalProspectId)}?view=all`
   const platformWorkspaceConfig: PlatformWorkspaceConfig | undefined = platformWorkspaceId
     ? {
         workspaceId: (platformWorkspaceId || '').toLowerCase(),
