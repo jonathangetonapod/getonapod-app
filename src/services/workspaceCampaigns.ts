@@ -1052,6 +1052,8 @@ export interface WorkspaceInboxMessage {
   id: string
   /** 'outbound' is what this agency sent — the half the pane could not show. */
   direction: 'inbound' | 'outbound'
+  /** The workspace mailbox on this message; recovers the sender for aged-out replies. */
+  eaccount?: string | null
   subject: string
   from_email: string
   to_email: string
@@ -1101,6 +1103,11 @@ export interface WorkspaceInboxDraft {
   body: string
   classification: WorkspaceInboxReplyClassification | null
   nudges: WorkspaceInboxNudge[]
+  /**
+   * The reply asked not to be contacted. No model ran, nothing was charged,
+   * and the address is now on the workspace do-not-contact list.
+   */
+  suppressed: boolean
 }
 
 export async function draftWorkspaceInboxReply(
@@ -1114,6 +1121,7 @@ export async function draftWorkspaceInboxReply(
     draft: { subject: string; body: string }
     classification?: WorkspaceInboxReplyClassification | null
     nudges?: WorkspaceInboxNudge[]
+    suppressed?: boolean
   }>({
     action: 'inbox-draft',
     workspace_id: workspaceId,
@@ -1126,6 +1134,7 @@ export async function draftWorkspaceInboxReply(
     ...data.draft,
     classification: data.classification ?? null,
     nudges: data.nudges ?? [],
+    suppressed: data.suppressed === true,
   }
 }
 

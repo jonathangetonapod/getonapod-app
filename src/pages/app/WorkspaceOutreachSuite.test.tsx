@@ -426,9 +426,9 @@ describe('WorkspaceOutreachSuite', () => {
     renderPage('master-inbox')
 
     const scope = screen.getByRole('radiogroup', { name: 'Inbox scope' })
-    // Two mutually exclusive scopes; Interested only leads.
+    // Two mutually exclusive scopes; Interested leads.
     expect(within(scope).getAllByRole('radio')).toHaveLength(2)
-    expect(within(scope).getByRole('radio', { name: /interested only/i })).toHaveAttribute('aria-checked', 'true')
+    expect(within(scope).getByRole('radio', { name: /^interested/i })).toHaveAttribute('aria-checked', 'true')
     expect(within(scope).getByRole('radio', { name: /other replies/i })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByPlaceholderText('Search conversations')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Filter by client' })).toHaveTextContent('All clients')
@@ -802,7 +802,7 @@ describe('WorkspaceOutreachSuite', () => {
     ))
   })
 
-  it('moves a conversation into Interested only when it is marked interested', async () => {
+  it('moves a conversation into Interested when it is marked interested', async () => {
     const clientId = '22222222-2222-4222-8222-222222222222'
     vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({
       connected: true,
@@ -846,7 +846,7 @@ describe('WorkspaceOutreachSuite', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Other replies/ }))
     fireEvent.click(await screen.findByText('Re: Titan bankruptcy'))
     // Meeting booked is good news too, so the page says where it will go.
-    expect(await screen.findByText(/Only Interested keeps a conversation in Interested only; Meeting booked/u)).toBeInTheDocument()
+    expect(await screen.findByText(/Interested and Meeting booked keep a conversation under Interested/u)).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: 'Interested' }))
 
     await waitFor(() => expect(setWorkspaceInboxLeadInterest).toHaveBeenCalledWith(
@@ -855,7 +855,7 @@ describe('WorkspaceOutreachSuite', () => {
     ))
     // The scope follows the conversation rather than letting it vanish.
     await waitFor(() => expect(
-      screen.getByRole('radio', { name: /Interested only/ }),
+      screen.getByRole('radio', { name: /^Interested/ }),
     ).toHaveAttribute('aria-checked', 'true'))
   })
 
@@ -1041,5 +1041,101 @@ describe('WorkspaceOutreachSuite', () => {
     expect(screen.queryByRole('navigation', { name: 'Outreach suite' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open clients/i })).toHaveAttribute('href', `${baseHref}/clients`)
     expect(mockedView).toHaveBeenCalledWith(selectedWorkspaceId, expect.any(AbortSignal))
+  })
+
+  const inboxThread = (overrides: Record<string, unknown> = {}) => ({
+    id: 'message-one',
+    thread_id: 'thread-one',
+    message_id: 'provider-message-one',
+    eaccount: 'sdr@example.com',
+    subject: 'Re: Guest pitch',
+    from_email: 'host@example.com',
+    to_email: 'sdr@example.com',
+    body_text: 'Happy to have her on.',
+    received_at: '2026-07-21T12:00:00.000Z',
+    is_unread: true,
+    interested: false,
+    interest_status: null,
+    lead_email: 'host@example.com',
+    campaign: {
+      campaign_id: 'campaign-one',
+      campaign_name: 'Fall outreach',
+      client: { id: '22222222-2222-4222-8222-222222222222', name: 'Dallas Fontaine' },
+    },
+    thread_key: 'thread-one',
+    relationship: null,
+    ...overrides,
+  })
+
+  it('keeps a conversation with a booked meeting under Interested', async () => {
+    vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({
+      connected: true,
+      threads: [inboxThread({ interest_status: 2 })],
+    } as never)
+    renderPage('master-inbox')
+
+    expect(await screen.findByText('Re: Guest pitch')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^Interested/ })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: /Other replies/ })).toHaveTextContent('0')
+  })
+
+  it('recovers the mailbox and text of a reply that aged out of the window, and sends from it', async () => {
+    vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({
+      connected: true,
+      threads: [inboxThread({
+        id: 'answered-message',
+        eaccount: null,
+        body_text: '',
+        subject: 'Re: Guest pitch',
+        interested: true,
+        interest_status: 1,
+        window_aged_out: true,
+        state: {
+          status: 'review',
+          classification: null,
+          nudges_sent: 0,
+          nudges_paused: false,
+          last_nudge_at: null,
+          draft: { subject: 'Re: Guest pitch', body: 'Tuesday works for her.', nudges: [], based_on_email_id: 'answered-message', generated_at: null },
+          draft_stale: false,
+        },
+      })],
+    } as never)
+    vi.mocked(getWorkspaceInboxThreadMessages).mockResolvedValue([
+      { id: 'pitch', direction: 'outbound', eaccount: 'sdr@example.com', subject: 'Guest pitch', from_email: 'sdr@example.com', to_email: 'host@example.com', body_text: 'Our pitch', sent_at: '2026-07-01T12:00:00.000Z' },
+      { id: 'answered-message', direction: 'inbound', eaccount: 'sdr@example.com', subject: 'Re: Guest pitch', from_email: 'host@example.com', to_email: 'sdr@example.com', body_text: 'Which days work?', sent_at: '2026-07-02T12:00:00.000Z' },
+    ])
+    vi.mocked(sendWorkspaceInboxReply).mockResolvedValue(undefined as never)
+    renderPage('master-inbox')
+
+    fireEvent.click(await screen.findByText('Staged for review — the reply is older than the inbox window'))
+    // Read from the thread as soon as it opens, not only on "Show what we sent".
+    expect(await screen.findByText('Which days work?')).toBeInTheDocument()
+    expect(await screen.findByText('Sends from sdr@example.com in the same thread.')).toBeInTheDocument()
+    const send = screen.getByRole('button', { name: 'Send reply' })
+    expect(send).toBeEnabled()
+    fireEvent.click(send)
+
+    await waitFor(() => expect(sendWorkspaceInboxReply).toHaveBeenCalledWith(
+      defaultWorkspaceId,
+      expect.objectContaining({ reply_to_id: 'answered-message', eaccount: 'sdr@example.com', message: 'Tuesday works for her.' }),
+    ))
+  })
+
+  it('tells a member why the reply controls are off', async () => {
+    mockedUseAuth.mockReturnValue({
+      ...mockedUseAuth(),
+      membership: { role: 'member' },
+    } as never)
+    vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({
+      connected: true,
+      threads: [inboxThread({ interested: true, interest_status: 1 })],
+    } as never)
+    renderPage('master-inbox')
+
+    fireEvent.click(await screen.findByText('Re: Guest pitch'))
+    expect(await screen.findByText('You have view access.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled()
+    expect(screen.getByText(/View only\. Workspace owners and admins can change a host’s status\./u)).toBeInTheDocument()
   })
 })

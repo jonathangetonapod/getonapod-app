@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-host-relationships/index.ts', 'utf8')
 const bookMigration = readFileSync(
@@ -45,7 +45,17 @@ const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/hostRelationships.ts', 'utf8')
 const page = readFileSync('src/pages/app/WorkspaceRelationships.tsx', 'utf8')
 const pitchSignals = readFileSync('src/components/workspace/PitchQualitySignals.tsx', 'utf8')
-const masterInbox = readFileSync('src/components/workspace/MasterInboxPreview.tsx', 'utf8')
+// The Master Inbox is a shell plus its panes, a draft-autosave hook and shared
+// thread helpers; the guarantees below may live in any of them.
+const masterInbox = [
+  'src/components/workspace/MasterInboxPreview.tsx',
+  ...readdirSync('src/components/workspace/inbox')
+    .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
+    .sort()
+    .map((name) => `src/components/workspace/inbox/${name}`),
+  'src/hooks/useInboxDraftAutosave.ts',
+  'src/lib/inboxThreads.ts',
+].map((path) => readFileSync(path, 'utf8')).join('\n')
 const workspaceNavigation = readFileSync('src/components/workspace/WorkspaceLayout.tsx', 'utf8')
 const adminNavigation = readFileSync('src/components/admin/DashboardLayout.tsx', 'utf8')
 const routes = readFileSync('src/App.tsx', 'utf8')
