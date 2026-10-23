@@ -55,6 +55,8 @@ const chooseWorkspace = async () => {
 }
 
 describe('WorkspaceDomainsCard', () => {
+  beforeEach(() => { window.localStorage.clear() })
+
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(listWorkspaceDomains).mockResolvedValue([])
@@ -64,12 +66,42 @@ describe('WorkspaceDomainsCard', () => {
     vi.mocked(removeWorkspaceDomain).mockResolvedValue()
   })
 
-  it('states the whole flow before the form rather than through it', async () => {
+  it('opens the explainer while there are no domains, and keeps both warnings in it', async () => {
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([])
     renderCard()
-    expect(await screen.findByText('How this works')).toBeInTheDocument()
+    expect(await screen.findByText(/until one is serving, an agency.s dashboards, onboarding forms and emailed links use the default address/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'How this works' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/Use a subdomain, not their root domain/i)).toBeInTheDocument()
     expect(screen.getByText(/Proxy status must be DNS only/i)).toBeInTheDocument()
-    expect(screen.getByText(/until one is added and serving, an agency.s dashboards, onboarding forms, and emailed links use the platform domain/i)).toBeInTheDocument()
+  })
+
+  it('puts the form first and keeps the explainer closed once domains exist, remembering the choice', async () => {
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([domain({ status: 'active' })])
+    const { unmount } = renderCard()
+    const toggle = await screen.findByRole('button', { name: 'How this works' })
+    await screen.findByText('podcasts.theiragency.com')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText(/Use a subdomain, not their root domain/i)).not.toBeInTheDocument()
+    // The form comes before the list, and the list before the explainer.
+    const hostname = screen.getByLabelText('Hostname')
+    const listed = screen.getByText('podcasts.theiragency.com')
+    expect(hostname.compareDocumentPosition(listed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(listed.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(toggle)
+    expect(screen.getByText(/Use a subdomain, not their root domain/i)).toBeInTheDocument()
+    unmount()
+    renderCard()
+    expect(await screen.findByRole('button', { name: 'How this works' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('names the example address at most twice on the tab', async () => {
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([])
+    const { container } = renderCard()
+    await screen.findByText(/No custom domains yet/i)
+    const html = container.innerHTML
+    const mentions = (html.match(/podcasts\.theiragency\.com/g) || []).length
+    expect(mentions).toBeLessThanOrEqual(2)
   })
 
   // The mistake is caught in the field, not by the server after a round trip.
@@ -200,8 +232,9 @@ describe('WorkspaceDomainsCard', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Remove podcasts.theiragency.com/i }))
     const dialog = within(await screen.findByRole('alertdialog'))
+    expect(dialog.getByText('Remove podcasts.theiragency.com?')).toBeInTheDocument()
+    expect(dialog.getByText(/Their links switch back to the default address/i)).toBeInTheDocument()
     expect(dialog.getByText(/Any link already sent on this address stops working/i)).toBeInTheDocument()
-    expect(dialog.getByText(/new links will use the platform domain instead/i)).toBeInTheDocument()
 
     fireEvent.click(dialog.getByRole('button', { name: 'Keep it' }))
     await waitFor(() => expect(removeWorkspaceDomain).not.toHaveBeenCalled())

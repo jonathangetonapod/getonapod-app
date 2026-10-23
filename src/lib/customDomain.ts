@@ -3,7 +3,7 @@
  *
  * The server normalizes and validates a hostname before it registers anything,
  * and the only thing a person saw when they got it wrong was a 400 after a
- * round trip — with the typed value still in the box, looking correct. The
+ * round trip, with the typed value still in the box, looking correct. The
  * rules below mirror normalizeHostname in supabase/functions/workspace-domains
  * exactly so the field can refuse the same things in advance and say why in
  * words that name the fix.
@@ -24,7 +24,7 @@ const PLATFORM_HOSTNAME = 'getonapod.com'
  * theiragency.co.uk is as much a root domain as theiragency.com, and the shape
  * alone cannot tell you: podcasts.theiragency.com and theiragency.co.uk both
  * have three labels. The first version matched a handful of second-level
- * labels against a length rule, which quietly split both ways — it missed
+ * labels against a length rule, which quietly split both ways, it missed
  * ne.jp and me.uk, and it would have called blog.co.com a root domain.
  *
  * The full public suffix list is thousands of entries and a dependency; this
@@ -103,7 +103,7 @@ export function normalizeDomainInput(value: string): string {
     .replace(/\.+$/u, '')
 }
 
-/** True for a root domain — theiragency.com, theiragency.co.uk. */
+/** True for a root domain, theiragency.com, theiragency.co.uk. */
 export function isRootDomain(hostname: string): boolean {
   const labels = hostname.split('.')
   if (labels.length === 2) return true
@@ -128,7 +128,7 @@ export function checkDomainInput(value: string): DomainInputCheck {
   if (!hostname.includes('.')) {
     return {
       ...base,
-      problem: `A domain needs a dot in it. "${hostname}" is a name on its own — the full address looks like podcasts.theiragency.com.`,
+      problem: `A domain needs a dot in it. "${hostname}" is a name on its own. The full address looks like podcasts.example.com.`,
     }
   }
   if (hostname.length > MAX_HOSTNAME_LENGTH) {
@@ -137,7 +137,7 @@ export function checkDomainInput(value: string): DomainInputCheck {
   if (!HOSTNAME_PATTERN.test(hostname)) {
     return {
       ...base,
-      problem: 'Domains use letters, numbers, and hyphens only — no underscores, accents, or symbols.',
+      problem: 'Domains use letters, numbers, and hyphens only: no underscores, accents, or symbols.',
     }
   }
   // Refused for the same reason the database constraint refuses it, but before
@@ -154,7 +154,7 @@ export function checkDomainInput(value: string): DomainInputCheck {
       ...base,
       ready: true,
       suggestion: `podcasts.${hostname}`,
-      warning: `${hostname} is their root domain — the one their website and email already run on. Pointing it here takes their website down with it. Use a subdomain instead unless you know this domain is unused.`,
+      warning: `${hostname} is their root domain, the one their website and email already run on. Pointing it here takes their website down with it. Use a subdomain instead unless you know this domain is unused.`,
     }
   }
   if (hostname.startsWith('www.')) {
@@ -182,13 +182,13 @@ export function describeDomainStatus(status: DomainStatus): string {
       // Never "just wait": the most common way this stalls is a record that
       // exists and is proxied, which looks exactly like one that does not
       // exist yet and never resolves itself no matter how long it sits.
-      return 'Waiting on the agency. Either they have not added the record yet, or they just did and it is still spreading, which is usually minutes rather than hours. If it has been sitting here much longer, the usual cause is a Cloudflare record left on Proxied — it has to be set to DNS only, or the certificate can never issue.'
+      return 'Waiting on the agency. Either they have not added the record yet, or they just did and it is still spreading, which is usually minutes rather than hours. If it has been sitting here much longer, the usual cause is a Cloudflare record left on Proxied. It has to be set to DNS only, or the certificate can never issue.'
     case 'provisioning':
       return 'The record arrived. The https certificate is being issued now, which is automatic and usually takes a few minutes.'
     case 'active':
       return 'Live. Their clients see this address on dashboards, the onboarding form, and every link the platform emails.'
     case 'failed':
-      return 'This one did not work. The reason is above. Once the record is fixed at their DNS host, press Check — if it keeps failing, remove the domain and add it again to start with a fresh record.'
+      return 'This one did not work. The reason is above. Once the record is fixed at their DNS host, press Check. If it keeps failing, remove the domain and add it again to start with a fresh record.'
     case 'disabled':
       return 'Turned off. It is not serving and client links do not use it.'
     default:

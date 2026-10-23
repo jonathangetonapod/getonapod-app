@@ -1,16 +1,25 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Inbox, Loader2, Mail, Send } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ChevronDown, ExternalLink, Info, Loader2, Mail, Send, Undo2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { RowMenu, type RowMenuItem } from '@/components/workspace/RowMenu'
+import { TabIntro } from '@/components/workspace/agencies/InfoTip'
+import { daysFromNow, formatDate, formatRelativeDays } from '@/lib/dates'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { isTestJoinRequest } from '@/lib/joinRequestTriage'
+import { cn } from '@/lib/utils'
 import { inviteWorkspaceUser } from '@/services/workspaceUsers'
 import {
   listJoinRequests,
@@ -22,7 +31,7 @@ import {
 /** The words the landing page uses, so the queue reads the same as the form. */
 const AUDIENCE_LABEL: Record<string, string> = {
   agency: 'Podcast agency',
-  pr: 'PR / comms agency',
+  pr: 'PR or comms agency',
   freelancer: 'Freelancer',
   starting_out: 'Starting out',
   other: 'Other',
@@ -33,21 +42,6 @@ const STATUS_STYLE: Record<AccessRequestStatus, { label: string; className: stri
   contacted: { label: 'Contacted', className: 'border-sky-200 bg-sky-50 text-sky-900' },
   invited: { label: 'Invited', className: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
   declined: { label: 'Declined', className: 'border-muted bg-muted/40 text-muted-foreground' },
-}
-
-/** What each status can become. 'new' is always available, to undo a misclick. */
-const NEXT: Record<AccessRequestStatus, AccessRequestStatus[]> = {
-  new: ['contacted', 'declined'],
-  contacted: ['declined', 'new'],
-  invited: ['declined', 'new'],
-  declined: ['new'],
-}
-
-const ACTION_LABEL: Record<AccessRequestStatus, string> = {
-  new: 'Move back to waiting',
-  contacted: 'Mark contacted',
-  invited: 'Mark invited',
-  declined: 'Decline',
 }
 
 /** The longest workspace name manage-workspace-users accepts. */
@@ -63,40 +57,54 @@ function workspaceNameFor(request: JoinRequest): string {
   return name.slice(0, WORKSPACE_NAME_MAX).trim()
 }
 
-function waitedFor(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
-  if (days <= 0) return 'today'
-  if (days === 1) return '1 day'
-  return `${days} days`
+/** Plain until a week, amber to a month, red after. Text colour only. */
+function waitingTone(createdAt: string): string {
+  const days = daysFromNow(createdAt) ?? 0
+  if (days > 30) return 'text-destructive'
+  if (days > 7) return 'text-amber-700'
+  return ''
+}
+
+const isOpen = (request: JoinRequest) => request.status === 'new' || request.status === 'contacted'
+
+interface JoinRequestsCardProps {
+  /** The workspace an invited request became, found by the owner's email. */
+  workspaceIdForEmail?: (email: string) => string | null
 }
 
 /**
  * The queue of people asking to join.
  *
- * The landing page has always been able to take a request; until now nothing
- * showed one to a human. They arrived in Postgres and the only signal was an
- * email, which is a bad place for a queue — nothing to sort, nothing to mark
- * handled, and no way to tell what is still waiting.
- *
  * Whoever has waited longest is the one at risk of being forgotten, so the
- * waiting ones come first and carry how long it has been.
+ * waiting ones come first, oldest first, and carry how long it has been.
+ * Declined requests and the deploy smoke check's test rows stay out of the
+ * way until asked for.
  */
-export function JoinRequestsCard() {
+export function JoinRequestsCard({ workspaceIdForEmail }: JoinRequestsCardProps = {}) {
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [showTests, setShowTests] = useState(false)
+  const [declinedOpen, setDeclinedOpen] = useState(false)
+  const [confirming, setConfirming] = useState<JoinRequest | null>(null)
+  const [bulkConfirming, setBulkConfirming] = useState(false)
 
   const requestsQuery = useQuery({
     queryKey: ['join-requests'],
     queryFn: listJoinRequests,
   })
 
-  const [confirming, setConfirming] = useState<JoinRequest | null>(null)
+  const refreshQueue = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['join-requests'] })
+    // The bubble in the app shell counts what is still waiting; clearing a
+    // request should clear it now, not at the next two-minute poll.
+    await queryClient.invalidateQueries({ queryKey: ['join-requests-waiting'] })
+  }
 
   /*
    * Sending the invitation is the act, and marking the request invited is the
-   * bookkeeping. Doing them separately let the queue claim someone had been
-   * invited when no email had gone anywhere. This does the real thing, then
-   * records it — and only records it if the send succeeded.
+   * bookkeeping. This does the real thing, then records it, and only records
+   * it if the send succeeded.
    */
   const invite = useMutation({
     mutationFn: async (request: JoinRequest) => {
@@ -109,9 +117,8 @@ export function JoinRequestsCard() {
       /*
        * The email has now gone. Recording it is bookkeeping about something
        * that already happened, so a failure here cannot be reported as a
-       * failure to send — that told an admin the invitation had not gone out
-       * and invited them to click again, mailing a stranger twice and
-       * creating a second workspace in their name.
+       * failure to send: that would invite a second click, mailing a stranger
+       * twice and creating a second workspace in their name.
        */
       try {
         await setJoinRequestStatus(request.id, 'invited')
@@ -121,8 +128,7 @@ export function JoinRequestsCard() {
       }
     },
     onSuccess: async (result, request) => {
-      await queryClient.invalidateQueries({ queryKey: ['join-requests'] })
-      await queryClient.invalidateQueries({ queryKey: ['join-requests-waiting'] })
+      await refreshQueue()
       await queryClient.invalidateQueries({ queryKey: ['platform', 'workspace-users'] })
       setConfirming(null)
       if (result.recorded) {
@@ -130,7 +136,7 @@ export function JoinRequestsCard() {
       } else {
         toast.warning(
           `Invitation sent to ${request.email}, but the queue still shows them waiting. `
-          + 'Do not send again — move the row to invited by hand.',
+          + 'Do not send again. Mark the row invited by hand.',
         )
       }
     },
@@ -143,88 +149,168 @@ export function JoinRequestsCard() {
     mutationFn: ({ id, status }: { id: string; status: AccessRequestStatus }) =>
       setJoinRequestStatus(id, status),
     onSuccess: async (_result, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ['join-requests'] })
-      // The bubble in the app shell counts what is still waiting; clearing a
-      // request should clear it now, not at the next two-minute poll.
-      await queryClient.invalidateQueries({ queryKey: ['join-requests-waiting'] })
+      await refreshQueue()
       toast.success(`Marked ${STATUS_STYLE[variables.status].label.toLowerCase()}.`)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'That request could not be updated.'),
   })
 
-  const requests = requestsQuery.data ?? []
-  // Waiting first, then longest-waiting within each group.
-  const ordered = [...requests].sort((a, b) => {
-    if ((a.status === 'new') !== (b.status === 'new')) return a.status === 'new' ? -1 : 1
-    return a.created_at.localeCompare(b.created_at) * (a.status === 'new' ? 1 : -1)
+  const bulkDecline = useMutation({
+    mutationFn: async (requests: JoinRequest[]) => {
+      // One at a time, so a refusal part way leaves an honest count behind it.
+      let declined = 0
+      for (const request of requests) {
+        await setJoinRequestStatus(request.id, 'declined')
+        declined += 1
+      }
+      return declined
+    },
+    onSuccess: (declined) => {
+      toast.success(`Declined ${declined} ${declined === 1 ? 'request' : 'requests'}.`)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Some requests could not be declined.'),
+    onSettled: async () => {
+      setBulkConfirming(false)
+      setSelected(new Set())
+      await refreshQueue()
+    },
   })
-  const waiting = requests.filter((request) => request.status === 'new').length
+
+  const requests = (requestsQuery.data ?? []).filter((request) => showTests || !isTestJoinRequest(request))
+  const testCount = (requestsQuery.data ?? []).filter(isTestJoinRequest).length
+  const byAge = (a: JoinRequest, b: JoinRequest) => a.created_at.localeCompare(b.created_at)
+  // Waiting first, then contacted, each oldest first; then invited, newest first.
+  const active = [
+    ...requests.filter((request) => request.status === 'new').sort(byAge),
+    ...requests.filter((request) => request.status === 'contacted').sort(byAge),
+    ...requests.filter((request) => request.status === 'invited').sort((a, b) => byAge(b, a)),
+  ]
+  const declined = requests.filter((request) => request.status === 'declined').sort((a, b) => byAge(b, a))
+  const selectable = active.filter(isOpen)
+  const selectedRequests = selectable.filter((request) => selected.has(request.id))
+
+  const toggleSelected = (id: string, checked: boolean) => setSelected((current) => {
+    const next = new Set(current)
+    if (checked) next.add(id)
+    else next.delete(id)
+    return next
+  })
+
+  const rowProps = (request: JoinRequest) => ({
+    request,
+    expanded: expanded === request.id,
+    busy: (move.isPending && move.variables?.id === request.id) || bulkDecline.isPending,
+    workspaceId: request.status === 'invited' ? workspaceIdForEmail?.(request.email) ?? null : null,
+    onToggle: () => setExpanded((current) => (current === request.id ? null : request.id)),
+    onMove: (status: AccessRequestStatus) => move.mutate({ id: request.id, status }),
+    onInvite: () => setConfirming(request),
+  })
+
+  const header = (selectAll?: React.ReactNode) => (
+    <TableHeader>
+      <TableRow>
+        <TableHead className="w-10">{selectAll}</TableHead>
+        <TableHead>Who</TableHead>
+        <TableHead>Type</TableHead>
+        <TableHead>Clients</TableHead>
+        <TableHead>Waiting</TableHead>
+        <TableHead>Status</TableHead>
+        <TableHead className="text-right">Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+  )
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Inbox className="h-5 w-5" />
-          Requests to join
-          {waiting > 0 && (
-            <Badge className="border-amber-200 bg-amber-100 text-amber-900 hover:bg-amber-100">
-              {waiting} waiting
-            </Badge>
+    <div className="space-y-4">
+      <TabIntro info="Sending an invitation creates their workspace and emails them a link to set a password.">
+        People who asked to join from the landing page, none of whom has an account yet.
+      </TabIntro>
+
+      {requestsQuery.isLoading ? (
+        <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />Loading requests…
+        </p>
+      ) : requestsQuery.isError ? (
+        <p className="py-6 text-sm text-destructive" role="alert">
+          {requestsQuery.error instanceof Error ? requestsQuery.error.message : 'Requests could not be loaded.'}
+        </p>
+      ) : active.length === 0 && declined.length === 0 ? (
+        // An empty queue is the normal state, not a fault.
+        <p className="py-6 text-sm text-muted-foreground">
+          No one has asked to join yet. Requests from the landing page arrive here.
+        </p>
+      ) : (
+        <>
+          {selectedRequests.length > 0 && (
+            <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm" role="toolbar" aria-label="Selected requests">
+              <span className="tabular-nums">{selectedRequests.length} selected</span>
+              <Button type="button" size="sm" variant="outline" className="text-destructive" disabled={bulkDecline.isPending} onClick={() => setBulkConfirming(true)}>
+                <XCircle className="mr-2 h-4 w-4" />Decline selected
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+            </div>
           )}
-        </CardTitle>
-        <CardDescription>
-          People who asked to join from the landing page. Nothing here has an account. Sending an
-          invitation creates their workspace and emails them a link to set a password.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {requestsQuery.isLoading ? (
-          <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />Loading requests…
-          </p>
-        ) : requestsQuery.isError ? (
-          <p className="py-6 text-sm text-destructive" role="alert">
-            {requestsQuery.error instanceof Error ? requestsQuery.error.message : 'Requests could not be loaded.'}
-          </p>
-        ) : ordered.length === 0 ? (
-          // An empty queue is the normal state, not a fault.
-          <p className="py-6 text-sm text-muted-foreground">
-            No one has asked to join yet. Requests from the landing page arrive here.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Who</TableHead>
-                  <TableHead>They are</TableHead>
-                  <TableHead>Clients</TableHead>
-                  <TableHead>Waiting</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Move to</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordered.map((request) => (
-                  <RequestRow
-                    key={request.id}
-                    request={request}
-                    expanded={expanded === request.id}
-                    busy={move.isPending && move.variables?.id === request.id}
-                    onToggle={() => setExpanded((current) => (current === request.id ? null : request.id))}
-                    onMove={(status) => move.mutate({ id: request.id, status })}
-                    onInvite={() => setConfirming(request)}
+
+          {active.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">No one is waiting.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                {header(selectable.length > 0 && (
+                  <Checkbox
+                    aria-label="Select all open requests"
+                    checked={selectedRequests.length === selectable.length ? true : selectedRequests.length ? 'indeterminate' : false}
+                    onCheckedChange={(checked) => setSelected(checked === true ? new Set(selectable.map((request) => request.id)) : new Set())}
                   />
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
+                <TableBody>
+                  {active.map((request) => (
+                    <RequestRow
+                      key={request.id}
+                      {...rowProps(request)}
+                      selected={selected.has(request.id)}
+                      onSelect={isOpen(request) ? (checked) => toggleSelected(request.id, checked) : undefined}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
 
-      {/* Sending mails a stranger and creates a workspace in their name. That is
-          not a thing to do on a stray click from a table row, so the dialog says
-          exactly what is about to happen and to whom. */}
+          {declined.length > 0 && (
+            <Collapsible open={declinedOpen} onOpenChange={setDeclinedOpen}>
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1">
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', declinedOpen && 'rotate-180')} aria-hidden="true" />
+                  Declined ({declined.length})
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-2 overflow-x-auto rounded-md border">
+                  <Table>
+                    {header()}
+                    <TableBody>
+                      {declined.map((request) => <RequestRow key={request.id} {...rowProps(request)} />)}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+        </>
+      )}
+
+      {testCount > 0 && (
+        <div className="flex items-center gap-2 border-t pt-3">
+          <Switch id="show-test-requests" checked={showTests} onCheckedChange={setShowTests} />
+          <Label htmlFor="show-test-requests" className="text-sm font-normal text-muted-foreground">
+            Show test entries ({testCount})
+          </Label>
+        </div>
+      )}
+
+      {/* Sending mails a stranger and creates a workspace in their name, so
+          the dialog says exactly what is about to happen and to whom. */}
       <Dialog open={Boolean(confirming)} onOpenChange={(open) => { if (!open && !invite.isPending) setConfirming(null) }}>
         <DialogContent>
           <DialogHeader>
@@ -234,8 +320,7 @@ export function JoinRequestsCard() {
                 <>
                   {confirming.full_name} gets an email inviting them to set their own password.
                   A private workspace called <strong>{workspaceNameFor(confirming)}</strong> is
-                  created with them as owner. No password is generated and nothing is shown here to
-                  pass on — they choose their own.
+                  created with them as owner. The link expires in 24 hours.
                 </>
               )}
             </DialogDescription>
@@ -250,17 +335,32 @@ export function JoinRequestsCard() {
             <Button variant="outline" onClick={() => setConfirming(null)} disabled={invite.isPending}>
               Cancel
             </Button>
-            <Button
-              disabled={invite.isPending}
-              onClick={() => confirming && invite.mutate(confirming)}
-            >
+            <Button disabled={invite.isPending} onClick={() => confirming && invite.mutate(confirming)}>
               {invite.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Send invitation
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+
+      <Dialog open={bulkConfirming} onOpenChange={(open) => { if (!open && !bulkDecline.isPending) setBulkConfirming(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Decline {selectedRequests.length} {selectedRequests.length === 1 ? 'request' : 'requests'}?</DialogTitle>
+            <DialogDescription>They move to Declined. Nobody is emailed, and you can move any of them back to waiting.</DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-sm">
+            {selectedRequests.map((request) => <li key={request.id}>{request.full_name}</li>)}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" disabled={bulkDecline.isPending} onClick={() => setBulkConfirming(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={bulkDecline.isPending} onClick={() => bulkDecline.mutate(selectedRequests)}>
+              {bulkDecline.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Decline selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }
 
@@ -268,61 +368,88 @@ interface RequestRowProps {
   request: JoinRequest
   expanded: boolean
   busy: boolean
+  workspaceId: string | null
+  selected?: boolean
+  onSelect?: (checked: boolean) => void
   onToggle: () => void
   onMove: (status: AccessRequestStatus) => void
   onInvite: () => void
 }
 
-const RequestRow = ({ request, expanded, busy, onToggle, onMove, onInvite }: RequestRowProps) => {
+const RequestRow = ({ request, expanded, busy, workspaceId, selected, onSelect, onToggle, onMove, onInvite }: RequestRowProps) => {
   const website = safeExternalUrl(request.website || '')
   const status = STATUS_STYLE[request.status]
+  const details: RowMenuItem = { label: expanded ? 'Hide details' : 'Show details', icon: <Info className="mr-2 h-4 w-4" />, onSelect: onToggle }
+  const decline: RowMenuItem = { label: 'Decline', icon: <XCircle className="mr-2 h-4 w-4" />, disabled: busy, onSelect: () => onMove('declined') }
+  const backToWaiting: RowMenuItem = { label: 'Move back to waiting', icon: <Undo2 className="mr-2 h-4 w-4" />, disabled: busy, onSelect: () => onMove('new') }
+
+  const menu: RowMenuItem[] = request.status === 'declined'
+    ? [{ label: 'Send invitation', icon: <Send className="mr-2 h-4 w-4" />, disabled: busy, onSelect: onInvite }, details]
+    : request.status === 'invited'
+      ? [backToWaiting, decline, details]
+      : [
+        ...(request.status === 'new' ? [{ label: 'Mark contacted', icon: <Mail className="mr-2 h-4 w-4" />, disabled: busy, onSelect: () => onMove('contacted') }] : [backToWaiting]),
+        decline,
+        details,
+      ]
+
+  const secondLine = [request.email, request.company].filter(Boolean).join(' · ')
 
   return (
     <>
-      <TableRow>
-        <TableCell className="align-top">
-          <button type="button" className="text-left font-medium hover:underline" onClick={onToggle}>
-            {request.full_name}
-          </button>
-          <p className="text-xs text-muted-foreground">{request.email}</p>
-          {request.company && <p className="text-xs text-muted-foreground">{request.company}</p>}
+      <TableRow data-state={selected ? 'selected' : undefined}>
+        <TableCell className="w-10">
+          {onSelect && (
+            <Checkbox aria-label={`Select ${request.full_name}`} checked={Boolean(selected)} onCheckedChange={(checked) => onSelect(checked === true)} />
+          )}
         </TableCell>
-        <TableCell className="align-top text-sm">
+        <TableCell className="max-w-72">
+          <div className="flex items-center gap-2">
+            {workspaceId ? (
+              <Link to={`?tab=workspaces&highlight=${workspaceId}`} className="font-medium underline-offset-2 hover:underline">
+                {request.full_name}
+              </Link>
+            ) : (
+              <button type="button" className="text-left font-medium hover:underline" onClick={onToggle} aria-expanded={expanded}>
+                {request.full_name}
+              </button>
+            )}
+            {isTestJoinRequest(request) && <Badge variant="outline" className="text-[10px]">Test</Badge>}
+          </div>
+          <p className="truncate text-xs text-muted-foreground">{secondLine}</p>
+        </TableCell>
+        <TableCell className="whitespace-nowrap text-sm">
           {AUDIENCE_LABEL[request.audience] ?? request.audience}
         </TableCell>
-        <TableCell className="align-top text-sm">{request.clients_now || '—'}</TableCell>
-        <TableCell className="align-top text-sm tabular-nums">
-          {request.status === 'new' ? waitedFor(request.created_at) : '—'}
+        <TableCell className="text-sm">
+          {request.clients_now || <span className="text-muted-foreground">Not given</span>}
         </TableCell>
-        <TableCell className="align-top">
+        <TableCell className={cn('whitespace-nowrap text-sm tabular-nums', isOpen(request) && waitingTone(request.created_at))}>
+          {isOpen(request) ? formatRelativeDays(request.created_at) : null}
+        </TableCell>
+        <TableCell>
           <Badge variant="outline" className={status.className}>{status.label}</Badge>
         </TableCell>
-        <TableCell className="align-top text-right">
-          <div className="flex flex-wrap justify-end gap-1.5">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {request.status !== 'invited' && (
+        <TableCell className="text-right">
+          <div className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+            {busy && <Loader2 className="h-4 w-4 animate-spin" aria-label="Working" />}
+            {isOpen(request) && (
               <Button type="button" size="sm" disabled={busy} onClick={onInvite}>
                 <Send className="mr-2 h-4 w-4" />Send invitation
               </Button>
             )}
-            {NEXT[request.status].map((next) => (
-              <Button
-                key={next}
-                type="button"
-                size="sm"
-                variant={next === 'invited' ? 'default' : 'outline'}
-                disabled={busy}
-                onClick={() => onMove(next)}
-              >
-                {ACTION_LABEL[next]}
+            {request.status === 'declined' && (
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onMove('new')}>
+                Move back to waiting
               </Button>
-            ))}
+            )}
+            <RowMenu items={menu} label={`More actions for ${request.full_name}`} />
           </div>
         </TableCell>
       </TableRow>
       {expanded && (
         <TableRow>
-          <TableCell colSpan={6} className="bg-muted/30">
+          <TableCell colSpan={7} className="bg-muted/30">
             <div className="space-y-2 py-1 text-sm">
               <p className="whitespace-pre-wrap">
                 {request.notes || 'They did not say what they are using now.'}
@@ -342,11 +469,7 @@ const RequestRow = ({ request, expanded, busy, onToggle, onMove, onInvite }: Req
                 )}
               </div>
               {request.handled_at && (
-                <p className="text-xs text-muted-foreground">
-                  Last moved {new Date(request.handled_at).toLocaleDateString(undefined, {
-                    day: 'numeric', month: 'short', year: 'numeric',
-                  })}.
-                </p>
+                <p className="text-xs text-muted-foreground">Last moved {formatDate(request.handled_at)}.</p>
               )}
             </div>
           </TableCell>

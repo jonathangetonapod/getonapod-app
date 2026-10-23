@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { JoinRequestsCard } from './JoinRequestsCard'
@@ -36,11 +37,23 @@ const request = (over: Partial<JoinRequest>): JoinRequest => ({
   ...over,
 })
 
-function renderCard() {
+function renderCard(props: Parameters<typeof JoinRequestsCard>[0] = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(<QueryClientProvider client={client}><JoinRequestsCard /></QueryClientProvider>)
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <JoinRequestsCard {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+async function openMenu(name: string) {
+  const trigger = await screen.findByRole('button', { name: `More actions for ${name}` })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
 }
 
 describe('JoinRequestsCard', () => {
@@ -60,25 +73,95 @@ describe('JoinRequestsCard', () => {
    * waiting ones lead and the oldest of those is first. Ordering by created_at
    * alone would bury a two-week-old request under yesterday's declines.
    */
-  it('leads with whoever has waited longest, and counts them', async () => {
+  it('leads with whoever has waited longest, and colours how long', async () => {
     list.mockResolvedValue([
       request({ id: 'fresh', full_name: 'Fresh Waiter', created_at: daysAgo(1) }),
       request({ id: 'done', full_name: 'Already Invited', status: 'invited', created_at: daysAgo(30) }),
+      request({ id: 'called', full_name: 'Called Back', status: 'contacted', created_at: daysAgo(40) }),
       request({ id: 'stale', full_name: 'Stale Waiter', created_at: daysAgo(12) }),
     ])
     renderCard()
 
     await screen.findByText('Stale Waiter')
-    // Read the first cell of each body row, not every button on the page —
-    // the action buttons are also called "Mark invited".
+    // The Who cell is the second; the first holds the row's checkbox.
     const rows = screen.getAllByRole('row').slice(1)
     const names = rows
-      .map((row) => within(row).queryAllByRole('cell')[0]?.textContent ?? '')
+      .map((row) => within(row).queryAllByRole('cell')[1]?.textContent ?? '')
       .filter(Boolean)
       .map((text) => text.split('dana@')[0])
-    expect(names).toEqual(['Stale Waiter', 'Fresh Waiter', 'Already Invited'])
-    expect(screen.getByText('2 waiting')).toBeInTheDocument()
-    expect(screen.getByText('12 days')).toBeInTheDocument()
+    expect(names).toEqual(['Stale Waiter', 'Fresh Waiter', 'Called Back', 'Already Invited'])
+    expect(screen.getByText('12 days')).toHaveClass('text-amber-700')
+    expect(screen.getByText('1 day')).not.toHaveClass('text-amber-700')
+    expect(screen.getByText('40 days')).toHaveClass('text-destructive')
+  })
+
+  it('keeps one filled button per row and the rest in the menu', async () => {
+    list.mockResolvedValue([request({})])
+    renderCard()
+
+    const row = (await screen.findByText('Dana Reyes')).closest('tr') as HTMLElement
+    expect(within(row).getAllByRole('button').filter((button) => button.textContent === 'Send invitation')).toHaveLength(1)
+    expect(within(row).queryByRole('button', { name: 'Decline' })).toBeNull()
+    await openMenu('Dana Reyes')
+    expect(await screen.findByRole('menuitem', { name: 'Mark contacted' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Decline' })).toBeInTheDocument()
+  })
+
+  it('keeps declined requests folded away until asked for', async () => {
+    list.mockResolvedValue([
+      request({ id: 'open', full_name: 'Open Request' }),
+      request({ id: 'no1', full_name: 'Turned Down', status: 'declined' }),
+    ])
+    renderCard()
+
+    const toggle = await screen.findByRole('button', { name: 'Declined (1)' })
+    expect(screen.queryByText('Turned Down')).toBeNull()
+    fireEvent.click(toggle)
+    expect(await screen.findByText('Turned Down')).toBeInTheDocument()
+    const row = screen.getByText('Turned Down').closest('tr') as HTMLElement
+    expect(within(row).getByRole('button', { name: 'Move back to waiting' })).toBeInTheDocument()
+  })
+
+  it('hides the deploy smoke check rows behind a toggle', async () => {
+    list.mockResolvedValue([
+      request({ id: 'real', full_name: 'Real Person' }),
+      request({ id: 't1', full_name: 'Rate limit check 4', email: 'burst-4@getonapod.com' }),
+    ])
+    renderCard()
+
+    await screen.findByText('Real Person')
+    expect(screen.queryByText('Rate limit check 4')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Show test entries (1)'))
+    expect(await screen.findByText('Rate limit check 4')).toBeInTheDocument()
+  })
+
+  it('declines a selection in one go after naming everyone in it', async () => {
+    list.mockResolvedValue([
+      request({ id: 'a', full_name: 'Alex Ames' }),
+      request({ id: 'b', full_name: 'Bea Brown' }),
+      request({ id: 'c', full_name: 'Cy Cole' }),
+    ])
+    renderCard()
+
+    fireEvent.click(await screen.findByLabelText('Select Alex Ames'))
+    fireEvent.click(screen.getByLabelText('Select Cy Cole'))
+    fireEvent.click(screen.getByRole('button', { name: 'Decline selected' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText('Decline 2 requests?')).toBeInTheDocument()
+    expect(dialog.getByText('Alex Ames')).toBeInTheDocument()
+    expect(dialog.getByText('Cy Cole')).toBeInTheDocument()
+    expect(dialog.queryByText('Bea Brown')).toBeNull()
+    fireEvent.click(dialog.getByRole('button', { name: 'Decline selected' }))
+    await waitFor(() => expect(move).toHaveBeenCalledTimes(2))
+    expect(move).toHaveBeenCalledWith('a', 'declined')
+    expect(move).toHaveBeenCalledWith('c', 'declined')
+  })
+
+  it('links an invited request to the workspace it became', async () => {
+    list.mockResolvedValue([request({ status: 'invited' })])
+    renderCard({ workspaceIdForEmail: (email) => (email === 'dana@example.com' ? 'ws-1' : null) })
+
+    expect(await screen.findByRole('link', { name: 'Dana Reyes' })).toHaveAttribute('href', '/?tab=workspaces&highlight=ws-1')
   })
 
   it('moves a request and offers the way back from a misclick', async () => {
@@ -88,8 +171,10 @@ describe('JoinRequestsCard', () => {
     list.mockResolvedValue([request({ status: 'declined', handled_at: daysAgo(0) })])
     renderCard()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Decline' }))
+    await openMenu('Dana Reyes')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Decline' }))
     await waitFor(() => expect(move).toHaveBeenCalledWith('r1', 'declined'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Declined (1)' }))
     expect(await screen.findByRole('button', { name: /move back to waiting/iu })).toBeInTheDocument()
   })
 

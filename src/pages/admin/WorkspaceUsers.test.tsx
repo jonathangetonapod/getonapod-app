@@ -3,9 +3,15 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceUsers from '@/pages/admin/WorkspaceUsers'
+import { formatDate } from '@/lib/dates'
+import { listJoinRequests } from '@/services/accessRequests'
+import { listDeletedWorkspaces } from '@/services/adminWorkspaces'
+import { deleteWorkspace } from '@/services/workspaceDeletion'
+import { listWorkspaceDomains } from '@/services/workspaceDomains'
 import { resetWorkspaceStaffTemporaryPassword } from '@/services/workspaceStaff'
 import {
   createManualWorkspaceAccount,
+  inviteWorkspaceUser,
   listWorkspaceUsers,
   revokeManualWorkspaceAccount,
 } from '@/services/workspaceUsers'
@@ -30,7 +36,11 @@ vi.mock('@/services/adminWorkspaces', () => ({
   // is the normal state, and these tests are about the owner list.
   listDeletedWorkspaces: vi.fn().mockResolvedValue([]),
 }))
-vi.mock('@/services/workspaceDeletion', () => ({ restoreWorkspace: vi.fn() }))
+vi.mock('@/services/workspaceDeletion', () => ({ restoreWorkspace: vi.fn(), deleteWorkspace: vi.fn() }))
+vi.mock('@/services/accessRequests', () => ({
+  listJoinRequests: vi.fn().mockResolvedValue([]),
+  setJoinRequestStatus: vi.fn(),
+}))
 vi.mock('@/services/workspaceDomains', () => ({
   listWorkspaceDomains: vi.fn().mockResolvedValue([]),
   addWorkspaceDomain: vi.fn(),
@@ -46,10 +56,12 @@ const mockedCreate = vi.mocked(createManualWorkspaceAccount)
 const mockedList = vi.mocked(listWorkspaceUsers)
 const mockedRevoke = vi.mocked(revokeManualWorkspaceAccount)
 const mockedResetOwnerPassword = vi.mocked(resetWorkspaceStaffTemporaryPassword)
+const mockedInvite = vi.mocked(inviteWorkspaceUser)
+const mockedDelete = vi.mocked(deleteWorkspace)
 
 const Location = () => {
   const location = useLocation()
-  return <div data-testid="location">{location.pathname}</div>
+  return <div data-testid="location">{location.pathname}{location.search}</div>
 }
 
 const manualUser = {
@@ -79,11 +91,11 @@ const manualUser = {
   workspace: { id: '22222222-2222-4222-8222-222222222222', name: 'Acme Workspace' },
 }
 
-function renderPage() {
+function renderPage(path = '/app/manage-workspaces') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceUsers />
         <Location />
       </MemoryRouter>
@@ -92,11 +104,27 @@ function renderPage() {
   return queryClient
 }
 
-describe('WorkspaceUsers manual account flow', () => {
+async function openMenu(workspaceName: string) {
+  const trigger = await screen.findByRole('button', { name: `More actions for ${workspaceName}` })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+}
+
+const startTemporaryPasswordFlow = () => {
+  fireEvent.click(screen.getByRole('button', { name: 'New workspace' }))
+  fireEvent.click(screen.getByRole('radio', { name: 'Generate a temporary password' }))
+}
+
+describe('Agencies page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedList.mockResolvedValue([])
     mockedRevoke.mockResolvedValue()
+    mockedInvite.mockResolvedValue({})
+    mockedDelete.mockResolvedValue({})
+    vi.mocked(listJoinRequests).mockResolvedValue([])
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([])
+    vi.mocked(listDeletedWorkspaces).mockResolvedValue([])
     mockedCreate.mockResolvedValue({
       membership: {
         id: '11111111-1111-4111-8111-111111111111',
@@ -112,15 +140,57 @@ describe('WorkspaceUsers manual account flow', () => {
     })
   })
 
+  it('is titled Agencies and has exactly one header action', async () => {
+    renderPage()
+    expect(screen.getByRole('heading', { level: 1, name: 'Agencies' })).toBeInTheDocument()
+    expect(screen.getByText('Every agency on the platform, from first request to close.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New workspace' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /temporary password|invite an owner/i })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Workspaces' })).toBeNull()
+    await screen.findByText('No workspaces yet')
+  })
+
+  it('counts each tab, marks waiting requests, and lands on the tab in the URL', async () => {
+    mockedList.mockResolvedValue([{ ...manualUser, status: 'active', password_change_required: false }])
+    vi.mocked(listJoinRequests).mockResolvedValue([
+      { id: 'r1', email: 'dana@example.com', full_name: 'Dana Reyes', company: null, website: null, audience: 'agency', clients_now: null, notes: null, status: 'new', handled_at: null, handled_note: null, created_at: '2026-08-01T00:00:00Z' },
+      { id: 'r2', email: 'burst-2@getonapod.com', full_name: 'Rate limit check 2', company: null, website: null, audience: 'other', clients_now: null, notes: null, status: 'new', handled_at: null, handled_note: null, created_at: '2026-08-01T00:00:00Z' },
+      { id: 'r3', email: 'no@example.com', full_name: 'Turned Down', company: null, website: null, audience: 'other', clients_now: null, notes: null, status: 'declined', handled_at: null, handled_note: null, created_at: '2026-08-01T00:00:00Z' },
+    ])
+    renderPage('/app/manage-workspaces?tab=domains')
+
+    expect(await screen.findByRole('tab', { name: /Workspaces\s*\(1\)/ })).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: /Requests\s*\(1\)\s*,\s*1 waiting/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Domains/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Closed/ })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('emails an invitation from the New workspace dialog by default', async () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }))
+    expect(screen.getByRole('radio', { name: 'Email them an invitation' })).toBeChecked()
+    expect(screen.getByText(/The link expires in 24 hours/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } })
+    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'New Agency' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }))
+
+    await waitFor(() => expect(mockedInvite).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      full_name: undefined,
+      workspace_name: 'New Agency',
+    }))
+    expect(mockedCreate).not.toHaveBeenCalled()
+  })
+
   it('keeps the one-time password in memory and requires save confirmation', async () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem')
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-    fireEvent.click(screen.getByRole('button', { name: 'Create with a temporary password' }))
+    startTemporaryPasswordFlow()
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Owner Name' } })
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Acme Workspace' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create workspace & generate password' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create and show password' }))
 
     const password = await screen.findByLabelText('Temporary password') as HTMLInputElement
     expect(password.type).toBe('password')
@@ -135,16 +205,14 @@ describe('WorkspaceUsers manual account flow', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     fireEvent.click(screen.getByRole('button', { name: 'Copy sign-in instructions' }))
-    const expiry = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date('2026-07-28T00:00:00Z'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       `Sign in at ${window.location.origin}/login with owner@example.com and this temporary password: Tmp-Abcd2345_Abcd2345_Abcd\n`
-      + `You will be asked to choose your own password straight away. This temporary one stops working on ${expiry}.`,
+      + `You will be asked to choose your own password straight away. This temporary one stops working on ${formatDate('2026-07-28T00:00:00Z')}.`,
     ))
     expect(await screen.findByRole('button', { name: 'Sign-in instructions copied' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('I saved this password in a secure place.'))
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Open workspace' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Open workspace' }))
     await waitFor(() => expect(screen.queryByText('Save the temporary password')).not.toBeInTheDocument())
     expect(screen.getByTestId('location')).toHaveTextContent(
@@ -163,11 +231,12 @@ describe('WorkspaceUsers manual account flow', () => {
     renderPage()
 
     expect(await screen.findByText(/credential reconciliation is pending until/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /issue new temporary password/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled()
+    await openMenu('Acme Workspace')
+    expect(await screen.findByRole('menuitem', { name: 'Issue temporary password' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Cancel invitation' })).toHaveAttribute('aria-disabled', 'true')
   })
 
-  it('resets an active workspace owner password directly from the owner account list', async () => {
+  it('resets an active workspace owner password from the row menu', async () => {
     const activeOwner = {
       ...manualUser,
       status: 'active' as const,
@@ -198,13 +267,22 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('link', { name: 'Manage users' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Open workspace' })).toHaveAttribute(
+      'href',
+      '/app/workspaces/22222222-2222-4222-8222-222222222222/clients',
+    )
+    await openMenu('Acme Workspace')
+    expect(await screen.findByRole('menuitem', { name: 'Manage users' })).toHaveAttribute(
       'href',
       '/app/workspaces/22222222-2222-4222-8222-222222222222/settings',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
-    const confirmation = screen.getByRole('dialog')
-    expect(within(confirmation).getByText('Reset owner password?')).toBeInTheDocument()
+    // The order the brief sets: team, sign-in, suspend, then the red step.
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Manage users', 'Reset password', 'Suspend', 'Close workspace',
+    ])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset password' }))
+    const confirmation = await screen.findByRole('dialog')
+    expect(within(confirmation).getByText('Reset the owner password?')).toBeInTheDocument()
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Reset password' }))
 
     await waitFor(() => expect(mockedResetOwnerPassword).toHaveBeenCalledWith(
@@ -222,33 +300,46 @@ describe('WorkspaceUsers manual account flow', () => {
     const queryClient = renderPage()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create with a temporary password' }))
+    startTemporaryPasswordFlow()
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'owner@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create workspace & generate password' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create and show password' }))
 
     expect(await screen.findByText('Credential reconciliation is pending.')).toBeInTheDocument()
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['platform'] })
   })
 
-  it('requires confirmation before deleting a manual account', async () => {
+  it('asks before cancelling an invitation, and says the replacement-password rule only in its own dialog', async () => {
     mockedList
       .mockResolvedValueOnce([manualUser])
       .mockResolvedValue([])
     renderPage()
 
-    fireEvent.click(await screen.findByRole('button', { name: /^delete$/i }))
-    expect(screen.getByText('Delete account?')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await screen.findByText('Acme Workspace')
+    expect(screen.queryByText(/invalidates the previous temporary password/i)).toBeNull()
+    await openMenu('Acme Workspace')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Cancel invitation' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText('Cancel the invitation for Acme Workspace?')).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: 'Cancel invitation' }))
 
     await waitFor(() => expect(mockedRevoke).toHaveBeenCalledWith(
       manualUser.id,
       expect.any(String),
     ))
-    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
-    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
+    expect(await screen.findByText('No workspaces yet')).toBeInTheDocument()
   })
 
-  it('offers only delete after an interrupted manual setup reaches review', async () => {
+  it('names the replacement-password rule inside the Issue temporary password dialog', async () => {
+    mockedList.mockResolvedValue([{ ...manualUser, invite_expires_at: '2099-01-08T00:00:00Z' }])
+    renderPage()
+
+    await openMenu('Acme Workspace')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Issue temporary password' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/Issuing a replacement immediately invalidates the previous temporary password/)).toBeInTheDocument()
+  })
+
+  it('offers only cancelling after an interrupted manual setup reaches review', async () => {
     mockedList.mockResolvedValue([{
       ...manualUser,
       user_id: null,
@@ -260,178 +351,29 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
-    expect(await screen.findByText(/manual setup cannot resume/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /retry manual setup/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^delete$/i })).toBeEnabled()
-  })
-
-  it('hides a settled deleted invitation from the workspace account list', async () => {
-    mockedList.mockResolvedValue([{
-      ...manualUser,
-      status: 'revoked',
-      provisioning_method: 'email_invite',
-      password_change_required: false,
-    }])
-
-    renderPage()
-
-    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
-    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
+    expect(await screen.findByText(/setup cannot resume/i)).toBeInTheDocument()
+    await openMenu('Acme Workspace')
+    expect(await screen.findByRole('menuitem', { name: 'Retry setup' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Cancel invitation' })).not.toHaveAttribute('aria-disabled')
   })
 
   it('hides settled and unsafe revoked history while retaining live accounts', async () => {
     mockedList.mockResolvedValue([
-      {
-        ...manualUser,
-        id: '41111111-1111-4111-8111-111111111111',
-        email: 'settled-manual@example.com',
-        status: 'revoked',
-        password_change_required: false,
-      },
-      {
-        ...manualUser,
-        id: '51111111-1111-4111-8111-111111111111',
-        email: 'credential-incident@example.com',
-        status: 'revoked',
-        password_change_required: false,
-        credential_reconciliation_pending: true,
-        credential_reconciliation_claim_kind: 'temporary_password_rotation',
-      },
-      {
-        ...manualUser,
-        id: '61111111-1111-4111-8111-111111111111',
-        email: 'delivery-incident@example.com',
-        status: 'revoked',
-        password_change_required: false,
-        invite_reconciliation_pending: true,
-        invite_reconciliation_claim_kind: 'deliver',
-      },
-      {
-        ...manualUser,
-        id: '71111111-1111-4111-8111-111111111111',
-        email: 'superseded-cleanup@example.com',
-        status: 'revoked',
-        password_change_required: false,
-        invite_reconciliation_pending: true,
-        invite_reconciliation_claim_kind: 'revoke_cleanup',
-        invite_cleanup_blocked: true,
-        has_newer_membership: true,
-      },
-      {
-        ...manualUser,
-        id: '81111111-1111-4111-8111-111111111111',
-        email: 'live-owner@example.com',
-      },
+      { ...manualUser, id: '41111111-1111-4111-8111-111111111111', email: 'settled-manual@example.com', status: 'revoked', password_change_required: false },
+      { ...manualUser, id: '51111111-1111-4111-8111-111111111111', email: 'credential-incident@example.com', status: 'revoked', password_change_required: false, credential_reconciliation_pending: true, credential_reconciliation_claim_kind: 'temporary_password_rotation' },
+      { ...manualUser, id: '61111111-1111-4111-8111-111111111111', email: 'delivery-incident@example.com', status: 'revoked', password_change_required: false, invite_reconciliation_pending: true, invite_reconciliation_claim_kind: 'deliver' },
+      { ...manualUser, id: '81111111-1111-4111-8111-111111111111', email: 'live-owner@example.com' },
     ])
 
     renderPage()
 
-    expect(await screen.findByText('live-owner@example.com')).toBeInTheDocument()
-    expect(screen.queryByText('settled-manual@example.com')).not.toBeInTheDocument()
-    expect(screen.queryByText('credential-incident@example.com')).not.toBeInTheDocument()
-    expect(screen.queryByText('delivery-incident@example.com')).not.toBeInTheDocument()
-    expect(screen.queryByText('superseded-cleanup@example.com')).not.toBeInTheDocument()
+    expect(await screen.findByText(/live-owner@example.com/)).toBeInTheDocument()
+    expect(screen.queryByText(/settled-manual@example.com/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/credential-incident@example.com/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/delivery-incident@example.com/)).not.toBeInTheDocument()
   })
 
-  it('keeps provider reconciliation controls out of the admin UX', async () => {
-    mockedList.mockResolvedValue([
-      {
-        ...manualUser,
-        status: 'active',
-        password_change_required: false,
-      },
-      {
-        ...manualUser,
-        id: '91111111-1111-4111-8111-111111111111',
-        user_id: '93333333-3333-4333-8333-333333333333',
-        email: 'suspended-owner@example.com',
-        status: 'suspended',
-        password_change_required: false,
-      },
-    ])
-
-    renderPage()
-
-    expect(await screen.findByText('suspended-owner@example.com')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Reactivate' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /verify auth/i })).not.toBeInTheDocument()
-  })
-
-  it('describes each account by what it is waiting for, in the words the team page uses', async () => {
-    const day = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
-    mockedList.mockResolvedValue([
-      // A temporary password handed over in person, still within its window.
-      {
-        ...manualUser,
-        invited_at: '2099-01-01T00:00:00Z',
-        invite_expires_at: '2099-01-08T00:00:00Z',
-      },
-      // An emailed invite, still open.
-      {
-        ...manualUser,
-        id: '41111111-1111-4111-8111-111111111111',
-        email: 'emailed@example.com',
-        provisioning_method: 'email_invite',
-        password_change_required: false,
-        invited_at: '2099-02-01T00:00:00Z',
-        invite_expires_at: '2099-02-08T00:00:00Z',
-      },
-      // An emailed invite nobody opened in time.
-      {
-        ...manualUser,
-        id: '51111111-1111-4111-8111-111111111111',
-        email: 'late@example.com',
-        provisioning_method: 'email_invite',
-        password_change_required: false,
-        invited_at: '2026-07-01T00:00:00Z',
-        invite_expires_at: '2026-07-08T00:00:00Z',
-      },
-    ])
-
-    renderPage()
-
-    expect(await screen.findByText('Waiting for first sign-in')).toBeInTheDocument()
-    expect(screen.getByText(`Issued ${day('2099-01-01T00:00:00Z')} · expires ${day('2099-01-08T00:00:00Z')}`)).toBeInTheDocument()
-    expect(screen.getByText('Invited')).toBeInTheDocument()
-    expect(screen.getByText(`Email sent ${day('2099-02-01T00:00:00Z')} · expires ${day('2099-02-08T00:00:00Z')}`)).toBeInTheDocument()
-    expect(screen.getByText('Invite expired')).toBeInTheDocument()
-    expect(screen.getByText(`Expired ${day('2026-07-08T00:00:00Z')}`)).toBeInTheDocument()
-    expect(screen.queryByText(/password change required/i)).not.toBeInTheDocument()
-  })
-
-  it('narrows the list to workspaces or owners matching the search', async () => {
-    mockedList.mockResolvedValue([
-      { ...manualUser, status: 'active', password_change_required: false },
-      {
-        ...manualUser,
-        id: '41111111-1111-4111-8111-111111111111',
-        email: 'nina@northstar.example',
-        full_name: 'Nina North',
-        status: 'active',
-        password_change_required: false,
-        workspace: { id: '52222222-2222-4222-8222-222222222222', name: 'Northstar Advisory' },
-      },
-    ])
-
-    renderPage()
-    expect(await screen.findByText('Northstar Advisory')).toBeInTheDocument()
-    expect(screen.getByText('Acme Workspace')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'north' } })
-    expect(screen.getByText('Northstar Advisory')).toBeInTheDocument()
-    expect(screen.queryByText('Acme Workspace')).not.toBeInTheDocument()
-
-    // Owner name and email count too, not only the workspace name.
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'owner@example' } })
-    expect(screen.getByText('Acme Workspace')).toBeInTheDocument()
-    expect(screen.queryByText('Northstar Advisory')).not.toBeInTheDocument()
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'nobody' } })
-    expect(screen.getByText(/No workspaces match/)).toBeInTheDocument()
-  })
-
-  it('hides interrupted invitation deletion from the account UX', async () => {
+  it('shows no workspaces when the only row is a revoked invitation', async () => {
     mockedList.mockResolvedValue([{
       ...manualUser,
       status: 'revoked',
@@ -444,9 +386,124 @@ describe('WorkspaceUsers manual account flow', () => {
 
     renderPage()
 
-    expect(await screen.findByText('No workspace accounts')).toBeInTheDocument()
-    expect(screen.queryByText(manualUser.email)).not.toBeInTheDocument()
+    expect(await screen.findByText('No workspaces yet')).toBeInTheDocument()
     expect(screen.queryByText(/operator review/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
+  })
+
+  it('offers Suspend on active rows and Unsuspend on suspended ones', async () => {
+    mockedList.mockResolvedValue([
+      { ...manualUser, status: 'active', password_change_required: false },
+      { ...manualUser, id: '91111111-1111-4111-8111-111111111111', email: 'suspended-owner@example.com', status: 'suspended', password_change_required: false, workspace: { id: '92222222-2222-4222-8222-222222222222', name: 'Paused Agency' } },
+    ])
+
+    renderPage()
+
+    await openMenu('Paused Agency')
+    expect(await screen.findByRole('menuitem', { name: 'Unsuspend' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Reset password' })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /verify auth/i })).toBeNull()
+  })
+
+  it('describes each account in the lifecycle words, with one date format', async () => {
+    mockedList.mockResolvedValue([
+      { ...manualUser, invited_at: '2099-01-01T00:00:00Z', invite_expires_at: '2099-01-08T00:00:00Z' },
+      { ...manualUser, id: '51111111-1111-4111-8111-111111111111', email: 'late@example.com', provisioning_method: 'email_invite', password_change_required: false, invited_at: '2026-07-01T00:00:00Z', invite_expires_at: '2026-07-08T00:00:00Z', workspace: { id: '52222222-2222-4222-8222-222222222222', name: 'Late Agency' } },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('Invited')).toBeInTheDocument()
+    expect(screen.getByText('Expires Jan 8, 2099')).toBeInTheDocument()
+    expect(screen.getByText('Invite expired')).toBeInTheDocument()
+    expect(screen.getByText('Expired Jul 8, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Jan 1, 2099')).toBeInTheDocument()
+    expect(screen.queryByText(/Waiting for first sign-in/i)).toBeNull()
+  })
+
+  it('combines the search with the status filter', async () => {
+    mockedList.mockResolvedValue([
+      { ...manualUser, status: 'active', password_change_required: false },
+      { ...manualUser, id: '41111111-1111-4111-8111-111111111111', email: 'nina@northstar.example', full_name: 'Nina North', status: 'active', password_change_required: false, workspace: { id: '52222222-2222-4222-8222-222222222222', name: 'Northstar Advisory' } },
+      { ...manualUser, id: '42111111-1111-4111-8111-111111111111', email: 'nora@northpole.example', full_name: 'Nora Pole', invite_expires_at: '2099-01-08T00:00:00Z', workspace: { id: '53222222-2222-4222-8222-222222222222', name: 'North Pole Media' } },
+    ])
+
+    renderPage()
+    expect(await screen.findByText('Northstar Advisory')).toBeInTheDocument()
+    expect(screen.getByText('3 workspaces')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'north' } })
+    expect(screen.getByText('2 workspaces')).toBeInTheDocument()
+    expect(screen.queryByText('Acme Workspace')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invited' }))
+    expect(screen.getByText('North Pole Media')).toBeInTheDocument()
+    expect(screen.queryByText('Northstar Advisory')).not.toBeInTheDocument()
+    expect(screen.getByText('1 workspace')).toBeInTheDocument()
+
+    // Owner email counts too, not only the workspace name.
+    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'owner@example' } })
+    expect(screen.getByText('Acme Workspace')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search workspaces' }), { target: { value: 'nobody' } })
+    expect(screen.getByText(/No workspaces match/)).toBeInTheDocument()
+  })
+
+  it('shows a serving domain as a badge that opens the Domains tab', async () => {
+    mockedList.mockResolvedValue([
+      { ...manualUser, status: 'active', password_change_required: false },
+      { ...manualUser, id: '41111111-1111-4111-8111-111111111111', status: 'active', password_change_required: false, workspace: { id: '52222222-2222-4222-8222-222222222222', name: 'Plain Agency' }, workspace_id: '52222222-2222-4222-8222-222222222222' },
+    ])
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([{
+      id: 'd1', workspace_id: manualUser.workspace_id, hostname: 'podcasts.acme.com', status: 'active', is_primary: true,
+      dns_record_type: 'CNAME', dns_record_name: null, dns_record_value: null, last_error: null, activated_at: null,
+      first_activated_at: null, last_checked_at: null, created_at: '2026-08-01T00:00:00Z',
+      workspace: { id: manualUser.workspace_id, name: 'Acme Workspace', slug: 'acme' },
+    }])
+
+    renderPage()
+
+    const badge = await screen.findByRole('button', { name: 'podcasts.acme.com, open Domains' })
+    expect(screen.getByText('Default')).toBeInTheDocument()
+    fireEvent.click(badge)
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('?tab=domains'))
+  })
+
+  it('closes a workspace only after its name is typed', async () => {
+    mockedList.mockResolvedValue([{ ...manualUser, status: 'active', password_change_required: false }])
+    renderPage()
+
+    await openMenu('Acme Workspace')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Close workspace' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByText(/The owner loses access now. Data is kept for 30 days, then deleted./)).toBeInTheDocument()
+    const submit = dialog.getByRole('button', { name: 'Close workspace' })
+    expect(submit).toBeDisabled()
+    fireEvent.change(dialog.getByLabelText(/to confirm/), { target: { value: 'acme workspace' } })
+    fireEvent.click(submit)
+    await waitFor(() => expect(mockedDelete).toHaveBeenCalledWith(manualUser.workspace_id, ''))
+  })
+
+  it('keeps the Closed tab to two lines when empty, and lists the countdown when not', async () => {
+    renderPage('/app/manage-workspaces?tab=closed')
+    expect(await screen.findByText('No closed workspaces.')).toBeInTheDocument()
+    expect(screen.getByText('Closed workspaces stay here for 30 days, then they are deleted.')).toBeInTheDocument()
+  })
+
+  it('lists a closed workspace with its owner, dates and Restore', async () => {
+    const purgeAfter = new Date(Date.now() + 12.5 * 86_400_000).toISOString()
+    vi.mocked(listDeletedWorkspaces).mockResolvedValue([
+      { id: manualUser.workspace_id, name: 'Gone Agency', slug: 'gone', deleted_at: '2026-10-05T00:00:00Z', purge_after: purgeAfter, deletion_reason: null },
+      { id: 'expired-window', name: 'Past Window', slug: 'past', deleted_at: '2026-01-01T00:00:00Z', purge_after: '2026-01-31T00:00:00Z', deletion_reason: null },
+    ])
+    mockedList.mockResolvedValue([{ ...manualUser, status: 'revoked', email: 'gone@example.com' }])
+    renderPage('/app/manage-workspaces?tab=closed')
+
+    expect(await screen.findByText('Gone Agency')).toBeInTheDocument()
+    expect(await screen.findByText('gone@example.com')).toBeInTheDocument()
+    expect(screen.getByText('in 12 days')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
+    expect(screen.queryByText('Past Window')).toBeNull()
+    expect(screen.getByRole('tab', { name: /Closed\s*\(1\)/ })).toBeInTheDocument()
   })
 })
