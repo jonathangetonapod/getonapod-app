@@ -50,6 +50,12 @@ assert.match(edge, /action === "mailboxes"[\s\S]*?Promise\.allSettled/u)
 // state instead of forwarding the provider 401/403 as an HTTP 400.
 assert.match(edge, /action === "mailboxes"[\s\S]*?error\.status === 401[\s\S]*?key_rejected[\s\S]*?error\.status === 403[\s\S]*?scope_missing/u)
 assert.match(edge, /action === "mailboxes"[\s\S]*?if \(!Array\.isArray\(accounts\)\)[\s\S]*?reason: accounts\.auth_failure/u)
+// Mailbox pause/resume: manager-gated, bounded, and only for mailboxes the
+// workspace's key can see right now.
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?requireOnlyKeys\(body, \["action", "workspace_id", "emails", "paused"\]\)[\s\S]*?requireCampaignManager\(access\)/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?MAX_MAILBOX_PAUSE_EMAILS[\s\S]*?refreshProviderAccounts[\s\S]*?INSTANTLY_SENDER_UNAVAILABLE/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?\/accounts\/\$\{encodeURIComponent\(/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?writeAudit[\s\S]*?workspace\.mailbox\.paused/u)
 assert.match(edge, /action === "launch-pitch"[\s\S]*?requireCampaignManager\(access\)/u)
 // Client ↔ Instantly campaign links: manager-gated writes, one client per
 // campaign, and inbox attribution that tolerates the pre-migration state.

@@ -52,6 +52,7 @@ const CAMPAIGN_MANAGER_ROLES = new Set(["owner", "admin", "platform_admin"]);
 const MAX_PROVIDER_CAMPAIGN_PAGES = 10;
 const MAX_ANALYTICS_REFRESH_CAMPAIGNS = 200;
 const SEND_HISTORY_DAYS = 7;
+const MAX_MAILBOX_PAUSE_EMAILS = 500;
 const RESEARCH_PROMPT_IDS = [
   "podcast_research",
   "host_info",
@@ -3273,6 +3274,90 @@ serve(async (req) => {
         }),
         last_synced_at: lastSyncedAt,
         analytics_errors: analyticsErrors,
+      });
+    }
+
+    /*
+     * Pause or resume sending mailboxes in Instantly, one or many. Each address
+     * must be one this workspace's key can see right now, so a stale screen
+     * cannot pause a mailbox that moved to another workspace. Per-mailbox
+     * failures are reported back instead of failing the whole batch: the page
+     * is acting on hundreds of rows and needs to say which ones did not take.
+     */
+    if (action === "mailbox-pause") {
+      requireOnlyKeys(body, ["action", "workspace_id", "emails", "paused"]);
+      requireCampaignManager(access);
+      if (typeof body.paused !== "boolean") {
+        throw new HttpError(400, "INVALID_FIELD", "paused must be a boolean");
+      }
+      if (
+        !Array.isArray(body.emails) || body.emails.length === 0 ||
+        body.emails.length > MAX_MAILBOX_PAUSE_EMAILS
+      ) {
+        throw new HttpError(
+          400,
+          "INVALID_FIELD",
+          `emails must list 1 to ${MAX_MAILBOX_PAUSE_EMAILS} mailboxes`,
+        );
+      }
+      const requested = [
+        ...new Set(
+          body.emails.map((value, index) =>
+            requireString(value, `emails[${index}]`, { max: 254 })
+              .trim()
+              .toLowerCase()
+          ),
+        ),
+      ];
+      const connection = await readConnection(context.admin, workspaceId);
+      const apiKey = await integrationApiKey(connection);
+      // Instantly's own casing is what its path expects.
+      const providerEmails = new Map(
+        (await refreshProviderAccounts(context.admin, connection!, apiKey)).map((
+          account,
+        ) => [account.email.trim().toLowerCase(), account.email]),
+      );
+      if (requested.some((email) => !providerEmails.has(email))) {
+        throw new HttpError(
+          409,
+          "INSTANTLY_SENDER_UNAVAILABLE",
+          "Some of these mailboxes are no longer in the connected Instantly workspace. Refresh and try again.",
+        );
+      }
+      const updated: string[] = [];
+      const failed: Array<{ email: string; message: string }> = [];
+      for (let start = 0; start < requested.length; start += 5) {
+        await Promise.all(
+          requested.slice(start, start + 5).map(async (email) => {
+            try {
+              await instantlyRequest<unknown>(
+                apiKey,
+                `/accounts/${encodeURIComponent(providerEmails.get(email)!)}/${
+                  body.paused ? "pause" : "resume"
+                }`,
+                { method: "POST" },
+              );
+              updated.push(email);
+            } catch (error) {
+              failed.push({ email, message: safeInstantlyError(error).message });
+            }
+          }),
+        );
+      }
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: body.paused
+          ? "workspace.mailbox.paused"
+          : "workspace.mailbox.resumed",
+        entityType: "workspace_instantly_integration",
+        entityId: null,
+        metadata: { requested: requested.length, updated, failed_count: failed.length },
+      });
+      return jsonResponse(req, METHODS, 200, {
+        paused: body.paused,
+        updated,
+        failed,
       });
     }
 
