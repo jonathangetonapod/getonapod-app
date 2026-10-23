@@ -184,8 +184,10 @@ describe('WorkspaceLayout', () => {
 
     const disabledModules = within(navigation).queryAllByRole('button').filter((button) => button.hasAttribute('disabled'))
     expect(disabledModules).toHaveLength(0)
-    // Sidebar name, header name, and the mobile header name.
-    expect(screen.getAllByText('Acme Workspace')).toHaveLength(3)
+    // The sidebar names the workspace; the header names the page, so the
+    // workspace is not said twice across the top of the screen.
+    expect(screen.getAllByText('Acme Workspace')).toHaveLength(1)
+    expect(within(screen.getByRole('banner')).getAllByText('Clients')).toHaveLength(2)
     expect(screen.getByText('owner@example.com')).toBeInTheDocument()
     openAccountMenu()
     expect(screen.getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument()
@@ -194,7 +196,7 @@ describe('WorkspaceLayout', () => {
   // "Workspace dashboard" under the name was filler on every page. The page
   // the person is actually on is worth the space; nothing is, when no module
   // matches.
-  it('names the active module under the workspace name', () => {
+  it('names the active module in the header', () => {
     const { unmount } = renderLayout(undefined, '/app/master-inbox')
 
     const header = screen.getByRole('banner')

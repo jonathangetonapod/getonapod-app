@@ -508,6 +508,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    */
   const workspaceSubtitle = activeNavItem?.name
     || (workspaceDisplayName === workspaceName ? '' : workspaceName)
+  const headerTitle = activeNavItem?.name || workspaceDisplayName
 
   /*
    * The working client. One choice in the header that every client-scoped
@@ -883,13 +884,14 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           >
             <Menu className="h-5 w-5" />
           </Button>
+          {/* The page, not the workspace again: the workspace is named in the
+              sidebar and, for a platform admin, in the switcher on the right,
+              so the header said "My Workspace" twice. */}
           <div className="hidden min-w-0 lg:block">
-            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
+            <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
           <div className="min-w-0 flex-1 lg:hidden">
-            <p className="truncate text-sm font-semibold">{workspaceDisplayName}</p>
-            {workspaceSubtitle && <p className="truncate text-xs text-muted-foreground">{workspaceSubtitle}</p>}
+            <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
           {workingClientWorkspaceId && (
             <div className="flex min-w-0 shrink items-center gap-2 lg:ml-4">
