@@ -171,6 +171,8 @@ Deno.test('feed entities and tags are decoded before a prompt sees them', () => 
   )
   // Smart punctuation arrives as itself rather than as a numeric reference.
   assertEquals(formatPromptValue('podcast_name', 'It&#8217;s Storage &#8212; Weekly'), 'It’s Storage — Weekly')
+  // Any other numeric reference is the character it names.
+  assertEquals(formatPromptValue('podcast_name', 'Caf&#233; Talk &#xE9;dition'), 'Café Talk édition')
   // Text that was already clean is untouched.
   assertEquals(formatPromptValue('podcast_name', 'Operator Weekly'), 'Operator Weekly')
   // Markup that leaves nothing behind is an absence, not an empty string.

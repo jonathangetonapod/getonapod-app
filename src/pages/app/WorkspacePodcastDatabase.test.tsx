@@ -115,6 +115,9 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByText('The Founder Show')).toBeInTheDocument()
     expect(screen.getByText('show@example.com')).toBeInTheDocument()
     expect(screen.getByText('Free email')).toBeInTheDocument()
+    // The rating names its source, and the page says how old its data is.
+    expect(screen.getByText('Apple 4.8')).toBeInTheDocument()
+    expect(screen.getByText('Catalog updated Jul 20, 2026')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Email availability' })).toHaveTextContent('All podcasts')
     expect(screen.getByRole('combobox', { name: 'Publishing recency' })).toHaveTextContent('Active shows')
     expect(screen.getByRole('combobox', { name: 'Audience size' })).toHaveTextContent('Any audience size')

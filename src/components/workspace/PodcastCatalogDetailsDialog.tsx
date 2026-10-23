@@ -4,6 +4,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { isStaleCatalogDate } from '@/lib/podcastCatalogDisplay'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type { RelationshipBadge } from '@/lib/relationshipLabels'
 import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCatalog'
@@ -53,12 +55,16 @@ export function PodcastCatalogDetailsDialog({
   const categories = categoryNames(podcast)
   const publicUrl = safeExternalUrl(podcast.podcast_url || podcast.website || '')
   const feedUrl = safeExternalUrl(podcast.rss_feed || '')
-  const stats: Array<{ label: string; value: string }> = [
+  const stats: Array<{ label: string; value: string; hint?: string }> = [
     { label: 'Audience', value: podcast.audience_size ? compact.format(podcast.audience_size) : '—' },
     { label: 'Episodes', value: podcast.episode_count ? compact.format(podcast.episode_count) : '—' },
     { label: 'Apple rating', value: podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—' },
     { label: 'Spotify rating', value: podcast.spotify_rating ? Number(podcast.spotify_rating).toFixed(1) : '—' },
-    { label: 'Reach score', value: podcast.podcast_reach_score ? String(podcast.podcast_reach_score) : '—' },
+    {
+      label: 'Reach score',
+      value: podcast.podcast_reach_score ? String(podcast.podcast_reach_score) : '—',
+      hint: 'A popularity score that comes with the show data. Higher means more popular.',
+    },
     { label: 'Last published', value: day(podcast.last_posted_at) },
     { label: 'Language', value: podcast.language || '—' },
     { label: 'Region', value: podcast.region || '—' },
@@ -99,12 +105,20 @@ export function PodcastCatalogDetailsDialog({
           </p>
 
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {stats.map((stat) => (
-              <div key={stat.label} className="rounded-lg border bg-muted/20 p-2.5">
-                <dt className="text-xs text-muted-foreground">{stat.label}</dt>
-                <dd className="mt-0.5 text-sm font-medium">{stat.value}</dd>
-              </div>
-            ))}
+            {stats.map((stat) => {
+              const tile = (
+                <div key={stat.label} tabIndex={stat.hint ? 0 : undefined} className="rounded-lg border bg-muted/20 p-2.5">
+                  <dt className="text-xs text-muted-foreground">{stat.label}</dt>
+                  <dd className="mt-0.5 text-sm font-medium">{stat.value}</dd>
+                </div>
+              )
+              return stat.hint ? (
+                <Tooltip key={stat.label}>
+                  <TooltipTrigger asChild>{tile}</TooltipTrigger>
+                  <TooltipContent className="max-w-xs">{stat.hint}</TooltipContent>
+                </Tooltip>
+              ) : tile
+            })}
           </dl>
 
           <div className="space-y-2">
@@ -135,7 +149,11 @@ export function PodcastCatalogDetailsDialog({
           <p className="text-xs leading-5 text-muted-foreground">
             Used on {podcast.shortlist_uses.toLocaleString()} client {podcast.shortlist_uses === 1 ? 'shortlist' : 'shortlists'}
             {podcast.workspace_uses > 0 && ` across ${podcast.workspace_uses.toLocaleString()} ${podcast.workspace_uses === 1 ? 'workspace' : 'workspaces'}`}.
-            {podcast.catalog_updated_at && ` Catalog data refreshed ${day(podcast.catalog_updated_at)}.`}
+            {podcast.catalog_updated_at && (
+              <span className={isStaleCatalogDate(podcast.catalog_updated_at) ? 'font-medium text-amber-700' : undefined}>
+                {` Catalog data refreshed ${day(podcast.catalog_updated_at)}.`}
+              </span>
+            )}
           </p>
 
           <div className="flex flex-wrap gap-2">

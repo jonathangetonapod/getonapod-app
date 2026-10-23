@@ -1,4 +1,15 @@
 /**
+ * Any other numeric reference, &#233; and &#xE9; alike, is the character it
+ * names. Control characters, surrogates and out-of-range codes stay as written.
+ */
+function numericEntity(key: string): string | null {
+  if (!key.startsWith('#')) return null
+  const code = key[1] === 'x' ? Number.parseInt(key.slice(2), 16) : Number.parseInt(key.slice(1), 10)
+  if (!Number.isInteger(code) || code < 32 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return null
+  return code === 160 ? ' ' : String.fromCodePoint(code)
+}
+
+/**
  * Podcast feeds publish names and descriptions as HTML: entities in titles
  * ("The Good, Bad, &amp; the Ugly") and <p> tags in descriptions. Decode once
  * at the service boundary so no surface — a list cell, a dialog, or an email a
@@ -17,7 +28,7 @@ export function decodeFeedText(value: string): string {
   // One pass, so an escaped entity like "&amp;lt;" decodes to "&lt;" and not
   // to "<": decoding the ampersand separately would re-read its own output.
   const decoded = withoutTags.replace(
-    /&(nbsp|amp|lt|gt|quot|apos|hellip|ndash|mdash|[lr]squo|[lr]dquo|#0?39|#x27|#821[167]|#822[01]|#8230|#8212);/giu,
+    /&(nbsp|amp|lt|gt|quot|apos|hellip|ndash|mdash|[lr]squo|[lr]dquo|#\d{1,7}|#x[0-9a-f]{1,6});/giu,
     (entity) => {
       const key = entity.slice(1, -1).toLowerCase()
       switch (key) {
@@ -32,7 +43,7 @@ export function decodeFeedText(value: string): string {
         case 'hellip': case '#8230': return '…'
         case 'ndash': case '#8211': return '–'
         case 'mdash': case '#8212': return '—'
-        default: return entity
+        default: return numericEntity(key) ?? entity
       }
     },
   )

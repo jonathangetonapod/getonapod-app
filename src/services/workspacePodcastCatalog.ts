@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { decodeFeedText } from '@/lib/feedText'
 
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
@@ -74,6 +75,27 @@ export interface WorkspacePodcastCatalogParams {
   pageSize?: number
 }
 
+/** Feed text on one line: tags and entities gone, whitespace runs collapsed. */
+function cleanFeedLine(value: string | null): string | null {
+  if (typeof value !== 'string') return value
+  return decodeFeedText(value).replace(/\s+/gu, ' ').trim()
+}
+
+/*
+ * Catalogue rows are Podscan feed text, so names and descriptions arrive with
+ * <p> tags and &amp; entities. Cleaned here, once, so the list, the cards, the
+ * details dialog and the shortlist rows an add creates all read the same.
+ */
+function cleanCatalogItem(item: WorkspacePodcastCatalogItem): WorkspacePodcastCatalogItem {
+  return {
+    ...item,
+    podcast_name: cleanFeedLine(item.podcast_name) || item.podcast_name,
+    podcast_description: cleanFeedLine(item.podcast_description) || null,
+    host_name: cleanFeedLine(item.host_name) || null,
+    publisher_name: cleanFeedLine(item.publisher_name) || null,
+  }
+}
+
 export async function getWorkspacePodcastCatalog(
   workspaceId: string,
   params: WorkspacePodcastCatalogParams = {},
@@ -106,5 +128,5 @@ export async function getWorkspacePodcastCatalog(
   ) {
     throw new Error('The podcast database response did not match the workspace address.')
   }
-  return response
+  return { ...response, items: response.items.map(cleanCatalogItem) }
 }

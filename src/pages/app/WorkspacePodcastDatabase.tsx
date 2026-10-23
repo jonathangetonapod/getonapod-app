@@ -35,6 +35,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { repairableExternalUrl } from '@/lib/externalUrl'
 import { addClientShortlistPodcasts, type ClientShortlistPodcastInput } from '@/services/clientShortlist'
 import {
@@ -57,6 +58,12 @@ import { PodcastCatalogDetailsDialog } from '@/components/workspace/PodcastCatal
 import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import {
+  formatDay,
+  isStaleCatalogDate,
+  oldestCatalogUpdate,
+  podcastRating,
+} from '@/lib/podcastCatalogDisplay'
 
 const PAGE_SIZE = 24
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -370,6 +377,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const availableProspects = (prospectsQuery.data?.dashboards || [])
     .filter((prospect) => prospect.lifecycle_status !== 'archived')
   const targetClient = activeClients.find((client) => client.id === targetClientId) || null
+  const pageCatalogUpdated = oldestCatalogUpdate(podcasts)
   const pagePodcastIds = podcasts.map((podcast) => podcast.podcast_id)
   const allPageSelected = pagePodcastIds.length > 0
     && pagePodcastIds.every((podcastId) => selectedPodcasts.has(podcastId))
@@ -452,6 +460,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
+      <TooltipProvider delayDuration={200}>
       <div className="space-y-6">
         {/* A banner explaining the page every time it is opened is a cost paid
             by the people who already know — which, after the first visit, is
@@ -571,6 +580,17 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
               <div className="flex items-center gap-2">
                 <p className="text-sm text-muted-foreground">
                   {catalog?.pagination.total.toLocaleString() || 0} result{catalog?.pagination.total === 1 ? '' : 's'}
+                  {pageCatalogUpdated && (
+                    <>
+                      {' · '}
+                      <span
+                        className={`whitespace-nowrap ${isStaleCatalogDate(pageCatalogUpdated) ? 'font-medium text-amber-700' : ''}`}
+                        title="The oldest refresh date among the shows on this page."
+                      >
+                        Catalog updated {formatDay(pageCatalogUpdated)}
+                      </span>
+                    </>
+                  )}
                 </p>
                 <Button variant="ghost" size="icon" aria-label="Refresh podcast database" onClick={() => void catalogQuery.refetch()} disabled={catalogQuery.isFetching}>
                   <RefreshCw className={`h-4 w-4 ${catalogQuery.isFetching ? 'animate-spin' : ''}`} />
@@ -621,6 +641,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
               const primaryEmail = podcast.direct_email || podcast.free_podscan_email
               const selected = selectedPodcasts.has(podcast.podcast_id)
               const relationshipBadgeFor = relationshipsByPodcastId.get(podcast.podcast_id)
+              const rating = podcastRating(podcast)
               return (
                 <Card key={podcast.podcast_id} className={`overflow-hidden transition-colors ${selected ? 'border-primary/50 bg-primary/[0.025]' : ''}`}>
                   <CardContent className="p-5">
@@ -669,11 +690,18 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
                     <p className="mt-4 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{podcast.podcast_description || 'No public show description is available yet.'}</p>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {/* Episode counts stay in the details: big shows report a
+                        feed-limited number (14 for This American Life), and
+                        nothing marks which counts are capped. */}
+                    <div className="mt-4 grid grid-cols-3 gap-2">
                       <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Audience</p><p className="mt-1 text-sm font-semibold">{podcast.audience_size === null ? '—' : compactNumber.format(podcast.audience_size)}</p></div>
-                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Episodes</p><p className="mt-1 text-sm font-semibold">{podcast.episode_count?.toLocaleString() || '—'}</p></div>
-                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rating</p><p className="mt-1 text-sm font-semibold">{podcast.itunes_rating ? `${Number(podcast.itunes_rating).toFixed(1)} / 5` : '—'}</p></div>
-                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Community</p><p className="mt-1 text-sm font-semibold">{podcast.shortlist_uses.toLocaleString()} use{podcast.shortlist_uses === 1 ? '' : 's'}</p></div>
+                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rating</p><p className="mt-1 text-sm font-semibold">{rating?.label || '—'}</p></div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div tabIndex={0} className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Community</p><p className="mt-1 text-sm font-semibold">{podcast.shortlist_uses.toLocaleString()} use{podcast.shortlist_uses === 1 ? '' : 's'}</p></div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">How many client and prospect shortlists include this show, across all workspaces.</TooltipContent>
+                      </Tooltip>
                     </div>
 
                     <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
@@ -831,6 +859,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         relationship={detailsPodcast ? relationshipsByPodcastId.get(detailsPodcast.podcast_id) ?? null : null}
         onClose={() => setDetailsPodcast(null)}
       />
+      </TooltipProvider>
     </WorkspaceLayout>
   )
 }

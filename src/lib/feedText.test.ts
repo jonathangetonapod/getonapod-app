@@ -16,6 +16,12 @@ describe('decodeFeedText', () => {
     expect(decodeFeedText('Tags &amp;lt;p&amp;gt; explained')).toBe('Tags &lt;p&gt; explained')
   })
 
+  it('decodes any numeric reference and leaves broken ones as written', () => {
+    expect(decodeFeedText('Caf&#233; Talk &#xE9;dition')).toBe('Café Talk édition')
+    expect(decodeFeedText('Tom &#38;amp; Jerry')).toBe('Tom &amp; Jerry')
+    expect(decodeFeedText('Null &#0; and &#xD800; stay')).toBe('Null &#0; and &#xD800; stay')
+  })
+
   it('strips tags, keeping paragraphs apart', () => {
     expect(decodeFeedText('<p>One.</p><p>Two.</p>')).toBe('One.\n\nTwo.')
     expect(decodeFeedText('One.<br>Two.')).toBe('One.\nTwo.')
