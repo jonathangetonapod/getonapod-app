@@ -10,17 +10,18 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import {
+  assessProfile,
+  filterQueries,
+  MIN_USABLE_QUERIES,
+  rejectQuery,
+  vocabularyOf,
+} from '../_shared/podcastQueryStrategy.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-
-const FALLBACK_STOP_WORDS = new Set([
-  'about', 'after', 'also', 'been', 'being', 'build', 'building', 'company', 'could', 'experience',
-  'from', 'have', 'helps', 'into', 'more', 'most', 'over', 'their', 'them', 'they', 'this', 'through',
-  'using', 'what', 'when', 'where', 'which', 'while', 'with', 'work', 'years', 'your', 'podcast', 'guest',
-])
 
 /**
  * How many searches a run is built from. Five was hard-coded, and five is the
@@ -43,72 +44,48 @@ function resolveQueryCount(value: unknown): number {
   return Math.min(MAX_QUERY_COUNT, Math.max(MIN_QUERY_COUNT, Math.trunc(requested)))
 }
 
-function fallbackQueries(
-  targetName: string | undefined,
-  targetBio: string,
-  count = DEFAULT_QUERY_COUNT,
-  avoid: string[] = [],
-): string[] {
-  const excluded = new Set((targetName || '').toLowerCase().match(/[a-z0-9]+/gu) || [])
-  const frequencies = new Map<string, number>()
-  for (const token of targetBio.toLowerCase().match(/[a-z][a-z0-9-]{2,}/gu) || []) {
-    if (FALLBACK_STOP_WORDS.has(token) || excluded.has(token)) continue
-    frequencies.set(token, (frequencies.get(token) || 0) + 1)
-  }
-  const defaults = ['business', 'leadership', 'growth', 'innovation', 'entrepreneurship']
-  const topics = Array.from(frequencies.entries())
-    .sort((left, right) => right[1] - left[1] || right[0].length - left[0].length || left[0].localeCompare(right[0]))
-    .map(([token]) => token.replace(/-+$/u, ''))
-    .filter(Boolean)
-  for (const fallback of defaults) if (!topics.includes(fallback)) topics.push(fallback)
+/*
+ * The profile cannot support a strategy. Answered as 422 with a status the
+ * finder can branch on, and checked before the charge, so a thin profile
+ * costs nothing.
+ */
+class ProfileTooThinError extends HttpError {
+  readonly reason: string
 
-  /*
-   * Pair every topic against a shifting partner through a rotating set of
-   * shapes, so the list grows to whatever was asked for. The old version tacked
-   * extras onto five fixed seeds and stopped at the end of the topic list, which
-   * meant a short bio returned five queries however many were requested — and
-   * nothing downstream could tell the difference.
-   */
-  const shapes: Array<(first: string, second: string) => string> = [
-    (first, second) => `"${first} ${second}"`,
-    (first, second) => `"${first}" OR "${second}"`,
-    (first, second) => `"${first} * podcast" OR "${second} * stories"`,
-    (first, second) => `"${first} leaders" OR "${second} growth"`,
-    (first, second) => `"${first} * business" OR "${second} innovation"`,
-    (first, second) => `"${first} interview" OR "${second} conversations"`,
-  ]
-  const avoidSet = new Set(avoid.map((entry) => entry.trim().toLowerCase()))
-  const queries: string[] = []
-  const seen = new Set<string>()
-  const maxAttempts = shapes.length * topics.length * 3
-  for (let attempt = 0; attempt < maxAttempts && queries.length < count; attempt += 1) {
-    const first = topics[attempt % topics.length]
-    const second = topics[(attempt + 1 + Math.floor(attempt / topics.length)) % topics.length]
-    if (!first || !second || first === second) continue
-    const query = shapes[attempt % shapes.length](first, second)
-    const key = query.toLowerCase()
-    if (seen.has(key) || avoidSet.has(key)) continue
-    seen.add(key)
-    queries.push(query)
+  constructor(reason: string, isProspect: boolean) {
+    super(
+      422,
+      'PROFILE_TOO_THIN',
+      `Not enough profile to draft a strategy. Add a bio, topics or talking points to the ${isProspect ? 'prospect' : 'client'}, then try again.`,
+    )
+    this.reason = reason
   }
-  return queries
 }
 
-function fallbackReplacementQuery(
-  targetName: string | undefined,
-  targetBio: string,
-  oldQuery: string,
-): string {
-  const queries = fallbackQueries(targetName, targetBio)
-  return queries.find((candidate) => candidate !== oldQuery) || queries[0]
+/*
+ * A provider failure is a failure. It used to fall through to a
+ * deterministic template that shipped stopwords as searches and kept the
+ * charge; now the outer catch refunds and the caller sees what went wrong.
+ */
+function providerFailure(error: unknown, byoKeyUsed: boolean): HttpError {
+  const status = error && typeof error === 'object' ? (error as { status?: unknown }).status : undefined
+  console.error('[generate-podcast-queries] AI provider call failed:', error instanceof Error ? error.message : String(error))
+  if (status === 401 || status === 403) {
+    return byoKeyUsed
+      ? new HttpError(502, 'AI_KEY_REJECTED', 'Your workspace AI key was rejected. Update it in workspace settings, then try again.')
+      : new HttpError(502, 'AI_PROVIDER_REJECTED', 'The AI service rejected the request. Try again later, or contact support if it keeps happening.')
+  }
+  return new HttpError(502, 'STRATEGY_GENERATION_FAILED', 'The AI could not draft a search strategy. Try again in a moment.')
+}
+
+function weakStrategy(): HttpError {
+  return new HttpError(502, 'STRATEGY_TOO_WEAK', 'The AI draft did not produce enough usable searches. Try again.')
 }
 
 serve(async (req) => {
   // Set when a real debit lands, so the outer catch can give it back: a
   // failure after the charge is work the workspace paid for and never got.
-  // The deterministic-fallback path returns before the catch and keeps its
-  // charge, because a fallback strategy is still a delivered strategy.
-  let chargedForRefund: { workspaceId: string; entryId: string } | null = null
+  let chargedForRefund: { workspaceId: string; entryId: string; amount: number } | null = null
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -156,6 +133,7 @@ serve(async (req) => {
       referenceKind: string
       referenceId: string
       byoKeyUsed: boolean
+      actorUserId: string
     } | null = null
 
     if (scopedRequest) {
@@ -178,19 +156,7 @@ serve(async (req) => {
         referenceKind: hasProspect ? 'prospect_dashboard' : 'client',
         referenceId: String(hasProspect ? body.prospectDashboardId : body.clientId),
         byoKeyUsed,
-      }
-      const queryCharge = await chargeCredits(context.admin, {
-        workspaceId,
-        operationType: 'query_generation',
-        referenceKind: metering.referenceKind,
-        referenceId: metering.referenceId,
-        clientId: metering.clientId,
         actorUserId: context.user.id,
-        byoKeyUsed,
-      })
-      if (queryCharge.entryId && !queryCharge.replayed) {
-        chargedForRefund = { workspaceId, entryId: queryCharge.entryId }
-        refundAdmin = context.admin
       }
 
       if (hasProspect) {
@@ -290,13 +256,30 @@ serve(async (req) => {
     console.log(`   ${oldQuery ? 'Regenerating' : `Generating ${queryCount}`} queries`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-    if (!targetBio || targetBio.trim().length === 0) {
-      console.error('❌ [ERROR] Bio is required but was empty')
-      return new Response(
-        JSON.stringify({ error: `${isProspectMode ? 'Prospect' : 'Client'} bio is required` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    const profile = assessProfile(targetBio, targetName)
+    if (profile.thin) {
+      console.log(`[generate-podcast-queries] Profile too thin: ${profile.reason}`)
+      throw new ProfileTooThinError(profile.reason, isProspectMode)
     }
+    const vocabulary = vocabularyOf(targetBio, targetName)
+
+    // Charged only once the profile can support a strategy.
+    if (metering) {
+      const queryCharge = await chargeCredits(metering.admin, {
+        workspaceId: metering.workspaceId,
+        operationType: 'query_generation',
+        referenceKind: metering.referenceKind,
+        referenceId: metering.referenceId,
+        clientId: metering.clientId,
+        actorUserId: metering.actorUserId,
+        byoKeyUsed: metering.byoKeyUsed,
+      })
+      if (queryCharge.entryId && !queryCharge.replayed) {
+        chargedForRefund = { workspaceId: metering.workspaceId, entryId: queryCharge.entryId, amount: queryCharge.charged }
+        refundAdmin = metering.admin
+      }
+    }
+    const byoKeyUsed = metering?.byoKeyUsed ?? false
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
 
@@ -352,27 +335,12 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         temperature: 0.9,
         messages: [{ role: 'user', content: prompt }],
       }).catch((error: unknown) => {
-        console.warn('Query regeneration provider was unavailable; using deterministic strategy', error)
-        return null
+        throw providerFailure(error, byoKeyUsed)
       })
       await meterUsage(message)
 
-      if (!message) {
-        const query = fallbackReplacementQuery(targetName, targetBio, oldQuery)
-        return new Response(
-          JSON.stringify({ query, source: 'deterministic' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-
       const content = message.content[0]
-      if (content.type !== 'text') {
-        const query = fallbackReplacementQuery(targetName, targetBio, oldQuery)
-        return new Response(
-          JSON.stringify({ query, source: 'deterministic' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
+      if (content?.type !== 'text') throw weakStrategy()
 
       // Strip markdown code blocks if present
       let jsonText = content.text.trim()
@@ -380,37 +348,24 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
       }
 
-      console.log('📝 [AI RESPONSE] Raw:', content.text.substring(0, 200))
-      console.log('🧹 [CLEANED] Parsed JSON:', jsonText.substring(0, 200))
-
       let parsed: { query?: unknown }
       try {
         parsed = JSON.parse(jsonText)
-      } catch (parseError) {
-        console.error('❌ [JSON PARSE ERROR]', parseError)
-        console.error('   Failed text:', jsonText)
-        const query = fallbackReplacementQuery(targetName, targetBio, oldQuery)
-        return new Response(
-          JSON.stringify({ query, source: 'deterministic' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
+      } catch {
+        console.error('[generate-podcast-queries] Regenerated query was not valid JSON:', jsonText.substring(0, 200))
+        throw weakStrategy()
       }
 
-      if (typeof parsed.query !== 'string' || !parsed.query.trim() || parsed.query === oldQuery) {
-        const query = fallbackReplacementQuery(targetName, targetBio, oldQuery)
-        return new Response(
-          JSON.stringify({ query, source: 'deterministic' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
+      const query = typeof parsed.query === 'string' ? parsed.query.trim() : ''
+      const rejection = query && query !== oldQuery ? rejectQuery(query, vocabulary) : 'empty'
+      if (rejection) {
+        console.error(`[generate-podcast-queries] Regenerated query rejected (${rejection}): ${query.substring(0, 200)}`)
+        throw weakStrategy()
       }
 
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('✅ [REGENERATE SUCCESS] New query generated!')
-      console.log(`   New query: ${parsed.query}`)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
+      console.log(`[generate-podcast-queries] Regenerated query: ${query}`)
       return new Response(
-        JSON.stringify({ query: parsed.query }),
+        JSON.stringify({ status: 'ok', query }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -480,163 +435,82 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
     const message = await anthropic.messages.create({
       model: 'claude-opus-4-5-20251101',
       // Scaled with the request: twenty OR-chained queries do not fit in the
-      // 500 that five needed, and truncation fails silently all the way down to
-      // the deterministic fallback.
+      // 500 that five needed, and a truncated answer has nothing to parse.
       max_tokens: Math.min(4000, 400 + (queryCount * 80)),
       temperature: 0.8,
       messages: [{ role: 'user', content: prompt }],
     }).catch((error: unknown) => {
-      console.warn('Query generation provider was unavailable; using deterministic strategy', error)
-      return null
+      throw providerFailure(error, byoKeyUsed)
     })
     await meterUsage(message)
 
-    if (!message) {
-      return new Response(
-        JSON.stringify({ queries: fallbackQueries(targetName, targetBio, queryCount, avoidQueries), source: 'deterministic' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
-
     const content = message.content[0]
-    if (content.type !== 'text') {
-      return new Response(
-        JSON.stringify({ queries: fallbackQueries(targetName, targetBio, queryCount, avoidQueries), source: 'deterministic' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
+    if (content?.type !== 'text') throw weakStrategy()
 
     // Strip markdown code blocks if present
     let jsonText = content.text.trim()
     if (jsonText.startsWith('```')) {
-      // Remove ```json or ``` at start and ``` at end
       jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     }
 
-    // Fix: Claude doesn't escape quotes properly in the query strings
-    // We need to manually fix the JSON by escaping quotes inside array values
-
+    let candidates: unknown[] = []
     try {
-      // First attempt: try parsing as-is
-      const parsed = JSON.parse(jsonText)
-
+      const parsed = JSON.parse(jsonText) as { queries?: unknown }
+      candidates = Array.isArray(parsed.queries) ? parsed.queries : []
+    } catch {
       /*
-       * Anything usable is used. Requiring an exact count threw away a whole
-       * run because a model returned four queries or six, which is the kind of
-       * strictness that makes a feature look broken for no gain — a short list
-       * is topped up from the deterministic fallback below.
+       * The model sometimes leaves the quotes inside a query unescaped, which
+       * is invalid JSON but still a readable list. Split on the "," between
+       * elements and take only the JSON string delimiters off each one:
+       * stripping every outer quote turned "a" OR "b" into a" OR "b.
        */
-      /*
-       * Only usable strings survive. The old exact-count check incidentally
-       * rejected malformed shapes; relaxing it let numbers, objects, nulls and
-       * empty strings through to a caller that calls .trim() on each one.
-       */
-      const avoidSet = new Set(avoidQueries.map((entry) => entry.trim().toLowerCase()))
-      const usable: string[] = Array.isArray(parsed.queries)
-        ? parsed.queries
-          .filter((entry: unknown): entry is string => typeof entry === 'string' && entry.trim() !== '')
-          .map((entry: string) => entry.trim())
-          .filter((entry: string) => !avoidSet.has(entry.toLowerCase()))
-        : []
-      const deduped = Array.from(new Map(usable.map((entry) => [entry.toLowerCase(), entry])).values())
-      if (deduped.length === 0) {
-        console.error('❌ [ERROR] Invalid response format: no usable queries returned')
-        throw new Error('Invalid response format: no usable queries returned')
-      }
-      parsed.queries = deduped.slice(0, queryCount)
-      if (parsed.queries.length < queryCount) {
-        const topUp = fallbackQueries(targetName, targetBio, queryCount, [...avoidQueries, ...parsed.queries])
-        parsed.queries = [...parsed.queries, ...topUp].slice(0, queryCount)
-      }
-
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log(`✅ [SUCCESS] Generated ${parsed.queries.length} podcast search queries!`)
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('📋 [QUERIES]:')
-      parsed.queries.forEach((q: string, i: number) => {
-        console.log(`   ${i + 1}. ${q}`)
-      })
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('🚀 [NEXT STEP] Frontend will use these to search Podscan API')
-      console.log('   Expected: 100-300 podcasts per query = 500-1500 total results')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-      return new Response(
-        JSON.stringify({ queries: parsed.queries }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    } catch (parseError) {
-      console.log('First parse attempt failed, trying manual extraction...')
-      const parseErrorMessage = parseError instanceof Error ? parseError.message : String(parseError)
-      console.log('Parse error:', parseErrorMessage)
-
-      // Second attempt: Extract array values by splitting on "," pattern
-      // Match the array content between "queries": [ and ]
       const arrayMatch = jsonText.match(/"queries"\s*:\s*\[(.*)\]/s)
-
       if (arrayMatch) {
-        const arrayContent = arrayMatch[1]
-        console.log('Matched array content:', arrayContent)
-
-        // Split by "," pattern (quote-comma-quote between array elements)
-        const rawQueries: string[] = arrayContent.split('","')
-
-        // Clean up: remove leading/trailing quotes and whitespace
-        const queries = rawQueries.map((q: string) =>
-          // Only the JSON string delimiters come off. Stripping a leading and
-          // trailing quote unconditionally mangled exactly what this path is
-          // for: "a" OR "b" became a" OR "b, which is invalid Podscan syntax.
-          q.trim().replace(/^"(.*)"$/su, '$1').replace(/\\"/gu, '"')
-        )
-
-        console.log('Extracted queries via split:', queries)
-        console.log('Query count:', queries.length)
-
-        const avoidSet = new Set(avoidQueries.map((entry) => entry.trim().toLowerCase()))
-        const usable = queries
-          .filter((entry: unknown): entry is string => typeof entry === 'string' && entry.trim() !== '')
-          .map((entry: string) => entry.trim())
-          .filter((entry: string) => !avoidSet.has(entry.toLowerCase()))
-        const recovered: string[] = Array.from(new Map(usable.map((entry: string): [string, string] => [entry.toLowerCase(), entry])).values())
-          .slice(0, queryCount)
-        if (recovered.length > 0) {
-          // Recovery is not an excuse to ignore the count: top up like the
-          // parsed path does rather than returning one query for a request of
-          // twenty, and never return a bare empty string as a search.
-          const topped = recovered.length < queryCount
-            ? [...recovered, ...fallbackQueries(targetName, targetBio, queryCount, [...avoidQueries, ...recovered])].slice(0, queryCount)
-            : recovered
-          return new Response(
-            JSON.stringify({ queries: topped }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        } else {
-          console.error('Extraction produced no queries')
-        }
+        candidates = arrayMatch[1]
+          .split('","')
+          .map((entry: string) => entry.trim().replace(/^"(.*)"$/su, '$1').replace(/\\"/gu, '"'))
       } else {
-        console.error('Could not match array pattern in JSON text')
+        console.error('[generate-podcast-queries] Model answer was not a query list:', jsonText.substring(0, 300))
       }
-
-      console.error('Manual extraction failed')
-      console.error('Original text:', jsonText)
-      return new Response(
-        JSON.stringify({ queries: fallbackQueries(targetName, targetBio, queryCount, avoidQueries), source: 'deterministic' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
     }
+
+    /*
+     * Only queries a search can use survive: no stopword-only phrases, no
+     * template fragments, nothing unrelated to the profile, nothing already
+     * searched. A short list is returned short; it is never padded.
+     */
+    const { kept, rejected } = filterQueries(candidates, vocabulary, queryCount, avoidQueries)
+    for (const entry of rejected) {
+      console.log(`[generate-podcast-queries] Dropped query (${entry.reason}): ${entry.query.substring(0, 200)}`)
+    }
+    if (kept.length < Math.min(MIN_USABLE_QUERIES, queryCount)) throw weakStrategy()
+
+    console.log(`[generate-podcast-queries] Generated ${kept.length} of ${queryCount} requested queries:`)
+    kept.forEach((query, index) => console.log(`   ${index + 1}. ${query}`))
+
+    return new Response(
+      JSON.stringify({ status: 'ok', queries: kept }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   } catch (error) {
-    console.error('Error:', error)
+    if (!(error instanceof ProfileTooThinError)) console.error('Error:', error)
+    let creditsRefunded = 0
     if (chargedForRefund && refundAdmin) {
-      await refundCredits(refundAdmin, {
+      const refunded = await refundCredits(refundAdmin, {
         workspaceId: chargedForRefund.workspaceId,
         entryId: chargedForRefund.entryId,
         reason: 'query generation failed after the charge',
       })
+      if (refunded) creditsRefunded = chargedForRefund.amount
     }
     return new Response(
       JSON.stringify({
+        status: error instanceof ProfileTooThinError ? 'profile_too_thin' : 'failed',
         error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
         ...(error instanceof HttpError ? { code: error.code } : {}),
+        ...(error instanceof ProfileTooThinError ? { reason: error.reason } : {}),
+        credits_charged: chargedForRefund?.amount ?? 0,
+        credits_refunded: creditsRefunded,
       }),
       { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

@@ -33,7 +33,7 @@ import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
-import { generatePodcastQueries } from '@/services/queryGeneration'
+import { generatePodcastQueries, isProfileTooThin, isQueryGenerationError } from '@/services/queryGeneration'
 import { searchPodcastsWithMeta, type PodcastData } from '@/services/podscan'
 import { InsufficientCreditsError, PartialScoringError, scoreCompatibilityBatch, type CompatibilityScore } from '@/services/compatibilityScoring'
 import {
@@ -253,6 +253,20 @@ function scanFailureCreditLine(failure: ScanFailure): string {
   ].filter(Boolean).join(' ')
 }
 
+/*
+ * What a failed strategy says in a toast. The server's message is written for
+ * the reader; the credit note is added here because only the response knows
+ * whether the refund landed.
+ */
+function strategyErrorMessage(error: unknown): string {
+  if (!isQueryGenerationError(error)) {
+    return error instanceof Error ? error.message : 'The search strategy could not be generated.'
+  }
+  if (error.creditsCharged === 0) return `${error.message} No credit was charged.`
+  if (error.creditsRefunded >= error.creditsCharged) return `${error.message} The credit was refunded.`
+  return `${error.message} The credit could not be refunded automatically. Contact support and we will put it back.`
+}
+
 function scoreBadgeClass(score: number | null): string {
   if (score === null) return 'border-border bg-muted text-muted-foreground'
   if (score >= 80) return 'border-emerald-200 bg-emerald-50 text-emerald-800'
@@ -345,6 +359,8 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const [aiStrategyLoaded, setAiStrategyLoaded] = useState(false)
   const [includeAiStrategy, setIncludeAiStrategy] = useState(true)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  // Set when the strategy endpoint says the profile cannot support a strategy.
+  const [profileTooThin, setProfileTooThin] = useState(false)
   const [language, setLanguage] = useState('en')
   const [region, setRegion] = useState('any')
   const [activityDays, setActivityDays] = useState('90')
@@ -404,9 +420,11 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         .slice(0, MAX_QUERIES)
       setAiQueries(generated)
       setAiStrategyLoaded(true)
+      setProfileTooThin(false)
       toast.success('Fresh AI search strategy is ready — edit it below before scanning.')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The search strategy could not be generated.')
+      if (isProfileTooThin(error)) setProfileTooThin(true)
+      toast.error(strategyErrorMessage(error))
     } finally {
       setIsRegenerating(false)
     }
@@ -719,7 +737,10 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       }
       setPhase('idle')
       setStatusMessage('')
-      toast.error(error instanceof Error ? error.message : 'The scan could not be completed.')
+      if (isProfileTooThin(error)) setProfileTooThin(true)
+      toast.error(isQueryGenerationError(error)
+        ? strategyErrorMessage(error)
+        : error instanceof Error ? error.message : 'The scan could not be completed.')
     }
   }
 
@@ -774,6 +795,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                   setResults([])
                   setAiQueries([])
                   setAiStrategyLoaded(false)
+                  setProfileTooThin(false)
                   setScanFailure(null)
                   setPhase('idle')
                 }}
@@ -1020,6 +1042,14 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               <p className="flex flex-wrap items-center gap-2 text-sm text-destructive">
                 {selectedClient.name}’s profile could not be loaded.
                 <button type="button" className="font-medium underline underline-offset-2" onClick={() => void contextQuery.refetch()}>Retry</button>
+              </p>
+            )}
+            {selectedClient && profileTooThin && clientBio && (
+              <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+                Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.{' '}
+                <Link className="font-semibold underline underline-offset-2" to={`${baseHref}/clients/${selectedClient.id}`}>
+                  Open {selectedClient.name}’s client record
+                </Link>
               </p>
             )}
             {selectedClient && !contextQuery.isLoading && !contextQuery.isError && !clientBio && (

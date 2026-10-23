@@ -93,8 +93,17 @@ for (const edge of [queryGeneration, compatibilityScoring]) {
   assert.match(edge, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
   assert.match(edge, /await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 }
-assert.match(queryGeneration, /function fallbackQueries/u)
-assert.match(queryGeneration, /source: 'deterministic'/u)
+// No deterministic fallback: it shipped stopwords as searches and kept the
+// charge. A failed or thin generation is an error the caller can see.
+assert.doesNotMatch(queryGeneration, /function fallbackQueries/u)
+assert.doesNotMatch(queryGeneration, /source: 'deterministic'/u)
+assert.match(queryGeneration, /throw providerFailure\(error, byoKeyUsed\)/u)
+assert.match(queryGeneration, /filterQueries\(candidates, vocabulary, queryCount, avoidQueries\)/u)
+assert.match(queryGeneration, /status: error instanceof ProfileTooThinError \? 'profile_too_thin' : 'failed'/u)
+assert.ok(
+  queryGeneration.indexOf('throw new ProfileTooThinError') < queryGeneration.indexOf("operationType: 'query_generation'"),
+  'a thin profile must be refused before the credit is charged',
+)
 assert.match(compatibilityScoring, /function deterministicScore/u)
 
 assert.match(migration, /ADD COLUMN IF NOT EXISTS workspace_id UUID/u)

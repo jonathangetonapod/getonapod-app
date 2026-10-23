@@ -29,7 +29,10 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceResearchContext: vi.fn(),
 }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
-vi.mock('@/services/queryGeneration', () => ({ generatePodcastQueries: vi.fn() }))
+vi.mock('@/services/queryGeneration', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/queryGeneration')>(),
+  generatePodcastQueries: vi.fn(),
+}))
 vi.mock('@/services/podscan', () => ({ searchPodcastsWithMeta: vi.fn() }))
 vi.mock('@/services/compatibilityScoring', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/compatibilityScoring')>(),
@@ -500,6 +503,27 @@ describe('WorkspaceSmartPodcastFinder', () => {
     const searchedQueries = vi.mocked(searchPodcastsWithMeta).mock.calls.map((call) => (call[0] as { query: string }).query)
     expect(searchedQueries).toContain('bootstrapping')
     expect(searchedQueries).not.toContain('founder stories')
+  })
+
+  it('sends a thin profile to the client record instead of searching on junk', async () => {
+    vi.mocked(generatePodcastQueries).mockRejectedValue(Object.assign(
+      new Error('Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.'),
+      {
+        code: 'PROFILE_TOO_THIN',
+        generationStatus: 'profile_too_thin',
+        reason: 'The profile has 3 topic words; a strategy needs at least 15.',
+        creditsCharged: 0,
+        creditsRefunded: 0,
+      },
+    ))
+    renderFinder()
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByRole('link', { name: 'Open Taylor Client’s client record' }))
+      .toHaveAttribute('href', `/app/clients/${clientId}`)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringMatching(/No credit was charged\.$/u))
+    expect(vi.mocked(searchPodcastsWithMeta)).not.toHaveBeenCalled()
+    expect(vi.mocked(scoreCompatibilityBatch)).not.toHaveBeenCalled()
   })
 
   it('blocks scanning until the client has a profile bio', async () => {
