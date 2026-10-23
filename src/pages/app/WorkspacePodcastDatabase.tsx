@@ -5,9 +5,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Copy,
   Database,
   ExternalLink,
+  LayoutGrid,
+  List,
   Loader2,
   Plus,
   RefreshCw,
@@ -18,7 +19,6 @@ import {
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,7 +35,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
+import { PodcastCatalogRow, PodcastCatalogRowHeader } from '@/components/workspace/catalog/PodcastCatalogRow'
+import type { PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
 import { repairableExternalUrl } from '@/lib/externalUrl'
 import { addClientShortlistPodcasts, type ClientShortlistPodcastInput } from '@/services/clientShortlist'
 import {
@@ -53,41 +57,33 @@ import {
   type WorkspacePodcastCatalogItem,
   type WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
-import { safeExternalUrl } from '@/lib/externalUrl'
 import { PodcastCatalogDetailsDialog } from '@/components/workspace/PodcastCatalogDetailsDialog'
 import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
+  categoryNames,
   formatDay,
   isStaleCatalogDate,
   oldestCatalogUpdate,
-  podcastRating,
 } from '@/lib/podcastCatalogDisplay'
 
 const PAGE_SIZE = 24
+const VIEW_STORAGE_KEY = 'podcastDb.view'
+
+type CatalogView = 'list' | 'cards'
+
+function readStoredView(): CatalogView {
+  try {
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'cards' ? 'cards' : 'list'
+  } catch {
+    return 'list'
+  }
+}
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const compactNumber = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 interface WorkspacePodcastDatabaseProps {
   platformWorkspaceId?: string
-}
-
-function podcastInitials(name: string) {
-  return name
-    .split(/\s+/u)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'P'
-}
-
-function categoryNames(podcast: WorkspacePodcastCatalogItem): string[] {
-  if (!Array.isArray(podcast.podcast_categories)) return []
-  return podcast.podcast_categories.flatMap((category) => {
-    if (typeof category === 'string') return category.trim() ? [category.trim()] : []
-    return category?.category_name?.trim() ? [category.category_name.trim()] : []
-  })
 }
 
 function shortlistCategories(podcast: WorkspacePodcastCatalogItem) {
@@ -146,17 +142,6 @@ function toProspectPodcast(podcast: WorkspacePodcastCatalogItem): ProspectShortl
   }
 }
 
-function formattedDate(value: string | null) {
-  if (!value) return 'Not available'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Not available'
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(date)
-}
-
 const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatabaseProps) => {
   const [searchParams] = useSearchParams()
   const { isPlatformAdmin, membership, user, workspace } = useAuth()
@@ -185,6 +170,10 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const [page, setPage] = useState(1)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  // What the add dialog is adding: the bulk selection, or the one show whose
+  // button opened it.
+  const [dialogPodcasts, setDialogPodcasts] = useState<WorkspacePodcastCatalogItem[]>([])
+  const [view, setView] = useState<CatalogView>(readStoredView)
   const [detailsPodcast, setDetailsPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
   const [selectedClientId, setSelectedClientId] = useState(targetClientId)
   // Which kind of thing the selection is being added to. A prospect page
@@ -320,7 +309,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const podcasts = Array.from(selectedPodcasts.values())
+      const podcasts = dialogPodcasts
       if (addTarget === 'prospect') {
         if (!selectedProspectId) throw new Error('Choose a prospect first.')
         return await addWorkspaceProspectPodcasts(
@@ -356,7 +345,12 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           toast.info('Those podcasts are already on this client’s shortlist.')
         }
       }
-      setSelectedPodcasts(new Map())
+      // Whatever was just added leaves the selection; anything else stays picked.
+      setSelectedPodcasts((current) => {
+        const next = new Map(current)
+        dialogPodcasts.forEach((podcast) => next.delete(podcast.podcast_id))
+        return next
+      })
       setSelectedClientId(targetClientId)
       setAddDialogOpen(false)
       void catalogQuery.refetch()
@@ -435,6 +429,36 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       setSelectedClientId('')
     }
   }, [activeClients, addDialogOpen, clientsQuery.isLoading, selectedClientId])
+
+  const openAddDialog = (podcastsToAdd: WorkspacePodcastCatalogItem[]) => {
+    setAddTarget('client')
+    setSelectedProspectId('')
+    setSelectedClientId(targetClientId)
+    setDialogPodcasts(podcastsToAdd)
+    setAddDialogOpen(true)
+  }
+
+  const changeView = (next: CatalogView) => {
+    setView(next)
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      // The choice still applies for this visit when storage is unavailable.
+    }
+  }
+
+  const resultProps = (podcast: WorkspacePodcastCatalogItem): PodcastResultProps => ({
+    podcast,
+    relationship: relationshipsByPodcastId.get(podcast.podcast_id) ?? null,
+    selectable: canAddToClient,
+    selected: selectedPodcasts.has(podcast.podcast_id),
+    onSelectedChange: (checked) => togglePodcast(podcast, checked),
+    action: canAddToClient
+      ? { kind: 'add', label: 'Add to client', onAdd: () => openAddDialog([podcast]) }
+      : { kind: 'details', onOpen: () => setDetailsPodcast(podcast) },
+    onOpenDetails: () => setDetailsPodcast(podcast),
+    onCopyEmail: (email) => void copyEmail(email),
+  })
 
   const copyEmail = async (email: string) => {
     try {
@@ -595,6 +619,17 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                 <Button variant="ghost" size="icon" aria-label="Refresh podcast database" onClick={() => void catalogQuery.refetch()} disabled={catalogQuery.isFetching}>
                   <RefreshCw className={`h-4 w-4 ${catalogQuery.isFetching ? 'animate-spin' : ''}`} />
                 </Button>
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  variant="outline"
+                  value={view}
+                  onValueChange={(value) => { if (value === 'list' || value === 'cards') changeView(value) }}
+                  aria-label="Result layout"
+                >
+                  <ToggleGroupItem value="list" aria-label="List"><List className="h-4 w-4 sm:mr-1.5" aria-hidden="true" /><span className="hidden sm:inline">List</span></ToggleGroupItem>
+                  <ToggleGroupItem value="cards" aria-label="Cards"><LayoutGrid className="h-4 w-4 sm:mr-1.5" aria-hidden="true" /><span className="hidden sm:inline">Cards</span></ToggleGroupItem>
+                </ToggleGroup>
               </div>
             </div>
           </CardContent>
@@ -608,7 +643,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setSelectedPodcasts(new Map())}>Clear</Button>
-              <Button onClick={() => { setAddTarget('client'); setSelectedProspectId(''); setSelectedClientId(targetClientId); setAddDialogOpen(true) }}><Plus className="mr-2 h-4 w-4" />Add to client</Button>
+              <Button onClick={() => openAddDialog(Array.from(selectedPodcasts.values()))}><Plus className="mr-2 h-4 w-4" />Add to client</Button>
             </div>
           </div>
         )}
@@ -633,109 +668,16 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
               <div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={resetFilters}>Reset filters</Button><Button asChild><Link to={`${baseHref}/podcast-finder`}>Open Podcast Finder</Link></Button></div>
             </CardContent>
           </Card>
+        ) : view === 'list' ? (
+          <Card className="overflow-hidden">
+            <PodcastCatalogRowHeader selectable={canAddToClient} />
+            <ul className="divide-y">
+              {podcasts.map((podcast) => <PodcastCatalogRow key={podcast.podcast_id} {...resultProps(podcast)} />)}
+            </ul>
+          </Card>
         ) : (
           <div className="grid gap-4 xl:grid-cols-2">
-            {podcasts.map((podcast) => {
-              const categories = categoryNames(podcast)
-              const publicUrl = safeExternalUrl(podcast.podcast_url || podcast.website || '')
-              const primaryEmail = podcast.direct_email || podcast.free_podscan_email
-              const selected = selectedPodcasts.has(podcast.podcast_id)
-              const relationshipBadgeFor = relationshipsByPodcastId.get(podcast.podcast_id)
-              const rating = podcastRating(podcast)
-              return (
-                <Card key={podcast.podcast_id} className={`overflow-hidden transition-colors ${selected ? 'border-primary/50 bg-primary/[0.025]' : ''}`}>
-                  <CardContent className="p-5">
-                    <div className="flex gap-4">
-                      {canAddToClient && (
-                        <Checkbox
-                          aria-label={`Select ${podcast.podcast_name}`}
-                          checked={selected}
-                          onCheckedChange={(checked) => togglePodcast(podcast, checked === true)}
-                          className="mt-1"
-                        />
-                      )}
-                      <Avatar className="h-16 w-16 shrink-0 rounded-xl border">
-                        {podcast.podcast_image_url && <AvatarImage src={podcast.podcast_image_url} alt="" className="object-cover" />}
-                        <AvatarFallback className="rounded-xl text-lg font-bold">{podcastInitials(podcast.podcast_name)}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h2 className="truncate text-lg font-semibold">{podcast.podcast_name}</h2>
-                            <p className="truncate text-sm text-muted-foreground">{podcast.host_name || podcast.publisher_name || 'Publisher not listed'}</p>
-                            {relationshipBadgeFor && (
-                              <Badge variant="outline" className={`mt-1.5 font-normal ${relationshipBadgeFor.className}`}>
-                                {relationshipBadgeFor.label}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDetailsPodcast(podcast)}
-                            >
-                              See details
-                            </Button>
-                            {publicUrl && <Button asChild variant="ghost" size="icon" className="shrink-0"><a href={publicUrl} target="_blank" rel="noreferrer" aria-label={`Open ${podcast.podcast_name}`}><ExternalLink className="h-4 w-4" /></a></Button>}
-                          </div>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {categories.slice(0, 3).map((name) => <Badge key={name} variant="secondary" className="font-normal">{name}</Badge>)}
-                          {categories.length > 3 && <Badge variant="outline">+{categories.length - 3}</Badge>}
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="mt-4 line-clamp-2 min-h-10 text-sm leading-5 text-muted-foreground">{podcast.podcast_description || 'No public show description is available yet.'}</p>
-
-                    {/* Episode counts stay in the details: big shows report a
-                        feed-limited number (14 for This American Life), and
-                        nothing marks which counts are capped. */}
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Audience</p><p className="mt-1 text-sm font-semibold">{podcast.audience_size === null ? '—' : compactNumber.format(podcast.audience_size)}</p></div>
-                      <div className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Rating</p><p className="mt-1 text-sm font-semibold">{rating?.label || '—'}</p></div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div tabIndex={0} className="rounded-lg bg-muted/50 p-2.5"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Community</p><p className="mt-1 text-sm font-semibold">{podcast.shortlist_uses.toLocaleString()} use{podcast.shortlist_uses === 1 ? '' : 's'}</p></div>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">How many client and prospect shortlists include this show, across all workspaces.</TooltipContent>
-                      </Tooltip>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        {podcast.direct_email ? (
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge className="border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100"><ShieldCheck className="mr-1 h-3 w-3" aria-hidden="true" />Verified direct email</Badge>
-                            <span className="truncate text-sm">{podcast.direct_email}</span>
-                            {/* When somebody confirmed it. A direct address
-                                that was checked two years ago is a different
-                                proposition from one checked last week. */}
-                            <span className="text-xs text-muted-foreground">
-                              {podcast.direct_verified_at ? `Paid for and confirmed ${formattedDate(podcast.direct_verified_at)}` : 'Paid for, not yet confirmed'}
-                            </span>
-                          </div>
-                        ) : podcast.free_podscan_email ? (
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge className="border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Free email</Badge>
-                            <span className="truncate text-sm">{podcast.free_podscan_email}</span>
-                            <span className="text-xs text-muted-foreground">Free, published by the show and not confirmed</span>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No usable public email yet</p>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        {primaryEmail && <Button variant="outline" size="sm" onClick={() => void copyEmail(primaryEmail)}><Copy className="mr-2 h-3.5 w-3.5" />Copy</Button>}
-                        {canAddToClient && <Button size="sm" variant={selected ? 'secondary' : 'outline'} onClick={() => togglePodcast(podcast, !selected)}>{selected ? <><Check className="mr-2 h-3.5 w-3.5" />Selected</> : <><Plus className="mr-2 h-3.5 w-3.5" />Select</>}</Button>}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {podcasts.map((podcast) => <PodcastCatalogCard key={podcast.podcast_id} {...resultProps(podcast)} />)}
           </div>
         )}
 
@@ -763,7 +705,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       <Dialog open={addDialogOpen} onOpenChange={(open) => { if (!addMutation.isPending) setAddDialogOpen(open) }}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Add {selectedPodcasts.size} podcast{selectedPodcasts.size === 1 ? '' : 's'}</DialogTitle>
+            <DialogTitle>{dialogPodcasts.length === 1 ? `Add ${dialogPodcasts[0].podcast_name}` : `Add ${dialogPodcasts.length} podcasts`}</DialogTitle>
             <DialogDescription>{addTarget === 'prospect'
               ? 'The selected shows will be added to the prospect’s dashboard. Existing entries are skipped.'
               : 'The selected shows will be added to the client’s shortlist. Existing entries are skipped.'}</DialogDescription>

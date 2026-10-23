@@ -82,6 +82,10 @@ function cleanFeedLine(value: string | null): string | null {
 }
 
 /*
+ * The category filter list is left as the catalog spells it, because the
+ * filter sends the value back and the catalog matches it exactly; only its
+ * label is cleaned, where it is shown.
+ *
  * Catalogue rows are Podscan feed text, so names and descriptions arrive with
  * <p> tags and &amp; entities. Cleaned here, once, so the list, the cards, the
  * details dialog and the shortlist rows an add creates all read the same.
@@ -93,6 +97,13 @@ function cleanCatalogItem(item: WorkspacePodcastCatalogItem): WorkspacePodcastCa
     podcast_description: cleanFeedLine(item.podcast_description) || null,
     host_name: cleanFeedLine(item.host_name) || null,
     publisher_name: cleanFeedLine(item.publisher_name) || null,
+    podcast_categories: Array.isArray(item.podcast_categories)
+      ? item.podcast_categories.map((category) => (
+        typeof category === 'string'
+          ? cleanFeedLine(category)
+          : { ...category, category_name: cleanFeedLine(category?.category_name ?? '') }
+      ))
+      : item.podcast_categories,
   }
 }
 

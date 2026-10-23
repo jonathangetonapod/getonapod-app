@@ -131,7 +131,7 @@ export function oldestCatalogUpdate(podcasts: WorkspacePodcastCatalogItem[]): st
 /** "Dallas Fontaine" reads as "Dallas" on a button; the toast keeps the full name. */
 export function shortClientName(name: string): string {
   const first = name.trim().split(/\s+/u)[0] || name.trim()
-  return first.length > 18 ? `${first.slice(0, 17)}…` : first
+  return first.length > 12 ? `${first.slice(0, 11)}…` : first
 }
 
 export function podcastInitials(name: string): string {

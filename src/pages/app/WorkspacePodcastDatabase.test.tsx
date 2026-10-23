@@ -92,6 +92,7 @@ function renderPage(initialEntry = '/app/podcast-database') {
 describe('WorkspacePodcastDatabase', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
     // No history with any of these hosts unless a test says otherwise.
     mockedRelationships.mockResolvedValue([])
     mockedUseAuth.mockReturnValue({
@@ -113,8 +114,7 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText('Used in shortlists')).not.toBeInTheDocument()
     expect(screen.queryByText('Workspaces building it')).not.toBeInTheDocument()
     expect(screen.getByText('The Founder Show')).toBeInTheDocument()
-    expect(screen.getByText('show@example.com')).toBeInTheDocument()
-    expect(screen.getByText('Free email')).toBeInTheDocument()
+    expect(screen.getAllByText('Public email').length).toBeGreaterThan(0)
     // The rating names its source, and the page says how old its data is.
     expect(screen.getByText('Apple 4.8')).toBeInTheDocument()
     expect(screen.getByText('Catalog updated Jul 20, 2026')).toBeInTheDocument()
@@ -260,6 +260,33 @@ describe('WorkspacePodcastDatabase', () => {
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith('The second batch timed out.')
   })
 
+  // A row is a line of facts; the cards add the description and the address.
+  it('switches between the list and cards and remembers the choice', async () => {
+    renderPage()
+    expect(await screen.findByRole('listitem', { name: 'The Founder Show' })).toBeInTheDocument()
+    expect(screen.queryByText('show@example.com')).not.toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('radio', { name: 'Cards' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Cards' }))
+    expect(await screen.findByText('show@example.com')).toBeInTheDocument()
+    expect(screen.getByText('25K audience · Apple 4.8 · Last episode Jul 2026')).toBeInTheDocument()
+    expect(screen.getByText('On 4 shortlists')).toBeInTheDocument()
+    expect(window.localStorage.getItem('podcastDb.view')).toBe('cards')
+  })
+
+  it('opens the details when Enter is pressed on a row', async () => {
+    renderPage()
+    const row = await screen.findByRole('listitem', { name: 'The Founder Show' })
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('opens the one-show add dialog from the row button', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to client: The Founder Show' }))
+    expect(await screen.findByRole('heading', { name: 'Add The Founder Show' })).toBeInTheDocument()
+  })
+
   // The catalog function rejects a search longer than 120 characters.
   it('caps the search box at the length the catalog accepts', async () => {
     renderPage()
@@ -353,7 +380,7 @@ describe('WorkspacePodcastDatabase', () => {
   // nowhere — so judging a show meant opening it somewhere else.
   it('opens the details it already had for a podcast', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'See details' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'The Founder Show' }))
 
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText('The Founder Show')).toBeInTheDocument()
@@ -383,7 +410,7 @@ describe('WorkspacePodcastDatabase', () => {
       curated: false,
     }] as never)
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'See details' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'The Founder Show' }))
 
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText('Passed')).toBeInTheDocument()
