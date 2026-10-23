@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Clock, Handshake, MessageSquare, ShieldCheck, Ban } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { stageLabel } from '@/lib/relationshipLabels'
 import type { ClientShortlistAgencyRelationship } from '@/services/clientShortlist'
 
 /**
@@ -91,7 +92,7 @@ export const AgencyRelationshipNotice = ({ relationship }: { relationship?: Clie
           <p className="mt-0.5 text-[11px] leading-4 opacity-90">{view.detail}</p>
           {relationship.manual_stage && relationship.manual_stage !== 'do_not_contact' && (
             <p className="mt-1 text-[11px] font-medium leading-4">
-              Relationship stage: {relationship.manual_stage === 'warm' ? 'Warm' : 'Nurturing'}
+              Relationship stage: {stageLabel(relationship.manual_stage)}
             </p>
           )}
           {relationship.summary?.trim() && (

@@ -323,7 +323,7 @@ describe('WorkspacePodcastDatabase', () => {
     }] as never)
     renderPage()
 
-    expect(await screen.findByText('Passed')).toBeInTheDocument()
+    expect(await screen.findByText('Not a fit')).toBeInTheDocument()
   })
 
   it('says nothing about a host nobody has contacted', async () => {
@@ -333,7 +333,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
 
     expect(await screen.findByText('The Founder Show')).toBeInTheDocument()
-    expect(screen.queryByText('Passed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not a fit')).not.toBeInTheDocument()
     expect(screen.queryByText('Not contacted')).not.toBeInTheDocument()
   })
 
@@ -383,6 +383,6 @@ describe('WorkspacePodcastDatabase', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'See details' }))
 
     const dialog = within(await screen.findByRole('dialog'))
-    expect(dialog.getByText('Passed')).toBeInTheDocument()
+    expect(dialog.getByText('Not a fit')).toBeInTheDocument()
   })
 })
