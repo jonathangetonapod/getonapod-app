@@ -9,6 +9,8 @@ import {
   engagementText,
   MIN_SHORTLIST,
   missingItems,
+  outcomeClass,
+  outcomeLabel,
   prospectStage,
   readinessPercent,
   relativeTime,
@@ -18,7 +20,7 @@ import {
 import type { WorkspaceProspect } from '@/services/prospectDashboards'
 
 /** Name, stage, engagement, updated, readiness: the table and its header share these columns. */
-export const PROSPECT_ROW_COLUMNS = 'md:grid md:grid-cols-[minmax(0,1.5fr)_7.5rem_minmax(0,1.2fr)_5.5rem_minmax(0,1.1fr)] md:items-center md:gap-4'
+export const PROSPECT_ROW_COLUMNS = 'md:grid md:grid-cols-[minmax(0,1.5fr)_7rem_6rem_minmax(0,1.2fr)_5rem_minmax(0,1fr)] md:items-center md:gap-3'
 
 /** What the readiness column says for a prospect that is not live. */
 function readinessText(prospect: WorkspaceProspect): string {
@@ -60,6 +62,9 @@ export const ProspectRow = ({
   const percent = readinessPercent(prospect)
   const company = [prospect.prospect_title, prospect.prospect_company].filter(Boolean).join(' · ')
   const pill = <Badge variant="outline" className={cn('shrink-0 whitespace-nowrap font-normal', stageClass(stage))}>{stageLabel(stage)}</Badge>
+  const outcome = prospect.outcome
+    ? <Badge variant="outline" className={cn('shrink-0 whitespace-nowrap font-normal', outcomeClass(prospect.outcome))}>{outcomeLabel(prospect.outcome)}</Badge>
+    : null
   const pending = stage === 'live' && prospect.pending_review_at
     ? <span className="text-amber-700"> · Edits to review</span>
     : null
@@ -76,7 +81,7 @@ export const ProspectRow = ({
       >
         <span className="flex items-center justify-between gap-2">
           <span className="truncate text-sm font-medium">{prospect.prospect_name}</span>
-          {pill}
+          <span className="flex shrink-0 gap-1">{outcome}{pill}</span>
         </span>
         <span className={cn('mt-0.5 block truncate text-xs text-muted-foreground', activity.tone === 'error' && 'text-red-700')}>
           {stage === 'live' ? activity.text : readinessText(prospect)}{pending}
@@ -106,8 +111,10 @@ export const ProspectRow = ({
         </span>
         <span className="mt-1 flex items-center gap-2 md:mt-0">
           {pill}
+          <span className="md:hidden">{outcome}</span>
           <span className="text-xs text-muted-foreground md:hidden">{relativeTime(prospect.updated_at)}</span>
         </span>
+        <span className="hidden md:block">{outcome}</span>
         <span className={cn('mt-1 block truncate text-muted-foreground md:mt-0', activity.tone === 'error' && 'text-red-700')}>
           {activity.text}{pending}
         </span>

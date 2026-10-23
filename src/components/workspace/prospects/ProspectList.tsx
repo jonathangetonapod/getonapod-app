@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
+  OUTCOME_FILTERS,
   PROSPECT_FILTERS,
   PROSPECT_SORTS,
   type ProspectListFilter,
@@ -32,6 +33,22 @@ interface ProspectListProps {
   onCheckedIdsChange?: (ids: Set<string>) => void
   onArchiveChecked?: () => void
 }
+
+const FilterChip = ({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) => (
+  <button
+    type="button"
+    aria-pressed={active}
+    onClick={onClick}
+    className={cn(
+      'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+      active
+        ? 'border-primary bg-primary text-primary-foreground'
+        : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
+    )}
+  >
+    {label} <span className="ml-1 opacity-75">{count}</span>
+  </button>
+)
 
 export const ProspectList = ({
   prospects,
@@ -64,23 +81,20 @@ export const ProspectList = ({
   return (
     <div className="rounded-xl border bg-card">
       <div className={cn('flex flex-col gap-2 border-b p-3', !compact && 'md:flex-row md:items-center md:justify-between')}>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter prospects">
-          {PROSPECT_FILTERS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={filter === option.value}
-              onClick={() => onFilterChange(option.value)}
-              className={cn(
-                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                filter === option.value
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground',
-              )}
-            >
-              {option.label} <span className="ml-1 opacity-75">{counts[option.value]}</span>
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter prospects">
+            {PROSPECT_FILTERS.map((option) => (
+              <FilterChip key={option.value} active={filter === option.value} onClick={() => onFilterChange(option.value)} label={option.label} count={counts[option.value]} />
+            ))}
+          </div>
+          {/* Only outcomes that exist: a row of zeros is noise until the first is recorded. */}
+          {OUTCOME_FILTERS.some((option) => counts[option.value] > 0 || filter === option.value) && (
+            <div className="flex flex-wrap gap-1.5 border-l pl-1.5" role="group" aria-label="Filter by outcome">
+              {OUTCOME_FILTERS.filter((option) => counts[option.value] > 0 || filter === option.value).map((option) => (
+                <FilterChip key={option.value} active={filter === option.value} onClick={() => onFilterChange(option.value)} label={option.label} count={counts[option.value]} />
+              ))}
+            </div>
+          )}
         </div>
         <div className={cn('flex gap-2', compact && 'flex-col')}>
           <div className="relative min-w-0 flex-1">
@@ -137,6 +151,7 @@ export const ProspectList = ({
             <div className={cn('min-w-0 flex-1', PROSPECT_ROW_COLUMNS)}>
               <span>Prospect</span>
               <span>Stage</span>
+              <span>Outcome</span>
               <span>Engagement</span>
               <span>Updated</span>
               <span>Readiness</span>

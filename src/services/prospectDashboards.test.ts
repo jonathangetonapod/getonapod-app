@@ -6,8 +6,10 @@ import {
   createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
+  markWorkspaceProspectLinkCopied,
   removeWorkspaceProspectPhoto,
   rotateWorkspaceProspectLink,
+  setWorkspaceProspectOutcome,
   setWorkspaceProspectPublished,
   updateWorkspaceProspectPodcast,
   uploadWorkspaceProspectPhoto,
@@ -33,6 +35,20 @@ describe('prospectDashboards service', () => {
       body: { action: 'rotate-link', workspace_id: workspaceId, dashboard_id: dashboardId },
     })
     expect(detail.dashboard.slug).toBe('prospect-new')
+  })
+
+  it('records a copied link and an outcome through narrow actions', async () => {
+    invoke.mockResolvedValue({ data: { dashboard: { id: dashboardId }, podcasts: [] }, error: null } as never)
+
+    await markWorkspaceProspectLinkCopied(workspaceId.toUpperCase(), dashboardId.toUpperCase())
+    await setWorkspaceProspectOutcome(workspaceId, dashboardId, 'call_booked')
+    await setWorkspaceProspectOutcome(workspaceId, dashboardId, null)
+
+    expect(invoke.mock.calls.map((call) => call[1])).toEqual([
+      { body: { action: 'link-copied', workspace_id: workspaceId, dashboard_id: dashboardId } },
+      { body: { action: 'set-outcome', workspace_id: workspaceId, dashboard_id: dashboardId, outcome: 'call_booked' } },
+      { body: { action: 'set-outcome', workspace_id: workspaceId, dashboard_id: dashboardId, outcome: null } },
+    ])
   })
 
   it('uses workspace-scoped list and detail reads', async () => {

@@ -12,7 +12,16 @@ import type { WorkspaceProspect } from '@/services/prospectDashboards'
 
 export type ProspectStage = 'draft' | 'needs_review' | 'live'
 
-export type ProspectListFilter = 'all' | 'draft' | 'needs_review' | 'live_not_viewed' | 'live_viewed' | 'live'
+export type ProspectListFilter =
+  | 'all'
+  | 'draft'
+  | 'needs_review'
+  | 'live_not_viewed'
+  | 'live_viewed'
+  | 'live'
+  | 'call_booked'
+  | 'won'
+  | 'lost'
 
 export type ProspectSort = 'last_activity' | 'last_viewed' | 'views' | 'name' | 'created'
 
@@ -27,6 +36,17 @@ export const PROSPECT_FILTERS: Array<{ value: ProspectListFilter; label: string 
   { value: 'live_viewed', label: 'Live, viewed' },
 ]
 
+/*
+ * Outcome filters are a second group: Call booked overlaps the stage buckets
+ * (a booked prospect is still live), while Won and Lost are closed and leave
+ * All and the stage buckets so the default list is the open work.
+ */
+export const OUTCOME_FILTERS: Array<{ value: Extract<ProspectListFilter, 'call_booked' | 'won' | 'lost'>; label: string }> = [
+  { value: 'call_booked', label: 'Call booked' },
+  { value: 'won', label: 'Won' },
+  { value: 'lost', label: 'Lost' },
+]
+
 export const PROSPECT_SORTS: Array<{ value: ProspectSort; label: string }> = [
   { value: 'last_activity', label: 'Last activity' },
   { value: 'last_viewed', label: 'Last viewed' },
@@ -35,7 +55,11 @@ export const PROSPECT_SORTS: Array<{ value: ProspectSort; label: string }> = [
   { value: 'created', label: 'Created' },
 ]
 
-const FILTER_VALUES = new Set<string>([...PROSPECT_FILTERS.map((filter) => filter.value), 'live'])
+const FILTER_VALUES = new Set<string>([
+  ...PROSPECT_FILTERS.map((filter) => filter.value),
+  ...OUTCOME_FILTERS.map((filter) => filter.value),
+  'live',
+])
 const SORT_VALUES = new Set<string>(PROSPECT_SORTS.map((sort) => sort.value))
 
 export function parseProspectFilter(value: string | null): ProspectListFilter {
@@ -61,18 +85,39 @@ export function stageClass(stage: ProspectStage): string {
   return 'border-slate-200 bg-slate-50 text-slate-600'
 }
 
+/** Won or lost: out of the default list, still under its own filter. */
+export function isClosed(prospect: WorkspaceProspect): boolean {
+  return prospect.outcome === 'won' || prospect.outcome === 'lost'
+}
+
+export function outcomeLabel(outcome: WorkspaceProspect['outcome']): string {
+  if (outcome === 'call_booked') return 'Call booked'
+  if (outcome === 'won') return 'Won'
+  if (outcome === 'lost') return 'Lost'
+  return ''
+}
+
+export function outcomeClass(outcome: WorkspaceProspect['outcome']): string {
+  if (outcome === 'won') return 'border-emerald-300 bg-emerald-100 text-emerald-800'
+  if (outcome === 'lost') return 'border-slate-200 bg-slate-100 text-slate-600'
+  if (outcome === 'call_booked') return 'border-blue-200 bg-blue-50 text-blue-700'
+  return ''
+}
+
 export function wasViewed(prospect: WorkspaceProspect): boolean {
   return (prospect.view_count || 0) > 0
 }
 
-/** Exactly one of the four non-overlapping buckets, so the counts sum to All. */
-export function prospectBucket(prospect: WorkspaceProspect): Exclude<ProspectListFilter, 'all' | 'live'> {
+/** For an open prospect, exactly one of the four non-overlapping buckets, so the counts sum to All. */
+export function prospectBucket(prospect: WorkspaceProspect): 'draft' | 'needs_review' | 'live_not_viewed' | 'live_viewed' {
   const stage = prospectStage(prospect)
   if (stage !== 'live') return stage
   return wasViewed(prospect) ? 'live_viewed' : 'live_not_viewed'
 }
 
 export function prospectMatchesFilter(prospect: WorkspaceProspect, filter: ProspectListFilter): boolean {
+  if (filter === 'call_booked' || filter === 'won' || filter === 'lost') return prospect.outcome === filter
+  if (isClosed(prospect)) return false
   if (filter === 'all') return true
   if (filter === 'live') return prospectStage(prospect) === 'live'
   return prospectBucket(prospect) === filter
@@ -80,14 +125,20 @@ export function prospectMatchesFilter(prospect: WorkspaceProspect, filter: Prosp
 
 export function prospectFilterCounts(prospects: WorkspaceProspect[]): Record<ProspectListFilter, number> {
   const counts: Record<ProspectListFilter, number> = {
-    all: prospects.length,
+    all: 0,
     draft: 0,
     needs_review: 0,
     live_not_viewed: 0,
     live_viewed: 0,
     live: 0,
+    call_booked: 0,
+    won: 0,
+    lost: 0,
   }
   for (const prospect of prospects) {
+    if (prospect.outcome) counts[prospect.outcome] += 1
+    if (isClosed(prospect)) continue
+    counts.all += 1
     counts[prospectBucket(prospect)] += 1
   }
   counts.live = counts.live_not_viewed + counts.live_viewed

@@ -18,6 +18,9 @@ export type ProspectLifecycleStatus =
 
 export type ProspectCtaType = 'reply' | 'book_call' | 'learn_more' | 'none'
 
+/** What came of a prospect, recorded by hand. Null while it is still open. */
+export type ProspectOutcome = 'call_booked' | 'won' | 'lost'
+
 export interface ProspectReadiness {
   profile_ready: boolean
   visible_count: number
@@ -53,6 +56,7 @@ export interface WorkspaceProspect {
   published_at: string | null
   /** An unreviewed change to a live dashboard. Independent of publication. */
   pending_review_at: string | null
+  /** When the private link was last copied in Studio. */
   sent_at: string | null
   first_engaged_at: string | null
   converted_at: string | null
@@ -66,6 +70,8 @@ export interface WorkspaceProspect {
   last_viewed_at: string | null
   /** Views in the last seven days; null when the count could not be read. List only. */
   views_last_7_days?: number | null
+  outcome?: ProspectOutcome | null
+  outcome_at?: string | null
   created_at: string
   updated_at: string
   readiness: ProspectReadiness
@@ -404,4 +410,29 @@ export function rotateWorkspaceProspectLink(
     workspace_id: workspaceId.toLowerCase(),
     dashboard_id: dashboardId.toLowerCase(),
   }, 'Failed to regenerate the private link.')
+}
+
+/** Records that the private link was copied, which is when Studio counts it as sent. */
+export function markWorkspaceProspectLinkCopied(
+  workspaceId: string,
+  dashboardId: string,
+): Promise<WorkspaceProspectDetail> {
+  return invokeProspectStudio({
+    action: 'link-copied',
+    workspace_id: workspaceId.toLowerCase(),
+    dashboard_id: dashboardId.toLowerCase(),
+  }, 'Failed to record the copied link.')
+}
+
+export function setWorkspaceProspectOutcome(
+  workspaceId: string,
+  dashboardId: string,
+  outcome: ProspectOutcome | null,
+): Promise<WorkspaceProspectDetail> {
+  return invokeProspectStudio({
+    action: 'set-outcome',
+    workspace_id: workspaceId.toLowerCase(),
+    dashboard_id: dashboardId.toLowerCase(),
+    outcome,
+  }, 'Failed to save the outcome.')
 }

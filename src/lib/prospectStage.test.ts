@@ -105,6 +105,33 @@ describe('prospectFilterCounts', () => {
   })
 })
 
+describe('outcome filters', () => {
+  const prospects = [
+    draft('d1'),
+    live('booked', 2, { outcome: 'call_booked', outcome_at: '2026-10-20T00:00:00.000Z' }),
+    live('won', 4, { outcome: 'won', outcome_at: '2026-10-21T00:00:00.000Z' }),
+    live('lost', 0, { outcome: 'lost', outcome_at: '2026-10-21T00:00:00.000Z' }),
+  ]
+
+  it('keeps won and lost out of All and the stage buckets, which still sum to All', () => {
+    const counts = prospectFilterCounts(prospects)
+    expect(counts).toMatchObject({ all: 2, draft: 1, live_viewed: 1, call_booked: 1, won: 1, lost: 1 })
+    expect(counts.draft + counts.needs_review + counts.live_not_viewed + counts.live_viewed).toBe(counts.all)
+  })
+
+  it('shows closed prospects only under their own filter', () => {
+    const won = prospects[2]
+    expect(prospectMatchesFilter(won, 'all')).toBe(false)
+    expect(prospectMatchesFilter(won, 'live_viewed')).toBe(false)
+    expect(prospectMatchesFilter(won, 'won')).toBe(true)
+  })
+
+  it('leaves a booked call in the default list', () => {
+    expect(prospectMatchesFilter(prospects[1], 'all')).toBe(true)
+    expect(prospectMatchesFilter(prospects[1], 'call_booked')).toBe(true)
+  })
+})
+
 describe('engagementText', () => {
   it('says how often and how recently', () => {
     expect(engagementText(live('a', 42), NOW)).toBe('Viewed 42x, last 2d ago')

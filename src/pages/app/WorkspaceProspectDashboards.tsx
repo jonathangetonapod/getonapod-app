@@ -62,26 +62,30 @@ import {
   parseProspectSort,
   prospectFilterCounts,
   prospectMatchesFilter,
+  outcomeLabel,
   prospectStage,
   stageLabel,
   type ProspectListFilter,
   type ProspectSort,
 } from '@/lib/prospectStage'
 import { ProspectList } from '@/components/workspace/prospects/ProspectList'
+import { NEXT_STEP_ACTION_LABELS, nextStep, type NextStepAction } from '@/lib/prospectNextStep'
 import {
   archiveWorkspaceProspect,
   buildWorkspaceProspect,
   createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
+  markWorkspaceProspectLinkCopied,
   removeWorkspaceProspectPhoto,
   rotateWorkspaceProspectLink,
+  setWorkspaceProspectOutcome,
   setWorkspaceProspectPublished,
   updateWorkspaceProspect,
   updateWorkspaceProspectPodcast,
   uploadWorkspaceProspectPhoto,
   type ProspectCtaType,
-  type ProspectLifecycleStatus,
+  type ProspectOutcome,
   type ProspectReadiness,
   type ProspectShortlistPodcast,
   type WorkspaceProspect,
@@ -185,6 +189,14 @@ function formatDate(value: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown'
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+/** "Oct 20": for dates the reader knows are recent. */
+function formatShortDate(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
 }
 
 function formatNumber(value: number | null): string {
@@ -669,6 +681,8 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const search = searchParams.get('q') || ''
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
   const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false)
+  // A live prospect's finished checklists fold to one line; reopened per prospect.
+  const [liveDetailsOpen, setLiveDetailsOpen] = useState(false)
   const [profileDialogOpen, setProfileDialogOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState<ProspectProfileForm>(emptyProfileForm)
@@ -737,6 +751,9 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   useEffect(() => {
     if (selectedId) setShortlistView(requestedShortlistView)
   }, [selectedId, requestedShortlistView])
+  useEffect(() => {
+    setLiveDetailsOpen(false)
+  }, [selectedId])
 
   // Another prospect's shortlist has its own categories, so a filter carried
   // across would silently show nothing.
@@ -895,6 +912,26 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The private link could not be regenerated.'),
   })
 
+  // Recorded after the clipboard write succeeds; a failure here leaves the copy
+  // in place and only means the next-step advice will not know it was sent.
+  const linkCopiedMutation = useMutation({
+    mutationFn: (id: string) => markWorkspaceProspectLinkCopied(workspaceId, id),
+    onSuccess: async (nextDetail) => refreshAfterMutation(nextDetail),
+    onError: () => toast.error('The link was copied, but Studio could not record it.'),
+  })
+
+  const outcomeMutation = useMutation({
+    mutationFn: (outcome: ProspectOutcome | null) => {
+      if (!selected) throw new Error('Choose a prospect first.')
+      return setWorkspaceProspectOutcome(workspaceId, selected.id, outcome)
+    },
+    onSuccess: async (nextDetail, outcome) => {
+      await refreshAfterMutation(nextDetail)
+      toast.success(outcome ? `Marked ${outcomeLabel(outcome).toLowerCase()}.` : 'Outcome cleared.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The outcome could not be saved.'),
+  })
+
   const archiveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('Choose a prospect first.')
@@ -1002,10 +1039,12 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
     if (!selected?.published_at) return
     try {
       await navigator.clipboard.writeText(publicProspectUrl(selected.slug))
-      toast.success('Private dashboard link copied.')
     } catch {
       toast.error('The link could not be copied. Open it and copy it from the address bar.')
+      return
     }
+    toast.success('Private dashboard link copied.')
+    if (canManage) linkCopiedMutation.mutate(selected.id)
   }
 
   /*
@@ -1115,43 +1154,46 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   // Said on every button that starts a build, and hidden once one is running.
   const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: listQuery.data?.ai_keys?.anthropic })}</span>
   const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending || rotateLinkMutation.isPending
-  const nextActionKind = !selected?.readiness.profile_ready
-    ? 'profile'
-    : selected.readiness.visible_count < 5
-      ? 'build'
-      : selected.readiness.analyzed_count < 5
-        ? 'analyze'
-        : !selected.readiness.cta_ready
-          ? 'cta'
-          : selected.published_at
-            ? 'share'
-            : 'publish'
-  const nextAction = {
-    profile: {
-      title: 'Complete the guest profile',
-      description: 'Add a focused positioning statement before researching podcast matches.',
-    },
-    build: {
-      title: 'Build the first shortlist',
-      description: 'Create at least five relevant opportunities from the approved profile.',
-    },
-    analyze: {
-      title: 'Complete the match analysis',
-      description: 'Refresh the shortlist so at least five opportunities have clear fit reasons.',
-    },
-    cta: {
-      title: 'Set the response path',
-      description: 'Choose exactly what this prospect should do after reviewing the dashboard.',
-    },
-    share: {
-      title: 'Share the private dashboard',
-      description: `Send ${selected?.prospect_name || 'the prospect'} the private link, then monitor views and feedback here.`,
-    },
-    publish: {
-      title: 'Publish the dashboard',
-      description: 'The profile and shortlist are ready. Make the private link available when the selection feels right.',
-    },
-  }[nextActionKind]
+  const advice = selected ? nextStep(selected) : null
+  const isLive = Boolean(selected?.published_at)
+  const showChecklists = !isLive || liveDetailsOpen
+  const reviewShortlist = () => {
+    browseShortlist('all')
+    document.getElementById('prospect-shortlist')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const stepHandlers: Record<NextStepAction, () => void> = {
+    edit_profile: openEdit,
+    build_shortlist: startBuild,
+    review_shortlist: reviewShortlist,
+    publish: () => publicationMutation.mutate(true),
+    copy_link: () => void copyLiveLink(),
+    open_live: () => { if (selected) openExternalUrl(publicProspectUrl(selected.slug)) },
+    find_podcasts: () => { if (selected) navigate(`${prospectFinderHref}?prospect=${encodeURIComponent(selected.id)}`) },
+    mark_call_booked: () => outcomeMutation.mutate('call_booked'),
+    mark_won: () => outcomeMutation.mutate('won'),
+    mark_lost: () => outcomeMutation.mutate('lost'),
+    reopen: () => outcomeMutation.mutate(null),
+  }
+  const stepIcons: Partial<Record<NextStepAction, React.ReactNode>> = {
+    edit_profile: <Pencil className="mr-2 h-4 w-4" />,
+    publish: <Send className="mr-2 h-4 w-4" />,
+    copy_link: <Copy className="mr-2 h-4 w-4" />,
+    open_live: <Eye className="mr-2 h-4 w-4" />,
+    find_podcasts: <Search className="mr-2 h-4 w-4" />,
+  }
+  const renderStepAction = (action: NextStepAction, primary: boolean) => {
+    const isBuild = action === 'build_shortlist'
+    const disabled = (isBuild || action === 'publish') ? mutating : outcomeMutation.isPending && action.startsWith('mark_')
+    return (
+      <Button key={action} variant={primary ? 'default' : 'outline'} disabled={disabled} onClick={stepHandlers[action]}>
+        {isBuild
+          ? (building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />)
+          : stepIcons[action]}
+        {NEXT_STEP_ACTION_LABELS[action]}
+        {isBuild && buildCost}
+      </Button>
+    )
+  }
   const studioSteps = selected
     ? [
         { label: 'Profile', complete: selected.readiness.profile_ready },
@@ -1186,7 +1228,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
           <div className="flex flex-wrap items-center justify-end gap-2">
             {showStats && (
               <div className="flex flex-wrap items-center gap-2">
-                <StatButton pressed={prospectFilter === 'all'} onClick={() => setProspectFilter('all')} icon={<Users className="h-4 w-4 text-blue-700" />} value={prospects.length} label={prospects.length === 1 ? 'prospect' : 'prospects'} />
+                <StatButton pressed={prospectFilter === 'all'} onClick={() => setProspectFilter('all')} icon={<Users className="h-4 w-4 text-blue-700" />} value={filterCounts.all} label={filterCounts.all === 1 ? 'open prospect' : 'open prospects'} />
                 <StatButton pressed={prospectFilter === 'live'} onClick={() => setProspectFilter('live')} icon={<Globe2 className="h-4 w-4 text-emerald-700" />} value={filterCounts.live} label="live" />
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1292,6 +1334,25 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <h2 className="truncate text-xl font-bold sm:text-2xl">{selected.prospect_name}</h2>
                               <Badge variant="outline" className={cn('border-white/20 bg-white/10 text-white', selected.published_at && 'border-emerald-400/40 bg-emerald-400/15 text-emerald-100')}>{stageLabel(prospectStage(selected))}</Badge>
+                              {canManage ? (
+                                <Select
+                                  value={selected.outcome ?? 'none'}
+                                  onValueChange={(value) => outcomeMutation.mutate(value === 'none' ? null : value as ProspectOutcome)}
+                                  disabled={outcomeMutation.isPending}
+                                >
+                                  <SelectTrigger aria-label="Outcome" className="h-6 w-auto gap-1 rounded-full border-white/20 bg-white/10 px-2.5 text-xs text-white">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No outcome</SelectItem>
+                                    <SelectItem value="call_booked">Call booked</SelectItem>
+                                    <SelectItem value="won">Won</SelectItem>
+                                    <SelectItem value="lost">Lost</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : selected.outcome && (
+                                <Badge variant="outline" className="border-white/20 bg-white/10 text-white">{outcomeLabel(selected.outcome)}</Badge>
+                              )}
                             </div>
                             <p className="mt-1 truncate text-sm text-white/75">{[selected.prospect_title, selected.prospect_company].filter(Boolean).join(' · ') || 'Prospect dashboard'}</p>
                             <p className="mt-0.5 text-xs text-white/50">Updated {formatDate(selected.updated_at)}</p>
@@ -1310,6 +1371,21 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                       </div>
                     </div>
                     <CardContent className="p-0">
+                      {/* Four green steps and a full checklist say nothing new
+                          once a dashboard is live, so they fold to one line. */}
+                      {isLive && (
+                        <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5 text-sm sm:px-5">
+                          <span className="flex items-center gap-2 text-muted-foreground">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            Published {formatShortDate(selected.published_at)} · {readinessPercent(selected.readiness)}% ready
+                          </span>
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" aria-expanded={liveDetailsOpen} onClick={() => setLiveDetailsOpen((open) => !open)}>
+                            {liveDetailsOpen ? 'Hide details' : 'Show details'}
+                            <ChevronDown className={cn('ml-1 h-3.5 w-3.5 transition-transform', liveDetailsOpen && 'rotate-180')} />
+                          </Button>
+                        </div>
+                      )}
+                      {showChecklists && (
                       <div className="border-b px-4 py-3 sm:px-5">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Publishing progress</p>
                         <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1329,26 +1405,27 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           })}
                         </ol>
                       </div>
+                      )}
 
-                      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                      <div className={cn('grid gap-4 p-4', showChecklists && 'lg:grid-cols-[minmax(0,1fr)_260px]')}>
                         <div className="rounded-xl border bg-muted/20 p-4">
                           <div className="flex items-start gap-3">
                             <div className="rounded-lg bg-primary/10 p-2 text-primary"><Target className="h-4 w-4" /></div>
                             <div className="min-w-0">
                               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommended next step</p>
-                              <h3 className="mt-1 font-semibold">{nextAction.title}</h3>
-                              <p className="mt-1 text-sm text-muted-foreground">{nextAction.description}</p>
+                              <h3 className="mt-1 font-semibold">{advice.title}</h3>
+                              <p className="mt-1 text-sm text-muted-foreground">{advice.body}</p>
                             </div>
                           </div>
 
-                          {canManage && (
+                          {canManage && (advice.primary || advice.secondary) && (
                             <div className="mt-4 flex flex-wrap gap-2">
-                              {(nextActionKind === 'profile' || nextActionKind === 'cta') && <Button onClick={openEdit}><Pencil className="mr-2 h-4 w-4" />{nextActionKind === 'cta' ? 'Edit next step' : 'Edit profile'}</Button>}
-                              {(nextActionKind === 'build' || nextActionKind === 'analyze') && <Button disabled={mutating} onClick={startBuild}>{building ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}{nextActionKind === 'build' ? 'Build shortlist' : 'Analyze matches'}{buildCost}</Button>}
-                              {nextActionKind === 'publish' && <Button disabled={mutating} onClick={() => publicationMutation.mutate(true)}><Send className="mr-2 h-4 w-4" />Publish dashboard</Button>}
-                              {nextActionKind === 'share' && <Button onClick={() => void copyLiveLink()}><Copy className="mr-2 h-4 w-4" />Copy private link</Button>}
-                              {nextActionKind === 'share' && <Button variant="outline" onClick={() => openExternalUrl(publicProspectUrl(selected.slug))}><Eye className="mr-2 h-4 w-4" />Open live</Button>}
+                              {advice.primary && renderStepAction(advice.primary, true)}
+                              {advice.secondary && renderStepAction(advice.secondary, false)}
                             </div>
+                          )}
+                          {isLive && selected.sent_at && (
+                            <p className="mt-2 text-xs text-muted-foreground">Link copied {formatShortDate(selected.sent_at)}</p>
                           )}
                           {building && <p className="mt-2 text-xs text-muted-foreground">Usually 3 to 6 minutes.</p>}
 
@@ -1400,6 +1477,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                           {buildStale && <p className="mt-4 text-sm text-muted-foreground">The previous build did not finish. Build the shortlist again to retry.</p>}
                         </div>
 
+                        {showChecklists && (
                         <div className="rounded-xl border bg-muted/30 p-3">
                           <div className="flex items-center justify-between"><p className="font-medium">Publish readiness</p><span className="text-sm font-semibold">{readinessPercent(selected.readiness)}%</span></div>
                           <Progress value={readinessPercent(selected.readiness)} className="my-2.5 h-1.5" />
@@ -1410,6 +1488,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                             <ReadinessItem complete={selected.readiness.cta_ready}>Next step configured</ReadinessItem>
                           </div>
                         </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -1450,7 +1529,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
                     </details>
                   </Card>
 
-                  <Card>
+                  <Card id="prospect-shortlist" className="scroll-mt-4">
                     <CardHeader className="p-4 pb-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div><CardTitle className="flex items-center gap-2"><Mic2 className="h-5 w-5" />Podcast shortlist</CardTitle><CardDescription>{visiblePodcasts.length > 0 ? `${visiblePodcasts.length} approved opportunities. Start with the strongest featured matches.` : 'Build the shortlist once the profile is ready.'}</CardDescription></div>

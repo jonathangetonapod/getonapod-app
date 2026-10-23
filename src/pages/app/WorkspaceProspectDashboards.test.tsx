@@ -9,7 +9,9 @@ import {
   createWorkspaceProspect,
   getWorkspaceProspect,
   getWorkspaceProspects,
+  markWorkspaceProspectLinkCopied,
   rotateWorkspaceProspectLink,
+  setWorkspaceProspectOutcome,
   type ProspectShortlistPodcast,
   type ProspectWorkspaceSummary,
   type WorkspaceProspect,
@@ -22,8 +24,10 @@ vi.mock('@/services/prospectDashboards', () => ({
   createWorkspaceProspect: vi.fn(),
   getWorkspaceProspect: vi.fn(),
   getWorkspaceProspects: vi.fn(),
+  markWorkspaceProspectLinkCopied: vi.fn(),
   removeWorkspaceProspectPhoto: vi.fn(),
   rotateWorkspaceProspectLink: vi.fn(),
+  setWorkspaceProspectOutcome: vi.fn(),
   setWorkspaceProspectPublished: vi.fn(),
   updateWorkspaceProspect: vi.fn(),
   updateWorkspaceProspectPodcast: vi.fn(),
@@ -756,5 +760,104 @@ describe('WorkspaceProspectDashboards list', () => {
     await waitFor(() => expect(archiveWorkspaceProspect).toHaveBeenCalledTimes(2))
     expect(archiveWorkspaceProspect).toHaveBeenCalledWith(workspaceId, 'aaaaaaaa-0000-4000-8000-000000000003')
     expect(archiveWorkspaceProspect).toHaveBeenCalledWith(workspaceId, 'aaaaaaaa-0000-4000-8000-000000000004')
+  })
+})
+
+describe('WorkspaceProspectDashboards next step and outcome', () => {
+  const liveId = 'bbbbbbbb-0000-4000-8000-000000000001'
+  const ready = { profile_ready: true, visible_count: 12, analyzed_count: 12, featured_count: 5, cta_ready: true, publishable: true }
+  const live: WorkspaceProspect = {
+    ...prospect,
+    id: liveId,
+    prospect_name: 'Tyler Brennan',
+    first_name: 'Tyler',
+    lifecycle_status: 'ready',
+    published_at: '2026-08-04T00:00:00.000Z',
+    readiness: ready,
+    outcome: null,
+    outcome_at: null,
+  }
+
+  function renderProspect(dashboard: WorkspaceProspect, others: WorkspaceProspect[] = [], entry = `/app/prospects/${dashboard.id}`) {
+    mockedUseAuth.mockReturnValue({
+      user: { id: userId, email: 'owner@example.com' },
+      workspace: { id: workspaceId, name: 'Tenant Workspace', slug: 'tenant-workspace', status: 'active', is_default: false },
+      membership: { role: 'owner' },
+      signOut: vi.fn(),
+    } as never)
+    mockedList.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboards: [dashboard, ...others] })
+    mockedDetail.mockResolvedValue({ workspace: workspaceSummary, viewer_role: 'owner', can_manage: true, dashboard, podcasts: [] })
+    renderPage({}, entry)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+  })
+
+  it('asks for the link to be sent, and records the copy', async () => {
+    const copied = { ...live, sent_at: '2026-10-20T10:00:00.000Z', lifecycle_status: 'sent' as const }
+    vi.mocked(markWorkspaceProspectLinkCopied).mockResolvedValue({ dashboard: copied, podcasts: [] })
+    renderProspect(live)
+
+    expect(await screen.findByText('Send the private link')).toBeInTheDocument()
+    expect(screen.getByText('Tyler has not received their link yet.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy private link' }))
+
+    await waitFor(() => expect(markWorkspaceProspectLinkCopied).toHaveBeenCalledWith(workspaceId, liveId))
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('/prospect/'))
+    expect(await screen.findByText(/^Link copied Oct 20$/u)).toBeInTheDocument()
+  })
+
+  it('offers to book the call while the prospect is warm', async () => {
+    vi.mocked(setWorkspaceProspectOutcome).mockResolvedValue({ dashboard: { ...live, outcome: 'call_booked', outcome_at: new Date().toISOString() }, podcasts: [] })
+    renderProspect({ ...live, sent_at: '2026-10-01T00:00:00.000Z', view_count: 4, last_viewed_at: new Date(Date.now() - 86_400_000).toISOString() })
+
+    expect(await screen.findByText('Follow up while it is warm')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Mark call booked' }))
+    await waitFor(() => expect(setWorkspaceProspectOutcome).toHaveBeenCalledWith(workspaceId, liveId, 'call_booked'))
+    expect(await screen.findByText('Call booked', { selector: 'h3' })).toBeInTheDocument()
+  })
+
+  it('sets the outcome from the header', async () => {
+    vi.mocked(setWorkspaceProspectOutcome).mockResolvedValue({ dashboard: { ...live, outcome: 'won', outcome_at: new Date().toISOString() }, podcasts: [] })
+    renderProspect(live)
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Outcome' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Won' }))
+    await waitFor(() => expect(setWorkspaceProspectOutcome).toHaveBeenCalledWith(workspaceId, liveId, 'won'))
+  })
+
+  it('folds a live prospect\'s finished checklists into one line', async () => {
+    renderProspect(live)
+
+    expect(await screen.findByText(/^Published Aug 4 · 100% ready$/u)).toBeInTheDocument()
+    expect(screen.queryByText('Publishing progress')).not.toBeInTheDocument()
+    expect(screen.queryByText('Publish readiness')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /show details/i }))
+    expect(screen.getByText('Publishing progress')).toBeInTheDocument()
+    expect(screen.getByText('Publish readiness')).toBeInTheDocument()
+  })
+
+  it('keeps the checklists open before a prospect is live', async () => {
+    renderProspect({ ...live, published_at: null })
+
+    expect(await screen.findByText('Review and publish')).toBeInTheDocument()
+    expect(screen.getByText('Publishing progress')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /show details/i })).not.toBeInTheDocument()
+  })
+
+  it('moves won prospects out of the default list and under their own filter', async () => {
+    const won = { ...live, id: 'bbbbbbbb-0000-4000-8000-000000000002', prospect_name: 'Wanda Won', outcome: 'won' as const, outcome_at: '2026-10-21T00:00:00.000Z' }
+    renderProspect(live, [won], '/app/prospects')
+
+    await screen.findByText('Tyler Brennan')
+    expect(screen.queryByText('Wanda Won')).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('group', { name: 'Filter by outcome' })).getByRole('button', { name: /^Won 1$/u }))
+    const row = (await screen.findByText('Wanda Won')).closest('a')!
+    // Once for narrow screens and once in the desktop column; CSS shows one.
+    expect(within(row).getAllByText('Won').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Tyler Brennan')).not.toBeInTheDocument()
   })
 })
