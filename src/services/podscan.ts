@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { withDecodedPodcastNamesIn } from '@/lib/feedText'
 import { normalizeChartCategories } from '@/lib/podcastResearch'
 
 export interface PodscanRateLimit {
@@ -116,11 +117,13 @@ export async function searchPodcastsWithMeta(
   options: SearchOptions = {},
   workspaceId?: string,
 ): Promise<PodscanEnvelope<PodcastSearchResponse>> {
-  return await invokePodscanEnvelope<PodcastSearchResponse>({
+  const envelope = await invokePodscanEnvelope<PodcastSearchResponse>({
     action: 'search',
     options,
     ...(workspaceId ? { workspace_id: workspaceId } : {}),
   })
+  // Search results are drawn straight into the finder's cards.
+  return { ...envelope, data: withDecodedPodcastNamesIn(envelope.data, ['podcasts']) }
 }
 
 /**

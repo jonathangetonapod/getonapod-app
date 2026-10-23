@@ -8,6 +8,7 @@ import { ActivityDetailDialog } from '@/components/workspace/ActivityDetailDialo
 import {
   activitiesFromItems,
   activityCalendarEvent,
+  undatedPlacements,
   DAY_LABEL,
   formatDay,
   KIND_VIEW,
@@ -113,6 +114,22 @@ export const ClientActivityCalendar = ({
 
   const monthKey = anchor.toISOString().slice(0, 7)
   const monthCount = visible.filter((activity) => activity.day.startsWith(monthKey)).length
+  // An empty month points at the next thing that is scheduled after it, so a
+  // blank grid is never the whole answer.
+  const nextAfterMonth = useMemo(() => {
+    if (monthCount > 0) return null
+    const monthEnd = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1)).toISOString().slice(0, 10)
+    const floor = monthEnd > today ? monthEnd : today
+    return visible
+      .filter((activity) => activity.day >= floor && !activity.cancelled)
+      .sort((left, right) => left.day.localeCompare(right.day))[0] ?? null
+  }, [anchor, monthCount, today, visible])
+  const jumpTo = (day: string) => {
+    const now = new Date()
+    const target = new Date(`${day}T00:00:00Z`)
+    setMonthOffset((target.getUTCFullYear() - now.getUTCFullYear()) * 12 + target.getUTCMonth() - now.getUTCMonth())
+  }
+  const undated = useMemo(() => (items ? undatedPlacements(items) : []), [items])
   // Selection survives a filter change only while the entry is still shown;
   // a dialog describing something the operator has just filtered away is a
   // detail view of nothing.
@@ -169,6 +186,24 @@ export const ClientActivityCalendar = ({
             </div>
           </CardHeader>
           <CardContent>
+            {monthCount === 0 && (
+              <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+                {nextAfterMonth ? (
+                  <>
+                    <span>
+                      <span className="text-muted-foreground">Next scheduled: </span>
+                      <span className="font-medium">{KIND_VIEW[nextAfterMonth.kind].label}, {nextAfterMonth.podcastName}</span>
+                      <span className="text-muted-foreground"> for {nextAfterMonth.clientName} on {formatDay(nextAfterMonth.day, DAY_LABEL)}</span>
+                    </span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => jumpTo(nextAfterMonth.day)}>
+                      Go to {MONTH_LABEL.format(new Date(`${nextAfterMonth.day}T00:00:00Z`))}
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">Nothing is scheduled after this month yet.</span>
+                )}
+              </div>
+            )}
             <div role="grid" aria-label="Client activity calendar" className="overflow-hidden rounded-xl border">
               <div role="row" className="grid grid-cols-7 border-b bg-muted/30">
                 {WEEKDAYS.map((weekday) => (
@@ -288,6 +323,27 @@ export const ClientActivityCalendar = ({
                 </div>
               )
             })}
+            {undated.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                <p className="text-sm font-medium text-amber-900">
+                  {undated.length === 1 ? '1 placement has no date' : `${undated.length} placements have no date`}
+                </p>
+                <p className="mt-0.5 text-xs text-amber-900/80">Booked or later, but with no recording or release date, so they cannot appear on the calendar.</p>
+                <ul className="mt-2 space-y-1">
+                  {undated.map((placement) => (
+                    <li key={placement.itemId}>
+                      {onOpenItem ? (
+                        <button type="button" onClick={() => onOpenItem(placement.itemId)} className="w-full truncate text-left text-xs hover:underline">
+                          <span className="font-medium">{placement.podcastName}</span> · {placement.clientName} · {placement.stage}
+                        </button>
+                      ) : (
+                        <span className="block truncate text-xs"><span className="font-medium">{placement.podcastName}</span> · {placement.clientName} · {placement.stage}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

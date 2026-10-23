@@ -1321,6 +1321,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 viewerRole={detail.viewer_role}
                 databaseHref={databaseHref}
                 finderHref={finderHref}
+                initialFilter={searchParams.get('filter')}
                 campaignHref={campaignHref}
                 relationshipsHref={relationshipsHref}
                 billingHref={billingHref}

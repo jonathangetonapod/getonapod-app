@@ -44,3 +44,36 @@ export function decodeFeedText(value: string): string {
     .replace(/\n{3,}/gu, '\n\n')
     .trim()
 }
+
+/**
+ * A row with its show name decoded, for the many payloads that carry the feed
+ * title as `podcast_name`. Anything that is not a string passes through, so a
+ * service can apply it without first proving the field is there.
+ */
+export function withDecodedPodcastName<T>(row: T): T {
+  if (!row || typeof row !== 'object') return row
+  const name = (row as { podcast_name?: unknown }).podcast_name
+  return typeof name === 'string' ? { ...row, podcast_name: decodeFeedText(name) } : row
+}
+
+/** The same, over a list that may not be one. */
+export function withDecodedPodcastNames<T>(rows: T[] | null | undefined): T[] {
+  return Array.isArray(rows) ? rows.map(withDecodedPodcastName) : []
+}
+
+/**
+ * For a service whose every response passes one generic invoker: decodes
+ * `podcast_name` on whichever of the named keys the payload carries, a list
+ * ("targets") or a single row ("target"), and leaves everything else alone.
+ */
+export function withDecodedPodcastNamesIn<T>(payload: T, keys: string[]): T {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
+  const record = payload as Record<string, unknown>
+  const decoded: Record<string, unknown> = {}
+  for (const key of keys) {
+    const value = record[key]
+    if (Array.isArray(value)) decoded[key] = withDecodedPodcastNames(value)
+    else if (value && typeof value === 'object') decoded[key] = withDecodedPodcastName(value)
+  }
+  return Object.keys(decoded).length ? { ...record, ...decoded } as T : payload
+}

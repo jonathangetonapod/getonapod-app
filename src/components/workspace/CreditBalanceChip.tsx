@@ -5,6 +5,7 @@ import { Coins, Info } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { creditHealth } from '@/lib/creditHealth'
+import { oneCreditBuys } from '@/lib/creditCosts'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 
 interface CreditBalanceChipProps {
@@ -58,17 +59,25 @@ export function CreditBalanceChip({ workspaceId, canViewBalance, billingHref }: 
 
   return (
     <span className="inline-flex shrink-0 items-center gap-1">
-      <Link
-        to={billingHref}
-        aria-label={`${overview.balance.toLocaleString()} credits remaining — open billing`}
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
-      >
-        <Coins className="h-3.5 w-3.5" />
-        <span>{overview.balance.toLocaleString()}</span>
-        {/* The word only appears where there is room for it; the coin and the
-            number carry it on a phone. */}
-        <span className="hidden sm:inline">credits</span>
-      </Link>
+      {/* What the number is worth, where the number is. */}
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={billingHref}
+              aria-label={`${overview.balance.toLocaleString()} credits remaining — open billing`}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
+            >
+              <Coins className="h-3.5 w-3.5" />
+              <span>{overview.balance.toLocaleString()}</span>
+              {/* The word only appears where there is room for it; the coin and the
+                  number carry it on a phone. */}
+              <span className="hidden sm:inline">credits</span>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs text-xs">{oneCreditBuys()}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       {/* The one-sentence answer to "what is this number", where the number
           is. The billing page has the long version. */}
       <TooltipProvider delayDuration={150}>
@@ -83,7 +92,7 @@ export function CreditBalanceChip({ workspaceId, canViewBalance, billingHref }: 
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-xs text-xs">
-            {CREDIT_TOOLTIP}
+            {CREDIT_TOOLTIP} {oneCreditBuys()}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

@@ -241,4 +241,29 @@ describe('ClientActivityCalendar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Today' }))
     expect(screen.getByRole('grid', { name: 'Client activity calendar' })).toBeInTheDocument()
   })
+
+  it('points an empty month at the next scheduled item and goes there', () => {
+    const now = new Date()
+    const inTwoMonths = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 9)).toISOString().slice(0, 10)
+    render(<ClientActivityCalendar items={[item({ booking: booking({ recording_date: inTwoMonths, publish_date: null }) as never })]} />)
+
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent('Next scheduled: Recording, Founder & Operator')
+    fireEvent.click(within(notice).getByRole('button', { name: /^Go to / }))
+    expect(screen.getByText('1 entry')).toBeInTheDocument()
+  })
+
+  it('lists a booked placement with no date instead of losing it', () => {
+    const opened: string[] = []
+    render(
+      <ClientActivityCalendar
+        items={[item({ stage: 'recorded', booking: booking({ status: 'recorded', recording_date: null, publish_date: null }) as never })]}
+        onOpenItem={(id) => opened.push(id)}
+      />,
+    )
+
+    expect(screen.getByText('1 placement has no date')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Founder & Operator · Dallas Fontaine · recorded/ }))
+    expect(opened).toEqual(['item-one'])
+  })
 })

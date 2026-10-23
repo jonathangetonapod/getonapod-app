@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
+import { decodeFeedText, withDecodedPodcastName } from '@/lib/feedText'
 
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
@@ -106,5 +107,11 @@ export async function getWorkspacePodcastCatalog(
   ) {
     throw new Error('The podcast database response did not match the workspace address.')
   }
-  return response
+  return {
+    ...response,
+    items: response.items.map((item) => {
+      const decoded = withDecodedPodcastName(item)
+      return decoded.podcast_description ? { ...decoded, podcast_description: decodeFeedText(decoded.podcast_description) } : decoded
+    }),
+  }
 }

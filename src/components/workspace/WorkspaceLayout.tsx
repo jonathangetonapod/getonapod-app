@@ -889,7 +889,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           {/* The page, not the workspace again: the workspace is named in the
               sidebar and, for a platform admin, in the switcher on the right,
               so the header said "My Workspace" twice. */}
-          <div className="hidden min-w-0 lg:block">
+          {/* A page name is short, so it keeps its width; only a long
+              workspace name, the fallback, truncates. */}
+          <div className={activeNavItem ? 'hidden shrink-0 lg:block' : 'hidden min-w-0 lg:block'}>
             <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
           <div className="min-w-0 flex-1 lg:hidden">

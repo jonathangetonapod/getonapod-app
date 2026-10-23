@@ -39,6 +39,7 @@ import {
   type ReviewStatus,
 } from '@/components/review/reviewTypes'
 import { useDebouncedValue } from '@/components/review/useDebouncedValue'
+import { withDecodedPodcastNames } from '@/lib/feedText'
 
 export default function ProspectView() {
   return <ProspectViewContent />
@@ -331,7 +332,8 @@ function ProspectViewContent() {
       if (data.podcasts !== undefined && !Array.isArray(data.podcasts)) {
         throw new PublicReadError('The podcast shortlist could not be read. Please try again.')
       }
-      return data.podcasts || []
+      // Feed titles arrive as HTML; the review cards render them as text.
+      return withDecodedPodcastNames(data.podcasts)
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     enabled: !!slug,
