@@ -110,6 +110,19 @@ function positiveHeaderNumber(headers: Headers, name: string): number | undefine
   return Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
+/*
+ * What Podscan said when it refused. The body was discarded, so a 403 in the
+ * logs could not tell a revoked key from a plan or quota block. Truncated, and
+ * anything token-shaped is masked in case an upstream echoes a credential.
+ */
+function upstreamErrorSnippet(raw: string): string {
+  return raw
+    .replace(/\s+/gu, ' ')
+    .replace(/[A-Za-z0-9_.-]{32,}/gu, '[redacted]')
+    .trim()
+    .slice(0, 300)
+}
+
 function podscanTransportError(error: unknown): HttpError {
   if (error instanceof HttpError) return error
   if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
@@ -153,6 +166,7 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<Pod
     throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }
   if (!response.ok) {
+    console.error(`[podscan-proxy] Podscan ${path} returned ${response.status}: ${upstreamErrorSnippet(raw) || '(empty body)'}`)
     if (response.status === 429) {
       let upstreamCode = ''
       try {
