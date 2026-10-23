@@ -53,6 +53,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/accountContextDto.test.ts \
   supabase/functions/_shared/auditEntity.test.ts \
   supabase/functions/_shared/cors.test.ts \
+  supabase/functions/_shared/fitExplanations.test.ts \
   supabase/functions/_shared/guestResourceContent.test.ts \
   supabase/functions/_shared/inboxSdr.test.ts \
   supabase/functions/_shared/instantly.test.ts \
@@ -63,6 +64,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/promptRequirements.test.ts \
   supabase/functions/_shared/promptVariables.test.ts \
   supabase/functions/_shared/publicRateLimit.test.ts \
+  supabase/functions/_shared/showText.test.ts \
   supabase/functions/_shared/stripeSignature.test.ts \
   supabase/functions/_shared/workspaceCredentials.test.ts \
   supabase/functions/send-outreach-webhook/webhookTarget.test.ts
