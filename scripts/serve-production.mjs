@@ -11,7 +11,7 @@ const MODULE_PATH = fileURLToPath(import.meta.url)
 const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', 'dist')
 // Every page listed in scripts/generate-sitemap.ts must match this pattern, or
 // it is served noindex and private, no-store.
-const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|platform\/?$|privacy\/?$|terms\/?$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
+const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|platform\/?$|clips\/?$|privacy\/?$|terms\/?$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
 const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/([^/]+)\/?$/u

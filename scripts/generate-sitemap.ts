@@ -71,6 +71,7 @@ async function generateSitemap() {
   const staticPages = [
     { url: '', priority: '1.0', changefreq: 'daily' },
     { url: '/platform', priority: '0.9', changefreq: 'weekly' },
+    { url: '/clips', priority: '0.9', changefreq: 'weekly' },
     { url: '/blog', priority: '0.9', changefreq: 'daily' },
     { url: '/resources', priority: '0.8', changefreq: 'weekly' },
     { url: '/what-to-expect', priority: '0.8', changefreq: 'monthly' },

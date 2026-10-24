@@ -274,7 +274,7 @@ try {
 
   let indexHtml = ''
   // Every page in the sitemap must be indexable and cacheable.
-  for (const route of ['/', '/platform', '/privacy', '/terms', '/blog', '/resources', '/blog/example-post', '/what-to-expect']) {
+  for (const route of ['/', '/platform', '/clips', '/privacy', '/terms', '/blog', '/resources', '/blog/example-post', '/what-to-expect']) {
     const response = await fetch(`${origin}${route}`)
     assert.equal(response.status, 200, route)
     assertSecurityHeaders(response, route)

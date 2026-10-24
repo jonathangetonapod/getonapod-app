@@ -18,6 +18,7 @@ import { selectedWorkspaceBaseHref, workspaceModuleHref, type WorkspaceModule } 
 // The agency pitch keeps its own page at /platform, so its screenshot tour and
 // request form should not ride along on every visit to the app.
 const AgencyLanding = lazyRoute(() => import("./pages/AgencyLanding"));
+const Clips = lazyRoute(() => import("./pages/Clips"));
 const RequestAccess = lazyRoute(() => import("./pages/RequestAccess"));
 const Resources = lazyRoute(() => import("./pages/Resources"));
 const Blog = lazyRoute(() => import("./pages/Blog"));
@@ -128,6 +129,7 @@ const App = () => (
                 placement themselves, not to the founders who buy the booking
                 service at "/". It keeps its own page. */}
             <Route path="/platform" element={<AgencyLanding />} />
+            <Route path="/clips" element={<Clips />} />
             {/* The booking service is back at the root; its old path leads there. */}
             <Route path="/podcast-booking" element={<Navigate to="/" replace />} />
             <Route path="/docs" element={<Navigate to="/" replace />} />
