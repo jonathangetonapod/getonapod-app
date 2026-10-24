@@ -30,7 +30,10 @@ const MIN_TIME_ON_PAGE_MS = 3_000
 
 const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000
 
-const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} .'’-]*$/u
+// Letters, spaces and the marks names carry. A period may only end a word
+// ("J. Garces"), never join two ("getonapod.com"), so nothing domain-shaped
+// gets echoed into a stranger's inbox. At most five words.
+const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M}'’-]*\.?(?: [\p{L}\p{M}][\p{L}\p{M}'’-]*\.?){0,4}$/u
 
 const NOTIFY_FALLBACK = 'jonathan@getonapod.com'
 const CAL_URL = 'https://cal.com/jonathan-garces-x5v8tl/30minutes'
@@ -96,8 +99,8 @@ serve(async (req) => {
 
     const name = requireString(body.name, 'name', { max: 60 })
     // The name is echoed into a mail sent to an address nobody has verified, so
-    // it may only ever look like a name: letters, spaces and the marks names
-    // carry. Anything that could carry a message or a link is refused.
+    // it may only ever look like a name. Anything that could carry a message
+    // or a link is refused.
     if (!NAME_PATTERN.test(name)) {
       throw new HttpError(400, 'INVALID_FIELD', 'name may only contain letters, spaces, apostrophes, hyphens and periods')
     }

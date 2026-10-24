@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS public.clips_leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   email TEXT NOT NULL,
+  -- The address with its +tag and (for Google-hosted mail) its dots removed:
+  -- the key the once-a-day confirmation rule counts on, so a tagged or dotted
+  -- variant of one inbox is still that one inbox.
+  email_key TEXT NOT NULL,
   show_url TEXT NOT NULL,
   utm_source TEXT,
   utm_medium TEXT,
@@ -50,8 +54,8 @@ CREATE INDEX IF NOT EXISTS clips_leads_status_created_idx
   ON public.clips_leads (status, created_at DESC);
 
 -- The per-recipient confirmation rule reads this within a day.
-CREATE INDEX IF NOT EXISTS clips_leads_email_recent_idx
-  ON public.clips_leads (email, created_at DESC);
+CREATE INDEX IF NOT EXISTS clips_leads_email_key_recent_idx
+  ON public.clips_leads (email_key, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS clips_leads_ip_recent_idx
   ON public.clips_leads (source_ip_hash, created_at DESC)
@@ -126,6 +130,9 @@ AS $$
 DECLARE
   recent_count INTEGER;
   repeat_count INTEGER;
+  local_part TEXT;
+  domain_part TEXT;
+  normalized_key TEXT;
 BEGIN
   IF p_source_ip_hash IS NULL OR btrim(p_source_ip_hash) = '' THEN
     RAISE EXCEPTION 'A source bucket is required';
@@ -135,11 +142,26 @@ BEGIN
     RAISE EXCEPTION 'A positive hourly ceiling is required';
   END IF;
 
-  -- Serializes every concurrent request from this bucket for the rest of the
-  -- transaction. Released on commit or rollback, so a failure cannot leave a
-  -- bucket wedged.
+  -- One inbox under every spelling: lower-cased, +tag dropped, and dots in the
+  -- local part dropped where the provider ignores them.
+  local_part := lower(split_part(p_email, '@', 1));
+  domain_part := lower(split_part(p_email, '@', 2));
+  local_part := regexp_replace(local_part, '\+.*$', '');
+  IF domain_part IN ('gmail.com', 'googlemail.com') THEN
+    local_part := replace(local_part, '.', '');
+    domain_part := 'gmail.com';
+  END IF;
+  normalized_key := local_part || '@' || domain_part;
+
+  -- Serializes every concurrent request from this address bucket, and from
+  -- this inbox, for the rest of the transaction. Both locks are always taken
+  -- in this order so two callers sharing either cannot deadlock. Released on
+  -- commit or rollback, so a failure cannot leave a bucket wedged.
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtext('clips_lead:' || p_source_ip_hash)
+  );
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('clips_lead_email:' || normalized_key)
   );
 
   SELECT count(*)
@@ -155,12 +177,13 @@ BEGIN
   SELECT count(*)
   INTO repeat_count
   FROM public.clips_leads
-  WHERE email = p_email
+  WHERE email_key = normalized_key
     AND created_at >= now() - INTERVAL '24 hours';
 
   INSERT INTO public.clips_leads (
     name,
     email,
+    email_key,
     show_url,
     utm_source,
     utm_medium,
@@ -173,6 +196,7 @@ BEGIN
   VALUES (
     p_name,
     p_email,
+    normalized_key,
     p_show_url,
     p_utm_source,
     p_utm_medium,
