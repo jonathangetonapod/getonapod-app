@@ -407,7 +407,7 @@ export async function matchPodcastsForProspect(
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        error: `Validation error: ${error.errors.map(e => e.message).join(', ')}`
+        error: `Validation error: ${error.issues.map((issue) => issue.message).join(', ')}`
       };
     }
 
