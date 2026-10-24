@@ -62,8 +62,9 @@ const NumberTile = ({ entry, shown, done }: { entry: BigNumber; shown: number; d
   return (
     <div className="clips-number">
       {/* A screen reader hears the final value, not the count. */}
-      <div className={`clips-number-value${entry.lime ? ' clips-number-lime' : ''}`} aria-label={finalText} aria-live="off">
-        <span aria-hidden={!done}>{text}</span>
+      <div className={`clips-number-value${entry.lime ? ' clips-number-lime' : ''}`}>
+        <span aria-hidden="true">{text}</span>
+        <span className="clips-sr">{done ? text : finalText}</span>
       </div>
       <div className="clips-number-label">{entry.label}</div>
     </div>

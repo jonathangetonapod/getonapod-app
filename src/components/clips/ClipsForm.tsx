@@ -23,7 +23,7 @@ const Receipt = ({ email, startedAt }: { email: string; startedAt: number }) => 
   const clock = useClipsCountdown(startedAt)
   return (
     <div className="clips-form clips-form-done" role="status">
-      <div className="clips-clock" aria-label="72 hours remaining">{clock}</div>
+      <div className="clips-clock" role="timer" aria-label="72 hours remaining">{clock}</div>
       <h3 className="clips-done-title">{COPY.success.title}</h3>
       <p className="clips-done-body">{COPY.success.body(email)}</p>
       <a

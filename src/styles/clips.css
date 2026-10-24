@@ -48,7 +48,9 @@
   --line-2: rgba(255, 255, 255, 0.10);
   --text: #f4f4f2;
   --text-2: #b8b8b2;
-  --text-3: #7a7a76;
+  /* The brief's #7a7a76 sits at 4.2:1 on a card and 4.0:1 on the compare
+     layer; this is the nearest grey that clears 4.5:1 on every ground. */
+  --text-3: #868682;
   --text-4: #4a4a48;
   --lime: #c8f542;
   --lime-dim: rgba(200, 245, 66, 0.06);
@@ -420,7 +422,9 @@
   font-family: var(--mono); font-size: 11.5px; color: var(--text-3); line-height: 1.4;
   animation: clips-up 16s linear infinite;
 }
-.clips-scroll-line time { color: var(--text-4); }
+/* The dimmest timecodes are drawn as generated content: the window is
+   decorative and aria-hidden, and the dim grey is the design's point. */
+.clips-scroll-time::before { content: attr(data-time); color: var(--text-4); }
 .clips-scroll-hit { color: var(--text); }
 .clips-scroll-hit time, .clips-scroll-hit b { color: var(--lime); font-weight: 400; }
 @keyframes clips-up { to { transform: translateY(-50%); } }

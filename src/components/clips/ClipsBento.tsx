@@ -20,7 +20,7 @@ const TranscriptCard = () => (
       <div className="clips-scroll">
         {[...CLIPS_TRANSCRIPT, ...CLIPS_TRANSCRIPT].map((line, index) => (
           <div key={index} className={`clips-scroll-line${line.tag ? ' clips-scroll-hit' : ''}`}>
-            <time>{line.time}</time>&nbsp; {line.text}{line.tag ? <> <b>← {line.tag}</b></> : null}
+            {line.tag ? <time>{line.time}</time> : <span className="clips-scroll-time" data-time={line.time} />}&nbsp; {line.text}{line.tag ? <> <b>← {line.tag}</b></> : null}
           </div>
         ))}
       </div>

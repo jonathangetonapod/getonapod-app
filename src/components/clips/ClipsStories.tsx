@@ -18,7 +18,7 @@ export const ClipsFounder = () => (
         <div className="clips-founder-letter">
           {CLIPS_FOUNDER.paragraphs.map((paragraph) => <p key={paragraph.slice(0, 24)}>{paragraph}</p>)}
         </div>
-        <div className="clips-sig" aria-label={`Signed, ${CLIPS_FOUNDER.signature}`}>{CLIPS_FOUNDER.signature}</div>
+        <div className="clips-sig" role="img" aria-label={`Signed, ${CLIPS_FOUNDER.signature}`}>{CLIPS_FOUNDER.signature}</div>
       </div>
     </div>
   </section>
