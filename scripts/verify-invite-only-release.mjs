@@ -20,8 +20,8 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 119,
-  deployedFunctions: 117,
+  changedFunctions: 120,
+  deployedFunctions: 118,
   excludedFunctions: 2,
   // 45 after the legacy Email Bison inbox, matching experiments, and other
   // admin-era functions with no caller in the app, the other functions, the
@@ -62,7 +62,8 @@ const EXPECTED_COUNTS = Object.freeze({
   // 165 with workspace deletion: one entrypoint. It reuses the Instantly and
   // domain-provider helpers rather than adding its own, because tearing a
   // workspace down has to stop sending exactly the way pausing does.
-  edgeTypeScriptFiles: 177,
+  // 178 with clips-lead, the free-cut form on /clips (2026-10-24).
+  edgeTypeScriptFiles: 178,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -179,6 +180,9 @@ const EXPECTED_PUBLIC_NON_JWT_FUNCTIONS = Object.freeze([
   // account yet, so there is no session to verify; nothing it writes grants
   // access, and a platform admin still issues every invite by hand.
   'request-workspace-access',
+  // The free-cut form on /clips. Same shape: no account, no session, nothing
+  // granted, a per-address ceiling held inside one RPC.
+  'clips-lead',
 ])
 
 const EXPECTED_EXPLICIT_JWT_FUNCTIONS = Object.freeze([

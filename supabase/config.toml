@@ -221,3 +221,8 @@ verify_jwt = false
 
 [functions.get-client-portfolio]
 verify_jwt = false
+
+# The free-cut form on /clips. The caller has no account, so there is no JWT;
+# the function grants nothing and rate-limits itself per address.
+[functions.clips-lead]
+verify_jwt = false

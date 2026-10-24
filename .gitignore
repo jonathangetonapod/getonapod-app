@@ -42,3 +42,6 @@ video-generator-setup.md
 # font binaries that have no business in an app repo. Project-specific config
 # under .claude/ is still tracked.
 .claude/skills/
+
+# Playwright MCP scratch output
+.playwright-mcp/
