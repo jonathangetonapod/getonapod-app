@@ -71,7 +71,7 @@ const MarqueeRun = () => (
   <span>
     {CLIPS_MARQUEE.lead}&nbsp;&nbsp;
     {CLIPS_MARQUEE.niches.map((niche) => (
-      <span key={niche}>{niche}<i>·</i></span>
+      <span key={niche}>{niche}&nbsp;<i>·</i>&nbsp; </span>
     ))}
   </span>
 )

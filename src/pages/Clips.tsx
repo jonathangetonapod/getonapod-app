@@ -17,7 +17,6 @@ import { prefersReducedMotion } from '@/components/clips/clipsMotion'
 import PageSEO from '@/components/seo/PageSEO'
 import { readClipsAttribution, trackClips } from '@/lib/clipsAnalytics'
 import { CLIPS_FAQ, CLIPS_PATH, CLIPS_SEO } from '@/lib/clipsContent'
-import { toAbsoluteUrl } from '@/lib/seo'
 import '@/styles/clips.css'
 
 /**
@@ -93,7 +92,6 @@ const Clips = () => {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preload" as="style" href={FONTS_HREF} />
         <link rel="stylesheet" href={FONTS_HREF} />
-        <meta property="og:url" content={toAbsoluteUrl(CLIPS_PATH)} />
         <script type="application/ld+json">{JSON.stringify(SERVICE_JSON_LD)}</script>
         <script type="application/ld+json">{JSON.stringify(FAQ_JSON_LD)}</script>
       </Helmet>

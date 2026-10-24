@@ -94,7 +94,8 @@
   padding: 10px 14px; border-radius: 999px;
   background: var(--lime); color: var(--bg); font-weight: 700; text-decoration: none;
 }
-.clips-skip:focus { top: 12px; color: var(--bg); }
+.clips-page .clips-skip { color: var(--bg); }
+.clips-page .clips-skip:focus { top: 12px; }
 
 .clips-sr {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -126,20 +127,20 @@
 .clips-lead { color: var(--text-2); }
 .clips-head { display: flex; flex-direction: column; gap: 14px; max-width: 760px; }
 
-.clips-btn {
+.clips-page .clips-btn {
   display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--display); font-weight: 700; font-size: 17px;
   color: var(--bg); background: var(--lime); text-decoration: none; border: 0; cursor: pointer;
   border-radius: 999px; padding: 16px 26px; min-height: 52px; box-sizing: border-box;
   transition: transform 0.2s, box-shadow 0.2s;
 }
-.clips-btn:hover { color: var(--bg); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(200, 245, 66, 0.25); }
-.clips-btn-ghost {
+.clips-page .clips-btn:hover { color: var(--bg); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(200, 245, 66, 0.25); }
+.clips-page .clips-btn-ghost {
   color: var(--text); background: rgba(10, 10, 11, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
-.clips-btn-ghost:hover { color: var(--text); box-shadow: none; }
-.clips-btn-small { font-size: 16px; padding: 14px 20px; min-height: 50px; }
+.clips-page .clips-btn-ghost:hover { color: var(--text); box-shadow: none; }
+.clips-page .clips-btn-small { font-size: 16px; padding: 14px 20px; min-height: 50px; }
 
 .clips-card {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
@@ -164,13 +165,13 @@
   font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.8px;
   color: var(--text); text-decoration: none; white-space: nowrap;
 }
-.clips-wordmark:hover { color: var(--text); }
+.clips-page .clips-wordmark, .clips-page .clips-wordmark:hover { color: var(--text); }
 .clips-wordmark-accent { color: var(--lime); }
 .clips-nav-right { display: flex; align-items: center; gap: 28px; }
 .clips-nav-links { display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 500; }
-.clips-nav-links a { color: var(--text-2); text-decoration: none; padding: 10px 0; }
-.clips-nav-links a:hover { color: var(--text); }
-.clips-nav-cta { font-size: 15px; padding: 11px 18px; min-height: 44px; }
+.clips-page .clips-nav-links a { color: var(--text-2); text-decoration: none; padding: 10px 0; }
+.clips-page .clips-nav-links a:hover { color: var(--text); }
+.clips-page .clips-nav-cta { font-size: 15px; padding: 11px 18px; min-height: 44px; white-space: nowrap; }
 .clips-menu-btn {
   display: none; align-items: center; justify-content: center;
   min-width: 44px; min-height: 44px; padding: 0 12px;
@@ -380,7 +381,7 @@
 }
 .clips-track { display: flex; width: max-content; white-space: nowrap; animation: clips-track 32s linear infinite; }
 .clips-track span { padding: 0 20px; }
-.clips-track i { font-style: normal; color: var(--lime); padding: 0 0.6em; }
+.clips-track i { font-style: normal; color: var(--lime); }
 @keyframes clips-track { to { transform: translateX(-50%); } }
 
 /* ---------- big numbers ---------- */
@@ -419,7 +420,6 @@
   font-family: var(--mono); font-size: 11.5px; color: var(--text-3); line-height: 1.4;
   animation: clips-up 16s linear infinite;
 }
-.clips-scroll-line { white-space: nowrap; }
 .clips-scroll-line time { color: var(--text-4); }
 .clips-scroll-hit { color: var(--text); }
 .clips-scroll-hit time, .clips-scroll-hit b { color: var(--lime); font-weight: 400; }
@@ -533,7 +533,7 @@
 .clips-table th { padding: 18px 22px; border-bottom: 1px solid var(--line-2); font-family: var(--display); font-weight: 700; font-size: 16px; color: var(--text-2); }
 .clips-table th + th, .clips-table td + td { border-left: 1px solid var(--line-2); }
 .clips-table th:first-child { width: 42%; }
-.clips-table td:first-child { font-size: 15px; color: var(--text); }
+.clips-table td:first-child { font-family: var(--body); font-size: 15px; color: var(--text); }
 .clips-table td { font-family: var(--mono); font-size: 13px; color: var(--text-2); }
 .clips-table tr:last-child td { border-bottom: 0; }
 .clips-table .clips-us { background: var(--lime-dim); color: var(--lime); }
@@ -572,7 +572,7 @@
 .clips-tier-list { display: flex; flex-direction: column; gap: 12px; font-size: 15px; border-top: 1px solid var(--line-2); padding-top: 22px; list-style: none; margin: 0; padding-left: 0; }
 .clips-tier-list li { display: flex; gap: 10px; align-items: flex-start; }
 .clips-tier-list i { font-style: normal; color: var(--lime); font-family: var(--mono); font-size: 13px; margin-top: 2px; }
-.clips-tier .clips-btn { margin-top: auto; }
+.clips-page .clips-tier .clips-btn { margin-top: auto; }
 
 .clips-more { background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 36px; display: flex; flex-wrap: wrap; gap: 32px 56px; align-items: center; justify-content: space-between; }
 .clips-more-text { flex: 1 1 360px; display: flex; flex-direction: column; gap: 12px; }
@@ -652,6 +652,8 @@
 }
 .clips-form-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .clips-field { flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* The form is a column, where a 180px flex-basis would become height. */
+.clips-form > .clips-field { flex: 0 0 auto; }
 .clips-field label { font-family: var(--mono); font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-3); }
 .clips-field input {
   font-family: var(--body); font-size: 16px; padding: 12px 14px; min-height: 48px; box-sizing: border-box;
@@ -660,10 +662,10 @@
 .clips-field input[aria-invalid="true"] { border-color: var(--red); }
 .clips-field-error { font-family: var(--mono); font-size: 11px; letter-spacing: 0.4px; color: var(--red); }
 .clips-honeypot { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
-.clips-form .clips-btn { margin-top: 6px; width: 100%; }
+.clips-page .clips-form .clips-btn { margin-top: 6px; width: 100%; }
 .clips-form-note { font-family: var(--mono); font-size: 11px; line-height: 1.6; color: var(--text-3); }
 .clips-form-error { font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--red); }
-.clips-form-error a { color: var(--red); }
+.clips-page .clips-form-error a { color: var(--red); }
 .clips-form-done { gap: 16px; justify-content: center; min-height: 320px; }
 .clips-clock { font-family: var(--mono); font-size: 40px; letter-spacing: 1px; color: var(--lime); font-variant-numeric: tabular-nums; }
 .clips-done-title { font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1; letter-spacing: -0.035em; }
@@ -677,8 +679,8 @@
 .clips-footer-brand { flex: 1 1 280px; display: flex; flex-direction: column; gap: 12px; }
 .clips-footer-tagline { font-size: 15px; color: var(--text-3); max-width: 320px; }
 .clips-footer-col { display: flex; flex-direction: column; gap: 10px; font-size: 15px; }
-.clips-footer-col a { color: var(--text-2); text-decoration: none; padding: 2px 0; }
-.clips-footer-col a:hover { color: var(--text); }
+.clips-page .clips-footer-col a { color: var(--text-2); text-decoration: none; padding: 2px 0; }
+.clips-page .clips-footer-col a:hover { color: var(--text); }
 .clips-footer-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--lime); }
 .clips-footer-bottom {
   border-top: 1px solid var(--line); padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
@@ -704,7 +706,7 @@
   .clips-floor { display: none; }
   .clips-fan { height: 330px; }
   .clips-fan-in { transform: scale(0.66); animation: none; }
-  .clips-nav-right { gap: 10px; }
+  .clips-nav-right { gap: 8px; }
   .clips-menu-btn { display: inline-flex; }
   .clips-nav-links {
     display: none; position: absolute; left: 0; right: 0; top: 72px;
@@ -713,8 +715,10 @@
   }
   .clips-nav-links a { padding: 12px 0; min-height: 44px; display: flex; align-items: center; }
   .clips-nav-open .clips-nav-links { display: flex; }
-  .clips-nav-cta { padding: 10px 14px; font-size: 14px; }
-  .clips-wordmark { font-size: 19px; }
+  .clips-page .clips-nav-cta { padding: 8px 11px; font-size: 12.5px; min-height: 44px; }
+  .clips-page .clips-wordmark { font-size: 15px; letter-spacing: -0.4px; }
+  .clips-nav-inner { gap: 8px; }
+  .clips-menu-btn { padding: 0 10px; font-size: 14px; }
   .clips-numbers { padding-top: 48px; padding-bottom: 48px; }
   .clips-editor-title { font-size: 26px; }
   .clips-more { padding: 24px; }
