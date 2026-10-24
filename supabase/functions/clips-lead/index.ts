@@ -30,6 +30,8 @@ const MIN_TIME_ON_PAGE_MS = 3_000
 
 const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000
 
+const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} .'’-]*$/u
+
 const NOTIFY_FALLBACK = 'jonathan@getonapod.com'
 const CAL_URL = 'https://cal.com/jonathan-garces-x5v8tl/30minutes'
 
@@ -92,7 +94,13 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, { received: true, startedAt: new Date().toISOString() })
     }
 
-    const name = requireString(body.name, 'name', { max: 120 })
+    const name = requireString(body.name, 'name', { max: 60 })
+    // The name is echoed into a mail sent to an address nobody has verified, so
+    // it may only ever look like a name: letters, spaces and the marks names
+    // carry. Anything that could carry a message or a link is refused.
+    if (!NAME_PATTERN.test(name)) {
+      throw new HttpError(400, 'INVALID_FIELD', 'name may only contain letters, spaces, apostrophes, hyphens and periods')
+    }
     const email = requireEmail(body.email)
     const show = requireString(body.show, 'show', { max: 500 })
     if (!isYouTubeUrl(show)) {
@@ -137,7 +145,7 @@ serve(async (req) => {
       )
     }
 
-    if (outcome !== 'recorded') {
+    if (outcome !== 'recorded' && outcome !== 'recorded_repeat') {
       console.error('[Clips Lead] Unexpected record outcome')
       throw new HttpError(500, 'LEAD_NOT_SAVED', 'The request could not be saved. Please try again.')
     }
@@ -145,10 +153,12 @@ serve(async (req) => {
     const startedAt = new Date()
 
     // Best effort, and after the row exists: a mail provider having a bad
-    // afternoon must not turn a saved lead into an error the host sees.
+    // afternoon must not turn a saved lead into an error the host sees. The
+    // editors hear about every lead; the host is confirmed once a day at most,
+    // so the form cannot be pointed at somebody's inbox and fired repeatedly.
     await Promise.all([
       notifyEditors({ name, email, showUrl, utmSource, utmMedium, utmCampaign, referrer, landingPath, startedAt }),
-      confirmToLead({ name, email, showUrl, startedAt }),
+      outcome === 'recorded' ? confirmToLead({ name, email, showUrl, startedAt }) : Promise.resolve(),
     ])
 
     return jsonResponse(req, METHODS, 200, { received: true, startedAt: startedAt.toISOString() })

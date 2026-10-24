@@ -49,6 +49,10 @@ COMMENT ON COLUMN public.clips_leads.source_ip_hash IS
 CREATE INDEX IF NOT EXISTS clips_leads_status_created_idx
   ON public.clips_leads (status, created_at DESC);
 
+-- The per-recipient confirmation rule reads this within a day.
+CREATE INDEX IF NOT EXISTS clips_leads_email_recent_idx
+  ON public.clips_leads (email, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS clips_leads_ip_recent_idx
   ON public.clips_leads (source_ip_hash, created_at DESC)
   WHERE source_ip_hash IS NOT NULL;
@@ -97,7 +101,10 @@ CREATE TRIGGER clips_leads_touch
   FOR EACH ROW EXECUTE FUNCTION public.touch_clips_lead();
 
 -- Count recent leads from one bucket and insert the new one under a single
--- advisory lock. Returns 'recorded' or 'rate_limited'.
+-- advisory lock. Returns 'rate_limited', 'recorded', or 'recorded_repeat' when
+-- the same address already asked in the last day. The repeat is still stored
+-- (the editors should see it) but the caller skips the confirmation mail, so
+-- the form cannot be used to send someone a stream of messages.
 CREATE OR REPLACE FUNCTION public.record_clips_lead(
   p_name TEXT,
   p_email TEXT,
@@ -118,6 +125,7 @@ SET search_path = ''
 AS $$
 DECLARE
   recent_count INTEGER;
+  repeat_count INTEGER;
 BEGIN
   IF p_source_ip_hash IS NULL OR btrim(p_source_ip_hash) = '' THEN
     RAISE EXCEPTION 'A source bucket is required';
@@ -144,6 +152,12 @@ BEGIN
     RETURN 'rate_limited';
   END IF;
 
+  SELECT count(*)
+  INTO repeat_count
+  FROM public.clips_leads
+  WHERE email = p_email
+    AND created_at >= now() - INTERVAL '24 hours';
+
   INSERT INTO public.clips_leads (
     name,
     email,
@@ -168,6 +182,10 @@ BEGIN
     p_user_agent,
     p_source_ip_hash
   );
+
+  IF repeat_count > 0 THEN
+    RETURN 'recorded_repeat';
+  END IF;
 
   RETURN 'recorded';
 END;
