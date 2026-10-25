@@ -121,6 +121,7 @@ const SQL_INPUTS = [
   'supabase/migrations/20261023000200_prospect_dashboard_views.sql',
   'supabase/migrations/20261023000300_prospect_outcome.sql',
   'supabase/migrations/20261024000100_clips_leads.sql',
+  'supabase/migrations/20261025000100_clips_leads_webhook.sql',
   'supabase/tests/20260720_invite_only_workspace_verification.sql',
   'supabase/tests/20260721_workspace_guest_resources_behavior.sql',
   'supabase/tests/20260722_subagency_workspace_foundation_behavior.sql',
