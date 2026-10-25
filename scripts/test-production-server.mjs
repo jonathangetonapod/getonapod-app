@@ -374,8 +374,8 @@ try {
     assert.equal(response.status, 404, 'prerendered files are served only under their page URL')
   }
 
-  for (const directory of ['shots', 'shows', 'testimonials']) {
-    const file = readdirSync(`dist/${directory}`).find((name) => /\.(?:png|webp)$/u.test(name))
+  for (const directory of ['shots', 'shows', 'testimonials', 'people']) {
+    const file = readdirSync(`dist/${directory}`).find((name) => /\.(?:png|jpe?g|webp)$/u.test(name))
     assert.ok(file, `dist/${directory} must hold the landing images`)
     const response = await fetch(`${origin}/${directory}/${file}`)
     assert.equal(response.status, 200, file)

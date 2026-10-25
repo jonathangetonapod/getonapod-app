@@ -601,10 +601,9 @@
 
 .clips-founder { display: flex; flex-wrap: wrap; gap: 56px; align-items: flex-start; }
 .clips-founder-side { flex: 0 1 300px; display: flex; flex-direction: column; gap: 18px; }
-.clips-monogram {
-  width: 120px; height: 120px; border-radius: 50%; background: var(--card); border: 1px solid rgba(255, 255, 255, 0.12);
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--display); font-weight: 800; font-size: 40px; letter-spacing: -0.04em; color: var(--lime);
+.clips-founder-photo {
+  display: block; width: 100%; max-width: 300px; height: auto; aspect-ratio: 4 / 5; object-fit: cover;
+  border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.12); background: var(--card);
 }
 .clips-founder-name { font-family: var(--display); font-weight: 700; font-size: 18px; }
 .clips-founder-role { font-size: 14px; color: var(--text-3); }
@@ -727,7 +726,8 @@
   .clips-editor-title { font-size: 26px; }
   .clips-more { padding: 24px; }
   .clips-form { padding: 22px; }
-  .clips-founder-side { flex-basis: 100%; }
+  .clips-founder-side { flex-basis: 100%; flex-direction: row; align-items: center; }
+  .clips-founder-photo { width: 120px; max-width: 120px; aspect-ratio: 1; border-radius: 16px; }
   .clips-page .clips-footer-col a { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
   .clips-footer-col { gap: 0; }
   .clips-page .clips-wordmark { display: inline-flex; align-items: center; min-height: 44px; }

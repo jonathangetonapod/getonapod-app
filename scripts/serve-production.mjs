@@ -14,7 +14,7 @@ const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', '
 const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|platform\/?$|clips\/?$|privacy\/?$|terms\/?$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
 // Marketing images (screenshots, show artwork, testimonial portraits, social
 // cards) are public: they must be cacheable and may appear in image search.
-const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|clips-og\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml|(?:shots|shows|testimonials)\/[a-z0-9-]+\.(?:png|jpe?g|webp|avif|svg))$/
+const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|clips-og\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml|(?:shots|shows|testimonials|people)\/[a-z0-9-]+\.(?:png|jpe?g|webp|avif|svg))$/
 // Vite content-hashes everything under /assets, so a file there never changes.
 const HASHED_ASSET_PATTERN = /^\/assets\/[^/]+$/
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable'

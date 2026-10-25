@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 
 import PageSEO from '@/components/seo/PageSEO'
 import {
-  CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, HERO, HERO_SECONDARY,
+  CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, FOUNDER, HERO, HERO_SECONDARY,
   MINIMUM_MONTHS, MONTHLY_PRICE_TEXT, PODCAST_CATALOG, PLAN_INCLUDES, WEEKLY_MINUTES, initials,
 } from '@/lib/landingContent'
 import '@/styles/landing.css'
@@ -440,6 +440,14 @@ const Landing = () => {
             <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">{CALL_LABEL}<NewTab /></a>
           </div>
           <p className="dfy-cta-note">{CALL_NOTE}</p>
+          <figure className="dfy-host">
+            <img src={FOUNDER.photo} alt={FOUNDER.photoAlt} width={480} height={480} loading="lazy" decoding="async" />
+            <figcaption>
+              <span className="dfy-host-label">Your call is with</span>
+              <span className="dfy-host-name">{FOUNDER.name}</span>
+              <span className="dfy-host-role">{FOUNDER.role}</span>
+            </figcaption>
+          </figure>
         </div>
       </section>
 
