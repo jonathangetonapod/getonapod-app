@@ -395,6 +395,14 @@ const Landing = () => {
       />
       <a className="dfy-skip" href="#main">Skip to content</a>
 
+      {/* The clips offer, in that page's own dark-and-lime system so it reads
+          as a door to somewhere else rather than part of this page. */}
+      <aside className="dfy-announce" aria-label="New offer">
+        <span className="dfy-announce-tag"><span className="dfy-announce-dot" aria-hidden="true" />New</span>
+        <span className="dfy-announce-text">Host a show? Five clips from your last episode, free, in 72 hours.</span>
+        <Link className="dfy-announce-link" to="/clips">Get your free cut<span aria-hidden="true">{'\u00a0→'}</span></Link>
+      </aside>
+
       <nav className="dfy-nav" aria-label="Site">
         <Link className="dfy-brand" to="/"><Brand /></Link>
         {/* One row on a desk; on a phone the brand and the call take the
