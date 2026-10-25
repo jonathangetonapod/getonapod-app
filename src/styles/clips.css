@@ -728,6 +728,9 @@
   .clips-more { padding: 24px; }
   .clips-form { padding: 22px; }
   .clips-founder-side { flex-basis: 100%; }
+  .clips-page .clips-footer-col a { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
+  .clips-footer-col { gap: 0; }
+  .clips-page .clips-wordmark { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 /* ---------- reduced motion: everything at rest, assembled ---------- */

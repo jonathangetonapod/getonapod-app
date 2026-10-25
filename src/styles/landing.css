@@ -437,6 +437,8 @@
   /* At this width a forced break leaves one word alone on a line; let the
      headline wrap where it falls. */
   .dfy-hero h1 span { display: inline; }
+  /* A one-word tab ("AI") was 15px wide: too small to tap. */
+  .dfy-tab { min-width: 44px; text-align: center; box-sizing: border-box; }
   .dfy-hero-lead { font-size: 16px; line-height: 26px; margin-top: 24px; }
   .dfy-facts { margin-top: 22px; font-size: 12px; }
   .dfy-facts span + span::before { margin: 0 8px; }
