@@ -19,6 +19,14 @@ export const CALL_URL = 'https://cal.com/jonathan-garces-x5v8tl/30minutes'
 export const CALL_LABEL = 'Book a 30-minute call'
 export const CONTACT_EMAIL = 'jonathan@getonapod.com'
 
+/** Who the booking link puts you on a call with. The calendar behind CALL_URL is his. */
+export const FOUNDER = {
+  name: 'Jonathan Garces',
+  role: 'Founder, Get On A Pod',
+  photo: '/people/jonathan-garces-square.jpg',
+  photoAlt: 'Jonathan Garces, smiling',
+}
+
 /** One plan. Stated so people can self-qualify; nothing is sold on-page. */
 export const MONTHLY_PRICE = 1000
 export const MONTHLY_PRICE_TEXT = `$${MONTHLY_PRICE.toLocaleString('en-US')}`

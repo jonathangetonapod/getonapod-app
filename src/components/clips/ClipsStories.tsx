@@ -5,7 +5,19 @@ export const ClipsFounder = () => (
   <section className="clips-rule clips-panel" aria-labelledby="clips-founder-title">
     <div className="clips-wrap clips-section clips-founder">
       <div className="clips-founder-side">
-        <div className="clips-monogram" role="img" aria-label={CLIPS_FOUNDER.name}>{CLIPS_FOUNDER.monogram}</div>
+        {/* Width and height reserve the 4:5 box before the file arrives, so nothing shifts. */}
+        <picture>
+          <source media="(max-width: 720px)" srcSet={CLIPS_FOUNDER.photoSquare} width={480} height={480} />
+          <img
+            className="clips-founder-photo"
+            src={CLIPS_FOUNDER.photo}
+            alt={CLIPS_FOUNDER.photoAlt}
+            width={720}
+            height={900}
+            loading="lazy"
+            decoding="async"
+          />
+        </picture>
         <div>
           <div className="clips-founder-name">{CLIPS_FOUNDER.name}</div>
           <div className="clips-founder-role">{CLIPS_FOUNDER.role}</div>

@@ -249,7 +249,10 @@ export const CLIPS_PRICING = {
 }
 
 export const CLIPS_FOUNDER = {
-  monogram: 'JG',
+  photo: '/people/jonathan-garces.jpg',
+  /** The head-and-shoulders crop, for the small thumbnail on a phone. */
+  photoSquare: '/people/jonathan-garces-square.jpg',
+  photoAlt: 'Jonathan Garces, smiling, sitting on a sofa',
   name: 'Jonathan Garces',
   role: 'Founder, Get On A Pod',
   places: 'Miami · Medellín',

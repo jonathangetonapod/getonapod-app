@@ -405,6 +405,13 @@
 .dfy-book .dfy-btn-ghost { color: var(--accent-400); border-color: var(--accent-400); padding-inline: 16px; }
 .dfy-book .dfy-btn-ghost:hover { color: var(--accent-400); background: color-mix(in srgb, var(--accent-400) 12%, transparent); }
 .dfy-book .dfy-btn-ghost:focus-visible { outline-color: var(--accent-400); }
+/* The person behind the booking link. */
+.dfy-host { display: flex; align-items: center; gap: 16px; margin: 36px 0 0; }
+.dfy-host img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: 0 0 64px; border: 1px solid color-mix(in srgb, var(--bg) 20%, transparent); }
+.dfy-host figcaption { display: flex; flex-direction: column; gap: 2px; }
+.dfy-host-label { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-400); }
+.dfy-host-name { font-family: var(--heading); font-size: 22px; line-height: 1.2; color: var(--bg); }
+.dfy-host-role { font-size: 14px; color: var(--neutral-300); }
 
 /* — footer — */
 .dfy-footer { max-width: 1200px; margin: 0 auto; padding: 70px var(--gutter) 42px; }
