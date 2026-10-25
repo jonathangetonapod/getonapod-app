@@ -44,6 +44,8 @@ const Hero = () => (
     <span className="dfy-kicker">{HERO.kicker}</span>
     <h1>
       <span>{HERO.title[0]}</span>
+      {/* Blocks on a desk, inline on a phone: the space only matters inline. */}
+      {' '}
       <span>{HERO.title[1]}</span>
     </h1>
     <p className="dfy-hero-lead">{HERO.lead}</p>
