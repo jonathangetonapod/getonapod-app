@@ -158,8 +158,12 @@ describe('Clips', () => {
 
   it('carries the title, description, canonical and both schema blocks', async () => {
     renderPage()
-    await waitFor(() => expect(document.title).toBe(CLIPS_SEO.title))
-    expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', CLIPS_SEO.description)
+    // Helmet can write the title a tick before the meta tags; wait for all of it.
+    await waitFor(() => {
+      expect(document.title).toBe(CLIPS_SEO.title)
+      expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', CLIPS_SEO.description)
+      expect(document.querySelectorAll('script[type="application/ld+json"]').length).toBeGreaterThanOrEqual(2)
+    })
     expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute('href', 'https://getonapod.com/clips')
     const schemas = [...document.querySelectorAll('script[type="application/ld+json"]')].map((node) => JSON.parse(node.textContent ?? '{}'))
     expect(schemas.map((schema) => schema['@type'])).toEqual(expect.arrayContaining(['Service', 'FAQPage']))

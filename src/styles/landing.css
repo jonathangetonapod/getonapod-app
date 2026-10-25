@@ -164,7 +164,8 @@
 .dfy-brand i { font-style: italic; }
 .dfy-brand b { font-weight: inherit; color: var(--accent); }
 .dfy-nav-links { display: flex; align-items: center; gap: 18.4px; }
-.dfy-page .dfy-nav-link { color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; }
+/* min-width keeps a short label ("FAQ") 44px wide to tap; text stays centred. */
+.dfy-page .dfy-nav-link { color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; min-width: 44px; text-align: center; }
 .dfy-page .dfy-nav-link:hover { color: var(--accent-600); }
 @media (max-width: 720px) {
   /* The brand on its own row, then the links and the call button. The

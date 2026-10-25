@@ -106,7 +106,7 @@
     overflow-x: auto; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   }
   .gp-nav::-webkit-scrollbar { display: none; }
-  .gp-nav a { flex: none; padding-block: 0.6rem; }
+  .gp-nav a { flex: none; padding-block: 0.6rem; min-width: 44px; min-height: 44px; box-sizing: border-box; text-align: center; }
 }
 
 /* ---------- buttons ---------- */
