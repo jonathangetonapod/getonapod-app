@@ -186,10 +186,15 @@ export default function Resources() {
           <section className="dfy-page-hero">
             <span className="dfy-kicker">Resource library</span>
             {isLoading ? (
-              <div className="max-w-2xl" role="status" aria-label="Loading resources">
-                <span className="dfy-skeleton h-10 w-3/4" />
-                <span className="dfy-skeleton mt-6 h-4 w-full" />
-                <span className="dfy-skeleton mt-3 h-4 w-5/6" />
+              // The heading is known before the library arrives. It is also what
+              // the build-time render shows crawlers if the library could not be
+              // fetched then, so the page never goes out without its <h1>.
+              <div className="max-w-2xl">
+                <h1>Resources that make you a better podcast guest.</h1>
+                <div role="status" aria-label="Loading resources">
+                  <span className="dfy-skeleton mt-6 h-4 w-full" />
+                  <span className="dfy-skeleton mt-3 h-4 w-5/6" />
+                </div>
               </div>
             ) : isError ? (
               // A failed load is not an empty library; say so and offer a retry.

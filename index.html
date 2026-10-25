@@ -16,13 +16,16 @@
 
     <!--
       The marketing head below (title and structured data) is for / only.
-      scripts/serve-production.mjs serves it unchanged on /. On the other
-      indexable marketing pages it keeps the Organization block, drops the
-      Service and FAQPage blocks and replaces the title with the brand name
-      (each page's PageSEO sets its real title). On every other route it strips
-      all of it, and on pages an agency's clients open (portal, prospect,
-      client, onboarding) it also strips the app name, icons and manifest, so
-      those pages never name the platform.
+      scripts/prerender-marketing.mjs renders every indexable marketing page
+      into dist/prerender/ at build time, with its own title, description,
+      canonical URL, social card and copy, and scripts/serve-production.mjs
+      serves those files. Pages other than / keep only the Organization block.
+      If a prerendered file is missing, the server falls back to this shell:
+      unchanged on /, with the title reduced to the brand name and only the
+      Organization block on the other marketing pages, and with all of it
+      stripped everywhere else. On pages an agency's clients open (portal,
+      prospect, client, onboarding) it also strips the app name, icons and
+      manifest, so those pages never name the platform.
     -->
     <title>Podcast booking for tech founders and SaaS owners | Get On A Pod</title>
     <!-- Structured Data -->
@@ -39,6 +42,14 @@
         "contactType": "Sales",
         "availableLanguage": "English"
       }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Get On A Pod",
+      "url": "https://getonapod.com/"
     }
     </script>
     <script type="application/ld+json">

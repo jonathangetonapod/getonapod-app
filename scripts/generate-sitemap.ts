@@ -69,7 +69,8 @@ async function generateSitemap() {
 
   // Static pages
   const staticPages = [
-    { url: '', priority: '1.0', changefreq: 'daily' },
+    // The homepage's canonical URL ends in a slash (PageSEO path="/").
+    { url: '/', priority: '1.0', changefreq: 'daily' },
     { url: '/platform', priority: '0.9', changefreq: 'weekly' },
     { url: '/clips', priority: '0.9', changefreq: 'weekly' },
     { url: '/blog', priority: '0.9', changefreq: 'daily' },

@@ -65,7 +65,15 @@ supabase/
   migrations/          — SQL migrations (schema changes MUST go here)
 docs/invite-only-edge-manifest.json — release manifest governing edge function deploys
 scripts/               — check/test/verify scripts wired into check:static
+  prerender-marketing.mjs — build step: renders public marketing pages to dist/prerender/
+  serve-production.mjs    — production server (headers, prerendered pages, white-label shells)
 ```
+
+**SEO / prerendering:** the public marketing pages are rendered to static HTML at build
+time (`src/prerender/entry.tsx` → `dist/prerender/*.html`) so crawlers, AI bots and link
+previews that never run JavaScript see the copy, title, description, canonical URL and
+structured data. The browser app does not hydrate; it renders over the same markup, and
+the lazy-route fallback keeps that markup on screen meanwhile (`src/lib/prerenderedShell.ts`).
 
 **Auth model (three independent systems):**
 1. **Workspace/admin:** Supabase Auth → `account-context` edge function returns `{platform_admin, state, membership, workspace}`. The frontend never decides authorization itself. Account states: `active | pending | password_change_required | suspended | expired | ...` — `ProtectedRoute`/`PlatformAdminRoute` route each state.
@@ -128,6 +136,10 @@ The legacy inline-CORS/`[Function Name]` logging style exists in ~50 older funct
 ## 8. File and Component Placement Rules
 
 - **New workspace page:** `src/pages/app/`, route in `App.tsx` (both `/app/<module>` and `/app/workspaces/:workspaceId/<module>` with a thin `AdminWorkspace*` wrapper in `src/pages/admin/`), register the module in `src/lib/workspaceRoutes.ts`, add the nav item in `src/components/workspace/WorkspaceLayout.tsx`, and update their tests.
+- **New public marketing page:** add it to `PRERENDERED_ROUTES` in `src/prerender/entry.tsx`,
+  `PRERENDERED_FILES` and `INDEXABLE_ROUTE_PATTERN` in `scripts/serve-production.mjs`, and the
+  sitemap's static pages in `scripts/generate-sitemap.ts`; give it a `PageSEO` with a unique
+  title and description. Render-time code must not touch `window`/`document` outside effects.
 - **New service:** `src/services/` (one file per domain), with a colocated `.test.ts` added to the right suite.
 - **New edge function:** see section 5 — the manifest/config/scripts must be updated together.
 - **New UI primitive:** `npx shadcn-ui@latest add`, never hand-write into `components/ui/`.

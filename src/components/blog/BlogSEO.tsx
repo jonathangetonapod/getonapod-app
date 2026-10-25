@@ -1,6 +1,7 @@
 import { Helmet } from 'react-helmet-async'
 import { DEFAULT_OG_IMAGE_ALT, DEFAULT_OG_IMAGE_PATH, SITE_NAME, getSiteUrl, toAbsoluteUrl } from '@/lib/seo'
 import type { BlogPost } from '@/services/blog'
+import { buildBlogStructuredData } from '@/lib/blogStructuredData'
 
 interface BlogSEOProps {
   post: BlogPost
@@ -12,7 +13,8 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
   const postUrl = isPreview ? `${baseUrl}/blog/preview` : `${baseUrl}/blog/${post.slug}`
 
   // Use featured image or fallback
-  const ogImage = post.featured_image_url || toAbsoluteUrl(DEFAULT_OG_IMAGE_PATH)
+  const ogImage = toAbsoluteUrl(post.featured_image_url || DEFAULT_OG_IMAGE_PATH)
+  const structuredData = isPreview ? [] : buildBlogStructuredData(post, postUrl, ogImage)
 
   // Build keywords
   const keywords = [
@@ -27,7 +29,7 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
       <meta name="description" content={post.meta_description} />
       {keywords && <meta name="keywords" content={keywords} />}
       <meta name="author" content={post.author_name} />
-      <link rel="canonical" href={postUrl} />
+      {isPreview ? null : <link rel="canonical" href={postUrl} />}
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content="article" />
@@ -65,12 +67,14 @@ export function BlogSEO({ post, isPreview = false }: BlogSEOProps) {
       <meta name="robots" content={isPreview ? 'noindex, nofollow' : 'index, follow'} />
       <meta name="googlebot" content={isPreview ? 'noindex, nofollow' : 'index, follow'} />
 
-      {/* Schema.org Structured Data */}
-      {post.schema_markup && (
-        <script type="application/ld+json">
-          {JSON.stringify(post.schema_markup)}
-        </script>
-      )}
+      {/* Schema.org Structured Data, as flat siblings: Helmet skips anything
+          nested in a Fragment or array wrapper element. */}
+      {structuredData[0] ? (
+        <script type="application/ld+json">{JSON.stringify(structuredData[0])}</script>
+      ) : null}
+      {structuredData[1] ? (
+        <script type="application/ld+json">{JSON.stringify(structuredData[1])}</script>
+      ) : null}
     </Helmet>
   )
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 const sitemapPath = path.resolve('public', 'sitemap.xml')
@@ -49,5 +49,14 @@ assert.equal(
   false,
   'the internal Vite validation mode must not become a production telemetry label',
 )
+
+// The build prerenders every indexable marketing page, even with no Supabase
+// credentials, and does not publish the Vite manifest it used to do so.
+for (const file of ['index.html', 'platform.html', 'clips.html', 'resources.html', 'blog.html', 'what-to-expect.html', 'privacy.html', 'terms.html']) {
+  const page = readFileSync(path.resolve('dist', 'prerender', file), 'utf8')
+  assert.match(page, /<div id="root" data-prerendered="\/[^"]*">\s*\S/u, `dist/prerender/${file} must carry the page markup`)
+}
+assert.equal(existsSync(path.resolve('dist', '.vite')), false, 'the Vite manifest must not ship in dist')
+assert.match(readFileSync(path.resolve('dist', 'index.html'), 'utf8'), /<div id="root"><\/div>/u, 'the app shell stays empty')
 
 process.stdout.write('Isolated static build and sitemap cleanliness checks passed\n')

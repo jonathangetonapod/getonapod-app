@@ -1,16 +1,24 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { once } from 'node:events'
 import {
+  bootChunkKeys,
+  chunkAssets,
+  composePrerenderedPage,
+  keepOrganizationOnly,
+} from './prerender-marketing.mjs'
+import {
   buildContentSecurityPolicy,
+  canonicalRedirectPath,
   clientDashboardShareShell,
   generateOnboardingPreviewPng,
   loadClientDashboardShareMetadata,
   loadOnboardingShareMetadata,
   marketingPageShell,
   neutralApplicationShell,
+  publicFileCacheControl,
   whiteLabelOnboardingShell,
 } from './serve-production.mjs'
 
@@ -156,6 +164,58 @@ assert.doesNotMatch(clientShell, /application\/ld\+json|content="Marketing"|Get 
   assert.doesNotMatch(neutralApplicationShell(builtIndex, '/prospect/abc'), /Get On A Pod|application\/ld\+json/iu)
 }
 
+{
+  // Trailing-slash duplicates of indexable pages redirect; nothing else does.
+  assert.equal(canonicalRedirectPath('/platform/'), '/platform')
+  assert.equal(canonicalRedirectPath('/blog/some-post/'), '/blog/some-post')
+  assert.equal(canonicalRedirectPath('/what-to-expect//'), '/what-to-expect')
+  assert.equal(canonicalRedirectPath('/'), null)
+  assert.equal(canonicalRedirectPath('/platform'), null)
+  assert.equal(canonicalRedirectPath('/app/clients/'), null)
+  assert.equal(canonicalRedirectPath('/portal/'), null)
+
+  assert.equal(publicFileCacheControl('/assets/index-abc123.js'), 'public, max-age=31536000, immutable')
+  assert.equal(publicFileCacheControl('/shows/saastr.webp'), 'public, max-age=86400')
+  assert.equal(publicFileCacheControl('/sitemap.xml'), 'public, max-age=3600')
+}
+
+{
+  const manifest = {
+    'index.html': { file: 'assets/index-1.js', css: ['assets/index-1.css'], isEntry: true, dynamicImports: ['_App-1.js', 'src/components/ErrorBoundary.tsx'] },
+    '_App-1.js': { file: 'assets/App-1.js', name: 'App', isDynamicEntry: true, imports: ['index.html', '_button-1.js'], css: ['assets/App-1.css'] },
+    '_button-1.js': { file: 'assets/button-1.js' },
+    'src/components/ErrorBoundary.tsx': { file: 'assets/ErrorBoundary-1.js', imports: ['index.html'] },
+    'src/pages/Clips.tsx': { file: 'assets/Clips-1.js', isDynamicEntry: true, imports: ['_App-1.js'], css: ['assets/Clips-1.css'], dynamicImports: ['_lazy-1.js'] },
+    '_lazy-1.js': { file: 'assets/lazy-1.js', css: ['assets/lazy-1.css'] },
+  }
+  const bootKeys = bootChunkKeys(manifest)
+  assert.deepEqual(bootKeys, ['_App-1.js', 'src/components/ErrorBoundary.tsx'])
+  const assets = chunkAssets(manifest, [...bootKeys, 'src/pages/Clips.tsx'])
+  assert.deepEqual(assets.css.sort(), ['/assets/App-1.css', '/assets/Clips-1.css', '/assets/index-1.css'])
+  assert.ok(assets.js.includes('/assets/Clips-1.js') && assets.js.includes('/assets/button-1.js'))
+  assert.ok(!assets.js.includes('/assets/lazy-1.js'), 'dynamic imports load on demand, not at boot')
+
+  const shell = '<!doctype html><html><head><title>Podcast booking for tech founders | Get On A Pod</title><script type="application/ld+json">{"@type":"Organization"}</script><script type="application/ld+json">{"@type":"FAQPage"}</script><script type="module" crossorigin src="/assets/index-1.js"></script><link rel="stylesheet" crossorigin href="/assets/index-1.css"></head><body><div id="root"></div></body></html>'
+  assert.doesNotMatch(keepOrganizationOnly(shell), /FAQPage/u)
+  const page = composePrerenderedPage(shell, { path: '/clips' }, {
+    title: 'Clips & <more>',
+    head: '<link data-rh="true" rel="canonical" href="https://getonapod.com/clips"/>',
+    html: '<main><h1>Five clips</h1></main>',
+  }, assets)
+  assert.match(page, /<title>Clips &amp; &lt;more&gt;<\/title>/u)
+  assert.match(page, /<div id="root" data-prerendered="\/clips"><main><h1>Five clips<\/h1><\/main><\/div>/u)
+  assert.match(page, /rel="canonical" href="https:\/\/getonapod\.com\/clips"/u)
+  assert.match(page, /<link rel="stylesheet" crossorigin href="\/assets\/Clips-1\.css">/u)
+  assert.match(page, /<link rel="modulepreload" crossorigin href="\/assets\/Clips-1\.js">/u)
+  assert.equal(page.match(/index-1\.css/gu).length, 1, 'a stylesheet the shell already links is not linked twice')
+  assert.match(page, /"@type":"Organization"/u)
+  assert.doesNotMatch(page, /FAQPage|Podcast booking for tech founders/u, 'only / keeps the homepage head')
+  const home = composePrerenderedPage(shell, { path: '/' }, { title: 'Home', head: '', html: '<main>Home</main>' })
+  assert.match(home, /FAQPage/u, '/ keeps its FAQ structured data')
+  assert.throws(() => composePrerenderedPage(shell, { path: '/clips' }, { title: '', head: '', html: '<main></main>' }), /without a <title>/u)
+  assert.throws(() => composePrerenderedPage(shell, { path: '/clips' }, { title: 'Clips', head: '', html: ' ' }), /no markup/u)
+}
+
 const generatedPreview = generateOnboardingPreviewPng('#BE185D')
 assert.deepEqual([...generatedPreview.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
 assert.equal(generatedPreview.readUInt32BE(16), 1200)
@@ -289,6 +349,41 @@ try {
     assert.doesNotMatch(html, /Podcast booking for tech founders/u, `${route} must not carry the homepage title`)
     assert.match(html, /"@type": "Organization"/u, `${route} keeps the Organization structured data`)
   }
+  // Every indexable marketing page is served prerendered: its own copy,
+  // title, description and canonical URL in the HTML, before any script runs.
+  for (const route of ['/', '/platform', '/clips', '/resources', '/blog', '/what-to-expect', '/privacy', '/terms']) {
+    const html = await (await fetch(`${origin}${route}`)).text()
+    assert.ok(html.includes(`<div id="root" data-prerendered="${route}">`), `${route} must be served prerendered`)
+    assert.match(html, /<h1[\s>]/u, `${route} must carry its heading in the HTML`)
+    assert.equal(html.match(/<link[^>]+rel="canonical"/gu)?.length, 1, `${route} must have exactly one canonical link`)
+    assert.ok(html.includes(`rel="canonical" href="https://getonapod.com${route}"`), `${route} must be canonical to itself`)
+    assert.equal(html.match(/<meta[^>]+name="description"/gu)?.length, 1, `${route} must have exactly one description`)
+    assert.match(html, /property="og:title"/u, `${route} must carry its social card`)
+    assert.equal(html.match(/<title>/gu)?.length, 1, `${route} must have exactly one title`)
+  }
+
+  for (const [route, location] of [['/platform/', '/platform'], ['/blog/?ref=x', '/blog?ref=x'], ['/blog/some-post/', '/blog/some-post']]) {
+    const response = await fetch(`${origin}${route}`, { redirect: 'manual' })
+    assert.equal(response.status, 301, route)
+    assert.equal(response.headers.get('location'), location, route)
+  }
+  assert.equal((await fetch(`${origin}/app/clients/`, { redirect: 'manual' })).status, 200, 'app routes are not redirected')
+
+  {
+    const response = await fetch(`${origin}/prerender/platform.html`)
+    assert.equal(response.status, 404, 'prerendered files are served only under their page URL')
+  }
+
+  for (const directory of ['shots', 'shows', 'testimonials']) {
+    const file = readdirSync(`dist/${directory}`).find((name) => /\.(?:png|webp)$/u.test(name))
+    assert.ok(file, `dist/${directory} must hold the landing images`)
+    const response = await fetch(`${origin}/${directory}/${file}`)
+    assert.equal(response.status, 200, file)
+    assert.equal(response.headers.get('x-robots-tag'), null, `${file} is a public marketing image`)
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=86400', file)
+  }
+  assert.equal((await fetch(`${origin}/clips-og.png`)).headers.get('x-robots-tag'), null, 'the clips social card is public')
+
   assert.match(indexHtml, /application\/ld\+json/u, '/ must keep its structured data for crawlers')
   assert.match(indexHtml, /"@type": "FAQPage"/u, '/ must keep its FAQ structured data')
 
@@ -299,6 +394,7 @@ try {
   assertSecurityHeaders(asset, assetPath)
   assert.equal(asset.headers.get('x-robots-tag'), null, assetPath)
   assert.match(asset.headers.get('content-type') ?? '', /javascript/u, assetPath)
+  assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable', 'hashed assets never change')
 
   const missingStaticFiles = [
     '/assets/Node.js',

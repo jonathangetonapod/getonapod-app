@@ -12,7 +12,27 @@ const DEFAULT_PUBLIC_DIRECTORY = path.resolve(path.dirname(MODULE_PATH), '..', '
 // Every page listed in scripts/generate-sitemap.ts must match this pattern, or
 // it is served noindex and private, no-store.
 const INDEXABLE_ROUTE_PATTERN = /^\/(?:$|platform\/?$|clips\/?$|privacy\/?$|terms\/?$|resources\/?$|blog(?:\/[^/]+)?\/?$|what-to-expect\/?$)/
-const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml)$/
+// Marketing images (screenshots, show artwork, testimonial portraits, social
+// cards) are public: they must be cacheable and may appear in image search.
+const PUBLIC_FILE_PATTERN = /^\/(?:assets\/[^/]+|apple-touch-icon\.png|client-dashboard-share\.png|clips-og\.png|favicon(?:-16x16|-32x32)?\.(?:ico|png|svg)|icon-(?:192|512)\.png|og-image\.png|onboarding-link-(?:icon|preview)\.png|placeholder\.svg|robots\.txt|site\.webmanifest|sitemap\.xml|(?:shots|shows|testimonials)\/[a-z0-9-]+\.(?:png|jpe?g|webp|avif|svg))$/
+// Vite content-hashes everything under /assets, so a file there never changes.
+const HASHED_ASSET_PATTERN = /^\/assets\/[^/]+$/
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+const PUBLIC_FILE_CACHE_CONTROL = 'public, max-age=86400'
+const CRAWLER_FILE_CACHE_CONTROL = 'public, max-age=3600'
+// scripts/prerender-marketing.mjs writes one file per indexable page here.
+// They are served under the page's own URL, never under this path.
+const PRERENDER_DIRECTORY = 'prerender'
+const PRERENDERED_FILES = Object.freeze({
+  '/': 'index.html',
+  '/platform': 'platform.html',
+  '/clips': 'clips.html',
+  '/resources': 'resources.html',
+  '/blog': 'blog.html',
+  '/what-to-expect': 'what-to-expect.html',
+  '/privacy': 'privacy.html',
+  '/terms': 'terms.html',
+})
 const FILE_LIKE_PATH_PATTERN = /(?:^|\/)[^/]+\.[A-Za-z0-9][A-Za-z0-9_-]{0,15}$/
 const ONBOARDING_ROUTE_PATTERN = /^\/onboarding\/([^/]+)\/?$/u
 const CLIENT_DASHBOARD_ROUTE_PATTERN = /^\/client\/([^/]+)\/?$/u
@@ -551,6 +571,23 @@ export function isPrivateApplicationPath(pathname) {
   return !PUBLIC_FILE_PATTERN.test(pathname) && !INDEXABLE_ROUTE_PATTERN.test(pathname)
 }
 
+/** The Cache-Control for a public file, by how often it can change. */
+export function publicFileCacheControl(pathname) {
+  if (HASHED_ASSET_PATTERN.test(pathname)) return IMMUTABLE_CACHE_CONTROL
+  if (/^\/(?:robots\.txt|sitemap\.xml|site\.webmanifest)$/u.test(pathname)) return CRAWLER_FILE_CACHE_CONTROL
+  return PUBLIC_FILE_CACHE_CONTROL
+}
+
+/**
+ * Where an indexable page with a trailing slash should permanently redirect,
+ * so /platform/ and /platform are not two URLs for one page. Null otherwise.
+ */
+export function canonicalRedirectPath(pathname) {
+  if (pathname === '/' || !pathname.endsWith('/')) return null
+  const trimmed = pathname.replace(/\/+$/u, '') || '/'
+  return INDEXABLE_ROUTE_PATTERN.test(trimmed) ? trimmed : null
+}
+
 export function isStaticFileRequest(pathname) {
   return pathname === '/assets'
     || pathname.startsWith('/assets/')
@@ -574,6 +611,15 @@ async function isRegularPublicFile(publicDirectory, pathname) {
     return (await lstat(candidate)).isFile()
   } catch {
     return false
+  }
+}
+
+/** A prerendered page, or null when the build did not produce one. */
+async function readPrerenderedPage(publicDirectory, file) {
+  try {
+    return await readFile(path.join(publicDirectory, PRERENDER_DIRECTORY, file), 'utf8')
+  } catch {
+    return null
   }
 }
 
@@ -756,16 +802,38 @@ export function createProductionServer({
       }
 
       if (isStaticFileRequest(pathname)) {
-        if (!await isRegularPublicFile(publicDirectory, pathname)) {
+        if (pathname.startsWith(`/${PRERENDER_DIRECTORY}/`) || !await isRegularPublicFile(publicDirectory, pathname)) {
           sendMissingStaticFile(response)
           return
         }
+        if (PUBLIC_FILE_PATTERN.test(pathname)) response.setHeader('Cache-Control', publicFileCacheControl(pathname))
         await serveHandler(request, response, {
           public: publicDirectory,
           cleanUrls: false,
           directoryListing: false,
         })
         return
+      }
+
+      const redirectPath = canonicalRedirectPath(pathname)
+      if (redirectPath && (request.method === 'GET' || request.method === 'HEAD')) {
+        response.statusCode = 301
+        response.setHeader('Location', `${redirectPath}${requestUrl.search}`)
+        response.end()
+        return
+      }
+
+      const prerenderedFile = PRERENDERED_FILES[pathname]
+      if (prerenderedFile && (request.method === 'GET' || request.method === 'HEAD')) {
+        const html = await readPrerenderedPage(publicDirectory, prerenderedFile)
+        if (html) {
+          response.statusCode = 200
+          response.setHeader('Content-Type', 'text/html; charset=utf-8')
+          response.setHeader('Content-Length', Buffer.byteLength(html))
+          if (request.method === 'HEAD') response.end()
+          else response.end(html)
+          return
+        }
       }
 
       const clientDashboardMatch = pathname.match(CLIENT_DASHBOARD_ROUTE_PATTERN)

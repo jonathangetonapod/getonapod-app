@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import { ClientPortalProvider } from "@/contexts/ClientPortalContext";
 import { PlatformAdminRoute, ProtectedRoute } from "@/components/ProtectedRoute";
 import { queryClient } from "@/lib/queryClient";
 import { lazyRoute } from "@/lib/lazyRoute";
+import { prerenderedMarkupFor, releasePrerenderedMarkup } from "@/lib/prerenderedShell";
 import { ClientProtectedRoute } from "@/components/ClientProtectedRoute";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
@@ -83,11 +84,18 @@ const PortalForgotPassword = lazyRoute(() => import("./pages/portal/ForgotPasswo
 const PortalResetPassword = lazyRoute(() => import("./pages/portal/ResetPassword"));
 const ClientOnboarding = lazyRoute(() => import("./pages/onboarding/ClientOnboarding"));
 
-const RouteFallback = () => (
-  <div className="min-h-screen flex items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  </div>
-);
+const RouteFallback = () => {
+  // A prerendered marketing page stays on screen while its chunk loads,
+  // instead of flashing to a spinner (see src/lib/prerenderedShell.ts).
+  const markup = prerenderedMarkupFor(window.location.pathname);
+  useEffect(() => (markup ? releasePrerenderedMarkup : undefined), [markup]);
+  if (markup) return <div style={{ display: "contents" }} dangerouslySetInnerHTML={{ __html: markup }} />;
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+};
 
 const KeyedProspectView = () => {
   const { slug } = useParams()

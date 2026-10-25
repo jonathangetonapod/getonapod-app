@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     allowedHosts: ["authority-lab-website-production.up.railway.app"],
   },
+  build: {
+    // scripts/prerender-marketing.mjs reads the manifest to link each
+    // prerendered page's stylesheets and chunks, then deletes it from dist.
+    manifest: true,
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
