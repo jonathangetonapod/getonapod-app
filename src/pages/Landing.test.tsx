@@ -51,6 +51,14 @@ describe('Landing', () => {
     expect(screen.getByText('$1,000')).toBeInTheDocument()
   })
 
+  // The clips offer gets one line above the nav, and its link is a route, not a call.
+  it('announces the clips offer above the nav and sends it to /clips', () => {
+    renderPage()
+    const bar = screen.getByRole('complementary', { name: 'New offer' })
+    expect(bar).toHaveTextContent('Five clips from your last episode, free, in 72 hours.')
+    expect(within(bar).getByRole('link', { name: /get your free cut/iu })).toHaveAttribute('href', '/clips')
+  })
+
   // The terms, under the hero, in the same words the pricing section uses.
   it('states the terms under the hero, before the reader scrolls', () => {
     renderPage()

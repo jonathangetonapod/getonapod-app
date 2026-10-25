@@ -119,6 +119,36 @@
 .dfy-btn-ghost:active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* — nav — */
+/* The announcement bar for /clips. It borrows that page's ground and accent
+   (#0a0a0b and #c8f542) on purpose: it is a door to a different offer, and it
+   should look like the room behind it. Fonts stay the site's own: the mono is
+   already loaded, and the clips display face is not worth a request here. */
+.dfy-announce {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px;
+  padding: 11px max(var(--gutter), calc((100% - 1200px) / 2 + var(--gutter)));
+  background: #0a0a0b; color: #f4f4f2;
+  font-family: "Instrument Sans", system-ui, sans-serif; font-size: 15px; line-height: 1.4; text-align: center;
+  color-scheme: dark;
+}
+.dfy-announce-tag {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--dfy-mono, "JetBrains Mono", ui-monospace, monospace); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+  color: #c8f542;
+}
+.dfy-announce-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #c8f542; display: inline-block; flex: 0 0 7px;
+  animation: dfy-announce-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dfy-announce-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.dfy-announce-text { color: #f4f4f2; }
+.dfy-page .dfy-announce-link {
+  color: #c8f542; font-weight: 600; text-decoration: none; white-space: nowrap;
+  padding: 6px 0; min-height: 32px; display: inline-flex; align-items: center;
+}
+.dfy-page .dfy-announce-link:hover { color: #e2ff7a; text-decoration: underline; }
+.dfy-page .dfy-announce :focus-visible { outline-color: #c8f542; }
+@media (prefers-reduced-motion: reduce) { .dfy-announce-dot { animation: none; } }
+
 .dfy-nav {
   position: relative; display: flex; align-items: center; gap: 18.4px;
   padding: 13.8px max(var(--gutter), calc((100% - 1200px) / 2 + var(--gutter)));
