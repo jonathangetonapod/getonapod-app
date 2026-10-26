@@ -62,3 +62,8 @@ export function workspaceModuleFromPath(pathname: string): WorkspaceModule {
     ? candidate as WorkspaceModule
     : 'clients'
 }
+
+/** One workspace's page under platform billing administration. */
+export function platformBillingWorkspaceHref(workspaceId: string): string {
+  return `/app/platform/billing/workspaces/${encodeURIComponent(workspaceId.toLowerCase())}`
+}

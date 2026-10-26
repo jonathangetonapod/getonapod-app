@@ -575,11 +575,48 @@ describe('WorkspaceLayout', () => {
     })
 
     const chip = await screen.findByRole('link', { name: /850 credits remaining/i })
-    // With the tenant named, so the top-up screen opens on this agency.
-    expect(chip).toHaveAttribute('href', `/app/platform/billing?workspace=${viewedWorkspaceId}`)
+    // Straight to this agency's page under billing administration.
+    expect(chip).toHaveAttribute('href', `/app/platform/billing/workspaces/${viewedWorkspaceId}`)
     // Theirs, not the admin's own.
     expect(mockedBillingOverview).toHaveBeenCalledWith(viewedWorkspaceId)
     expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
+  })
+
+  // Platform administration acts on every workspace: a working client and the
+  // admin's own balance describe nothing there, and said "All clients" and
+  // "797 credits" over a page about other people's money.
+  it('shows a platform admin indicator instead of the working client and balance on platform pages', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'jonathan@getonapod.com' },
+      workspace: { id: workspaceId, name: 'Get On A Pod', is_default: true },
+      membership: { full_name: 'Jonathan', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    mockedBillingOverview.mockResolvedValue({ enforcement_enabled: true, monthly_credit_allowance: 100, balance: 797 } as never)
+
+    renderLayout(undefined, '/app/platform/billing/workspaces/22222222-2222-4222-8222-222222222222')
+
+    expect(screen.getByText('Platform admin')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Working client' })).toBeNull()
+    expect(screen.queryByText('Working on')).toBeNull()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).toBeNull()
+    expect(mockedClients).not.toHaveBeenCalled()
+  })
+
+  it('keeps the working client and balance for a platform admin off the platform pages', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'jonathan@getonapod.com' },
+      workspace: { id: workspaceId, name: 'Get On A Pod', is_default: true },
+      membership: { full_name: 'Jonathan', role: 'owner' },
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+
+    renderLayout(undefined, '/app/clients')
+
+    expect(await screen.findByRole('combobox', { name: 'Working client' })).toBeInTheDocument()
+    expect(screen.queryByText('Platform admin')).toBeNull()
   })
 
   it('keeps the viewed workspace brand on screen while a page is still loading it', async () => {

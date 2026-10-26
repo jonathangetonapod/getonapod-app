@@ -23,7 +23,6 @@ import { getBillingPortfolio } from '@/services/workspaceStaff'
 interface BillingPortfolioProps {
   /** The signed-in admin's own workspace, which authorizes the read. */
   workspaceId: string
-  selectedWorkspaceId: string
   onSelect: (workspaceId: string) => void
 }
 
@@ -39,7 +38,7 @@ interface BillingPortfolioProps {
  * Search and filter live in the address, so leaving for a workspace and coming
  * back returns to the same list.
  */
-export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }: BillingPortfolioProps) {
+export function BillingPortfolio({ workspaceId, onSelect }: BillingPortfolioProps) {
   // Read from the address once, then held in state and written back. Writing
   // each change straight to the address raced: setSearchParams builds on the
   // params of the last render, so a search typed before a filter click had
@@ -94,7 +93,7 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><Wallet className="h-5 w-5" />All workspaces</CardTitle>
-        <CardDescription>Most urgent first. Select a row to manage that workspace.</CardDescription>
+        <CardDescription>Most urgent first. Open a row to manage that workspace.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {portfolioQuery.isLoading ? (
@@ -146,7 +145,7 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
                 No workspaces match this search and filter.
               </p>
             ) : (
-              <BillingPortfolioTable rows={visible} selectedWorkspaceId={selectedWorkspaceId} onSelect={onSelect} />
+              <BillingPortfolioTable rows={visible} onSelect={onSelect} />
             )}
 
             {!portfolioQuery.data?.enforcementEnabled && (

@@ -9,20 +9,19 @@ import type { BillingPortfolioRow } from '@/services/workspaceStaff'
 
 interface BillingPortfolioTableProps {
   rows: BillingPortfolioRow[]
-  selectedWorkspaceId: string
   onSelect: (workspaceId: string) => void
 }
 
 const numberCell = 'py-2.5 pr-3 text-right tabular-nums'
 const numberHead = 'py-2 pr-3 text-right font-medium'
 
-export const BillingPortfolioTable = ({ rows, selectedWorkspaceId, onSelect }: BillingPortfolioTableProps) => {
+export const BillingPortfolioTable = ({ rows, onSelect }: BillingPortfolioTableProps) => {
   const now = Date.now()
   return (
     // A table that scrolls itself rather than one that widens the page: the
     // row count grows with the business, and so does the column count.
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[72rem] text-sm">
+      <table className="w-full min-w-[64rem] text-sm">
         <thead>
           <tr className="border-b text-left text-xs text-muted-foreground">
             <th className="py-2 pr-3 font-medium">Workspace</th>
@@ -48,14 +47,13 @@ export const BillingPortfolioTable = ({ rows, selectedWorkspaceId, onSelect }: B
             const billingReasons = attention.reasons.filter((reason) => reason !== 'low_balance')
             const override = allowanceIsOverride(row.monthly_credit_allowance, row.plan_monthly_credit_allowance)
             const trial = trialView(row, now)
-            const selected = row.workspace_id === selectedWorkspaceId
             return (
               <tr
                 key={row.workspace_id}
                 // The Manage button stays the keyboard path; the row is the
                 // larger target for a pointer.
                 onClick={() => onSelect(row.workspace_id)}
-                className={`cursor-pointer border-b last:border-0 hover:bg-muted/40 ${selected ? 'bg-primary/[0.04]' : ''}`}
+                className="cursor-pointer border-b last:border-0 hover:bg-muted/40"
               >
                 <td className="py-2.5 pr-3 font-medium">{row.name}</td>
                 <td className="max-w-[14rem] truncate py-2.5 pr-3" title={row.owner_email ?? undefined}>
@@ -113,14 +111,14 @@ export const BillingPortfolioTable = ({ rows, selectedWorkspaceId, onSelect }: B
                   <Button
                     type="button"
                     size="sm"
-                    variant={selected ? 'secondary' : 'outline'}
-                    aria-label={`${selected ? 'Selected' : 'Manage'} ${row.name}`}
+                    variant="outline"
+                    aria-label={`Manage ${row.name}`}
                     onClick={(event) => {
                       event.stopPropagation()
                       onSelect(row.workspace_id)
                     }}
                   >
-                    {selected ? 'Selected' : 'Manage'}
+                    Manage
                   </Button>
                 </td>
               </tr>

@@ -51,6 +51,7 @@ const WorkspaceClientPitch = lazyRoute(() => import("./pages/app/WorkspaceClient
 const WorkspaceOnboarding = lazyRoute(() => import("./pages/app/WorkspaceOnboarding"));
 const MyWorkspaceSettings = lazyRoute(() => import("./pages/app/MyWorkspaceSettings"));
 const PlatformBilling = lazyRoute(() => import("./pages/app/PlatformBilling"));
+const PlatformBillingWorkspace = lazyRoute(() => import("./pages/app/PlatformBillingWorkspace"));
 const ManageWorkspaces = lazyRoute(() => import("./pages/app/ManageWorkspaces"));
 const WorkspaceBilling = lazyRoute(() => import("./pages/app/WorkspaceBilling"));
 const WorkspaceCampaignDetail = lazyRoute(() => import("./pages/app/WorkspaceCampaignDetail"));
@@ -177,6 +178,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <PlatformBilling />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/platform/billing/workspaces/:workspaceId"
+              element={
+                <ProtectedRoute>
+                  <PlatformBillingWorkspace />
                 </ProtectedRoute>
               }
             />

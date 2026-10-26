@@ -37,7 +37,7 @@ const renderPortfolio = (initialEntry = '/app/platform/billing', onSelect = vi.f
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={[initialEntry]}>
-        <BillingPortfolio workspaceId="11111111-1111-4111-8111-111111111111" selectedWorkspaceId="" onSelect={onSelect} />
+        <BillingPortfolio workspaceId="11111111-1111-4111-8111-111111111111" onSelect={onSelect} />
         <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,

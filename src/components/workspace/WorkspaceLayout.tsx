@@ -69,6 +69,7 @@ import {
   writeWorkingClient,
 } from '@/lib/workingClient'
 import { memberAvatarUrl, workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { platformBillingWorkspaceHref } from '@/lib/workspaceRoutes'
 import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
 interface WorkspaceNavItem {
@@ -595,6 +596,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    * being viewed and not their own.
    */
   const workingClientWorkspaceId = (platformWorkspace?.workspaceId || workspace?.id || '').toLowerCase()
+  // Platform administration acts on every workspace, so a working client and
+  // the admin's own credit balance describe nothing on these pages.
+  const onPlatformPage = isPlatformAdmin && matchesPath('/app/platform')
   const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId))
   const clientInPathHref = `${baseHref}/${CLIENT_IN_PATH_SEGMENT}`
   const clientInPath = location.pathname.startsWith(`${clientInPathHref}/`)
@@ -617,7 +621,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const clientsQuery = useQuery({
     queryKey: ['workspace-working-client', workingClientWorkspaceId, 'clients'],
     queryFn: () => getWorkspaceClients(workingClientWorkspaceId),
-    enabled: Boolean(workingClientWorkspaceId),
+    enabled: Boolean(workingClientWorkspaceId) && !onPlatformPage,
     // Clients are added, paused and renamed on other pages and in other tabs;
     // re-read on focus so the picker does not offer a stale list.
     staleTime: 15_000,
@@ -1022,7 +1026,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           <div className="min-w-0 flex-1 lg:hidden">
             <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
-          {workingClientWorkspaceId && (
+          {workingClientWorkspaceId && !onPlatformPage && (
             <div className="flex min-w-0 shrink items-center gap-2 lg:ml-4">
               <span className="hidden whitespace-nowrap text-xs font-medium text-muted-foreground md:inline">Working on</span>
               <Select value={workingClientId ?? ALL_CLIENTS} onValueChange={handleWorkingClientChange}>
@@ -1064,11 +1068,15 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                 and not on their own billing page. The tenant rides along in
                 the address so the top-up lands on the agency whose number was
                 just clicked. */}
-            {platformWorkspace ? (
+            {onPlatformPage ? (
+              <Badge variant="outline" className="h-9 gap-1.5 whitespace-nowrap border-violet-300 bg-violet-50 px-3 text-violet-900">
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />Platform admin
+              </Badge>
+            ) : platformWorkspace ? (
               <CreditBalanceChip
                 workspaceId={platformWorkspace.workspaceId}
                 canViewBalance={isPlatformAdmin}
-                billingHref={`/app/platform/billing?workspace=${platformWorkspace.workspaceId.toLowerCase()}`}
+                billingHref={platformBillingWorkspaceHref(platformWorkspace.workspaceId)}
               />
             ) : workspace?.id && (
               <CreditBalanceChip

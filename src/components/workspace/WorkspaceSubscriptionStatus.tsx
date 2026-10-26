@@ -4,6 +4,7 @@ import { CreditCard, ExternalLink, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { subscriptionStatusView } from '@/lib/subscriptionStatus'
 import { resolveWorkspacePrice } from '@/lib/workspacePrice'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 
@@ -12,6 +13,9 @@ interface WorkspaceSubscriptionStatusProps {
   workspaceName: string | null
 }
 
+const day = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
+
 /**
  * What this workspace is subscribed to, read from the platform side.
  *
@@ -19,47 +23,6 @@ interface WorkspaceSubscriptionStatusProps {
  * admin page showed none of it, so the only way to know whether an agency was
  * paying, trialling or cancelled was to open Stripe and search for them.
  */
-const STATUS_VIEW: Record<string, { label: string; className: string; note: string }> = {
-  active: {
-    label: 'Active',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    note: 'Paying, and renewing on schedule.',
-  },
-  trialing: {
-    label: 'Trialing',
-    className: 'border-sky-200 bg-sky-50 text-sky-900',
-    note: 'On trial — no subscription is being charged yet.',
-  },
-  comped: {
-    label: 'Comped',
-    className: 'border-violet-200 bg-violet-50 text-violet-900',
-    note: 'Given the plan without charge. Still receives its monthly allowance.',
-  },
-  past_due: {
-    label: 'Past due',
-    className: 'border-amber-200 bg-amber-50 text-amber-900',
-    note: 'A payment failed. Stripe will retry, then cancel if it keeps failing.',
-  },
-  paused: {
-    label: 'Paused',
-    className: 'border-amber-200 bg-amber-50 text-amber-900',
-    note: 'Collection is paused at Stripe. No allowance is granted while paused.',
-  },
-  canceled: {
-    label: 'Cancelled',
-    className: 'border-destructive/30 bg-destructive/5 text-destructive',
-    note: 'No longer subscribed. The monthly allowance has stopped.',
-  },
-  cancelled: {
-    label: 'Cancelled',
-    className: 'border-destructive/30 bg-destructive/5 text-destructive',
-    note: 'No longer subscribed. The monthly allowance has stopped.',
-  },
-}
-
-const day = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
-
 export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName }: WorkspaceSubscriptionStatusProps) {
   const overviewQuery = useQuery({
     queryKey: ['workspace-billing-overview', workspaceId],
@@ -70,11 +33,7 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName }: Work
 
   const billing = overviewQuery.data
   const status = String(billing?.billing_status ?? 'trialing')
-  const view = STATUS_VIEW[status] ?? {
-    label: status,
-    className: 'border-muted bg-muted/40 text-muted-foreground',
-    note: 'Reported by Stripe. Nothing in the product knows this one by name.',
-  }
+  const view = subscriptionStatusView(status)
   const renews = day(billing?.current_period_end)
   // Stripe's price for this subscription, or the plan's when there is none.
   // Never the profile's base_price_cents: that is a default until the first

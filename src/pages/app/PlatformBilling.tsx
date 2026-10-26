@@ -1,15 +1,19 @@
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Building2, ShieldCheck } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { useAuth } from '@/contexts/AuthContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { PlatformCreditTopUp } from '@/components/workspace/PlatformCreditTopUp'
+import { BillingPortfolio } from '@/components/workspace/BillingPortfolio'
 import { PlatformPlanPricing } from '@/components/workspace/PlatformPlanPricing'
+import { platformBillingWorkspaceHref } from '@/lib/workspaceRoutes'
+import type { PlatformBillingListState } from '@/pages/app/PlatformBillingWorkspace'
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 
 /**
- * Platform billing administration: crediting an agency, and setting what a plan
- * costs everyone.
+ * Platform billing administration: what each plan costs everyone, and every
+ * workspace's money in one list. A row opens that workspace's own page.
  *
  * These used to sit on top of /app/settings/billing, which is a workspace's own
  * plan and balance. One page cannot be both — an agency owner reading their
@@ -18,9 +22,24 @@ import { PlatformPlanPricing } from '@/components/workspace/PlatformPlanPricing'
  * reach the tools they came for.
  */
 const PlatformBilling = () => {
-  const { isPlatformAdmin, user } = useAuth()
+  const { isPlatformAdmin, workspace } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   if (!isPlatformAdmin) return <Navigate to="/app/clients" replace />
+
+  // Older links, including the credits chip in a tenant's shell before it was
+  // pointed at the workspace page, named the workspace in the query string.
+  const legacyWorkspaceId = (searchParams.get('workspace') || '').trim()
+  if (UUID_PATTERN.test(legacyWorkspaceId)) {
+    return <Navigate to={platformBillingWorkspaceHref(legacyWorkspaceId)} replace />
+  }
+
+  const openWorkspace = (workspaceId: string) => {
+    const state: PlatformBillingListState = { listSearch: location.search }
+    navigate(platformBillingWorkspaceHref(workspaceId), { state })
+  }
 
   return (
     <WorkspaceLayout>
@@ -50,7 +69,9 @@ const PlatformBilling = () => {
         </header>
 
         <PlatformPlanPricing />
-        <PlatformCreditTopUp actorEmail={user?.email || 'Platform administrator'} />
+        {/* The signed-in admin's own workspace authorizes the portfolio read;
+            the rows it returns are every workspace, not just this one. */}
+        {workspace?.id && <BillingPortfolio workspaceId={workspace.id} onSelect={openWorkspace} />}
       </div>
     </WorkspaceLayout>
   )
