@@ -20,8 +20,18 @@ import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '
 import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
+import {
+  MAX_SCAN_SAVE_BYTES,
+  SCANS_KEPT_PER_CLIENT,
+  scanInput,
+  type StoredScanInput,
+} from '../_shared/finderScans.ts'
 
 const METHODS = ['POST'] as const
+// Every action but a scan save keeps the shared 16 KB body cap.
+const DEFAULT_MAX_BODY_BYTES = 16_384
+const RECENT_SCANS_LIMIT = 5
+const SCAN_SUMMARY_FIELDS = 'id,workspace_id,client_id,queries,found_count,match_count,credits_used,created_at'
 const CLIENT_FIELDS = [
   'name',
   'email',
@@ -291,8 +301,15 @@ serve(async (req) => {
       throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
 
-    const body = await parseJsonObject(req)
+    const body = await parseJsonObject(req, MAX_SCAN_SAVE_BYTES)
     const action = typeof body.action === 'string' ? body.action : ''
+    // A saved scan carries up to 100 ranked podcasts; nothing else needs room.
+    if (
+      action !== 'finder-scan-save'
+      && new TextEncoder().encode(JSON.stringify(body)).byteLength > DEFAULT_MAX_BODY_BYTES
+    ) {
+      throw new HttpError(413, 'BODY_TOO_LARGE', 'Request body is too large')
+    }
     let bookingInput: Record<string, string | boolean | null> | null = null
     let bookingId: string | null = null
     const authContext = await requireAuthenticatedUser(req)
@@ -308,6 +325,8 @@ serve(async (req) => {
     let sdrProfile: AiSdrProfile = {}
     let expectedSdrProfileUpdatedAt: string | null = null
     let prospectSlug: string | null = null
+    let scanToSave: StoredScanInput | null = null
+    let scanId: string | null = null
 
     if (action === 'research-get' || action === 'detail-get' || action === 'sdr-context-get') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
@@ -331,6 +350,19 @@ serve(async (req) => {
     } else if (action === 'sdr-mode-set') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'mode'])
       clientId = requireUuid(body.client_id, 'client_id')
+    } else if (action === 'finder-scan-save') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'scan'])
+      clientId = requireUuid(body.client_id, 'client_id')
+      scanToSave = scanInput(body.scan)
+    } else if (action === 'finder-scan-list') {
+      // No client lists the workspace's most recent scans across clients.
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
+      clientId = body.client_id === undefined || body.client_id === null
+        ? null
+        : requireUuid(body.client_id, 'client_id')
+    } else if (action === 'finder-scan-get') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'scan_id'])
+      scanId = requireUuid(body.scan_id, 'scan_id')
     } else if (action === 'list') {
       requireOnlyKeys(body, ['action', 'workspace_id'])
     } else if (action === 'create') {
@@ -1076,6 +1108,104 @@ serve(async (req) => {
         },
         existing_podcast_ids: existingPodcastIds,
       })
+    }
+
+    if (action === 'finder-scan-save') {
+      await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      const { data: client, error: clientError } = await admin
+        .from('clients')
+        .select('id,workspace_id,name')
+        .eq('id', clientId!)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle()
+      if (clientError) {
+        throw new HttpError(500, 'CLIENT_OPERATION_FAILED', 'The workspace client could not be loaded')
+      }
+      if (!client || client.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'CLIENT_NOT_FOUND', 'This client is not in this workspace')
+      }
+      const scan = scanToSave!
+      const { data: saved, error: saveError } = await admin
+        .from('workspace_finder_scans')
+        .insert({
+          workspace_id: workspaceId,
+          client_id: clientId,
+          queries: scan.queries,
+          filters: scan.filters,
+          found_count: scan.found_count,
+          match_count: scan.results.length,
+          credits_used: scan.credits_used,
+          results: scan.results,
+          created_by: user.id,
+        })
+        .select(SCAN_SUMMARY_FIELDS)
+        .single()
+      if (saveError || !saved) {
+        throw new HttpError(500, 'SCAN_SAVE_FAILED', 'The scan could not be saved')
+      }
+      // Bounded per client. A failed prune leaves extra rows, not a lost scan,
+      // so it does not fail the save.
+      const { data: stale } = await admin
+        .from('workspace_finder_scans')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('client_id', clientId!)
+        .order('created_at', { ascending: false })
+        .range(SCANS_KEPT_PER_CLIENT, SCANS_KEPT_PER_CLIENT + 100)
+      const staleIds = (stale || []).map((row) => row.id)
+      if (staleIds.length > 0) {
+        await admin.from('workspace_finder_scans').delete().eq('workspace_id', workspaceId).in('id', staleIds)
+      }
+      return jsonResponse(req, METHODS, 201, { scan: { ...saved, client_name: client.name } })
+    }
+
+    if (action === 'finder-scan-list') {
+      await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      let query = admin
+        .from('workspace_finder_scans')
+        .select(SCAN_SUMMARY_FIELDS)
+        .eq('workspace_id', workspaceId)
+      if (clientId) query = query.eq('client_id', clientId)
+      const { data: scans, error: scansError } = await query
+        .order('created_at', { ascending: false })
+        .limit(RECENT_SCANS_LIMIT)
+      if (scansError) {
+        throw new HttpError(500, 'SCAN_LIST_FAILED', 'Recent scans could not be loaded')
+      }
+      const clientIds = Array.from(new Set((scans || []).map((scan) => scan.client_id)))
+      const { data: clients, error: clientsError } = clientIds.length > 0
+        ? await admin.from('clients').select('id,name').eq('workspace_id', workspaceId).in('id', clientIds)
+        : { data: [], error: null }
+      if (clientsError) {
+        throw new HttpError(500, 'SCAN_LIST_FAILED', 'Recent scans could not be loaded')
+      }
+      const names = new Map((clients || []).map((client) => [client.id, client.name]))
+      return jsonResponse(req, METHODS, 200, {
+        scans: (scans || []).map((scan) => ({ ...scan, client_name: names.get(scan.client_id) ?? null })),
+      })
+    }
+
+    if (action === 'finder-scan-get') {
+      await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      const { data: scan, error: scanError } = await admin
+        .from('workspace_finder_scans')
+        .select(`${SCAN_SUMMARY_FIELDS},filters,results`)
+        .eq('id', scanId!)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle()
+      if (scanError) {
+        throw new HttpError(500, 'SCAN_LOOKUP_FAILED', 'The scan could not be loaded')
+      }
+      if (!scan || scan.workspace_id !== workspaceId) {
+        throw new HttpError(404, 'SCAN_NOT_FOUND', 'This scan is not in this workspace')
+      }
+      const { data: client } = await admin
+        .from('clients')
+        .select('name')
+        .eq('id', scan.client_id)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle()
+      return jsonResponse(req, METHODS, 200, { scan: { ...scan, client_name: client?.name ?? null } })
     }
 
     if (action === 'list') {

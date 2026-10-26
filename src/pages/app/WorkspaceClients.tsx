@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowUpRight, Bot, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
@@ -196,6 +196,26 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
     setForm(emptyClient)
     setDialogOpen(true)
   }
+
+  /*
+   * ?new=1 opens the create dialog on arrival: other pages (the Podcast
+   * Finder's client picker) link straight to adding a client. The parameter
+   * is consumed so a refresh or a back step does not reopen it.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const createRequested = searchParams.get('new') === '1'
+  useEffect(() => {
+    if (!createRequested) return
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      params.delete('new')
+      return params
+    }, { replace: true })
+    if (!managementEnabled) return
+    setEditing(null)
+    setForm(emptyClient)
+    setDialogOpen(true)
+  }, [createRequested, managementEnabled, setSearchParams])
 
   const openEdit = (client: WorkspaceClient) => {
     if (!managementEnabled) return

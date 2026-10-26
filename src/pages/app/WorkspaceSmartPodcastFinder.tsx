@@ -6,12 +6,8 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
-  ExternalLink,
-  Info,
   Loader2,
-  Plus,
   RefreshCw,
-  SlidersHorizontal,
   Sparkles,
   Users,
   X,
@@ -19,15 +15,42 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { FinderClientPicker } from '@/components/workspace/finder/FinderClientPicker'
+import { FinderFiltersPanel } from '@/components/workspace/finder/FinderFiltersPanel'
+import { FinderRecentScans } from '@/components/workspace/finder/FinderRecentScans'
+import { useRecentFinderScans } from '@/hooks/useRecentFinderScans'
+import { FinderResults } from '@/components/workspace/finder/FinderResults'
+import { preRankCandidates, scanDurationLabel } from '@/lib/finderRanking'
+import {
+  MAX_QUERIES,
+  MAX_SCORED,
+  PAGES_PER_QUERY,
+  PROFILE_TOO_THIN_COPY,
+  ScanFailedError,
+  SCORING_BATCH_SIZE,
+  SCORING_SPACING_MS,
+  SEARCH_SPACING_MS,
+  fromCatalog,
+  fromPodscan,
+  phaseSteps,
+  rankCandidates,
+  toShortlistInput,
+  toStoredResult,
+  type ScanFailure,
+  type ScanPhase,
+  type ScanPodcast,
+  type ScanResult,
+} from '@/lib/finderScan'
+import { getFinderScan, saveFinderScan } from '@/services/finderScans'
 import { normalizePodscanQuery } from '@/lib/podcastResearch'
-import { CREDIT_COSTS, creditCostSuffix, creditsLabel } from '@/lib/creditCosts'
+import { CREDIT_COSTS, creditsLabel } from '@/lib/creditCosts'
 import { PLATFORM_SUPPORT_EMAIL } from '@/lib/config'
+import { DEFAULT_FINDER_FILTERS, type FinderFilters } from '@/lib/finderFilters'
+import { readWorkingClient } from '@/lib/workingClient'
+import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 import {
   podscanFailureReason,
   scanFailureCreditLine,
@@ -41,192 +64,12 @@ import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { generatePodcastQueries, ProfileTooThinError, StrategyGenerationError } from '@/services/queryGeneration'
-import { searchPodcastsWithMeta, type PodcastData } from '@/services/podscan'
+import { searchPodcastsWithMeta } from '@/services/podscan'
 import { InsufficientCreditsError, PartialScoringError, scoreCompatibilityBatch, type CompatibilityScore } from '@/services/compatibilityScoring'
 import {
   addClientShortlistPodcasts,
   searchClientPodcastCatalog,
-  type ClientShortlistCatalogPodcast,
-  type ClientShortlistPodcastInput,
 } from '@/services/clientShortlist'
-import { safeExternalUrl } from '@/lib/externalUrl'
-
-// One normalized shape for both discovery sources: the shared internal
-// catalog and live Podscan search.
-interface ScanPodcast {
-  podcast_id: string
-  podcast_name: string
-  podcast_description?: string | null
-  podcast_image_url?: string | null
-  podcast_url?: string | null
-  publisher_name?: string | null
-  itunes_rating?: number | null
-  episode_count?: number | null
-  audience_size?: number | null
-  last_posted_at?: string | null
-  language?: string | null
-  region?: string | null
-  podcast_email?: string | null
-  rss_feed?: string | null
-  podcast_categories?: Array<{ category_id: string; category_name: string }> | null
-  source: 'database' | 'podscan'
-}
-
-interface ScanResult {
-  podcast: ScanPodcast
-  score: number | null
-  reasoning: string | null
-}
-
-type ScanPhase = 'idle' | 'strategy' | 'search' | 'score' | 'done' | 'failed'
-
-interface ScanFailure {
-  title: string
-  reason: string
-  credits: string
-  /** Where the fix is, when it is not a retry. */
-  action?: { label: string; href: string }
-}
-
-const PROFILE_TOO_THIN_COPY = 'Not enough profile to draft a strategy. Add a bio, topics or talking points to the client, then try again.'
-
-// Thrown inside the scan for a failure that gets the failure panel rather
-// than a toast: the search itself broke, not the operator's input.
-class ScanFailedError extends Error {
-  readonly failure: ScanFailure
-
-  constructor(failure: ScanFailure) {
-    super(failure.reason)
-    this.failure = failure
-  }
-}
-
-const MAX_QUERIES = 6
-const PAGES_PER_QUERY = 3
-const MAX_SCORED = 100
-// Matches the server's per-request cap; anything smaller costs extra credits.
-const SCORING_BATCH_SIZE = 20
-const SEARCH_SPACING_MS = 525
-// The pause scoreCompatibilityBatch used to put between its own batches.
-const SCORING_SPACING_MS = 500
-
-function fromPodscan(podcast: PodcastData): ScanPodcast {
-  return {
-    podcast_id: podcast.podcast_id,
-    podcast_name: podcast.podcast_name,
-    podcast_description: podcast.podcast_description ?? null,
-    podcast_image_url: podcast.podcast_image_url ?? null,
-    podcast_url: podcast.podcast_url ?? null,
-    publisher_name: podcast.publisher_name ?? null,
-    itunes_rating: podcast.reach?.itunes?.itunes_rating_average
-      ? Number.parseFloat(podcast.reach.itunes.itunes_rating_average)
-      : null,
-    episode_count: podcast.episode_count ?? null,
-    audience_size: podcast.reach?.audience_size ?? null,
-    last_posted_at: podcast.last_posted_at ?? null,
-    language: podcast.language ?? null,
-    region: podcast.region ?? null,
-    podcast_email: podcast.reach?.email ?? null,
-    rss_feed: podcast.rss_url ?? null,
-    podcast_categories: podcast.podcast_categories ?? null,
-    source: 'podscan',
-  }
-}
-
-function fromCatalog(podcast: ClientShortlistCatalogPodcast): ScanPodcast {
-  return {
-    podcast_id: podcast.podcast_id,
-    podcast_name: podcast.podcast_name,
-    podcast_description: podcast.podcast_description,
-    podcast_image_url: podcast.podcast_image_url,
-    podcast_url: podcast.podcast_url,
-    publisher_name: podcast.publisher_name,
-    itunes_rating: podcast.itunes_rating,
-    episode_count: podcast.episode_count,
-    audience_size: podcast.audience_size,
-    last_posted_at: podcast.last_posted_at,
-    language: podcast.language,
-    region: podcast.region,
-    podcast_email: podcast.podcast_email,
-    rss_feed: podcast.rss_feed,
-    podcast_categories: podcast.podcast_categories,
-    source: 'database',
-  }
-}
-
-const LANGUAGE_OPTIONS = [
-  { value: 'any', label: 'Any language' },
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-]
-const REGION_OPTIONS = [
-  { value: 'any', label: 'Any region' },
-  { value: 'US', label: 'United States' },
-  { value: 'GB', label: 'United Kingdom' },
-  { value: 'CA', label: 'Canada' },
-  { value: 'AU', label: 'Australia' },
-  { value: 'DE', label: 'Germany' },
-]
-const ACTIVITY_OPTIONS = [
-  { value: '30', label: 'Active in last 30 days' },
-  { value: '90', label: 'Active in last 90 days' },
-  { value: '180', label: 'Active in last 6 months' },
-  { value: '365', label: 'Active in last year' },
-  { value: 'any', label: 'Any activity' },
-]
-
-const phaseSteps: Array<{ id: Exclude<ScanPhase, 'idle' | 'done'>; label: string }> = [
-  { id: 'strategy', label: 'Building the search strategy from the client profile' },
-  { id: 'search', label: 'Searching the shared database and the live podcast index' },
-  { id: 'score', label: 'Scoring every match against the client with AI' },
-]
-
-function toShortlistInput(result: ScanResult): ClientShortlistPodcastInput {
-  const podcast = result.podcast
-  return {
-    podcast_id: podcast.podcast_id,
-    podscan_podcast_id: podcast.podcast_id,
-    podcast_name: podcast.podcast_name,
-    podcast_description: podcast.podcast_description,
-    podcast_image_url: podcast.podcast_image_url,
-    podcast_url: podcast.podcast_url,
-    publisher_name: podcast.publisher_name,
-    episode_count: podcast.episode_count,
-    itunes_rating: podcast.itunes_rating ?? undefined,
-    audience_size: podcast.audience_size,
-    last_posted_at: podcast.last_posted_at,
-    language: podcast.language,
-    region: podcast.region,
-    podcast_email: podcast.podcast_email,
-    rss_feed: podcast.rss_feed,
-    podcast_categories: podcast.podcast_categories,
-    compatibility_score: result.score === null ? null : result.score / 10,
-    compatibility_reasoning: result.reasoning ?? undefined,
-  }
-}
-
-const FieldHint = ({ text }: { text: string }) => (
-  <TooltipProvider delayDuration={150}>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span role="img" aria-label={text} className="inline-flex cursor-help text-muted-foreground/70 hover:text-muted-foreground">
-          <Info className="h-3.5 w-3.5" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-64 text-xs leading-5">{text}</TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-)
-
-function scoreBadgeClass(score: number | null): string {
-  if (score === null) return 'border-border bg-muted text-muted-foreground'
-  if (score >= 80) return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  if (score >= 60) return 'border-amber-200 bg-amber-50 text-amber-800'
-  return 'border-border bg-muted text-muted-foreground'
-}
 
 interface WorkspaceSmartPodcastFinderProps {
   /**
@@ -239,9 +82,9 @@ interface WorkspaceSmartPodcastFinderProps {
 }
 
 const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodcastFinderProps) => {
-  const { user, workspace } = useAuth()
+  const { user, workspace, membership, isPlatformAdmin } = useAuth()
   const queryClient = useQueryClient()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const baseHref = isPlatformWorkspace ? selectedWorkspaceBaseHref(workspaceId) : '/app'
@@ -268,7 +111,47 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         baseHref,
       }
     : undefined
-  const [clientId, setClientId] = useState((searchParams.get('client') || '').toLowerCase())
+  /*
+   * The client lives in ?client=, the same place the header's "Working on"
+   * picker writes on this page, so the two are one choice rather than two
+   * that can disagree.
+   */
+  const clientId = (searchParams.get('client') || '').toLowerCase()
+  const setClientId = (next: string) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current)
+      if (next) params.set('client', next)
+      else params.delete('client')
+      // A saved scan belongs to the client it was run for.
+      params.delete('scan')
+      return params
+    })
+  }
+  // ?scan= reopens a saved scan, so a scan's results have an address.
+  const openScanId = (searchParams.get('scan') || '').toLowerCase() || null
+  const clearOpenScan = () => {
+    setSearchParams((current) => {
+      if (!current.get('scan')) return current
+      const params = new URLSearchParams(current)
+      params.delete('scan')
+      return params
+    }, { replace: true })
+  }
+  /*
+   * Arriving with no ?client= while the header remembers one: open on that
+   * client. Read during the first render, because the layout clears the
+   * remembered client in its own effect when the address names none.
+   */
+  const [rememberedClientId] = useState(() => (clientId ? null : readWorkingClient(workspaceId)))
+  useEffect(() => {
+    if (!rememberedClientId) return
+    setSearchParams((current) => {
+      if (current.get('client')) return current
+      const params = new URLSearchParams(current)
+      params.set('client', rememberedClientId)
+      return params
+    }, { replace: true })
+  }, [rememberedClientId, setSearchParams])
 
   const clientsQuery = useQuery({
     queryKey: ['workspace-clients', workspaceId],
@@ -310,56 +193,132 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     scanRunId.current += 1
   }, [])
 
-  const [customKeywords, setCustomKeywords] = useState<string[]>([])
-  const [keywordDraft, setKeywordDraft] = useState('')
   const [aiQueries, setAiQueries] = useState<string[]>([])
   const [aiStrategyLoaded, setAiStrategyLoaded] = useState(false)
-  const [includeAiStrategy, setIncludeAiStrategy] = useState(true)
   const [isRegenerating, setIsRegenerating] = useState(false)
   // Set when the strategy was refused for a thin profile. The fix is on the
   // client record, so the notice links there rather than offering a retry.
   const [profileTooThin, setProfileTooThin] = useState(false)
-  const [language, setLanguage] = useState('en')
-  const [region, setRegion] = useState('any')
-  const [activityDays, setActivityDays] = useState('90')
-  const [guestsOnly, setGuestsOnly] = useState(true)
-  const [minAudience, setMinAudience] = useState('')
-  const [maxAudience, setMaxAudience] = useState('')
-  const [minEpisodes, setMinEpisodes] = useState('')
+  const [filters, setFilters] = useState<FinderFilters>(DEFAULT_FINDER_FILTERS)
+  const updateFilters = (patch: Partial<FinderFilters>) => setFilters((current) => ({ ...current, ...patch }))
+  const {
+    customKeywords,
+    includeAiStrategy,
+    language,
+    region,
+    activityDays,
+    guestsOnly,
+    minAudience,
+    maxAudience,
+    minEpisodes,
+  } = filters
 
   const scanning = phase !== 'idle' && phase !== 'done' && phase !== 'failed'
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerHighlighted, setPickerHighlighted] = useState(false)
+  const pickerRef = useRef<HTMLButtonElement>(null)
+
   /*
-   * What the click can cost, said on the button. Scoring is charged per
-   * request of SCORING_BATCH_SIZE, and the scan scores at most MAX_SCORED, so
-   * the ceiling is known before anything runs. Drafting the AI strategy is one
-   * more credit, only when the scan has to draft it itself.
+   * A new client is a new scan: whatever was found, drafted or running for
+   * the last one is dropped. The header can change the client mid-scan now,
+   * so a running scan is cancelled the same way leaving the page cancels it.
+   */
+  const previousClientId = useRef(clientId)
+  useEffect(() => {
+    if (previousClientId.current === clientId) return
+    previousClientId.current = clientId
+    scanRunId.current += 1
+    setResults([])
+    setAddedIds(new Set())
+    setProgress(null)
+    setStatusMessage('')
+    setAiQueries([])
+    setAiStrategyLoaded(false)
+    setProfileTooThin(false)
+    setFailure(null)
+    setSavedAt(null)
+    setPhase('idle')
+  }, [clientId])
+
+  /*
+   * A saved scan, shown as the result list. Applied only once the address and
+   * the scan agree on the client, so the reset above cannot clear it after.
+   */
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const savedScanQuery = useQuery({
+    queryKey: ['finder-scan', workspaceId, openScanId],
+    queryFn: () => getFinderScan(workspaceId, openScanId!),
+    enabled: Boolean(workspaceId && openScanId),
+    retry: false,
+  })
+  useEffect(() => {
+    const scan = savedScanQuery.data
+    if (!scan || scan.id !== openScanId || scan.client_id.toLowerCase() !== clientId || scanning) return
+    setResults(scan.results.map((result) => ({ ...result, estimated: result.estimated === true })))
+    setAddedIds(new Set())
+    setFailure(null)
+    setSavedAt(scan.created_at)
+    setPhase('done')
+    // scanning is read, not watched: a scan finishing must not re-apply this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedScanQuery.data, openScanId, clientId])
+  useEffect(() => {
+    if (savedScanQuery.isError) toast.error('That scan could not be opened. It may have been removed.')
+  }, [savedScanQuery.isError])
+
+  // The client's own scans: the latest one's queries steer the next strategy
+  // away from angles already searched.
+  const clientScansQuery = useRecentFinderScans(workspaceId, clientId || null)
+  const lastScanQueries = useMemo(
+    () => (clientId ? clientScansQuery.data?.[0]?.queries ?? [] : []),
+    [clientId, clientScansQuery.data],
+  )
+
+  useEffect(() => {
+    if (clientId) setPickerHighlighted(false)
+  }, [clientId])
+
+  /*
+   * What the click can cost, said under the button, and the ceiling is known
+   * before anything runs:
+   * - every live index page is a podcast lookup, up to PAGES_PER_QUERY per
+   *   query, charged even on the workspace's own AI key (it is not AI work);
+   * - scoring is charged per request of SCORING_BATCH_SIZE, at most MAX_SCORED;
+   * - drafting the AI strategy, only when the scan has to draft it itself.
+   * The lookups were left out of this figure, which quoted 6 credits for a
+   * scan that could take 24.
    */
   const scoringUnits = Math.ceil(MAX_SCORED / SCORING_BATCH_SIZE)
   const draftsStrategy = includeAiStrategy && aiQueries.length === 0 && !aiStrategyLoaded
-  const scanCostSuffix = draftsStrategy
-    ? (contextQuery.data?.ai_keys?.anthropic ? '· Included' : `· up to ${creditsLabel(CREDIT_COSTS.compatibility_scoring * scoringUnits + CREDIT_COSTS.query_generation)}`)
-    : creditCostSuffix('compatibility_scoring', { units: scoringUnits, byo: contextQuery.data?.ai_keys?.anthropic })
-  const activeFilterCount = [
-    language !== 'en',
-    region !== 'any',
-    activityDays !== '90',
-    !guestsOnly,
-    minAudience !== '',
-    maxAudience !== '',
-    minEpisodes !== '',
-    customKeywords.length > 0,
-    !includeAiStrategy,
-  ].filter(Boolean).length
+  const byoAnthropic = Boolean(contextQuery.data?.ai_keys?.anthropic)
+  const plannedQueryCount = customKeywords.length
+    + (includeAiStrategy ? (aiStrategyLoaded ? aiQueries.length : MAX_QUERIES) : 0)
+  const maxScanCredits = plannedQueryCount * PAGES_PER_QUERY * CREDIT_COSTS.podscan_lookup
+    + (byoAnthropic ? 0 : CREDIT_COSTS.compatibility_scoring * scoringUnits + (draftsStrategy ? CREDIT_COSTS.query_generation : 0))
+  const scanCostLabel = maxScanCredits > 0 ? `Up to ${creditsLabel(maxScanCredits)}` : 'Included'
 
-  const addKeyword = () => {
-    const normalized = normalizePodscanQuery(keywordDraft)
-    if (!normalized) return
-    if (customKeywords.includes(normalized)) {
-      toast.info('That keyword is already in the search.')
-      return
-    }
-    setCustomKeywords((current) => [...current, normalized])
-    setKeywordDraft('')
+  // The same balance the header chip reads, under the same query key, so
+  // showing it here costs no extra request.
+  const canViewBalance = Boolean(isPlatformAdmin) || membership?.role === 'owner' || membership?.role === 'admin'
+  const billingQuery = useQuery({
+    queryKey: ['workspace-billing-overview', workspaceId],
+    queryFn: () => getWorkspaceBillingOverview(workspaceId),
+    enabled: Boolean(workspaceId) && canViewBalance,
+    retry: false,
+    staleTime: 120_000,
+  })
+  const billingHref = isPlatformWorkspace
+    ? `/app/platform/billing?workspace=${workspaceId}`
+    : '/app/settings/billing'
+  const creditBalance = billingQuery.data && billingQuery.data.enforcement_enabled !== false
+    ? billingQuery.data.balance
+    : null
+  const balanceShort = creditBalance !== null && creditBalance < maxScanCredits
+
+  const requestClient = () => {
+    setPickerHighlighted(true)
+    pickerRef.current?.focus()
+    setPickerOpen(true)
   }
 
   const regenerateStrategy = async () => {
@@ -371,7 +330,9 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       const generated = (await generatePodcastQueries({
         workspaceId,
         clientId,
-        ...(aiQueries.length > 0 ? { avoidQueries: aiQueries } : {}),
+        ...(aiQueries.length > 0
+          ? { avoidQueries: aiQueries }
+          : lastScanQueries.length > 0 ? { avoidQueries: lastScanQueries } : {}),
       }))
         .map(normalizePodscanQuery)
         .filter(Boolean)
@@ -392,23 +353,6 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     }
   }
 
-  // Ranks discovered candidates against whatever scores landed, normalizing
-  // the 1-10 endpoint score to 0-100. Shared by the success path and the
-  // partial-failure recovery so a scan is never silently discarded.
-  const rankCandidates = (cands: ScanPodcast[], scores: CompatibilityScore[]): ScanResult[] => {
-    const scoreById = new Map(scores.map((score) => [score.podcast_id, score]))
-    return cands
-      .map((podcast): ScanResult => {
-        const score = scoreById.get(podcast.podcast_id)
-        return {
-          podcast,
-          score: score?.score == null ? null : Math.round(score.score * 10),
-          reasoning: score?.reasoning ?? null,
-        }
-      })
-      .sort((left, right) => (right.score ?? -1) - (left.score ?? -1))
-  }
-
   const runScan = async () => {
     // Discovery is already paid for by the time scoring runs; hold the
     // candidates so a scoring failure can still show them instead of throwing
@@ -417,7 +361,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     let scoredSoFar: CompatibilityScore[] = []
     if (!workspaceId || !clientId || !selectedClient || scanning) return
     if (!clientBio) {
-      toast.error('Add a client profile (bio) before scanning — the AI needs it to judge relevancy.')
+      toast.error('Add a client profile (bio) before scanning. The AI needs it to judge relevancy.')
       return
     }
     const runId = scanRunId.current + 1
@@ -426,7 +370,36 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     setAddedIds(new Set())
     setProgress(null)
     setFailure(null)
+    setSavedAt(null)
+    clearOpenScan()
     const credits: ScanCreditTally = { strategy: 0, successfulLookups: 0, refunded: 0, unrefunded: 0 }
+    // Scoring requests the server kept the charge for: not on the workspace's
+    // own key, and not refunded because the model scored nothing.
+    let scoringCharged = 0
+    let ranQueries: string[] = []
+    let foundCount = 0
+    /*
+     * Kept so a refresh does not throw a paid scan away. Saving is best
+     * effort: the results are already on screen, so a failure says so and
+     * leaves them there.
+     */
+    const persistScan = (ranked: ScanResult[]) => {
+      const creditsUsed = credits.strategy
+        + credits.successfulLookups * CREDIT_COSTS.podscan_lookup
+        + scoringCharged * CREDIT_COSTS.compatibility_scoring
+      void saveFinderScan(workspaceId, clientId, {
+        queries: ranQueries,
+        filters,
+        found_count: foundCount,
+        credits_used: creditsUsed,
+        results: ranked.map(toStoredResult),
+      })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['finder-scans', workspaceId] }))
+        .catch((error) => {
+          console.error('Smart scan could not be saved:', error)
+          toast.warning('The results are shown, but this scan could not be saved to Recent scans.')
+        })
+    }
 
     try {
       setPhase('strategy')
@@ -436,7 +409,13 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       if (includeAiStrategy && strategyQueries.length === 0 && !aiStrategyLoaded) {
         setStatusMessage(`Reading ${selectedClient.name}’s profile and drafting search angles…`)
         try {
-          strategyQueries = (await generatePodcastQueries({ workspaceId, clientId }))
+          // Away from what the last scan already searched, so scanning again
+          // looks somewhere new rather than paying for the same results.
+          strategyQueries = (await generatePodcastQueries({
+            workspaceId,
+            clientId,
+            ...(lastScanQueries.length > 0 ? { avoidQueries: lastScanQueries } : {}),
+          }))
             .map(normalizePodscanQuery)
             .filter(Boolean)
             .slice(0, MAX_QUERIES)
@@ -469,14 +448,23 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       if (queries.length === 0) {
         throw new Error('Add at least one keyword or turn the AI search strategy back on.')
       }
+      ranQueries = queries
 
       setPhase('search')
       const minPostedAt = new Date()
       if (activityDays !== 'any') minPostedAt.setDate(minPostedAt.getDate() - Number.parseInt(activityDays, 10))
       const collected = new Map<string, ScanPodcast>()
-      const collect = (podcast: ScanPodcast) => {
+      // How many different queries found each show: the strongest free
+      // signal of fit, used to pick which shows are worth paying to score.
+      const queryHits = new Map<string, number>()
+      const seenInQuery = new Set<string>()
+      const collect = (podcast: ScanPodcast, query: string) => {
         const key = podcast.podcast_id.toLowerCase()
         if (!collected.has(key)) collected.set(key, podcast)
+        const hitKey = `${query}\u0000${key}`
+        if (seenInQuery.has(hitKey)) return
+        seenInQuery.add(hitKey)
+        queryHits.set(key, (queryHits.get(key) ?? 0) + 1)
       }
       const matchesFilters = (podcast: ScanPodcast) => {
         if (minAudience && (podcast.audience_size ?? 0) < Number.parseInt(minAudience, 10)) return false
@@ -501,7 +489,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           const catalogPodcasts = await searchClientPodcastCatalog(workspaceId, clientId, query)
           for (const podcast of catalogPodcasts) {
             const normalized = fromCatalog(podcast)
-            if (matchesFilters(normalized)) collect(normalized)
+            if (matchesFilters(normalized)) collect(normalized, query)
           }
         } catch (error) {
           catalogFailures += 1
@@ -509,7 +497,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         }
       }
       if (collected.size > 0) {
-        setStatusMessage(`${collected.size.toLocaleString()} matches in the shared database — expanding with Podscan…`)
+        setStatusMessage(`${collected.size.toLocaleString()} matches in the shared database. Expanding the search…`)
       }
 
       const totalRequests = queries.length * PAGES_PER_QUERY
@@ -554,7 +542,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           }
           credits.successfulLookups += 1
           const podcasts = response.data.podcasts || []
-          for (const podcast of podcasts) collect(fromPodscan(podcast))
+          for (const podcast of podcasts) collect(fromPodscan(podcast), query)
           const lastPage = Number.parseInt(String(response.data.pagination?.last_page ?? PAGES_PER_QUERY), 10)
           if (podcasts.length === 0 || page >= lastPage) {
             completedRequests += PAGES_PER_QUERY - page + 1
@@ -572,8 +560,18 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       // Only the shared database can fail here and leave the scan running:
       // a failed index request has already ended it above.
       const failedSearches = catalogFailures
-      const fresh = [...collected.values()]
-        .filter((podcast) => !existingPodcastIds.has(podcast.podcast_id.toLowerCase()))
+      /*
+       * Only the first MAX_SCORED are scored, so which ones come first is a
+       * spending decision. Discovery order (index relevance per query) was
+       * the order before; shows several queries found, that share words with
+       * the profile and that posted recently now come first.
+       */
+      const fresh = preRankCandidates(
+        [...collected.values()].filter((podcast) => !existingPodcastIds.has(podcast.podcast_id.toLowerCase())),
+        queryHits,
+        [clientBio, ...customKeywords, ...queries].join(' '),
+      )
+      foundCount = fresh.length
       const candidates = fresh.slice(0, MAX_SCORED)
       discoveredCandidates = candidates
       const droppedCount = fresh.length - candidates.length
@@ -620,14 +618,17 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         if (scanRunId.current !== runId) return
         const batch = forScoring.slice(start, start + SCORING_BATCH_SIZE)
         try {
-          scoredSoFar = [...scoredSoFar, ...await scoreCompatibilityBatch(
+          const batchScores = await scoreCompatibilityBatch(
             clientBio,
             batch,
             SCORING_BATCH_SIZE,
             undefined,
             false,
             { workspaceId, clientId },
-          )]
+          )
+          // A request the model scored none of is refunded by the function.
+          if (!byoAnthropic && batchScores.some((score) => score.source !== 'deterministic')) scoringCharged += 1
+          scoredSoFar = [...scoredSoFar, ...batchScores]
         } catch (error) {
           if (!(error instanceof PartialScoringError)) throw error
           scoredSoFar = [...scoredSoFar, ...error.scored]
@@ -651,6 +652,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       setResults(ranked)
       setPhase('done')
       setStatusMessage('')
+      persistScan(ranked)
       // An unscored row is not a low score, and a truncated list is not the
       // whole market. Saying "ranked" for either would be a claim the scan
       // did not earn.
@@ -660,7 +662,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         droppedCount > 0 ? `${droppedCount} more found but not scored` : null,
         failedSearches > 0 ? `${failedSearches} search${failedSearches === 1 ? '' : 'es'} failed` : null,
       ].filter(Boolean).join(', ')
-      if (notes) toast.warning(`${ranked.length - unscored} ranked for ${selectedClient.name} — ${notes}.`)
+      if (notes) toast.warning(`${ranked.length - unscored} ranked for ${selectedClient.name}: ${notes}.`)
       else toast.success(`${ranked.length} podcasts ranked for ${selectedClient.name}.`)
     } catch (error) {
       if (scanRunId.current !== runId) return
@@ -672,14 +674,17 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         setResults(ranked)
         setPhase('done')
         setStatusMessage('')
+        persistScan(ranked)
         toast.warning(`${error.message} Score the rest again when you are ready.`, { duration: 10000 })
         return
       }
       if (error instanceof InsufficientCreditsError && discoveredCandidates.length > 0) {
-        setResults(rankCandidates(discoveredCandidates, scoredSoFar))
+        const ranked = rankCandidates(discoveredCandidates, scoredSoFar)
+        setResults(ranked)
+        persistScan(ranked)
         setPhase('done')
         setStatusMessage('')
-        toast.error(`${error.message} The ${discoveredCandidates.length} podcasts found are shown unscored — add credits to score them.`, { duration: 10000 })
+        toast.error(`${error.message} The ${discoveredCandidates.length} podcasts found are shown unscored. Add credits to score them.`, { duration: 10000 })
         return
       }
       if (error instanceof ScanFailedError) {
@@ -711,291 +716,155 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     }
   }
 
-  const pendingTop = results.filter((result) => !addedIds.has(result.podcast.podcast_id)).slice(0, 10)
   const currentStepIndex = phaseSteps.findIndex((step) => step.id === phase)
 
+  const aiStrategy = (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="finder-ai-strategy"
+            checked={includeAiStrategy}
+            onCheckedChange={(next) => updateFilters({ includeAiStrategy: next })}
+          />
+          <Label htmlFor="finder-ai-strategy" className="text-sm font-medium">AI search strategy</Label>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void regenerateStrategy()}
+          disabled={!clientBio || isRegenerating || !includeAiStrategy || scanning}
+        >
+          {isRegenerating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
+          {aiQueries.length > 0 ? 'Regenerate' : 'Preview strategy'}
+        </Button>
+      </div>
+      {includeAiStrategy && aiQueries.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {aiQueries.map((query) => (
+            <Badge key={query} variant="outline" className="gap-1 pr-1 font-normal">
+              <Sparkles className="h-3 w-3 text-violet-500" />
+              {query}
+              <button
+                type="button"
+                aria-label={`Remove AI query ${query}`}
+                className="rounded-full p-0.5 hover:bg-muted"
+                onClick={() => setAiQueries((current) => current.filter((entry) => entry !== query))}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      {includeAiStrategy && aiQueries.length === 0 && (
+        <p className="mt-1.5 text-xs text-muted-foreground">AI builds the search from the client’s profile. Preview to tweak it.</p>
+      )}
+      {!includeAiStrategy && (
+        <p className="mt-1.5 text-xs text-muted-foreground">Off. Only your keywords are searched.</p>
+      )}
+      {includeAiStrategy && profileTooThin && selectedClient && (
+        <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+          {PROFILE_TOO_THIN_COPY}{' '}
+          <Link className="font-semibold underline underline-offset-2" to={`${baseHref}/clients/${selectedClient.id}`}>
+            Open {selectedClient.name}’s profile
+          </Link>
+        </p>
+      )}
+    </div>
+  )
+
   return (
-    <WorkspaceLayout platformWorkspace={platformWorkspace}>
+    <WorkspaceLayout platformWorkspace={platformWorkspace} hidePageName>
       <div className="mx-auto w-full max-w-4xl space-y-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Podcast Finder</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               One scan finds active guest-interview podcasts and ranks every match against your client with AI.
             </p>
           </div>
-          <Button asChild variant="ghost" size="sm" className="w-fit text-muted-foreground">
-            <Link to={`${baseHref}/podcast-finder/advanced${clientId ? `?client=${encodeURIComponent(clientId)}` : ''}`}>
-              Advanced finder
-              <ArrowRight className="ml-2 h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          <div className="flex shrink-0 flex-col sm:items-end">
+            <Button asChild variant="ghost" size="sm" className="-ml-3 w-fit text-muted-foreground sm:ml-0 sm:-mr-3">
+              <Link to={`${baseHref}/podcast-finder/advanced${clientId ? `?client=${encodeURIComponent(clientId)}` : ''}`}>
+                Advanced finder
+                <ArrowRight className="ml-2 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+            <p className="max-w-[16rem] text-xs text-muted-foreground sm:text-right">
+              Set how many shows to pull, filter by chart category, and score only the ones you pick.
+            </p>
+          </div>
         </div>
 
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Who are we booking?</CardTitle>
-            <CardDescription>Pick a client — their profile drives the whole scan.</CardDescription>
+            <CardDescription>Pick a client. Their profile drives the scan.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Select
-                value={clientId || undefined}
-                onValueChange={(value) => {
-                  setClientId(value.toLowerCase())
-                  setResults([])
-                  setAiQueries([])
-                  setAiStrategyLoaded(false)
-                  setProfileTooThin(false)
-                  setPhase('idle')
-                }}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <FinderClientPicker
+                ref={pickerRef}
+                clients={activeClients}
+                value={clientId}
+                onChange={setClientId}
+                loading={clientsQuery.isLoading}
                 disabled={scanning}
-              >
-                <SelectTrigger className="sm:max-w-sm" aria-label="Client">
-                  <SelectValue placeholder={clientsQuery.isLoading ? 'Loading clients…' : 'Choose a client'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeClients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={() => void runScan()}
-                disabled={!selectedClient || scanning || contextQuery.isLoading || contextQuery.isError}
-                className="sm:w-auto"
-              >
-                {scanning
-                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  : <Sparkles className="mr-2 h-4 w-4" />}
-                {scanning
-                  ? 'Scanning…'
-                  : results.length > 0
-                    ? 'Scan again'
-                    : selectedClient
-                      ? `Scan podcasts for ${selectedClient.name}`
-                      : 'Scan podcasts'}
-                {!scanning && <span className="ml-1.5 font-normal opacity-70">{scanCostSuffix}</span>}
-              </Button>
-            </div>
-              <div className="space-y-5 rounded-xl border border-border/70 bg-muted/20 p-4">
-                <p className="flex items-center gap-2 text-sm font-semibold">
-                  <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-                  Refine the search{activeFilterCount > 0 ? ` · ${activeFilterCount} setting${activeFilterCount === 1 ? '' : 's'} changed` : ''}
-                </p>
-                <div>
-                  <span className="flex items-center gap-1.5">
-                    <Label htmlFor="finder-keyword" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your keywords</Label>
-                    <FieldHint text='Search terms you choose yourself, searched in addition to the AI strategy. Quotes match exact phrases ("founder led sales"), and AND / OR / NOT combine terms.' />
-                  </span>
-                  <p className="mt-1 text-xs text-muted-foreground">Run alongside the AI strategy. Quotes match exact phrases, AND/OR/NOT work too.</p>
-                  {customKeywords.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {customKeywords.map((keyword) => (
-                        <Badge key={keyword} variant="secondary" className="gap-1 pr-1 font-normal">
-                          {keyword}
-                          <button
-                            type="button"
-                            aria-label={`Remove keyword ${keyword}`}
-                            className="rounded-full p-0.5 hover:bg-background/80"
-                            onClick={() => setCustomKeywords((current) => current.filter((entry) => entry !== keyword))}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-2 flex gap-2">
-                    <Input
-                      id="finder-keyword"
-                      value={keywordDraft}
-                      placeholder='e.g. "founder led sales" OR bootstrapping'
-                      className="sm:max-w-md"
-                      onChange={(event) => setKeywordDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          addKeyword()
-                        }
-                      }}
-                    />
-                    <Button type="button" variant="outline" onClick={addKeyword} disabled={!keywordDraft.trim()}>Add</Button>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Switch id="finder-ai-strategy" checked={includeAiStrategy} onCheckedChange={setIncludeAiStrategy} />
-                      <Label htmlFor="finder-ai-strategy" className="text-sm font-medium">AI search strategy</Label>
-                      <FieldHint text="The AI reads the client profile and drafts search angles automatically. Preview it to see and edit the queries before the scan runs, or switch it off to search only your own keywords." />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void regenerateStrategy()}
-                      disabled={!clientBio || isRegenerating || !includeAiStrategy || scanning}
-                    >
-                      {isRegenerating ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-2 h-3.5 w-3.5" />}
-                      {aiQueries.length > 0 ? 'Regenerate' : 'Preview strategy'}
-                    </Button>
-                  </div>
-                  {includeAiStrategy && aiQueries.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {aiQueries.map((query) => (
-                        <Badge key={query} variant="outline" className="gap-1 pr-1 font-normal">
-                          <Sparkles className="h-3 w-3 text-violet-500" />
-                          {query}
-                          <button
-                            type="button"
-                            aria-label={`Remove AI query ${query}`}
-                            className="rounded-full p-0.5 hover:bg-muted"
-                            onClick={() => setAiQueries((current) => current.filter((entry) => entry !== query))}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  {includeAiStrategy && aiQueries.length === 0 && (
-                    <p className="mt-1.5 text-xs text-muted-foreground">Drafted from the client profile when the scan starts — preview it to edit first.</p>
-                  )}
-                  {!includeAiStrategy && (
-                    <p className="mt-1.5 text-xs text-muted-foreground">Off — only your keywords above will be searched.</p>
-                  )}
-                  {includeAiStrategy && profileTooThin && selectedClient && (
-                    <p role="alert" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
-                      {PROFILE_TOO_THIN_COPY}{' '}
-                      <Link className="font-semibold underline underline-offset-2" to={`${baseHref}/clients/${selectedClient.id}`}>
-                        Open {selectedClient.name}’s profile
-                      </Link>
-                    </p>
-                  )}
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Language</Label>
-                      <FieldHint text="Only include podcasts published in this language." />
-                    </span>
-                    <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger aria-label="Language" className="mt-1"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {LANGUAGE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Region</Label>
-                      <FieldHint text="Where the show is based. Useful when the client wants audiences in a specific market." />
-                    </span>
-                    <Select value={region} onValueChange={setRegion}>
-                      <SelectTrigger aria-label="Region" className="mt-1"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {REGION_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Recency</Label>
-                      <FieldHint text="How recently the show must have published an episode. Inactive shows rarely book guests." />
-                    </span>
-                    <Select value={activityDays} onValueChange={setActivityDays}>
-                      <SelectTrigger aria-label="Recency" className="mt-1"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ACTIVITY_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label htmlFor="finder-min-audience" className="text-xs text-muted-foreground">Min audience</Label>
-                      <FieldHint text="Skip shows with fewer estimated listeners per episode than this." />
-                    </span>
-                    <Input
-                      id="finder-min-audience"
-                      type="number"
-                      min="0"
-                      className="mt-1"
-                      placeholder="Any"
-                      value={minAudience}
-                      onChange={(event) => setMinAudience(event.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label htmlFor="finder-max-audience" className="text-xs text-muted-foreground">Max audience</Label>
-                      <FieldHint text="Cap the audience size — smaller shows reply more often and are easier to land early wins on." />
-                    </span>
-                    <Input
-                      id="finder-max-audience"
-                      type="number"
-                      min="0"
-                      className="mt-1"
-                      placeholder="Any"
-                      value={maxAudience}
-                      onChange={(event) => setMaxAudience(event.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <span className="flex items-center gap-1.5">
-                      <Label htmlFor="finder-min-episodes" className="text-xs text-muted-foreground">Min episodes</Label>
-                      <FieldHint text="Filters out brand-new shows. 10+ episodes signals the podcast is here to stay." />
-                    </span>
-                    <Input
-                      id="finder-min-episodes"
-                      type="number"
-                      min="0"
-                      className="mt-1"
-                      placeholder="Any"
-                      value={minEpisodes}
-                      onChange={(event) => setMinEpisodes(event.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch id="finder-guests-only" checked={guestsOnly} onCheckedChange={setGuestsOnly} />
-                    <Label htmlFor="finder-guests-only" className="text-sm">Guest-interview shows only</Label>
-                    <FieldHint text="Only shows that actually host guests. Turn off to include solo and narrative formats too." />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                    onClick={() => {
-                      setCustomKeywords([])
-                      setKeywordDraft('')
-                      setAiQueries([])
-                      setAiStrategyLoaded(false)
-                      setIncludeAiStrategy(true)
-                      setLanguage('en')
-                      setRegion('any')
-                      setActivityDays('90')
-                      setGuestsOnly(true)
-                      setMinAudience('')
-                      setMaxAudience('')
-                      setMinEpisodes('')
-                    }}
+                addClientHref={`${baseHref}/clients?new=1`}
+                open={pickerOpen}
+                onOpenChange={setPickerOpen}
+                highlighted={pickerHighlighted && !selectedClient}
+              />
+              <div className="flex flex-col gap-1.5">
+                <Button
+                  onClick={() => (selectedClient ? void runScan() : requestClient())}
+                  disabled={scanning || (Boolean(selectedClient) && (contextQuery.isLoading || contextQuery.isError))}
+                  aria-describedby={selectedClient ? 'finder-scan-cost' : undefined}
+                  // The default disabled look is 50% opacity: white on a washed
+                  // indigo, 2.3:1. Muted with darker text holds 7:1 in both themes.
+                  className="sm:w-auto disabled:bg-muted disabled:text-foreground/75 disabled:opacity-100"
+                >
+                  {scanning
+                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    : <Sparkles className="mr-2 h-4 w-4" />}
+                  {scanning
+                    ? 'Scanning…'
+                    : !selectedClient
+                      ? 'Pick a client to scan'
+                      : results.length > 0
+                        ? 'Scan again'
+                        : `Scan podcasts for ${selectedClient.name}`}
+                </Button>
+                {selectedClient && (
+                  <p
+                    id="finder-scan-cost"
+                    className={balanceShort ? 'text-xs text-amber-800 dark:text-amber-300' : 'text-xs text-muted-foreground'}
                   >
-                    Reset to defaults
-                  </Button>
-                </div>
+                    {scanCostLabel}
+                    {creditBalance !== null && ` · ${creditBalance.toLocaleString()} left`}
+                    {balanceShort && (
+                      <>
+                        {'. '}
+                        <Link className="font-medium underline underline-offset-2" to={billingHref}>Add credits</Link>
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
+            </div>
+            <FinderFiltersPanel
+              filters={filters}
+              onChange={updateFilters}
+              onReset={() => {
+                setFilters(DEFAULT_FINDER_FILTERS)
+                setAiQueries([])
+                setAiStrategyLoaded(false)
+              }}
+              aiStrategy={aiStrategy}
+              storageKey={`podcast-finder-filters-open-v1:${user?.id || 'anonymous'}`}
+            />
             {selectedClient && contextQuery.isError && (
               <p className="flex flex-wrap items-center gap-2 text-sm text-destructive">
                 {selectedClient.name}’s profile could not be loaded.
@@ -1047,88 +916,21 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                 <Progress value={Math.round((progress.completed / progress.total) * 100)} />
               )}
               {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
-              <p className="text-xs text-muted-foreground">About a minute.</p>
+              <p className="text-xs text-muted-foreground">{scanDurationLabel(plannedQueryCount)}</p>
             </CardContent>
           </Card>
         )}
 
         {phase === 'done' && results.length > 0 && (
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
-              <div>
-                <CardTitle className="text-lg">Ranked by fit for {selectedClient?.name}</CardTitle>
-                <CardDescription>Highest AI relevancy first. Adding sends them to the client’s podcast list.</CardDescription>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => void addPodcasts(pendingTop)}
-                  disabled={pendingTop.length === 0 || isAdding}
-                >
-                  {isAdding ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-2 h-3.5 w-3.5" />}
-                  Add top {pendingTop.length}
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <Link to={`${baseHref}/clients/${clientId}`}>Open client list</Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ul className="divide-y divide-border/70">
-                {results.map((result, index) => {
-                  const podcast = result.podcast
-                  const added = addedIds.has(podcast.podcast_id)
-                  const websiteUrl = safeExternalUrl(podcast.podcast_url)
-                  return (
-                    <li key={podcast.podcast_id} className="flex items-start gap-4 py-4">
-                      <span className="mt-0.5 w-6 shrink-0 text-right text-sm font-medium tabular-nums text-muted-foreground">{index + 1}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{podcast.podcast_name}</span>
-                          <Badge variant="outline" className={scoreBadgeClass(result.score)}>
-                            {result.score === null ? 'Unscored' : `${result.score} fit`}
-                          </Badge>
-                          {podcast.source === 'database' && (
-                            <Badge variant="secondary" className="font-normal text-muted-foreground">In your database</Badge>
-                          )}
-                          {websiteUrl && (
-                            <a
-                              href={websiteUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-muted-foreground hover:text-foreground"
-                              aria-label={`Open ${podcast.podcast_name} website`}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </a>
-                          )}
-                        </div>
-                        {result.reasoning && (
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{result.reasoning}</p>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {[
-                            podcast.audience_size ? `${Number(podcast.audience_size).toLocaleString()} listeners` : null,
-                            podcast.episode_count ? `${podcast.episode_count.toLocaleString()} episodes` : null,
-                            podcast.podcast_categories?.[0]?.category_name || null,
-                          ].filter(Boolean).join(' · ')}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant={added ? 'ghost' : 'outline'}
-                        className="shrink-0"
-                        disabled={added || isAdding}
-                        onClick={() => void addPodcasts([result])}
-                      >
-                        {added ? <><CheckCircle2 className="mr-2 h-3.5 w-3.5 text-emerald-600" />Added</> : <><Plus className="mr-2 h-3.5 w-3.5" />Add</>}
-                      </Button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </CardContent>
-          </Card>
+          <FinderResults
+            clientName={selectedClient?.name || 'this client'}
+            results={results}
+            addedIds={addedIds}
+            isAdding={isAdding}
+            onAdd={(toAdd) => void addPodcasts(toAdd as ScanResult[])}
+            clientHref={`${baseHref}/clients/${clientId}`}
+            savedAt={savedAt}
+          />
         )}
 
         {phase === 'failed' && failure && (
@@ -1170,6 +972,16 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {!scanning && (
+          <FinderRecentScans
+            workspaceId={workspaceId}
+            clientId={selectedClient ? clientId : null}
+            clientName={selectedClient?.name ?? null}
+            finderHref={`${baseHref}/podcast-finder`}
+            openScanId={savedAt ? openScanId : null}
+          />
         )}
       </div>
     </WorkspaceLayout>
