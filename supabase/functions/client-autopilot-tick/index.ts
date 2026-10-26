@@ -10,7 +10,8 @@ import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shar
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
-import { isPodscanAuthError, podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
+import { podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
+import { podscanSearchFailureKind, PodscanSearchError, searchAcrossQueries } from '../_shared/autopilotSearch.ts'
 
 const QUERY_COUNT = 4
 const RESULTS_PER_QUERY = 25
@@ -26,6 +27,13 @@ const ACTION_RETRY_MS = 6 * 60 * 60 * 1000
 // client that will never have a bio) used to retry every few hours for ever.
 const BACKOFF_STEPS_MS = [TRANSIENT_RETRY_MS, ACTION_RETRY_MS, 24 * 60 * 60 * 1000]
 const BACKOFF_TOLERANCE_MS = 15 * 60 * 1000
+// One tick must finish, failure recorded and charge refunded, well inside the
+// edge runtime's limit: a run the platform cuts off records nothing, and the
+// claim has already pushed next_run_at a week out. Two model calls of up to
+// 45s each are the fixed part; Podscan gets what is left.
+const RUN_BUDGET_MS = 140_000
+const SEARCH_BUDGET_MS = 75_000
+const SCORING_RESERVE_MS = 50_000
 
 /**
  * The retry delay for this failure, or 'pause' once the ladder is used up.
@@ -63,15 +71,6 @@ function backoffFor(
 
 class AnthropicError extends Error {}
 class CatalogMergeError extends Error {}
-/**
- * The podcast index could not be searched. Kept apart from "searched and found
- * nothing": a refused key used to read as a quiet week with no new shows.
- */
-class PodscanSearchError extends Error {
-  constructor(readonly refused: boolean) {
-    super(refused ? 'podscan refused the request' : 'podscan search failed')
-  }
-}
 
 interface RunFailure {
   message: string
@@ -91,9 +90,14 @@ function classifyFailure(error: unknown): RunFailure {
     return { message: 'The AI provider did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
   }
   if (error instanceof PodscanSearchError) {
-    return error.refused
-      ? { message: 'The podcast index refused our search. Autopilot will retry; if this keeps happening, contact support.', retryMs: ACTION_RETRY_MS }
-      : { message: 'The podcast index did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+    if (error.kind === 'refused') {
+      return { message: 'The podcast index refused our search. Autopilot will retry; if this keeps happening, contact support.', retryMs: ACTION_RETRY_MS }
+    }
+    if (error.kind === 'quota') {
+      // The quota resets once a day, so an earlier retry would only fail again.
+      return { message: 'The podcast index\'s daily request limit is used up. Autopilot will try again tomorrow.', retryMs: 24 * 60 * 60 * 1000 }
+    }
+    return { message: 'The podcast index did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
   }
   if (error instanceof CatalogMergeError) {
     return { message: 'Matches could not be saved to the podcast catalog. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
@@ -176,7 +180,7 @@ async function anthropicJsonOnce(
 }
 
 /** Throws PodscanSearchError when the index could not be searched. */
-async function searchPodscan(query: string): Promise<CandidatePodcast[]> {
+async function searchPodscan(query: string, deadlineAt: number): Promise<CandidatePodcast[]> {
   const minPostedAt = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const params = new URLSearchParams({
     query,
@@ -191,10 +195,10 @@ async function searchPodscan(query: string): Promise<CandidatePodcast[]> {
   try {
     payload = (await podscanFetch<{ podcasts?: Array<Record<string, unknown>> } | null>(
       '/podcasts/search',
-      { params, retries: 2 },
+      { params, retries: 2, deadlineAt },
     )).data
   } catch (error) {
-    throw new PodscanSearchError(isPodscanAuthError(error))
+    throw new PodscanSearchError(podscanSearchFailureKind(error))
   }
   return withoutDuplicateShows(payload?.podcasts ?? []).flatMap((raw): CandidatePodcast[] => {
     const id = typeof raw.podcast_id === 'string' ? raw.podcast_id : ''
@@ -233,6 +237,7 @@ serve(async (req) => {
   }
 
   const admin = createAdminClient()
+  const runStartedAt = Date.now()
 
   // Claim exactly one due client; pushing next_run_at forward first makes the
   // claim safe against overlapping ticks.
@@ -256,9 +261,10 @@ serve(async (req) => {
     .maybeSingle()
   if (!claimed) return json(200, { processed: 0, note: 'claimed by another tick' })
 
-  // The claim pushed next_run_at a week out. A run that cannot finish says
-  // why (the client page shows last_run_error) and, when the cause can clear,
-  // pulls the next attempt back in.
+  // The claim pushed next_run_at a week out. A run that cannot finish records
+  // why in last_run_error (returned by the shortlist function's autopilot-get;
+  // no page shows it yet) and, when the cause can clear, pulls the next
+  // attempt back in.
   const recordFailure = async (failure: RunFailure): Promise<void> => {
     const now = Date.now()
     const delay = backoffFor(failure, {
@@ -366,25 +372,20 @@ serve(async (req) => {
     const existing = new Set((existingRows ?? []).map((row) => String(row.podcast_id).toLowerCase()))
 
     const collected = new Map<string, CandidatePodcast>()
-    // One query the index could not answer still leaves the others; a refused
-    // key, or every query failing, ends the run as a failure the client page
-    // shows rather than a week with "0 added".
-    let failedSearch: PodscanSearchError | null = null
-    for (const query of queries) {
-      podscanCalls += 1
-      try {
-        for (const podcast of await searchPodscan(query)) {
-          const key = podcast.podcast_id.toLowerCase()
-          if (!existing.has(key) && !collected.has(key)) collected.set(key, podcast)
-        }
-      } catch (error) {
-        if (!(error instanceof PodscanSearchError) || error.refused) throw error
-        failedSearch = error
-        console.warn('[Autopilot] Podscan search failed for one query')
-      }
-      await new Promise((resolve) => setTimeout(resolve, 600))
+    // Podscan gets what the run budget leaves after the scoring call.
+    const searchDeadline = Math.min(Date.now() + SEARCH_BUDGET_MS, runStartedAt + RUN_BUDGET_MS - SCORING_RESERVE_MS)
+    const { results } = await searchAcrossQueries(
+      queries,
+      (query) => {
+        podscanCalls += 1
+        return searchPodscan(query, searchDeadline)
+      },
+      { spacingMs: 600 },
+    )
+    for (const podcast of results.flat()) {
+      const key = podcast.podcast_id.toLowerCase()
+      if (!existing.has(key) && !collected.has(key)) collected.set(key, podcast)
     }
-    if (failedSearch && collected.size === 0) throw failedSearch
     const candidates = [...collected.values()].slice(0, 40)
     if (candidates.length === 0) {
       await admin.from('client_autopilot_settings')
@@ -489,9 +490,13 @@ serve(async (req) => {
       // Capture episode metadata for each added show while it is fresh, so
       // the pitch dialog and research never have to. Best-effort: a Podscan
       // hiccup never fails the tick, and the dialog self-heals later anyway.
+      const captureDeadline = runStartedAt + RUN_BUDGET_MS
       for (const row of (inserted ?? [])) {
+        // Out of budget: the rest are captured the first time something
+        // needs their episodes.
+        if (Date.now() >= captureDeadline) break
         try {
-          await ensureEpisodesCaptured(admin, String(row.podcast_id))
+          await ensureEpisodesCaptured(admin, String(row.podcast_id), { deadlineAt: captureDeadline })
         } catch (_error) {
           // Ignore — the next flow that needs episodes retries.
         }

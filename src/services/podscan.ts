@@ -14,6 +14,12 @@ export interface PodscanRateLimit {
 interface PodscanEnvelope<T> {
   data: T
   rateLimit?: PodscanRateLimit
+  /**
+   * Feeds Podscan flags as copies of another show, left out of this page by
+   * the proxy. A page can come back empty only because of them, which is not
+   * the end of the results.
+   */
+  duplicatesRemoved?: number
 }
 
 async function invokePodscanEnvelope<T>(body: Record<string, unknown>): Promise<PodscanEnvelope<T>> {
@@ -22,6 +28,7 @@ async function invokePodscanEnvelope<T>(body: Record<string, unknown>): Promise<
   return {
     data: data.data as T,
     rateLimit: data.meta?.rate_limit as PodscanRateLimit | undefined,
+    duplicatesRemoved: typeof data.meta?.duplicates_removed === 'number' ? data.meta.duplicates_removed : 0,
   }
 }
 

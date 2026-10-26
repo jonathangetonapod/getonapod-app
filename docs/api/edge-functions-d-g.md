@@ -466,11 +466,11 @@ curl -X POST https://your-project.supabase.co/functions/v1/fetch-email-thread \
 
 ### fetch-podscan-email
 
-Fetches or retrieves cached email contact information for a podcast from Podscan API.
+Returns the free contact email Podscan lists for a podcast, from the global catalog when it is already known.
 
 **Endpoint:** `/functions/v1/fetch-podscan-email`  
 **Method:** `POST`  
-**Authentication:** Podscan API key required via environment variables
+**Authentication:** Platform administrator session (Supabase Auth JWT). CORS follows the `_shared/cors.ts` allowlist.
 
 #### Request Body
 ```json
@@ -480,45 +480,53 @@ Fetches or retrieves cached email contact information for a podcast from Podscan
 ```
 
 **Parameters:**
-- `podcast_id` (string, required): The Podscan podcast ID
+- `podcast_id` (string, required): A bare Podscan podcast ID (letters, digits, `-` and `_`, up to 200 characters). Anything else is refused with `400 INVALID_FIELD` before a request is made.
 
 #### Response Format
 ```json
 {
   "success": true,
   "email": "contact@podcast.com",
-  "podcast_id": "podcast123",
+  "podcast_id": "pd_k42yajryg3n5p8ow",
   "cached": false,
-  "fetched_at": "2024-01-15T10:30:00Z"
+  "global": true,
+  "contact_type": "podscan_free"
 }
 ```
 
-**Cached Response:**
+A cached answer has `"cached": true` and a `fetched_at` timestamp. `email` is `null` when Podscan lists none; that answer is remembered for 30 days.
+
+#### Errors
 ```json
 {
-  "success": true,
-  "email": "contact@podcast.com",
-  "podcast_id": "podcast123", 
-  "cached": true,
-  "fetched_at": "2024-01-14T08:15:00Z"
+  "success": false,
+  "error": "Podscan did not respond in time",
+  "code": "PODSCAN_TIMEOUT"
 }
 ```
 
+| Status | Code | Meaning |
+|---|---|---|
+| 400 | `INVALID_FIELD` | `podcast_id` is missing or not a bare ID |
+| 401 / 403 | `UNAUTHENTICATED` / `PLATFORM_ADMIN_REQUIRED` | No session, or not a platform administrator |
+| 429 | `PODSCAN_RATE_LIMIT`, `PODSCAN_CONCURRENCY_LIMIT`, `PODSCAN_DAILY_LIMIT` | Podscan's per-minute, concurrency or daily limit |
+| 500 | `PODSCAN_NOT_CONFIGURED` | `PODSCAN_API_KEY` is not set |
+| 502 | `PODSCAN_UPSTREAM_<status>`, `PODSCAN_UNAVAILABLE`, `PODSCAN_INVALID_RESPONSE`, `PODSCAN_RESPONSE_TOO_LARGE` | Podscan refused, could not be reached, or answered badly |
+| 504 | `PODSCAN_TIMEOUT` | Podscan did not answer within 20 seconds (one retry is made first) |
+| 500 | `INTERNAL_ERROR` | Anything else; details are logged, not returned |
+
 #### Description
-1. First checks if email is already cached in `podcast_emails` table
-2. If not cached, fetches from Podscan API `/podcasts/{id}` endpoint
-3. Extracts email from `reach.email` field
-4. Caches result in database for future requests
-5. Returns email address or null if not available
+1. Looks the podcast up in the global `podcasts` catalog (`podscan_email`), then the legacy `podcast_emails` cache
+2. If neither knows it, reads `/podcasts/{id}` from Podscan through `_shared/podscan.ts`
+3. Takes the email from `reach.email`
+4. Writes it to the catalog and the legacy cache
 
 #### Example Request
 ```bash
 curl -X POST https://your-project.supabase.co/functions/v1/fetch-podscan-email \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Authorization: Bearer <platform admin access token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "podcast_id": "the-tim-ferriss-show"
-  }'
+  -d '{ "podcast_id": "pd_k42yajryg3n5p8ow" }'
 ```
 
 ---
@@ -1530,6 +1538,8 @@ Comprehensive function to fetch and manage client dashboard podcasts with cachin
   "total": 15,
   "cached": 12,
   "fetched": 3,
+  "failed": 0,
+  "failedPodcastIds": [],
   "stoppedEarly": false,
   "remaining": 0,
   "cachePerformance": {
@@ -1548,6 +1558,8 @@ Comprehensive function to fetch and manage client dashboard podcasts with cachin
   }
 }
 ```
+
+`failed` counts the shows Podscan could not return (or whose ID in the sheet is not a bare Podscan ID), and `failedPodcastIds` names them; they are missing from `podcasts`. Podscan calls share the 50-second budget, so a run that reaches it stops with `stoppedEarly: true`, and the shows it never got to are in `remaining` (failed shows are not counted there). The spreadsheet ID must be letters, digits, `-` and `_`; anything else is refused with 400.
 
 #### Response Format (Status Check)
 ```json
@@ -2210,6 +2222,8 @@ Comprehensive prospect dashboard podcast management with the same advanced featu
   "total": 20,
   "cached": 18,
   "fetched": 2,
+  "failed": 0,
+  "failedPodcastIds": [],
   "stoppedEarly": false,
   "remaining": 0,
   "cachePerformance": {
@@ -2219,6 +2233,8 @@ Comprehensive prospect dashboard podcast management with the same advanced featu
   }
 }
 ```
+
+`failed` counts the shows Podscan could not return (or whose ID in the sheet is not a bare Podscan ID), and `failedPodcastIds` names them; they are missing from `podcasts`. Podscan calls share the 50-second budget, so a run that reaches it stops with `stoppedEarly: true`, and the shows it never got to are in `remaining` (failed shows are not counted there). The spreadsheet ID must be letters, digits, `-` and `_`; anything else is refused with 400.
 
 #### Response Format (Fast Path Cache Only)
 ```json

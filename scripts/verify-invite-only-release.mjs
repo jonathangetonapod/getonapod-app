@@ -70,7 +70,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // _shared/email-templates.ts removed (2026-10-26).
   // 185 with _shared/podscan.ts and its test: the one Podscan HTTP client
   // every function now shares (2026-10-26).
-  edgeTypeScriptFiles: 185,
+  // 187 with _shared/autopilotSearch.ts and its test: autopilot's rules for
+  // when a failed Podscan search ends the run (2026-10-27).
+  edgeTypeScriptFiles: 187,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

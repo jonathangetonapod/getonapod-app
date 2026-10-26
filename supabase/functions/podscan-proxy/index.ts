@@ -18,6 +18,7 @@ import {
   type PodscanFetchResult,
   PodscanRateLimitError,
   podscanFetch,
+  podscanUpstreamStatus,
   withoutDuplicateShows,
 } from '../_shared/podscan.ts'
 
@@ -56,6 +57,8 @@ function enumValue(value: unknown, field: string, values: readonly string[]): st
   return result
 }
 
+const PAGING_BOUNDS: Record<string, number> = { per_page: 50, page: 1_000 }
+
 function searchParams(value: unknown): URLSearchParams {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new HttpError(400, 'INVALID_FIELD', 'options must be an object')
@@ -75,6 +78,15 @@ function searchParams(value: unknown): URLSearchParams {
     if (serialized.length > 500) {
       throw new HttpError(400, 'INVALID_FIELD', `${key} is too long`)
     }
+    // Podscan caps per_page at 50; page is bounded so a request cannot ask
+    // for an arbitrary offset into the index.
+    const bound = PAGING_BOUNDS[key]
+    if (bound) {
+      const number = Number(serialized)
+      if (!Number.isInteger(number) || number < 1 || number > bound) {
+        throw new HttpError(400, 'INVALID_FIELD', `${key} must be a whole number from 1 to ${bound}`)
+      }
+    }
     params.set(key, serialized)
   }
   return params
@@ -85,18 +97,88 @@ async function fetchPodscan(path: string, params?: URLSearchParams): Promise<Pod
   return await podscanFetch(path, { params })
 }
 
-/** The same envelope with Podscan-flagged duplicate feeds left out of a list. */
-function dropDuplicateShows(result: PodscanFetchResult, listKey: string): PodscanFetchResult {
+/**
+ * The same envelope with Podscan-flagged duplicate feeds left out of a list,
+ * and how many were left out: a page that held only duplicates comes back
+ * empty, and a caller paging by "empty means done" needs to know it was not.
+ */
+function dropDuplicateShows(
+  result: PodscanFetchResult,
+  listKey: string,
+): { result: PodscanFetchResult; removed: number } {
   const data = result.data
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return result
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { result, removed: 0 }
   const list = (data as Record<string, unknown>)[listKey]
-  if (!Array.isArray(list)) return result
-  return { ...result, data: { ...data, [listKey]: withoutDuplicateShows(list) } }
+  if (!Array.isArray(list)) return { result, removed: 0 }
+  const kept = withoutDuplicateShows(list)
+  return { result: { ...result, data: { ...data, [listKey]: kept } }, removed: list.length - kept.length }
+}
+
+interface PodscanRequest {
+  path: string
+  params?: URLSearchParams
+  /** The list duplicate feeds are dropped from, for list endpoints. */
+  listKey?: string
+}
+
+/**
+ * Validates the body into the one upstream request it asks for. Runs before
+ * the charge, so a malformed request is refused without touching the ledger.
+ */
+function podscanRequest(body: Record<string, unknown>, action: string): PodscanRequest {
+  if (action === 'search') {
+    requireOnlyKeys(body, ['action', 'options', 'workspace_id'])
+    return { path: '/podcasts/search', params: searchParams(body.options), listKey: 'podcasts' }
+  }
+  if (action === 'podcast') {
+    requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
+    return { path: `/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}` }
+  }
+  if (action === 'related') {
+    requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
+    return {
+      path: `/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`,
+      listKey: 'related_podcasts',
+    }
+  }
+  if (action === 'demographics') {
+    requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
+    return { path: `/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics` }
+  }
+  if (action === 'chart_countries') {
+    requireOnlyKeys(body, ['action', 'workspace_id'])
+    return { path: '/charts/countries/available' }
+  }
+  if (action === 'chart_categories') {
+    requireOnlyKeys(body, ['action', 'platform', 'country', 'workspace_id'])
+    const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
+    const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
+    if (!/^[a-z]{2,8}$/.test(country)) throw new HttpError(400, 'INVALID_FIELD', 'country is invalid')
+    return { path: `/charts/${platform}/${country}/categories` }
+  }
+  if (action === 'chart_top') {
+    requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit', 'workspace_id'])
+    const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
+    const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
+    const category = requireString(body.category, 'category', { max: 100 })
+    if (!/^[a-z]{2,8}$/.test(country) || !/^[a-zA-Z0-9_-]+$/.test(category)) {
+      throw new HttpError(400, 'INVALID_FIELD', 'chart parameters are invalid')
+    }
+    const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
+      ? Math.max(1, Math.min(body.limit, platform === 'apple' ? 200 : 50))
+      : 10
+    return {
+      path: `/charts/${platform}/${country}/${encodeURIComponent(category)}/top`,
+      params: new URLSearchParams({ limit: String(limit) }),
+    }
+  }
+  throw new HttpError(400, 'INVALID_ACTION', 'Unknown Podscan action')
 }
 
 serve(async (req) => {
   // A lookup that failed after the charge — the index refusing, a timeout —
-  // delivered nothing to pay for, so the outer catch gives the debit back.
+  // delivered nothing to pay for, so the outer catch gives the debit back
+  // (except a 404, which is an answer; see the catch).
   let chargedForRefund: { workspaceId: string; entryId: string; credits: number } | null = null
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
@@ -110,6 +192,7 @@ serve(async (req) => {
     const workspaceId = body.workspace_id === undefined
       ? null
       : requireUuid(body.workspace_id, 'workspace_id')
+    const request = podscanRequest(body, action)
     let metering: { admin: Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']; workspaceId: string } | null = null
     if (workspaceId) {
       const context = await requireAuthenticatedUser(req)
@@ -129,50 +212,10 @@ serve(async (req) => {
     } else {
       await requirePlatformAdmin(req)
     }
-    let result: PodscanFetchResult
-
-    if (action === 'search') {
-      requireOnlyKeys(body, ['action', 'options', 'workspace_id'])
-      result = dropDuplicateShows(await fetchPodscan('/podcasts/search', searchParams(body.options)), 'podcasts')
-    } else if (action === 'podcast') {
-      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
-      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
-    } else if (action === 'related') {
-      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
-      result = dropDuplicateShows(
-        await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`),
-        'related_podcasts',
-      )
-    } else if (action === 'demographics') {
-      requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
-      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)
-    } else if (action === 'chart_countries') {
-      requireOnlyKeys(body, ['action', 'workspace_id'])
-      result = await fetchPodscan('/charts/countries/available')
-    } else if (action === 'chart_categories') {
-      requireOnlyKeys(body, ['action', 'platform', 'country', 'workspace_id'])
-      const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
-      const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
-      if (!/^[a-z]{2,8}$/.test(country)) throw new HttpError(400, 'INVALID_FIELD', 'country is invalid')
-      result = await fetchPodscan(`/charts/${platform}/${country}/categories`)
-    } else if (action === 'chart_top') {
-      requireOnlyKeys(body, ['action', 'platform', 'country', 'category', 'limit', 'workspace_id'])
-      const platform = enumValue(body.platform, 'platform', ['apple', 'spotify'])
-      const country = requireString(body.country, 'country', { max: 8 }).toLowerCase()
-      const category = requireString(body.category, 'category', { max: 100 })
-      if (!/^[a-z]{2,8}$/.test(country) || !/^[a-zA-Z0-9_-]+$/.test(category)) {
-        throw new HttpError(400, 'INVALID_FIELD', 'chart parameters are invalid')
-      }
-      const limit = typeof body.limit === 'number' && Number.isInteger(body.limit)
-        ? Math.max(1, Math.min(body.limit, platform === 'apple' ? 200 : 50))
-        : 10
-      result = await fetchPodscan(
-        `/charts/${platform}/${country}/${encodeURIComponent(category)}/top`,
-        new URLSearchParams({ limit: String(limit) }),
-      )
-    } else {
-      throw new HttpError(400, 'INVALID_ACTION', 'Unknown Podscan action')
-    }
+    const fetched = await fetchPodscan(request.path, request.params)
+    const { result, removed } = request.listKey
+      ? dropDuplicateShows(fetched, request.listKey)
+      : { result: fetched, removed: 0 }
 
     if (metering) {
       await logOperationCost(metering.admin, {
@@ -186,14 +229,22 @@ serve(async (req) => {
 
     return jsonResponse(req, METHODS, 200, {
       data: result.data,
-      meta: { rate_limit: result.rateLimit },
+      meta: {
+        rate_limit: result.rateLimit,
+        ...(request.listKey ? { duplicates_removed: removed } : {}),
+      },
     })
   } catch (error) {
     // Said in headers so the body shape callers depend on stays as it was, and
     // only a refund the ledger confirmed counts as refunded.
     let creditsCharged = 0
     let creditsRefunded = 0
-    if (chargedForRefund && refundAdmin) {
+    // A 404 is an answer, not a failure: Podscan looked and the show is not
+    // there. Refunding it made lookups of made-up ids free, and those still
+    // spend the index's concurrency and daily quota every tenant shares.
+    const answered = podscanUpstreamStatus(error) === 404
+    if (chargedForRefund && answered) creditsCharged = chargedForRefund.credits
+    if (chargedForRefund && refundAdmin && !answered) {
       creditsCharged = chargedForRefund.credits
       const refunded = await refundCredits(refundAdmin, {
         workspaceId: chargedForRefund.workspaceId,

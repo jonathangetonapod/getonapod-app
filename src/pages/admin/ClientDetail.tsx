@@ -64,6 +64,7 @@ import {
 import { getClientById, updateClient, uploadClientPhoto, removeClientPhoto, deleteClient, setClientPassword, clearClientPassword, generatePassword } from '@/services/clients'
 import { getBookings, createBooking, updateBooking, deleteBooking } from '@/services/bookings'
 import { getPodcastById } from '@/services/podscan'
+import { dashboardFetchNotices } from '@/lib/podscanOutcomes'
 import { updatePortalAccess } from '@/services/clientPortal'
 import { createClientGoogleSheet } from '@/services/googleSheets'
 import { getClientCacheStatus, findCachedPodcastsMetadata } from '@/services/podcastCache'
@@ -1163,12 +1164,13 @@ export default function ClientDetail() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to fetch podcasts')
 
+      // Said before anything else: an empty list can mean every show failed
+      // at Podscan or the run ran out of time, not that the sheet is empty.
+      const notices = dashboardFetchNotices(result)
       if (!result.podcasts || result.podcasts.length === 0) {
-        toast({
-          title: 'No podcasts found',
-          description: 'Google Sheet is empty or has no valid podcast IDs',
-          variant: 'destructive'
-        })
+        for (const notice of notices) {
+          toast({ title: notice.title, description: notice.description, ...(notice.destructive ? { variant: 'destructive' as const } : {}) })
+        }
         return
       }
 
@@ -1200,30 +1202,8 @@ export default function ClientDetail() {
 
       if (upsertError) throw new Error(`Failed to save podcasts: ${upsertError.message}`)
 
-      const fetched = result.fetched || 0
-      const fromCache = result.cached || 0
-      const stoppedEarly = result.stoppedEarly || false
-
-      if (stoppedEarly) {
-        toast({
-          title: `Partial fetch — ${fetched} new, ${result.remaining} remaining`,
-          description: 'Click again to continue fetching'
-        })
-      } else {
-        toast({
-          title: '✅ Metadata Cache Complete',
-          description: `${fromCache} from cache, ${fetched} newly fetched. Click "Run AI Analysis" to personalize.`
-        })
-      }
-
-      // Shows Podscan could not return are missing from the list above.
-      const failed = typeof result.failed === 'number' ? result.failed : 0
-      if (failed > 0) {
-        toast({
-          title: `${failed} ${failed === 1 ? 'podcast' : 'podcasts'} could not be fetched`,
-          description: 'Podscan did not return them. Click again to retry, or check the IDs in the sheet.',
-          variant: 'destructive'
-        })
+      for (const notice of notices) {
+        toast({ title: notice.title, description: notice.description, ...(notice.destructive ? { variant: 'destructive' as const } : {}) })
       }
 
       // Refresh cache status directly without calling handleCheckDashboardCache,

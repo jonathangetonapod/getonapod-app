@@ -36,7 +36,9 @@ export function classifyPodscanError(error: unknown): PodscanErrorKind {
   const { code } = fields(error)
   const status = podscanErrorStatus(error)
   if (status === 401 || status === 403 || code === 'PODSCAN_NOT_CONFIGURED') return 'auth'
-  if (code === 'PODSCAN_DAILY_LIMIT') return 'fatal'
+  // Both fail the same way however often they are tried: the quota resets
+  // once a day, and the same request returns the same oversized response.
+  if (code === 'PODSCAN_DAILY_LIMIT' || code === 'PODSCAN_RESPONSE_TOO_LARGE') return 'fatal'
   if (code === 'PODSCAN_TIMEOUT' || code === 'PODSCAN_UNAVAILABLE'
     || code === 'PODSCAN_RATE_LIMIT' || code === 'PODSCAN_CONCURRENCY_LIMIT') return 'retryable'
   if (status === null || status === 429 || status >= 500) return 'retryable'

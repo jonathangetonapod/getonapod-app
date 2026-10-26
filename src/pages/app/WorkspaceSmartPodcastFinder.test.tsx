@@ -487,6 +487,27 @@ describe('WorkspaceSmartPodcastFinder', () => {
     )
   })
 
+  it('keeps paging past a page that only held duplicate feeds', async () => {
+    vi.mocked(searchPodcastsWithMeta).mockImplementation(async (options) => {
+      const page = options.page ?? 1
+      return {
+        data: {
+          podcasts: page === 2 ? [] : [podcast(`pd-page-${page}`, `Page ${page} Show`)],
+          pagination: { last_page: '3' },
+        },
+        rateLimit: {},
+        duplicatesRemoved: page === 2 ? 50 : 0,
+      } as never
+    })
+    renderFinder()
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByText('Ranked by fit for Taylor Client', {}, { timeout: 10000 })).toBeInTheDocument()
+    expect(vi.mocked(searchPodcastsWithMeta)).toHaveBeenCalledTimes(3)
+    expect(screen.getByText('Page 3 Show')).toBeInTheDocument()
+  }, 15000)
+
   it('adds the ranked podcasts to the client list with their compatibility scores', async () => {
     renderFinder()
     fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))

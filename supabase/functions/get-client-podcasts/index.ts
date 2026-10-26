@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 import {
+  isPodscanDeadlineError,
   isPodscanId,
   type PodscanDemographics,
   type PodscanPodcast,
@@ -20,6 +21,10 @@ import { corsHeaders as platformCorsHeaders, ensureWorkspaceOriginAllowed, getCo
 
 // A hung Google API call must not hold the request open.
 const GOOGLE_API_TIMEOUT_MS = 30_000
+
+// A Google spreadsheet id goes into the Sheets API URL path; a real one is
+// letters, digits, '-' and '_' only.
+const SPREADSHEET_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/u
 
 const fallbackCorsHeaders = {
   'Access-Control-Allow-Origin': platformCorsHeaders['Access-Control-Allow-Origin'],
@@ -391,6 +396,12 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    if (typeof spreadsheetId !== 'string' || !SPREADSHEET_ID_PATTERN.test(spreadsheetId)) {
+      return new Response(
+        JSON.stringify({ error: 'Spreadsheet ID is invalid' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Get Google access token and fetch podcast IDs from sheet
     const accessToken = await getGoogleAccessToken()
@@ -754,6 +765,10 @@ serve(async (req) => {
     const startTime = Date.now()
     const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
     let stoppedEarly = false
+    // The round check above runs only between rounds; this bounds each Podscan
+    // call inside one, queue wait and retries included, so a hung index ends
+    // the request as "stopped early" instead of past the platform's limit.
+    const podscanDeadline = startTime + MAX_RUNTIME_MS
 
     if (missingPodcastIds.length > 0) {
       if (!podscanApiKey()) {
@@ -791,9 +806,14 @@ serve(async (req) => {
                 if (!isPodscanId(podcastId)) throw new Error('invalid podcast id')
                 podcast = podscanPodcastPayload((await podscanFetch(
                   `/podcasts/${encodeURIComponent(podcastId)}`,
-                  { retries: 2 },
+                  { retries: 2, deadlineAt: podscanDeadline },
                 )).data) as PodscanPodcast
-              } catch (_error) {
+              } catch (error) {
+                if (isPodscanDeadlineError(error)) {
+                  // Never answered: left for the next click, not a failure.
+                  stoppedEarly = true
+                  return null
+                }
                 console.error('[Get Client Podcasts] Podscan error for', podcastId)
                 stats.podscanFailed++
                 podscanFailedIds.push(podcastId)
@@ -828,7 +848,7 @@ serve(async (req) => {
                 // Most shows have no demographics; a 404 here is normal.
                 const { data: demoData } = await podscanFetch<PodscanDemographics | null>(
                   `/podcasts/${encodeURIComponent(podcastId)}/demographics`,
-                  { retries: 1 },
+                  { retries: 1, deadlineAt: podscanDeadline },
                 )
                 if (demoData && demoData.episodes_analyzed) {
                   podcastData.demographics = demoData
@@ -943,7 +963,8 @@ serve(async (req) => {
       .map(id => allPodcastsMap.get(id))
       .filter((p): p is CachedPodcast => p !== undefined)
 
-    const remaining = missingPodcastIds.length - newPodcasts.length
+    // Failed shows were attempted; only the rest are still to do.
+    const remaining = missingPodcastIds.length - newPodcasts.length - stats.podscanFailed
     const cacheHitRate = podcastIds.length > 0 ? ((cachedPodcasts.length / podcastIds.length) * 100).toFixed(1) : '0'
     const apiCallsSaved = cachedPodcasts.length * 2
     const costSavings = (apiCallsSaved * 0.01).toFixed(2)

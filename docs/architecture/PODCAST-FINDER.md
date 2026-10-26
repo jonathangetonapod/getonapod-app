@@ -548,7 +548,8 @@ export function calculateSearchStatistics(podcasts: PodcastData[]): SearchStatis
 - **Cache Hit Analytics:** Performance monitoring
 
 ### API Rate Limiting
-- **Podscan Limits:** 120/min, 2000/day
+- **Podscan Limits:** per plan, per account (shared by every key and isolate): Premium 120/min, 2000/day, 10 concurrent; Trial and Essential 5 concurrent. See the API docs' Rate Limiting section.
+- **Edge client:** every edge function calls Podscan through `supabase/functions/_shared/podscan.ts` — 20s timeout, 5 MB cap, at most 3 requests in flight per isolate, optional retries with backoff (never for a refused key or a spent daily quota), and an optional deadline so a run stops before the platform's limit
 - **Request Spacing:** 700ms delays between searches
 - **Batch Processing:** Scoring in chunks of 10
 - **Error Handling:** Graceful degradation on failures

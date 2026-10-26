@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PodcastFinder from '@/pages/admin/PodcastFinder'
 import { DEFAULT_DISCOVERY_TARGET, queryCountForTarget } from '@/lib/podcastResearch'
@@ -557,6 +558,76 @@ describe('PodcastFinder', () => {
     expect(mockedGenerateQueries).toHaveBeenCalledWith(expect.objectContaining({
       queryCount: queryCountForTarget(25),
     }))
+  })
+
+  const startRun = async () => {
+    renderPage({ workspaceScoped: true })
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Research for' }))
+    fireEvent.click(await screen.findByRole('option', { name: /Own Client/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '25 podcasts' }))
+    const runButton = await screen.findByRole('button', { name: 'Find 25 podcasts' })
+    await waitFor(() => expect(runButton).toBeEnabled())
+    fireEvent.click(runButton)
+  }
+
+  const show = (id: string) => ({
+    podcast_id: id,
+    podcast_name: `Show ${id}`,
+    podcast_url: `https://example.com/${id}`,
+    last_posted_at: '2026-07-21T00:00:00.000Z',
+  })
+
+  it('does not wait and retry when the index says its daily quota is spent', async () => {
+    mockedGenerateQueries.mockResolvedValue(['founder stories'])
+    mockedSearchPodcasts.mockRejectedValue(Object.assign(new Error('Podscan daily request limit reached'), {
+      name: 'PODSCAN_DAILY_LIMIT',
+      code: 'PODSCAN_DAILY_LIMIT',
+      status: 429,
+      retryAfterSeconds: 3600,
+    }))
+
+    await startRun()
+
+    // Two failed pages retire the query; neither waited to try again.
+    await waitFor(() => expect(mockedSearchPodcasts).toHaveBeenCalledTimes(2), { timeout: 5000 })
+    expect(screen.queryByText(/Retrying this page/)).not.toBeInTheDocument()
+  })
+
+  it('keeps paging past a page that only held duplicate feeds', async () => {
+    mockedGenerateQueries.mockResolvedValue(['founder stories'])
+    mockedSearchPodcasts.mockImplementation(async (options) => {
+      const page = (options as { page?: number }).page ?? 1
+      return {
+        data: { podcasts: page === 2 ? [] : [show(`pod-page-${page}`)], pagination: { last_page: '3' } },
+        duplicatesRemoved: page === 2 ? 50 : 0,
+      } as never
+    })
+
+    await startRun()
+
+    expect(await screen.findByText('Show pod-page-3', {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(mockedSearchPodcasts).toHaveBeenCalledTimes(3)
+  })
+
+  it('names the searches the index could not read exactly as written', async () => {
+    const warning = vi.spyOn(toast, 'warning')
+    mockedGenerateQueries.mockResolvedValue(['"founder stories'])
+    mockedSearchPodcasts.mockResolvedValue({
+      data: {
+        podcasts: [show('pod-1')],
+        pagination: { last_page: '1' },
+        query_warnings: [{ code: 'UNBALANCED_QUOTE', message: 'Unbalanced quote', position: 0, length: 1 }],
+      },
+      duplicatesRemoved: 0,
+    } as never)
+
+    await startRun()
+
+    await waitFor(() => expect(warning).toHaveBeenCalledWith(
+      'The podcast index could not read one search exactly as written (“"founder stories”), so its results may be broader than intended.',
+      { duration: 10000 },
+    ), { timeout: 5000 })
+    warning.mockRestore()
   })
 
   it('stops on request and keeps everything found so far', async () => {

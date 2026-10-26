@@ -95,6 +95,7 @@ import { exportPodcastsToGoogleSheets, createProspectSheet, appendToProspectShee
 import { supabase } from '@/lib/supabase'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { toast } from 'sonner'
+import { bulkImportFailureMessage, bulkImportNotice } from '@/lib/podscanOutcomes'
 import { getAllAnalytics, type DetailedCacheStats, type TopCachedPodcast, type RecentlyAddedPodcast, type CategoryStats, type AudienceDistribution, type RatingDistribution } from '@/services/podcastAnalytics'
 
 type ViewMode = 'table' | 'grid'
@@ -1269,20 +1270,20 @@ export default function PodcastDatabase() {
         },
       )
 
-      if (controller.signal.aborted) {
-        toast.success(`Cancelled. ${totalSaved} podcasts saved before stopping.`)
-      } else if (failedPages > 0) {
-        toast.warning(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}". ${failedPages} ${failedPages === 1 ? 'page' : 'pages'} could not be fetched and ${failedPages === 1 ? 'was' : 'were'} skipped.`)
-      } else {
-        toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
-      }
+      const notice = bulkImportNotice({
+        saved: totalSaved,
+        keywords: bulkImportKeywords,
+        failedPages,
+        cancelled: controller.signal.aborted,
+      })
+      if (notice.kind === 'warning') toast.warning(notice.message)
+      else toast.success(notice.message)
       setBulkImportProgress('')
       setBulkImportStats({ saved: totalSaved, pages: maxPg, total: totalSaved })
       refetch()
     } catch (error) {
       console.error('Bulk import failed:', error)
-      const reason = error instanceof Error ? error.message : 'Bulk import failed.'
-      toast.error(totalSaved > 0 ? `${reason} ${totalSaved} podcasts were saved before it stopped.` : reason)
+      toast.error(bulkImportFailureMessage(error, totalSaved))
       setBulkImportProgress('Import failed.')
     } finally {
       setIsBulkImporting(false)

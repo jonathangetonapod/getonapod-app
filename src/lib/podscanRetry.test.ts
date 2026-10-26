@@ -24,6 +24,10 @@ describe('classifyPodscanError', () => {
     expect(podscanFailureReason(error)).toBe('The podcast index\'s daily request limit is used up. It resets within a day.')
   })
 
+  it('does not retry an oversized response, which comes back the same every time', () => {
+    expect(classifyPodscanError(edgeError({ code: 'PODSCAN_RESPONSE_TOO_LARGE', status: 502 }))).toBe('fatal')
+  })
+
   it('treats a missing server key as final rather than a 500 worth retrying', () => {
     const error = edgeError({ code: 'PODSCAN_NOT_CONFIGURED', status: 500 })
     expect(classifyPodscanError(error)).toBe('auth')
@@ -83,7 +87,8 @@ describe('withPodscanRetry', () => {
   it('does not retry once the scan has been cancelled', async () => {
     const request = vi.fn().mockRejectedValue(edgeError({ code: 'PODSCAN_TIMEOUT', status: 504 }))
 
-    await expect(withPodscanRetry(request, { sleep: noWait, shouldContinue: () => false })).rejects.toBeTruthy()
+    await expect(withPodscanRetry(request, { sleep: noWait, shouldContinue: () => false }))
+      .rejects.toMatchObject({ code: 'PODSCAN_TIMEOUT' })
     expect(request).toHaveBeenCalledTimes(1)
   })
 })

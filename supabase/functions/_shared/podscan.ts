@@ -25,7 +25,7 @@ export function isPodscanId(value: unknown): value is string {
 }
 
 export function podscanApiKey(): string | null {
-  return (Deno.env.get('PODSCAN_API_KEY') || Deno.env.get('PODSCAN_TOKEN'))?.trim() || null
+  return Deno.env.get('PODSCAN_API_KEY')?.trim() || null
 }
 
 export interface PodscanRateLimit {
@@ -69,6 +69,15 @@ export function isRetryablePodscanError(error: unknown): boolean {
   if (['PODSCAN_TIMEOUT', 'PODSCAN_UNAVAILABLE', 'PODSCAN_INVALID_RESPONSE'].includes(error.code)) return true
   const status = podscanUpstreamStatus(error)
   return status !== null && status >= 500
+}
+
+/**
+ * The caller's time budget ran out before this request could start or finish.
+ * Not a Podscan failure: the request was never answered, so callers count it
+ * as "not attempted yet" rather than as a show Podscan could not return.
+ */
+export function isPodscanDeadlineError(error: unknown): boolean {
+  return error instanceof HttpError && error.code === 'PODSCAN_DEADLINE_EXCEEDED'
 }
 
 /** True when Podscan refused our key or account, or no key is configured. */
@@ -146,16 +155,38 @@ function transportError(error: unknown): HttpError {
   return new HttpError(502, 'PODSCAN_UNAVAILABLE', 'Podscan could not be reached')
 }
 
-// A plain counting semaphore: callers past the cap wait for a slot.
+function deadlineError(): HttpError {
+  return new HttpError(504, 'PODSCAN_DEADLINE_EXCEEDED', 'The time allowed for podcast index requests ran out')
+}
+
+// A plain counting semaphore: callers past the cap wait for a slot. A waiter
+// with a deadline leaves the queue when it passes, so a hung index cannot
+// hold a request open past its budget just by keeping the slots busy.
 let active = 0
 const waiting: Array<() => void> = []
 
-async function acquireSlot(limit: number): Promise<void> {
+async function acquireSlot(limit: number, deadlineAt: number | undefined): Promise<void> {
   if (active < limit) {
     active += 1
     return
   }
-  await new Promise<void>((resolve) => waiting.push(resolve))
+  await new Promise<void>((resolve, reject) => {
+    let timer: number | undefined
+    const grant = () => {
+      if (timer !== undefined) clearTimeout(timer)
+      resolve()
+    }
+    waiting.push(grant)
+    if (deadlineAt !== undefined) {
+      timer = setTimeout(() => {
+        const index = waiting.indexOf(grant)
+        // Already granted: the slot is ours and the caller will release it.
+        if (index === -1) return
+        waiting.splice(index, 1)
+        reject(deadlineError())
+      }, Math.max(0, deadlineAt - Date.now()))
+    }
+  })
 }
 
 function releaseSlot(): void {
@@ -164,11 +195,42 @@ function releaseSlot(): void {
   else active -= 1
 }
 
+/** Reads at most `limit` bytes of a body, cancelling the stream past that. */
+async function readCapped(response: Response, limit: number): Promise<string> {
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined)
+      throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
+    }
+    chunks.push(value)
+  }
+  const body = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(body)
+}
+
 export interface PodscanFetchOptions {
   params?: URLSearchParams
   timeoutMs?: number
   /** Extra tries for a retryable failure, with backoff. Default 0. */
   retries?: number
+  /**
+   * Epoch ms by which this call must be over, queue wait, retries and all.
+   * Each attempt's timeout shrinks to fit, and no retry or queued start is
+   * begun once it has passed (PODSCAN_DEADLINE_EXCEEDED).
+   */
+  deadlineAt?: number
   /** Overrides for tests. */
   apiKey?: string | null
   fetchImpl?: typeof fetch
@@ -176,14 +238,19 @@ export interface PodscanFetchOptions {
   maxConcurrent?: number
 }
 
-async function fetchOnce(path: string, apiKey: string, options: PodscanFetchOptions): Promise<PodscanFetchResult> {
+async function fetchOnce(
+  path: string,
+  apiKey: string,
+  options: PodscanFetchOptions,
+  timeoutMs: number,
+): Promise<PodscanFetchResult> {
   const url = new URL(`${PODSCAN_API_BASE}${path}`)
   if (options.params) url.search = options.params.toString()
   const fetchImpl = options.fetchImpl ?? fetch
 
   // One signal covers the request and the body read, so a stalled index
   // cannot hold the request open.
-  const signal = AbortSignal.timeout(options.timeoutMs ?? PODSCAN_TIMEOUT_MS)
+  const signal = AbortSignal.timeout(timeoutMs)
   let response: Response
   try {
     response = await fetchImpl(url, {
@@ -200,14 +267,14 @@ async function fetchOnce(path: string, apiKey: string, options: PodscanFetchOpti
     throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }
 
+  // Streamed with a running count: a chunked or compressed body has no
+  // trustworthy Content-Length, and reading it whole first would hold the
+  // oversized response in memory before the cap could refuse it.
   let raw: string
   try {
-    raw = await response.text()
+    raw = await readCapped(response, MAX_RESPONSE_BYTES)
   } catch (error) {
     throw transportError(error)
-  }
-  if (new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) {
-    throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
   }
 
   if (!response.ok) {
@@ -274,13 +341,25 @@ export async function podscanFetch<T = unknown>(
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
   const retries = Math.max(0, options.retries ?? 0)
 
+  const remaining = () => options.deadlineAt === undefined ? Infinity : options.deadlineAt - Date.now()
+
   for (let attempt = 0; ; attempt += 1) {
+    if (remaining() <= 0) throw deadlineError()
     let failure: unknown
-    await acquireSlot(options.maxConcurrent ?? PODSCAN_MAX_CONCURRENT)
+    await acquireSlot(options.maxConcurrent ?? PODSCAN_MAX_CONCURRENT, options.deadlineAt)
+    const configuredTimeout = options.timeoutMs ?? PODSCAN_TIMEOUT_MS
+    let cappedByDeadline = false
     try {
-      return await fetchOnce(path, apiKey, options) as PodscanFetchResult<T>
+      const left = remaining()
+      if (left <= 0) throw deadlineError()
+      cappedByDeadline = left < configuredTimeout
+      return await fetchOnce(path, apiKey, options, Math.min(configuredTimeout, left)) as PodscanFetchResult<T>
     } catch (error) {
-      failure = error
+      // A timeout that only happened because the budget shortened the attempt
+      // says the budget ran out, not that Podscan is slow.
+      failure = cappedByDeadline && error instanceof HttpError && error.code === 'PODSCAN_TIMEOUT'
+        ? deadlineError()
+        : error
     } finally {
       // Given back before any backoff, so a waiting caller can go first.
       releaseSlot()
@@ -289,6 +368,10 @@ export async function podscanFetch<T = unknown>(
     const retryAfterMs = failure instanceof PodscanRateLimitError && failure.retryAfter
       ? (Number(failure.retryAfter) || 0) * 1_000
       : 0
-    await sleep(Math.min(MAX_RETRY_WAIT_MS, Math.max(retryAfterMs, RETRY_BASE_MS * 2 ** attempt)))
+    const wait = Math.min(MAX_RETRY_WAIT_MS, Math.max(retryAfterMs, RETRY_BASE_MS * 2 ** attempt))
+    // A retry that could not finish in time is not worth starting; the real
+    // failure says more than a deadline error would.
+    if (wait >= remaining()) throw failure
+    await sleep(wait)
   }
 }

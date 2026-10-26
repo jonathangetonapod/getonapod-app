@@ -555,7 +555,9 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           const podcasts = response.data.podcasts || []
           for (const podcast of podcasts) collect(fromPodscan(podcast), query)
           const lastPage = Number.parseInt(String(response.data.pagination?.last_page ?? PAGES_PER_QUERY), 10)
-          if (podcasts.length === 0 || page >= lastPage) {
+          // A page emptied only by dropped duplicate feeds is not the last one.
+          const pageWasEmpty = podcasts.length === 0 && !response.duplicatesRemoved
+          if (pageWasEmpty || page >= lastPage) {
             completedRequests += PAGES_PER_QUERY - page + 1
             break
           }

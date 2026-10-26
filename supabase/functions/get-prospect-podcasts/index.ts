@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
 import { getCachedPodcasts, batchUpsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 import {
+  isPodscanDeadlineError,
   isPodscanId,
   type PodscanDemographics,
   type PodscanPodcast,
@@ -20,6 +21,10 @@ import {
 
 // A hung Google API call must not hold the request open.
 const GOOGLE_API_TIMEOUT_MS = 30_000
+
+// A Google spreadsheet id goes into the Sheets API URL path; a real one is
+// letters, digits, '-' and '_' only.
+const SPREADSHEET_ID_PATTERN = /^[A-Za-z0-9_-]{10,200}$/u
 
 /*
  * Static single-origin CORS meant this function answered every request with the
@@ -600,6 +605,12 @@ serve(async (req) => {
 
       // NO ANALYSES YET - Fall back to Google Sheet + central cache
       console.log('[Get Prospect Podcasts] FAST PATH - no analyses found, falling back to Sheet + central cache')
+      if (typeof spreadsheetId !== 'string' || !SPREADSHEET_ID_PATTERN.test(spreadsheetId)) {
+        return new Response(
+          JSON.stringify({ error: 'Spreadsheet ID is invalid' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
 
       // Get access token and read Google Sheet
       const accessToken = await getGoogleAccessToken()
@@ -720,6 +731,12 @@ serve(async (req) => {
     if (!spreadsheetId) {
       return new Response(
         JSON.stringify({ error: 'Spreadsheet ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    if (typeof spreadsheetId !== 'string' || !SPREADSHEET_ID_PATTERN.test(spreadsheetId)) {
+      return new Response(
+        JSON.stringify({ error: 'Spreadsheet ID is invalid' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -1176,6 +1193,10 @@ serve(async (req) => {
     const startTime = Date.now()
     const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
     let stoppedEarly = false
+    // The round check above runs only between rounds; this bounds each Podscan
+    // call inside one, queue wait and retries included, so a hung index ends
+    // the request as "stopped early" instead of past the platform's limit.
+    const podscanDeadline = startTime + MAX_RUNTIME_MS
 
     if (missingPodcastIds.length > 0) {
       if (!podscanApiKey()) {
@@ -1217,13 +1238,18 @@ serve(async (req) => {
                 return null
               }
               const [podscanResult, demoResult] = await Promise.allSettled([
-                podscanFetch(`/podcasts/${encodeURIComponent(podcastId)}`, { retries: 2 }),
+                podscanFetch(`/podcasts/${encodeURIComponent(podcastId)}`, { retries: 2, deadlineAt: podscanDeadline }),
                 podscanFetch<PodscanDemographics | null>(
                   `/podcasts/${encodeURIComponent(podcastId)}/demographics`,
-                  { retries: 1 },
+                  { retries: 1, deadlineAt: podscanDeadline },
                 ),
               ])
 
+              if (podscanResult.status === 'rejected' && isPodscanDeadlineError(podscanResult.reason)) {
+                // Never answered: left for the next click, not a failure.
+                stoppedEarly = true
+                return null
+              }
               if (podscanResult.status === 'rejected') {
                 console.error('[Get Prospect Podcasts] Podscan error for', podcastId)
                 stats.podscanFailed++
@@ -1395,7 +1421,8 @@ serve(async (req) => {
       await materializeCanonicalShortlist(supabase, prospectDashboardId, orderedPodcasts)
     }
 
-    const remaining = missingPodcastIds.length - newPodcasts.length
+    // Failed shows were attempted; only the rest are still to do.
+    const remaining = missingPodcastIds.length - newPodcasts.length - stats.podscanFailed
     const cacheHitRate = podcastIds.length > 0 ? ((cachedPodcasts.length / podcastIds.length) * 100).toFixed(1) : '0'
     const apiCallsSaved = cachedPodcasts.length * 2
     const costSavings = (apiCallsSaved * 0.01).toFixed(2)

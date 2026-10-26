@@ -77,4 +77,19 @@ describe('toFunctionError', () => {
     expect(result.retryAfterSeconds).toBeUndefined()
     expect(result.concurrencyLimit).toBeUndefined()
   })
+
+  it('reads what a failed metered call charged and gave back', async () => {
+    const context = new Response(JSON.stringify({ error: 'Podscan did not respond in time', code: 'PODSCAN_TIMEOUT' }), {
+      status: 504,
+      headers: { 'Content-Type': 'application/json', 'X-Credits-Charged': '1', 'X-Credits-Refunded': '1' },
+    })
+
+    const result = await toFunctionError({ context }, 'Podscan request failed.') as Error & {
+      creditsCharged?: number
+      creditsRefunded?: number
+    }
+
+    expect(result.creditsCharged).toBe(1)
+    expect(result.creditsRefunded).toBe(1)
+  })
 })

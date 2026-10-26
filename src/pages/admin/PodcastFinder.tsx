@@ -1111,7 +1111,9 @@ export default function PodcastFinder({
             // value is treated as "this was the last page" rather than as licence
             // to keep paging to the cap.
             const lastPage = Number.parseInt(response.data.pagination?.last_page || String(page), 10)
-            if (podcasts.length === 0 || !Number.isFinite(lastPage) || page >= lastPage) spent.add(query)
+            // A page emptied only by dropped duplicate feeds is not the last one.
+            const pageWasEmpty = podcasts.length === 0 && !response.duplicatesRemoved
+            if (pageWasEmpty || !Number.isFinite(lastPage) || page >= lastPage) spent.add(query)
           } catch (error) {
             if (error instanceof Error && error.message === 'DISCOVERY_STOPPED') break
             errors += 1

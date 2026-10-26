@@ -196,9 +196,27 @@ const { data, error } = await supabase.functions.invoke('podscan-proxy', {
 })
 ```
 
-The browser never receives the Podscan credential. The proxy requires a live
-platform-administrator session and reads `PODSCAN_API_KEY`/`PODSCAN_TOKEN` only
-from server-side Supabase secret storage.
+The browser never receives the Podscan credential; the proxy reads
+`PODSCAN_API_KEY` from server-side Supabase secret storage. A call with a
+`workspace_id` needs a member of that workspace with feature access and is
+charged one `podscan_lookup` credit, refunded if the lookup fails (except a
+404, which is an answer). A call without one needs a platform-administrator
+session and is not charged. The request is validated before any charge;
+`per_page` is 1–50 and `page` 1–1000.
+
+Search and related-podcast results leave out feeds Podscan flags as
+`is_duplicate`, and `meta.duplicates_removed` says how many, so a page that
+held only duplicates is not mistaken for the last page. A search Podscan could
+not read exactly as written carries `query_warnings`.
+
+Failures keep the `{ error, code }` body, with the credit outcome and retry
+hints in headers (`X-Credits-Charged`, `X-Credits-Refunded`, `Retry-After`,
+`X-Concurrency-Limit`). Codes: `PODSCAN_RATE_LIMIT` (per-minute) and
+`PODSCAN_CONCURRENCY_LIMIT` (both 429, worth retrying), `PODSCAN_DAILY_LIMIT`
+(429, not worth retrying until the quota resets), `PODSCAN_NOT_CONFIGURED`
+(500), `PODSCAN_TIMEOUT` (504), `PODSCAN_UPSTREAM_<status>`,
+`PODSCAN_UNAVAILABLE`, `PODSCAN_INVALID_RESPONSE`, `PODSCAN_RESPONSE_TOO_LARGE`
+(502). `src/lib/podscanRetry.ts` decides which the finder retries.
 
 **Interface:**
 ```typescript

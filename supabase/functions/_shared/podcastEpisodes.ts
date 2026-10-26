@@ -3,7 +3,10 @@
 // degrade gracefully — every failure path returns [] / stored data and the
 // prompts are written to handle missing episode data explicitly.
 
-import { isPodscanId, podscanFetch } from './podscan.ts'
+import { isPodscanId, podscanFetch, type PodscanFetchOptions } from './podscan.ts'
+
+/** A deadline, plus the injection points the tests use. */
+export type EpisodeFetchOptions = Pick<PodscanFetchOptions, 'deadlineAt' | 'apiKey' | 'fetchImpl' | 'sleep'>
 
 /** A host or guest from Podscan's per-episode speaker analysis. */
 export interface EpisodePerson {
@@ -40,12 +43,12 @@ function text(value: unknown, max: number): string {
 
 // Host names from Podscan's aggregated episode analysis. Best-effort like
 // everything else in this module — failures return [].
-export async function fetchPodcastHosts(podscanId: string): Promise<string[]> {
+export async function fetchPodcastHosts(podscanId: string, fetchOptions: EpisodeFetchOptions = {}): Promise<string[]> {
   if (!isPodscanId(podscanId)) return []
   try {
     const { data: payload } = await podscanFetch<{ hosts?: unknown[] } | null>(
       `/podcasts/${encodeURIComponent(podscanId)}/analysis`,
-      { timeoutMs: 15_000, retries: 1 },
+      { timeoutMs: 15_000, retries: 1, ...fetchOptions },
     )
     if (!Array.isArray(payload?.hosts)) return []
     return payload.hosts.flatMap((raw) => {
@@ -64,7 +67,10 @@ export async function fetchPodcastHosts(podscanId: string): Promise<string[]> {
  * caller should retry later. An empty array is a REAL answer: Podscan
  * responded and the show has no processable episodes.
  */
-export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpisode[] | null> {
+export async function fetchRecentEpisodes(
+  podscanId: string,
+  fetchOptions: EpisodeFetchOptions = {},
+): Promise<RecentEpisode[] | null> {
   if (!isPodscanId(podscanId)) return null
 
   try {
@@ -83,7 +89,7 @@ export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpis
       | { episodes?: unknown[]; data?: unknown[] }
       | unknown[]
       | null
-    >(`/podcasts/${encodeURIComponent(podscanId)}/episodes`, { params, timeoutMs: 15_000, retries: 1 })
+    >(`/podcasts/${encodeURIComponent(podscanId)}/episodes`, { params, timeoutMs: 15_000, retries: 1, ...fetchOptions })
     const rows = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.episodes)
@@ -251,8 +257,12 @@ export interface CaptureOutcome {
   fetched: boolean
 }
 
-export async function ensureEpisodesCaptured(admin: any, podscanId: string): Promise<CapturedEpisodes | null> {
-  const { captured } = await captureEpisodes(admin, podscanId, EPISODE_FRESHNESS_MS)
+export async function ensureEpisodesCaptured(
+  admin: any,
+  podscanId: string,
+  fetchOptions: EpisodeFetchOptions = {},
+): Promise<CapturedEpisodes | null> {
+  const { captured } = await captureEpisodes(admin, podscanId, EPISODE_FRESHNESS_MS, fetchOptions)
   return captured
 }
 
@@ -276,6 +286,7 @@ async function captureEpisodes(
   admin: any,
   podscanId: string,
   freshnessMs: number,
+  fetchOptions: EpisodeFetchOptions = {},
 ): Promise<CaptureOutcome> {
   if (!/^[a-zA-Z0-9_-]+$/.test(podscanId)) return { captured: null, fetched: false }
   const { data: row, error } = await admin
@@ -308,7 +319,7 @@ async function captureEpisodes(
     && Date.now() - Date.parse(stored.episodes_fetched_at) < freshnessMs
   if (fresh) return { captured: stored, fetched: false }
 
-  const fetched = await fetchRecentEpisodes(podscanId)
+  const fetched = await fetchRecentEpisodes(podscanId, fetchOptions)
   if (fetched === null) {
     // Provider unavailable — keep what we had, leave episodes_fetched_at
     // unstamped, and let the next flow that needs episodes retry. Nothing was

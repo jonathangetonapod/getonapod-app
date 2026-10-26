@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
 }))
 
-import { describeQueryWarnings, searchAllPodcasts } from '@/services/podscan'
+import { describeQueryWarnings, searchAllPodcasts, searchPodcastsWithMeta } from '@/services/podscan'
 
 function page(ids: string[], lastPage = 4) {
   return {
@@ -105,5 +105,27 @@ describe('describeQueryWarnings', () => {
     expect(describeQueryWarnings(['a AND', 'b OR', 'c NOT', 'd AND'])).toBe(
       'The podcast index could not read 4 searches exactly as written (“a AND”, “b OR”, “c NOT” and 1 more), so their results may be broader than intended.',
     )
+  })
+})
+
+describe('searchPodcastsWithMeta', () => {
+  it('passes on how many duplicate feeds the proxy left out of the page', async () => {
+    invoke.mockResolvedValue({
+      data: { data: { podcasts: [], pagination: { last_page: 3 } }, meta: { rate_limit: {}, duplicates_removed: 50 } },
+      error: null,
+    })
+
+    const envelope = await searchPodcastsWithMeta({ query: 'founders', page: 2 }, 'ws-1')
+
+    expect(envelope.duplicatesRemoved).toBe(50)
+    expect(invoke).toHaveBeenCalledWith('podscan-proxy', {
+      body: { action: 'search', options: { query: 'founders', page: 2 }, workspace_id: 'ws-1' },
+    })
+  })
+
+  it('reads a response from before the count as none removed', async () => {
+    invoke.mockResolvedValue({ data: { data: { podcasts: [] }, meta: { rate_limit: {} } }, error: null })
+
+    expect((await searchPodcastsWithMeta({ query: 'founders' })).duplicatesRemoved).toBe(0)
   })
 })

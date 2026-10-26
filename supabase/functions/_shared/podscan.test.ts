@@ -1,6 +1,7 @@
 import { HttpError } from './httpError.ts'
 import {
   isPodscanAuthError,
+  isPodscanDeadlineError,
   isPodscanId,
   isRetryablePodscanError,
   PodscanRateLimitError,
@@ -204,4 +205,130 @@ Deno.test('no more than the cap are in flight at once', async () => {
   }
   await Promise.all(calls)
   assertEquals(peak, 2)
+})
+
+const codeOf = (error: unknown) => error instanceof HttpError ? error.code : String(error)
+
+Deno.test('a fetch that times out is a retryable PODSCAN_TIMEOUT', async () => {
+  const timedOut = (() => Promise.reject(new DOMException('slow', 'TimeoutError'))) as typeof fetch
+  const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: timedOut }))
+  assertEquals(codeOf(error), 'PODSCAN_TIMEOUT')
+  assertEquals(isRetryablePodscanError(error), true)
+})
+
+Deno.test('an oversized response is refused by its declared length and not retried', async () => {
+  const { impl, urls } = scriptedFetch([() => new Response('{}', { headers: { 'content-length': '6000000' } })])
+  const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, retries: 2, sleep: noWait }))
+  assertEquals(codeOf(error), 'PODSCAN_RESPONSE_TOO_LARGE')
+  assertEquals(urls.length, 1)
+})
+
+Deno.test('an oversized body with no length is cut off while streaming, not read whole', async () => {
+  let pulled = 0
+  let cancelled = false
+  const megabyte = new Uint8Array(1_000_000)
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulled += 1
+      if (pulled > 20) controller.close()
+      else controller.enqueue(megabyte)
+    },
+    cancel() {
+      cancelled = true
+    },
+  })
+  const impl = (() => Promise.resolve(new Response(body))) as typeof fetch
+  const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl }))
+  assertEquals(codeOf(error), 'PODSCAN_RESPONSE_TOO_LARGE')
+  assertEquals(cancelled, true)
+  // Stopped at the first chunk past 5 MB, nowhere near the 20 offered.
+  assertEquals(pulled <= 7, true, `pulled ${pulled} chunks`)
+})
+
+Deno.test('a long Retry-After is capped at five seconds', async () => {
+  const { impl } = scriptedFetch([
+    json({ error: 'per_minute_limit_exceeded', retry_after: 60 }, 429, { 'Retry-After': '60' }),
+    json({ ok: true }),
+  ])
+  const waits: number[] = []
+  await podscanFetch('/podcasts/a', {
+    apiKey: KEY,
+    fetchImpl: impl,
+    retries: 1,
+    sleep: (ms) => {
+      waits.push(ms)
+      return Promise.resolve()
+    },
+  })
+  assertEquals(waits, [5_000])
+})
+
+Deno.test('a failed call gives its slot back', async () => {
+  const { impl } = scriptedFetch([json({}, 503), json({ ok: true })])
+  await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, maxConcurrent: 1 }))
+  const result = await podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, maxConcurrent: 1 })
+  assertEquals(result.data, { ok: true })
+})
+
+Deno.test('a call queued behind busy slots leaves the queue at its deadline', async () => {
+  let release: () => void = () => undefined
+  const hanging = (() => new Promise<Response>((resolve) => {
+    release = () => resolve(json({ ok: true })())
+  })) as typeof fetch
+  const busy = podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: hanging, maxConcurrent: 1 })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  const { impl, urls } = scriptedFetch([json({ ok: true })])
+  const started = Date.now()
+  const error = await rejection(podscanFetch('/podcasts/b', {
+    apiKey: KEY,
+    fetchImpl: impl,
+    maxConcurrent: 1,
+    deadlineAt: Date.now() + 30,
+  }))
+  assertEquals(isPodscanDeadlineError(error), true)
+  assertEquals(urls.length, 0)
+  assertEquals(Date.now() - started < 1_000, true)
+
+  // The slot it never got is still the first call's to give back.
+  release()
+  await busy
+  const after = await podscanFetch('/podcasts/c', { apiKey: KEY, fetchImpl: scriptedFetch([json({ ok: 1 })]).impl, maxConcurrent: 1 })
+  assertEquals(after.data, { ok: 1 })
+})
+
+Deno.test('an attempt cut short by the deadline reports the deadline, not a slow index', async () => {
+  const waitsForAbort = ((_input: URL | Request | string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+  })) as typeof fetch
+  const error = await rejection(podscanFetch('/podcasts/a', {
+    apiKey: KEY,
+    fetchImpl: waitsForAbort,
+    retries: 2,
+    sleep: noWait,
+    deadlineAt: Date.now() + 40,
+  }))
+  assertEquals(codeOf(error), 'PODSCAN_DEADLINE_EXCEEDED')
+  assertEquals(isRetryablePodscanError(error), false)
+})
+
+Deno.test('no retry is started that could not finish before the deadline', async () => {
+  const { impl, urls } = scriptedFetch([json({}, 503), json({ ok: true })])
+  const error = await rejection(podscanFetch('/podcasts/a', {
+    apiKey: KEY,
+    fetchImpl: impl,
+    retries: 2,
+    sleep: noWait,
+    deadlineAt: Date.now() + 500,
+  }))
+  // The first backoff is a second, more than the half second left.
+  assertEquals(codeOf(error), 'PODSCAN_UPSTREAM_503')
+  assertEquals(urls.length, 1)
+})
+
+Deno.test('a deadline already past fails before any request', async () => {
+  const { impl, urls } = scriptedFetch([json({ ok: true })])
+  const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, deadlineAt: Date.now() - 1 }))
+  assertEquals(isPodscanDeadlineError(error), true)
+  assertEquals(urls.length, 0)
 })
