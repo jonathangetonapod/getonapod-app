@@ -9,6 +9,7 @@ import {
   listWorkspaceOnboarding,
   publishOnboardingTemplate,
   saveOnboardingTemplate,
+  startWorkspaceOnboarding,
   type OnboardingInstanceSummary,
   type OnboardingTemplate,
   type WorkspaceOnboardingData,
@@ -25,6 +26,7 @@ vi.mock('@/services/workspaceOnboarding', async (importOriginal) => {
     listWorkspaceOnboarding: vi.fn(),
     saveOnboardingTemplate: vi.fn(),
     publishOnboardingTemplate: vi.fn(),
+    startWorkspaceOnboarding: vi.fn(),
   }
 })
 
@@ -32,6 +34,7 @@ const mockedUseAuth = vi.mocked(useAuth)
 const mockedList = vi.mocked(listWorkspaceOnboarding)
 const mockedSave = vi.mocked(saveOnboardingTemplate)
 const mockedPublish = vi.mocked(publishOnboardingTemplate)
+const mockedStart = vi.mocked(startWorkspaceOnboarding)
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const signOut = vi.fn()
@@ -219,6 +222,29 @@ describe('WorkspaceOnboarding', () => {
     expect(screen.getByText('Branding: workspace defaults')).toBeInTheDocument()
     expect(screen.queryByLabelText('Welcome title')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create link and send' })).toBeInTheDocument()
+  })
+
+  it('creates an intake without emailing and opens the form when the operator fills it in', async () => {
+    const client = { id: '88888888-8888-4888-8888-888888888888', workspace_id: workspaceId, name: 'Dallas Fontaine', email: 'dallas@example.com', contact_person: 'Dallas Fontaine', status: 'active' }
+    mockedList.mockImplementation(async (_workspaceId, include) => include?.includes('clients')
+      ? listData({ clients: [client] })
+      : listData({ templates: [template] }))
+    const fillWindow = { opener: {}, closed: false, close: vi.fn(), location: { href: 'about:blank' } }
+    const open = vi.spyOn(window, 'open').mockReturnValue(fillWindow as never)
+    mockedStart.mockResolvedValue({
+      instance: { ...instance({ status: 'invited', client_id: client.id, client_name: 'Dallas Fontaine' }) } as never,
+      onboarding_url: 'https://app.example.com/onboarding/abc',
+      delivery: { status: 'skipped' },
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Send intake/u }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Fill it in myself' }))
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(fillWindow.opener).toBeNull()
+    await waitFor(() => expect(fillWindow.location.href).toBe('https://app.example.com/onboarding/abc?preview=staff'))
+    expect(mockedStart).toHaveBeenCalledWith(workspaceId, expect.objectContaining({ client_id: client.id, send_email: false }))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'New intake' })).not.toBeInTheDocument())
+    open.mockRestore()
   })
 
   it('asks for a reply-to address on the page when none is set', async () => {

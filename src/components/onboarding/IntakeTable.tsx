@@ -184,7 +184,7 @@ const IntakeTable = ({ instances, statusById, templates, now, canManage, emailCo
                     <RowIconAction label={emailConfigured ? 'Send reminder' : 'Send reminder (email is not set up)'} disabled={busy || !emailConfigured} onClick={() => onAction('remind', instance)}><Mail className="h-4 w-4" /></RowIconAction>
                   )}
                   {canManage && canExtend && <RowIconAction label="Extend 14 days" disabled={busy} onClick={() => onAction('extend', instance)}><CalendarPlus className="h-4 w-4" /></RowIconAction>}
-                  {canManage && linkLive && <RowIconAction label="Open preview" disabled={busy} onClick={() => onAction('preview', instance)}><ExternalLink className="h-4 w-4" /></RowIconAction>}
+                  {canManage && linkLive && <RowIconAction label="Fill in the form for them" disabled={busy} onClick={() => onAction('preview', instance)}><ExternalLink className="h-4 w-4" /></RowIconAction>}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`More actions for ${instance.client_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                     <DropdownMenuContent align="end">

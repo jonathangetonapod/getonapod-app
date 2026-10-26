@@ -54,7 +54,8 @@ interface Props {
   workspaceBaseHref: string
   agencyLogoUrl: string | null
   submitting: boolean
-  onSubmit: (input: StartOnboardingInput) => void
+  /** fillIn: create without emailing and open the form for the operator to complete. */
+  onSubmit: (input: StartOnboardingInput, fillIn: boolean) => void
   created: CreatedIntake | null
   onDone: () => void
 }
@@ -228,7 +229,7 @@ const NewIntakeDialog = ({
     reader.readAsDataURL(file)
   }
 
-  const submit = () => {
+  const submit = (fillIn = false) => {
     if (!form.client_choice) {
       toast.error('Choose a client, or add a new one.')
       return
@@ -260,7 +261,7 @@ const NewIntakeDialog = ({
       recipient_email: form.recipient_email,
       expires_in_days: expiry,
       assigned_membership_ids: form.assigned_membership_ids,
-      send_email: sendEmail,
+      send_email: fillIn ? false : sendEmail,
       idempotency_key: startKeyRef.current || undefined,
       experience: {
         intro_title: form.experience_title,
@@ -269,7 +270,7 @@ const NewIntakeDialog = ({
         accent_color: form.accent_color,
         logo_file: form.logo_file,
       },
-    })
+    }, fillIn)
   }
 
   const copyLink = async (link: string) => {
@@ -305,7 +306,7 @@ const NewIntakeDialog = ({
             <p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" asChild><a href={previewHref} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open preview</a></Button>
+            <Button variant="outline" asChild><a href={previewHref} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Fill in the form</a></Button>
             <Button onClick={onDone}>Done</Button>
           </DialogFooter>
         </DialogContent>
@@ -325,7 +326,7 @@ const NewIntakeDialog = ({
       <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[96vw]">
         <DialogHeader className="shrink-0 border-b px-6 pb-4 pt-6">
           <DialogTitle>New intake</DialogTitle>
-          <DialogDescription>Pick the client, then send them a private link to the form.</DialogDescription>
+          <DialogDescription>Pick the client, then send them a private link to the form, or fill it in for them.</DialogDescription>
         </DialogHeader>
 
         {/* Each pane scrolls itself on wide screens. The preview is inert so
@@ -467,7 +468,11 @@ const NewIntakeDialog = ({
 
         <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-4 sm:justify-between">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={submitting} onClick={submit}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{sendEmail ? 'Create link and send' : 'Create link'}</Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            {/* Nothing is emailed: the operator completes the form in a new tab. */}
+            <Button variant="outline" disabled={submitting} onClick={() => submit(true)}>Fill it in myself</Button>
+            <Button disabled={submitting} onClick={() => submit()}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{sendEmail ? 'Create link and send' : 'Create link'}</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

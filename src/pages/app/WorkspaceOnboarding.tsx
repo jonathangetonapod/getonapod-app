@@ -221,8 +221,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     setStartOpen(true)
   }
 
-  const finishNewIntake = () => {
-    const createdId = created?.result.instance.id ?? null
+  const finishNewIntake = (createdId: string | null = created?.result.instance.id ?? null) => {
     setStartOpen(false)
     setCreated(null)
     if (!createdId) return
@@ -232,18 +231,42 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     setHighlightId(createdId)
   }
 
+  // Fill it in myself opens its tab inside the click, before the intake
+  // exists, or a popup blocker would stop it.
+  const fillWindowRef = useRef<Window | null>(null)
   const startMutation = useMutation({
     mutationFn: (input: StartOnboardingInput) => startWorkspaceOnboarding(workspaceId, input),
     onSuccess: async (result, variables) => {
       await refresh()
-      setCreated({ result, emailRequested: Boolean(variables.send_email) })
+      const fillWindow = fillWindowRef.current
+      fillWindowRef.current = null
+      if (fillWindow && !fillWindow.closed) {
+        fillWindow.location.href = staffPreviewUrl(result.onboarding_url)
+        finishNewIntake(result.instance.id)
+        toast.success(`${result.instance.client_name}'s intake is open in a new tab. Fill it in and submit it there.`)
+      } else {
+        setCreated({ result, emailRequested: Boolean(variables.send_email) })
+      }
       if (result.replayed) toast.info('This intake was already created. Here is its link.')
       if (result.duplicate_client) {
         toast.warning(`${result.duplicate_client.name || 'Another client'} already uses this email. Check that you did not create a duplicate client.`)
       }
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to create the intake.'),
+    onError: (error) => {
+      fillWindowRef.current?.close()
+      fillWindowRef.current = null
+      toast.error(error instanceof Error ? error.message : 'Unable to create the intake.')
+    },
   })
+
+  const startIntake = (input: StartOnboardingInput, fillIn: boolean) => {
+    if (fillIn) {
+      const opened = window.open('about:blank', '_blank')
+      if (opened) opened.opener = null
+      fillWindowRef.current = opened
+    }
+    startMutation.mutate(input)
+  }
 
   const templateMutation = useMutation({
     mutationFn: async ({ draft, publish, makeDefault }: { draft: OnboardingTemplateDraft; publish: boolean; makeDefault: boolean }) => {
@@ -359,7 +382,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
     }
   }
 
-  // The tab for Open preview is opened inside the click, before the link is
+  // The tab for Fill in the form is opened inside the click, before the link is
   // fetched, or a popup blocker would stop it.
   const previewWindowRef = useRef<Window | null>(null)
   const linkMutation = useMutation({
@@ -751,9 +774,9 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           workspaceBaseHref={workspaceBaseHref}
           agencyLogoUrl={agencyLogoUrl}
           submitting={startMutation.isPending}
-          onSubmit={(input) => startMutation.mutate(input)}
+          onSubmit={startIntake}
           created={created}
-          onDone={finishNewIntake}
+          onDone={() => finishNewIntake()}
         />
       )}
 
@@ -783,7 +806,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
             </p>
           )}
           {invitation && <div className="space-y-2"><Label htmlFor="onboarding-link">Private intake link for {invitation.instance.recipient_name}</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}>Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url).then((copied) => { if (!copied) toast.error('Copy failed. Select and copy the link manually.') })}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}
-          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={staffPreviewUrl(invitation.onboarding_url)} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Open preview</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
+          <DialogFooter>{invitation && <Button variant="outline" asChild><a href={staffPreviewUrl(invitation.onboarding_url)} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" />Fill in the form</a></Button>}<Button onClick={() => setInvitation(null)}>Done</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

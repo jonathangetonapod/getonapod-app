@@ -392,6 +392,15 @@ const ClientOnboarding = () => {
       <div className="mx-auto max-w-4xl px-4 py-6 sm:py-10">
         <BrandHeader workspace={view.workspace} accent={accent} logoUnavailable={brandLogoUnavailable} onLogoError={() => setBrandLogoUnavailable(true)} />
 
+        {/* Opened from the workspace app. The form is the live one, so the
+            team can complete it on the client's behalf. */}
+        {staffPreview && (
+          <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900" role="status">
+            <p className="font-semibold">You are filling this in for {view.recipient_name || 'your client'}.</p>
+            <p className="mt-0.5">Answers save as you go and are the client's real answers. Submit when you are done and it moves to Review in your workspace.</p>
+          </div>
+        )}
+
         <Card className="mt-6 overflow-hidden border-0 shadow-2xl shadow-slate-900/10">
           <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${accent}, ${accent}99, ${accent}55)` }} />
           <CardHeader className="space-y-4 p-5 sm:p-8">
