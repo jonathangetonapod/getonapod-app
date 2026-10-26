@@ -532,6 +532,25 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText(/^Search:/)).not.toBeInTheDocument()
   })
 
+  // A search link someone sends opens ranked by match, and Best fit can still be chosen for it.
+  it('opens a search link on relevance', async () => {
+    renderPage('/app/podcast-database?q=founders')
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ search: 'founders', sort: 'relevance' }),
+      expect.anything(),
+    )
+    fireEvent.click(screen.getByRole('combobox', { name: 'Sort: Relevance' }))
+    fireEvent.click(await screen.findByRole('option', { name: /^Best fit/ }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ search: 'founders', sort: 'best_fit' }),
+      expect.anything(),
+    ))
+    expect(screen.getByRole('combobox', { name: 'Sort: Best fit' })).toBeInTheDocument()
+  })
+
   it('applies a sort chosen on purpose to a search', async () => {
     renderPage('/app/podcast-database?sort=audience')
     await screen.findByText('The Founder Show')

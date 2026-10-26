@@ -79,6 +79,11 @@ function localeCode(value: string | null): string {
   return LOCALE_CODE.test(code) ? code : 'all'
 }
 
+/** Relevance while something is searched, so a shared search link opens ranked by match. */
+function defaultSort(search: string): WorkspacePodcastCatalogSort {
+  return search ? 'relevance' : DEFAULT_CATALOG_PARAMS.sort
+}
+
 function choice<T extends string>(value: string | null, allowed: Set<string>, fallback: T): T {
   return value !== null && allowed.has(value) ? value as T : fallback
 }
@@ -87,7 +92,7 @@ export function readCatalogParams(params: URLSearchParams): PodcastCatalogParams
   const page = Number.parseInt(params.get(KEYS.page) || '', 10)
   const size = Number.parseInt(params.get(KEYS.pageSize) || '', 10)
   const search = (params.get(KEYS.search) || '').slice(0, 120)
-  const sort = choice(params.get(KEYS.sort), SORTS, DEFAULT_CATALOG_PARAMS.sort)
+  const sort = choice(params.get(KEYS.sort), SORTS, defaultSort(search))
   return {
     search,
     category: (params.get(KEYS.category) || '').slice(0, 200) || 'all',
@@ -137,7 +142,8 @@ export function usePodcastCatalogParams() {
       if (!('page' in patch)) merged.page = 1
       ;(Object.keys(KEYS) as Array<keyof PodcastCatalogParams>).forEach((field) => {
         const value = merged[field]
-        if (value === DEFAULT_CATALOG_PARAMS[field] || value === '') next.delete(KEYS[field])
+        const fallback = field === 'sort' ? defaultSort(merged.search) : DEFAULT_CATALOG_PARAMS[field]
+        if (value === fallback || value === '') next.delete(KEYS[field])
         else next.set(KEYS[field], String(value))
       })
       return next

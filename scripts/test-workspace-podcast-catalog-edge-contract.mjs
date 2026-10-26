@@ -89,6 +89,8 @@ assert.match(v3Migration, /p_language TEXT DEFAULT NULL,\s+p_region TEXT DEFAULT
 assert.match(v3Migration, /normalized_language IS NULL OR lower\(language\) = normalized_language/u)
 assert.match(v3Migration, /'languages', COALESCE\(/u)
 assert.match(v3Migration, /CASE WHEN effective_sort = 'reach' THEN podcast_reach_score END DESC NULLS LAST/u)
+// "uk" is folded into the ISO "gb", or United Kingdom is offered twice.
+assert.match(v3Migration, /WHEN lower\(btrim\(podcast\.region\)\) = 'uk' THEN 'gb'/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)

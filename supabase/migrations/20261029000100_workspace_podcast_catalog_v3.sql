@@ -91,6 +91,9 @@ BEGIN
   IF normalized_region IS NOT NULL AND length(normalized_region) > 16 THEN
     RAISE EXCEPTION 'region is invalid';
   END IF;
+  IF normalized_region = 'uk' THEN
+    normalized_region := 'gb';
+  END IF;
   IF normalized_sort NOT IN (
     'best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'
   ) THEN
@@ -156,7 +159,9 @@ BEGIN
       podcast.audience_size,
       podcast.podcast_reach_score,
       podcast.language,
-      podcast.region,
+      -- "uk" is not an ISO region code; a few feeds use it for "gb", and both
+      -- would read as United Kingdom in the filter.
+      CASE WHEN lower(btrim(podcast.region)) = 'uk' THEN 'gb' ELSE podcast.region END AS region,
       podcast.website,
       podcast.rss_url,
       podcast.last_posted_at,
