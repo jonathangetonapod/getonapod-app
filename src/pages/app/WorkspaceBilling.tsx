@@ -5,6 +5,7 @@ import { Link, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CREDIT_COSTS, OPERATION_NAMES, creditsLabel, type MeteredOperation } from '@/lib/creditCosts'
 import { CREDIT_PACKS, packPriceLabel } from '@/lib/creditPacks'
+import { resolveWorkspacePrice } from '@/lib/workspacePrice'
 
 import { AutoRefillCard } from '@/components/workspace/AutoRefillCard'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -269,6 +270,12 @@ const WorkspaceBilling = () => {
   const estimatedSpend = usageRows.reduce((sum, row) => sum + row.credits, 0)
   const creditsSpent = overview?.credits_spent_this_month ?? estimatedSpend
   const allowance = overview?.monthly_credit_allowance ?? 0
+  // What Stripe charges, or the plan's price before there is a subscription.
+  // The profile's base_price_cents is a column default until then, which put
+  // $29 on a button that opened a $49 checkout.
+  const planPriceCents = overview
+    ? resolveWorkspacePrice(overview).cents ?? overview.base_price_cents
+    : 0
   const spentPercent = allowance > 0 ? Math.min(100, Math.round((creditsSpent / allowance) * 100)) : 0
   const status = overview ? billingStatusBadge(overview.billing_status) : undefined
   const renewalDate = knownDate(overview?.current_period_end)
@@ -339,7 +346,7 @@ const WorkspaceBilling = () => {
                       {status && <Badge variant="outline" className={status.className}>{status.label}</Badge>}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {formatPrice(overview.base_price_cents)}/month
+                      {formatPrice(planPriceCents)}/month
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Includes unlimited clients and {allowance.toLocaleString()} credits each month.
@@ -368,7 +375,7 @@ const WorkspaceBilling = () => {
                       {openingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                       {overview.has_subscription
                         ? 'Manage plan'
-                        : `Start the Founding member plan · ${packPriceLabel(overview.base_price_cents)}/month`}
+                        : `Start the Founding member plan · ${packPriceLabel(planPriceCents)}/month`}
                     </Button>
                     {/* Invoices, receipts and card details are Stripe's pages.
                         The portal is where they live, so the link goes there

@@ -889,6 +889,60 @@ async function stripeHasSavedCard(customerId: string): Promise<boolean | null> {
   }
 }
 
+/**
+ * What the subscription actually charges, in cents a month, read from Stripe.
+ *
+ * workspace_billing_profiles.base_price_cents cannot answer this: it is copied
+ * from the plan by the subscription webhook, so it is the column default until
+ * a workspace first subscribes, and the plan's new price after a repricing even
+ * though Stripe keeps existing subscribers on the Price they signed up at.
+ * Null when Stripe is not configured or not answering; the caller falls back to
+ * the plan's price rather than to a column nothing kept current.
+ */
+async function stripeSubscriptionPriceCents(subscriptionId: string): Promise<number | null> {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")?.trim();
+  if (!stripeKey) return null;
+  try {
+    const response = await fetch(
+      `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+      {
+        headers: { Authorization: `Bearer ${stripeKey}` },
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null) as {
+      items?: { data?: Array<{ price?: { unit_amount?: unknown; recurring?: { interval?: unknown } } }> }
+    } | null;
+    const price = body?.items?.data?.[0]?.price;
+    const amount = price?.unit_amount;
+    if (typeof amount !== "number" || !Number.isSafeInteger(amount)) return null;
+    // Every plan is sold monthly; a yearly Price is shown at its monthly rate
+    // so it can be compared with the plan's.
+    return price?.recurring?.interval === "year" ? Math.round(amount / 12) : amount;
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * Every trial runs this long from the day the workspace was created, unless a
+ * platform admin has set trial_ends_at. Nothing wrote that column before, so
+ * reading it alone left every trial without an end and no workspace ever came
+ * due.
+ */
+const TRIAL_LENGTH_DAYS = 14;
+
+function effectiveTrialEndsAt(trialEndsAt: unknown, workspaceCreatedAt: unknown): string | null {
+  if (typeof trialEndsAt === "string" && !Number.isNaN(Date.parse(trialEndsAt))) {
+    return new Date(trialEndsAt).toISOString();
+  }
+  if (typeof workspaceCreatedAt !== "string") return null;
+  const created = Date.parse(workspaceCreatedAt);
+  if (Number.isNaN(created)) return null;
+  return new Date(created + TRIAL_LENGTH_DAYS * 86_400_000).toISOString();
+}
+
 async function listWorkspaceStaff(
   admin: AdminClient,
   workspaceId: string,
@@ -3039,9 +3093,9 @@ serve(async (req) => {
       monthStart.setUTCDate(1);
       monthStart.setUTCHours(0, 0, 0, 0);
 
-      const [profileResult, lotsResult, ledgerResult, spentResult, usageResult, pricesResult, cardProofResult] = await Promise.all([
+      const [profileResult, lotsResult, ledgerResult, spentResult, usageResult, pricesResult, cardProofResult, workspaceRowResult, plansResult] = await Promise.all([
         admin.from("workspace_billing_profiles")
-          .select("plan_key, billing_status, base_price_cents, per_client_price_cents, included_active_clients, monthly_credit_allowance, stripe_subscription_id, stripe_customer_id, cancel_at_period_end, current_period_end, refill_threshold_credits, refill_pack_credits, refill_monthly_cap_cents, refill_failure_count, refill_last_error, refill_last_failed_at")
+          .select("plan_key, billing_status, base_price_cents, per_client_price_cents, included_active_clients, monthly_credit_allowance, stripe_subscription_id, stripe_customer_id, cancel_at_period_end, current_period_end, trial_ends_at, refill_threshold_credits, refill_pack_credits, refill_monthly_cap_cents, refill_failure_count, refill_last_error, refill_last_failed_at")
           .eq("workspace_id", workspaceId)
           .maybeSingle(),
         admin.from("workspace_credit_lots")
@@ -3084,6 +3138,16 @@ serve(async (req) => {
           .not("stripe_payment_ref", "is", null)
           .limit(1)
           .maybeSingle(),
+        // The trial runs from the workspace's creation when no end is set.
+        admin.from("workspaces")
+          .select("created_at")
+          .eq("id", workspaceId)
+          .maybeSingle(),
+        // What the plan costs and grants today: the price shown when there is
+        // no subscription to ask Stripe about, and the default an allowance
+        // override is measured against.
+        admin.from("billing_plans")
+          .select("plan_key, base_price_cents, monthly_credit_allowance"),
       ]);
       // All six reads, not four: a failed profile read used to serve the
       // fallback identity — trial plan, default allowance, no saved card — as
@@ -3091,6 +3155,7 @@ serve(async (req) => {
       if (
         profileResult.error || lotsResult.error || ledgerResult.error
         || spentResult.error || usageResult.error || pricesResult.error
+        || workspaceRowResult.error || plansResult.error
       ) {
         throw new HttpError(503, "BILLING_UNAVAILABLE", "Billing data is temporarily unavailable");
       }
@@ -3106,6 +3171,15 @@ serve(async (req) => {
         const stripeAnswer = await stripeHasSavedCard(customerIdForCard);
         hasSavedCard = stripeAnswer === null ? Boolean(cardProofResult.data) : stripeAnswer;
       }
+
+      const planKey = profileResult.data?.plan_key ?? "founding_member";
+      const plan = (plansResult.data ?? []).find((row) => row.plan_key === planKey);
+      const subscriptionId = typeof profileResult.data?.stripe_subscription_id === "string"
+        ? profileResult.data.stripe_subscription_id
+        : "";
+      const subscriptionPriceCents = subscriptionId
+        ? await stripeSubscriptionPriceCents(subscriptionId)
+        : null;
 
       const now = Date.now();
       const activeLots = (lotsResult.data ?? []).filter((lot) =>
@@ -3131,9 +3205,21 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, {
         success: true,
         billing: {
-          plan_key: profileResult.data?.plan_key ?? "founding_member",
+          plan_key: planKey,
           billing_status: profileResult.data?.billing_status ?? "trialing",
           base_price_cents: profileResult.data?.base_price_cents ?? 3900,
+          // What this workspace pays: Stripe's answer when it has a
+          // subscription, null otherwise. Compared against plan_base_price_cents
+          // to tell a grandfathered price from the current one.
+          subscription_price_cents: subscriptionPriceCents,
+          plan_base_price_cents: typeof plan?.base_price_cents === "number" ? plan.base_price_cents : null,
+          plan_monthly_credit_allowance: typeof plan?.monthly_credit_allowance === "number"
+            ? plan.monthly_credit_allowance
+            : null,
+          trial_ends_at: effectiveTrialEndsAt(
+            profileResult.data?.trial_ends_at,
+            workspaceRowResult.data?.created_at,
+          ),
           per_client_price_cents: profileResult.data?.per_client_price_cents ?? 3900,
           // 3 to match workspace_client_operation_v2, which is what actually
           // enforces it when a workspace has no billing profile yet.
@@ -3351,14 +3437,14 @@ serve(async (req) => {
       // with every operation — were silently truncated and the balances and
       // spend shown here came out low with nothing to say so. A page that
       // fails fails the whole portfolio rather than showing partial totals.
-      const [workspacesResult, profilesResult, lotsResult, spendResult] = await Promise.all([
+      const [workspacesResult, profilesResult, lotsResult, spendResult, plansResult] = await Promise.all([
         readAllPages((from, to) => admin.from("workspaces")
-          .select("id, name, status")
+          .select("id, name, status, created_at")
           .eq("status", "active")
           .order("id", { ascending: true })
           .range(from, to)),
         readAllPages((from, to) => admin.from("workspace_billing_profiles")
-          .select("workspace_id, plan_key, billing_status, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id")
+          .select("workspace_id, plan_key, billing_status, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id, trial_ends_at")
           .order("workspace_id", { ascending: true })
           .range(from, to)),
         readAllPages((from, to) => admin.from("workspace_credit_lots")
@@ -3374,8 +3460,14 @@ serve(async (req) => {
           .gte("created_at", monthStart.toISOString())
           .order("id", { ascending: true })
           .range(from, to)),
+        // Three rows. Each workspace's allowance is compared with its plan's
+        // so an override can be told apart from the default.
+        admin.from("billing_plans").select("plan_key, monthly_credit_allowance"),
       ]);
-      if (workspacesResult.error || profilesResult.error || lotsResult.error || spendResult.error) {
+      if (
+        workspacesResult.error || profilesResult.error || lotsResult.error || spendResult.error
+        || plansResult.error
+      ) {
         throw new HttpError(503, "PORTFOLIO_UNAVAILABLE", "The billing portfolio could not be read");
       }
 
@@ -3403,9 +3495,19 @@ serve(async (req) => {
         profiles.set(String(row.workspace_id), row);
       }
 
+      const planAllowances = new Map<string, number>();
+      for (const plan of (plansResult.data ?? []) as Array<Record<string, unknown>>) {
+        if (typeof plan.monthly_credit_allowance === "number") {
+          planAllowances.set(String(plan.plan_key), plan.monthly_credit_allowance);
+        }
+      }
+
       const rows = ((workspacesResult.data ?? []) as Array<Record<string, unknown>>).map((workspace) => {
         const id = String(workspace.id);
         const profile = profiles.get(id);
+        // A profile is created with founding_member, so a workspace without
+        // one is on that plan in every sense that matters here.
+        const effectivePlanKey = typeof profile?.plan_key === "string" ? profile.plan_key : "founding_member";
         const allowance = typeof profile?.monthly_credit_allowance === "number"
           ? profile.monthly_credit_allowance
           : 100;
@@ -3423,6 +3525,8 @@ serve(async (req) => {
             && profile.stripe_subscription_id.length > 0,
           cancel_at_period_end: profile?.cancel_at_period_end === true,
           current_period_end: profile?.current_period_end ?? null,
+          trial_ends_at: effectiveTrialEndsAt(profile?.trial_ends_at, workspace.created_at),
+          plan_monthly_credit_allowance: planAllowances.get(effectivePlanKey) ?? null,
         };
       });
 

@@ -4,6 +4,7 @@ import { CreditCard, ExternalLink, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { resolveWorkspacePrice } from '@/lib/workspacePrice'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 
 interface WorkspaceSubscriptionStatusProps {
@@ -56,9 +57,6 @@ const STATUS_VIEW: Record<string, { label: string; className: string; note: stri
   },
 }
 
-const money = (cents: number | undefined) =>
-  typeof cents === 'number' ? `$${(cents / 100).toFixed(2)}` : '—'
-
 const day = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
 
@@ -78,6 +76,10 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName }: Work
     note: 'Reported by Stripe. Nothing in the product knows this one by name.',
   }
   const renews = day(billing?.current_period_end)
+  // Stripe's price for this subscription, or the plan's when there is none.
+  // Never the profile's base_price_cents: that is a default until the first
+  // subscription event, which is how a trial showed $29 for a $49 plan.
+  const price = resolveWorkspacePrice(billing ?? {})
   const customerId = billing?.stripe_customer_id ?? null
 
   return (
@@ -122,8 +124,8 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName }: Work
                 <dd className="mt-0.5 font-medium capitalize">{String(billing?.plan_key ?? '—').replace(/_/gu, ' ')}</dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">Base price</dt>
-                <dd className="mt-0.5 font-medium">{money(billing?.base_price_cents)}/mo</dd>
+                <dt className="text-xs text-muted-foreground">Price</dt>
+                <dd className="mt-0.5 font-medium">{price.label}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">

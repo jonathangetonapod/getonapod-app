@@ -37,16 +37,3 @@ export function creditHealth(balance: number, monthlyAllowance: number): CreditH
   if (share <= 0.25) return VIEW.low
   return VIEW.ok
 }
-
-/** Worst first: the point of the list is what needs attention. */
-export function creditHealthRank(level: CreditHealth): number {
-  return { empty: 0, critical: 1, low: 2, ok: 3 }[level]
-}
-
-/**
- * Statuses that mean money is not arriving. Kept apart from credit health
- * because a workspace can be fully funded and still have a failed card.
- */
-export function billingNeedsAttention(billingStatus: string): boolean {
-  return ['past_due', 'paused', 'canceled', 'cancelled', 'unpaid', 'incomplete'].includes(billingStatus)
-}

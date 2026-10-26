@@ -109,6 +109,32 @@ describe('WorkspaceCreditGrantPreview', () => {
     expect(within(section).getByText(/could not be read, so this cannot be projected/i)).toBeInTheDocument()
   })
 
+  // While the balance is on its way, say so: the error used to show here
+  // during loading, beside a card that went on to read 200.
+  it('shows a loading state, not an error, until the balance resolves', async () => {
+    let resolveOverview: (value: typeof overview) => void = () => {}
+    mockedOverview.mockImplementation(() => new Promise((resolve) => { resolveOverview = resolve }))
+    renderPanel()
+
+    const section = await screen.findByRole('region', { name: 'Workspace credits' })
+    expect(within(section).getByText('Reading the current balance…')).toBeInTheDocument()
+    expect(within(section).queryByText(/could not be read/i)).not.toBeInTheDocument()
+
+    resolveOverview({ ...overview, balance: 200 })
+    expect(await within(section).findByLabelText('200 credits available')).toBeInTheDocument()
+    expect(within(section).queryByText('Reading the current balance…')).not.toBeInTheDocument()
+    expect(within(section).queryByText(/could not be read/i)).not.toBeInTheDocument()
+  })
+
+  // One fetch for every card on the page, so they cannot disagree.
+  it('reads the balance through the shared billing overview query', async () => {
+    mockedOverview.mockResolvedValue({ ...overview, balance: 200 })
+    renderPanel()
+
+    await screen.findByLabelText('200 credits available')
+    expect(mockedOverview).toHaveBeenCalledTimes(1)
+  })
+
   // Named after the workspace rather than the owner: a workspace called after
   // the person who owns it turned "granted to X, not to this person" into a
   // sentence that contradicted the card above it.

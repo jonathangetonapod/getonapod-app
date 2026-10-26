@@ -5,7 +5,13 @@ import { AlertTriangle, Loader2, Wallet } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { billingNeedsAttention, creditHealth, creditHealthRank } from '@/lib/creditHealth'
+import {
+  ATTENTION_LABELS,
+  allowanceIsOverride,
+  compareByAttention,
+  workspaceAttention,
+} from '@/lib/billingAttention'
+import { creditHealth } from '@/lib/creditHealth'
 import { getBillingPortfolio, type BillingPortfolioRow } from '@/services/workspaceStaff'
 
 interface BillingPortfolioProps {
@@ -34,27 +40,16 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
   })
 
   const rows = useMemo(() => {
-    const list = [...(portfolioQuery.data?.workspaces ?? [])]
-    // Worst first. A list sorted by name makes an owner read all of it to find
-    // the one row that needed them.
-    return list.sort((left, right) => {
-      const leftHealth = creditHealthRank(creditHealth(left.balance, left.monthly_credit_allowance).level)
-      const rightHealth = creditHealthRank(creditHealth(right.balance, right.monthly_credit_allowance).level)
-      if (leftHealth !== rightHealth) return leftHealth - rightHealth
-      const leftBilling = billingNeedsAttention(left.billing_status) ? 0 : 1
-      const rightBilling = billingNeedsAttention(right.billing_status) ? 0 : 1
-      if (leftBilling !== rightBilling) return leftBilling - rightBilling
-      return left.name.localeCompare(right.name)
-    })
+    const now = Date.now()
+    // Worst first, by the same rule the count uses. A list sorted by name
+    // makes an owner read all of it to find the one row that needed them.
+    return [...(portfolioQuery.data?.workspaces ?? [])].sort((left, right) => compareByAttention(left, right, now))
   }, [portfolioQuery.data])
 
   const totals = useMemo(() => ({
     balance: rows.reduce((sum, row) => sum + row.balance, 0),
     spent: rows.reduce((sum, row) => sum + row.credits_spent_this_month, 0),
-    attention: rows.filter((row) => (
-      creditHealth(row.balance, row.monthly_credit_allowance).level !== 'ok'
-      || billingNeedsAttention(row.billing_status)
-    )).length,
+    attention: rows.filter((row) => workspaceAttention(row).needsAttention).length,
   }), [rows])
 
   return (
@@ -116,7 +111,9 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
                 <tbody>
                   {rows.map((row: BillingPortfolioRow) => {
                     const health = creditHealth(row.balance, row.monthly_credit_allowance)
-                    const billingFlag = billingNeedsAttention(row.billing_status)
+                    const attention = workspaceAttention(row)
+                    const billingFlag = attention.reasons.some((reason) => reason !== 'low_balance')
+                    const override = allowanceIsOverride(row.monthly_credit_allowance, row.plan_monthly_credit_allowance)
                     const selected = row.workspace_id === selectedWorkspaceId
                     return (
                       <tr
@@ -132,7 +129,20 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
                             )}
                           </div>
                         </td>
-                        <td className="py-2.5 pr-3 text-muted-foreground">{row.monthly_credit_allowance.toLocaleString()}/mo</td>
+                        <td className="py-2.5 pr-3 text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <span>{row.monthly_credit_allowance.toLocaleString()}/mo</span>
+                            {override && (
+                              <Badge
+                                variant="outline"
+                                className="border-violet-200 bg-violet-50 text-violet-900"
+                                title={`Plan default is ${row.plan_monthly_credit_allowance?.toLocaleString()}/mo`}
+                              >
+                                Override
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-2.5 pr-3 text-muted-foreground">{row.credits_spent_this_month.toLocaleString()}</td>
                         <td className="py-2.5 pr-3">
                           <div className="flex items-center gap-1.5">
@@ -140,6 +150,13 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
                             <span className={billingFlag ? 'text-destructive' : 'text-muted-foreground'}>
                               {row.billing_status.replace(/_/gu, ' ')}
                             </span>
+                            {attention.reasons
+                              .filter((reason) => reason !== 'low_balance')
+                              .map((reason) => (
+                                <Badge key={reason} variant="outline" className="border-destructive/30 bg-destructive/5 text-destructive">
+                                  {ATTENTION_LABELS[reason]}
+                                </Badge>
+                              ))}
                             {row.cancel_at_period_end && (
                               <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">Ending</Badge>
                             )}

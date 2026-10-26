@@ -22,6 +22,8 @@ describe('WorkspaceSubscriptionStatus', () => {
       billing_status: 'active',
       plan_key: 'founding_member',
       base_price_cents: 3900,
+      subscription_price_cents: 3900,
+      plan_base_price_cents: 3900,
       current_period_end: '2026-09-01T00:00:00Z',
       has_subscription: true,
       stripe_customer_id: 'cus_123',
@@ -31,7 +33,39 @@ describe('WorkspaceSubscriptionStatus', () => {
     expect(await screen.findByText('Active')).toBeInTheDocument()
     // A status word alone tells an operator nothing about what happens next.
     expect(screen.getByText(/renewing on schedule/i)).toBeInTheDocument()
-    expect(screen.getByText('$39.00/mo')).toBeInTheDocument()
+    expect(screen.getByText('$39/mo')).toBeInTheDocument()
+  })
+
+  // Sam Bylett: no subscription, and the profile column still at the $29
+  // default it was created with. The plan costs $49, which is what checkout
+  // would charge, so that is the price.
+  it('shows the plan price, not the profile default, before there is a subscription', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'trialing',
+      plan_key: 'founding_member',
+      base_price_cents: 2900,
+      subscription_price_cents: null,
+      plan_base_price_cents: 4900,
+      has_subscription: false,
+    } as never)
+    renderCard()
+
+    expect(await screen.findByText('$49/mo')).toBeInTheDocument()
+    expect(screen.queryByText(/\$29/u)).not.toBeInTheDocument()
+  })
+
+  it('labels a grandfathered Stripe price against the current plan price', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'active',
+      plan_key: 'founding_member',
+      base_price_cents: 4900,
+      subscription_price_cents: 2900,
+      plan_base_price_cents: 4900,
+      has_subscription: true,
+    } as never)
+    renderCard()
+
+    expect(await screen.findByText('$29/mo · Legacy price (current $49)')).toBeInTheDocument()
   })
 
   it('distinguishes a paused subscription from a cancelled one', async () => {

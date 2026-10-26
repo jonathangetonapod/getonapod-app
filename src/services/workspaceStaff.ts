@@ -939,7 +939,18 @@ export async function clearWorkspaceAiKey(
 export interface WorkspaceBillingOverview {
   plan_key: string
   billing_status: string
+  /**
+   * Copied from the plan by the subscription webhook, so only a default until
+   * the first subscription event. Use resolveWorkspacePrice for display.
+   */
   base_price_cents: number
+  /** What Stripe charges this workspace; null without a subscription or an answer. */
+  subscription_price_cents?: number | null
+  /** The plan's current price and allowance, from billing_plans. */
+  plan_base_price_cents?: number | null
+  plan_monthly_credit_allowance?: number | null
+  /** The admin-set trial end, or the default length from creation. */
+  trial_ends_at?: string | null
   per_client_price_cents: number
   included_active_clients: number
   monthly_credit_allowance: number
@@ -1103,6 +1114,10 @@ export interface BillingPortfolioRow {
   has_subscription: boolean
   cancel_at_period_end: boolean
   current_period_end: string | null
+  /** The admin-set trial end, or the default length from creation. */
+  trial_ends_at?: string | null
+  /** What the workspace's plan grants by default; null if the plan is unknown. */
+  plan_monthly_credit_allowance?: number | null
 }
 
 /**

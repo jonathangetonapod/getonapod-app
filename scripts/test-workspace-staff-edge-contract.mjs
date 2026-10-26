@@ -647,4 +647,17 @@ assert.match(source, /has_saved_card: hasSavedCard,/u)
 const portfolio = source.slice(source.indexOf('if (action === "billing-portfolio")'), source.indexOf('if (action === "credits-adjust")'))
 assert.match(source, /async function readAllPages\(/u)
 assert.equal((portfolio.match(/readAllPages\(\(from, to\) => admin\.from\(/gu) ?? []).length, 4)
-assert.match(portfolio, /if \(workspacesResult\.error \|\| profilesResult\.error \|\| lotsResult\.error \|\| spendResult\.error\)/u)
+assert.match(portfolio, /workspacesResult\.error \|\| profilesResult\.error \|\| lotsResult\.error \|\| spendResult\.error\s*\n\s*\|\| plansResult\.error/u)
+
+// The price a workspace pays is Stripe's, never the profile column: that one
+// is a default until the first subscription event and goes stale on repricing.
+const overview = source.slice(source.indexOf('if (action === "billing-overview")'), source.indexOf('if (action === "credits-grant")'))
+assert.match(source, /async function stripeSubscriptionPriceCents\(subscriptionId: string\): Promise<number \| null>/u)
+assert.match(overview, /subscription_price_cents: subscriptionPriceCents,/u)
+assert.match(overview, /plan_base_price_cents:/u)
+assert.match(overview, /plan_monthly_credit_allowance:/u)
+// A trial ends: the admin-set date, otherwise TRIAL_LENGTH_DAYS after creation.
+assert.match(source, /const TRIAL_LENGTH_DAYS = 14;/u)
+assert.match(overview, /trial_ends_at: effectiveTrialEndsAt\(/u)
+assert.match(portfolio, /trial_ends_at: effectiveTrialEndsAt\(profile\?\.trial_ends_at, workspace\.created_at\)/u)
+assert.match(portfolio, /plan_monthly_credit_allowance: planAllowances\.get\(effectivePlanKey\) \?\? null/u)

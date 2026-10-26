@@ -79,12 +79,13 @@ export function WorkspaceCreditGrantPreview({
   const [reviewOpen, setReviewOpen] = useState(false)
   const [adjustments, setAdjustments] = useState<PreviewAdjustment[]>([])
 
-  const overviewQueryKey = ['workspace-credit-grants', workspaceId, 'overview'] as const
+  // The same query, by key, as every other card for this workspace. A private
+  // key meant a second fetch, and when only that one failed this card said the
+  // balance could not be read beside a card showing it.
   const overviewQuery = useQuery({
-    queryKey: overviewQueryKey,
+    queryKey: ['workspace-billing-overview', workspaceId],
     queryFn: () => getWorkspaceBillingOverview(workspaceId),
     retry: false,
-    staleTime: 30_000,
   })
   // Null until the balance is actually known. It used to fall back to 0, so a
   // single failed read — there are no retries — rendered a confident "0" and
@@ -134,7 +135,9 @@ export function WorkspaceCreditGrantPreview({
   })
   // The note is optional. The reason still is not: it is what the ledger entry
   // is filed under, and it costs one click rather than a sentence per grant.
-  const formReady = parsedAmount !== null && reason !== '' && !grantMutation.isPending
+  // Not while the balance is still on its way: the review would project from a
+  // number that is about to arrive. A failed read still lets the grant through.
+  const formReady = parsedAmount !== null && reason !== '' && !grantMutation.isPending && !overviewQuery.isLoading
   const projectedBalance = (knownBalance ?? 0) + (parsedAmount || 0)
 
   const confirmPreview = () => {
@@ -311,10 +314,12 @@ export function WorkspaceCreditGrantPreview({
                 <div className="flex flex-col gap-4 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Balance after grant</p>
-                    {knownBalance === null ? (
+                    {knownBalance === null && overviewQuery.isError ? (
                       <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                         The current balance could not be read, so this cannot be projected. The grant will still be added.
                       </p>
+                    ) : knownBalance === null ? (
+                      <p className="mt-1 text-sm text-muted-foreground" role="status">Reading the current balance…</p>
                     ) : (
                       <div className="mt-1 flex items-center gap-2 text-lg font-semibold">
                         <span>{knownBalance.toLocaleString()}</span>
