@@ -33,3 +33,14 @@ export function packPriceLabel(amountCents: number): string {
 
 export const creditPackByCredits = (credits: number): CreditPackDisplay | undefined =>
   CREDIT_PACKS.find((pack) => pack.credits === credits)
+
+/**
+ * How much cheaper per credit a pack is than the smallest one, rounded down so
+ * the badge never claims more than the price delivers. 0 for the base pack.
+ */
+export function packSavingsPercent(pack: CreditPackDisplay): number {
+  const base = CREDIT_PACKS[0]
+  const baseRate = base.amountCents / base.credits
+  const rate = pack.amountCents / pack.credits
+  return Math.max(0, Math.floor((1 - rate / baseRate) * 100))
+}

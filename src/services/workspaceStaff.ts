@@ -984,16 +984,31 @@ export interface WorkspaceBillingOverview {
   balance: number
   expiring_credits: number
   next_expiry_at: string | null
+  /** The part of expiring_credits that lapses on next_expiry_at itself. */
+  expiring_next_credits?: number
+  /** Credits in lots with no expiry: purchases. */
+  purchased_credits?: number
+  /** When the next monthly allowance lands; null when none will. */
+  next_allowance_at?: string | null
   usage_this_month: Record<string, { total: number; byo: number }>
+  /**
+   * Credits per operation from the same ledger rows as
+   * credits_spent_this_month, net of refunds for failed runs.
+   */
+  ledger_usage_this_month?: Record<string, { credits: number; refunds: number }>
   prices: Record<string, number>
-  recent_activity: Array<{
-    id: string
-    entry_type: string
-    amount: number
-    operation_type: string | null
-    reference_kind: string | null
-    created_at: string
-  }>
+  recent_activity: BillingActivityEntry[]
+}
+
+export interface BillingActivityEntry {
+  id: string
+  entry_type: string
+  amount: number
+  operation_type: string | null
+  reference_kind: string | null
+  /** For a refund of a failed run, the debit it reverses. */
+  reference_id?: string | null
+  created_at: string
 }
 
 export async function getWorkspaceBillingOverview(workspaceId: string): Promise<WorkspaceBillingOverview> {

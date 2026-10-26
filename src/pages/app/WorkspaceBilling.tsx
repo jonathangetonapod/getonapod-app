@@ -1,29 +1,26 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, CreditCard, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
-import { Link, Navigate } from 'react-router-dom'
+import { ChevronDown, Loader2 } from 'lucide-react'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CREDIT_COSTS, OPERATION_NAMES, creditsLabel, type MeteredOperation } from '@/lib/creditCosts'
-import { CREDIT_PACKS, packPriceLabel } from '@/lib/creditPacks'
-import { resolveWorkspacePrice } from '@/lib/workspacePrice'
+import { knownDate, operationName } from '@/lib/billingActivity'
 
 import { AutoRefillCard } from '@/components/workspace/AutoRefillCard'
+import { BillingActivityList } from '@/components/workspace/BillingActivityList'
+import { BillingSummary } from '@/components/workspace/BillingSummary'
+import { CreditPackPicker, DEFAULT_REFILL_THRESHOLD } from '@/components/workspace/CreditPackPicker'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
-import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { getWorkspaceBillingOverview,
   createWorkspaceBillingPortal,
   createWorkspaceCreditCheckout,
   createWorkspaceSubscriptionCheckout,
+  setWorkspaceAutoRefill,
 } from '@/services/workspaceStaff'
-
-// One name per operation, shared with every button that quotes a price, so
-// the usage table and the ledger call a thing what the button called it.
-const operationName = (type: string): string =>
-  (OPERATION_NAMES as Record<string, string>)[type] ?? (type === 'other' ? OPERATION_NAMES.other : type)
+import { CREDIT_PACKS } from '@/lib/creditPacks'
 
 // The price list, grouped: mailboxes are a different kind of spend from the
 // per-run AI and data work above them.
@@ -31,59 +28,27 @@ const MAILBOX_OPERATIONS: MeteredOperation[] = ['mailbox_domain_purchase', 'mail
 const WORK_OPERATIONS = (Object.keys(CREDIT_COSTS) as MeteredOperation[])
   .filter((operation) => !MAILBOX_OPERATIONS.includes(operation))
 
-const PLAN_LABELS: Record<string, string> = {
-  founding_member: 'Founding member',
-  standard: 'Standard',
-  comped: 'Complimentary',
-}
-
-// A workspace in past_due or suspended used to be told nothing at all: the
-// status was fetched and never rendered, so the first sign of trouble was a
-// feature refusing to run.
-const BILLING_STATUS: Record<string, { label: string; className: string }> = {
-  trialing: { label: 'Trial', className: 'border-sky-300 bg-sky-50 text-sky-900' },
-  active: { label: 'Active', className: 'border-emerald-300 bg-emerald-50 text-emerald-900' },
-  past_due: { label: 'Payment overdue', className: 'border-red-300 bg-red-50 text-red-900' },
-  comped: { label: 'Complimentary', className: 'border-violet-300 bg-violet-50 text-violet-900' },
-  suspended: { label: 'Suspended', className: 'border-red-300 bg-red-50 text-red-900' },
-  // The platform screens know all of these; a cancelled workspace used to get
-  // no badge and no alert here, its only hint the button reading
-  // "Choose a plan".
-  paused: { label: 'Paused', className: 'border-amber-300 bg-amber-50 text-amber-900' },
-  canceled: { label: 'Cancelled', className: 'border-red-300 bg-red-50 text-red-900' },
-  cancelled: { label: 'Cancelled', className: 'border-red-300 bg-red-50 text-red-900' },
-  unpaid: { label: 'Payment failed', className: 'border-red-300 bg-red-50 text-red-900' },
-  incomplete: { label: 'Payment incomplete', className: 'border-amber-300 bg-amber-50 text-amber-900' },
-}
-
-// An unknown status is stated as itself rather than hidden: silence about a
-// billing state is how trouble stays unnoticed until a feature refuses.
-const billingStatusBadge = (status: string): { label: string; className: string } =>
-  BILLING_STATUS[status] ?? { label: status.replace(/_/gu, ' '), className: 'border-border bg-muted text-muted-foreground' }
-
-// Whole dollars stay whole; a $49.50 plan must not round to "$50/month" here
-// while the subscription card says $49.50 for the same plan.
-const formatPrice = (cents: number): string => (
-  cents % 100 === 0 ? `$${(cents / 100).toFixed(0)}` : `$${(cents / 100).toFixed(2)}`
-)
-
-
-
-function formatShortDate(value: string | null): string {
-  if (!value || !Number.isFinite(Date.parse(value))) return '—'
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(value))
-}
-
-// The date the explainer, the balance and the empty alert all lean on. Null
-// rather than a dash, so a sentence can leave the clause out instead of
-// reading "paused until —".
-const knownDate = (value: string | null | undefined): string | null =>
-  value && Number.isFinite(Date.parse(value)) ? formatShortDate(value) : null
+// One word for "costs nothing" across the price list, which also says runs on
+// your own AI keys are free.
+const priceLabel = (credits: number): string => (credits <= 0 ? 'Free' : creditsLabel(credits))
 
 // How long a purchased balance is given to arrive before the page stops
 // claiming it is on its way. The webhook is normally seconds; a minute means
 // something is wrong with it rather than slow.
 const CREDIT_ARRIVAL_TIMEOUT_MS = 60_000
+
+const CHECKOUT_MARKER_KEY = 'billing-checkout-marker-v1'
+
+// Reference material most visits do not need, kept on the page but folded.
+const Disclosure = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <details className="group rounded-xl border bg-card">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+    </summary>
+    <div className="border-t px-5 py-4">{children}</div>
+  </details>
+)
 
 const WorkspaceBilling = () => {
   const { canManageWorkspaceStaff, isPlatformAdmin, user, workspace } = useAuth()
@@ -95,6 +60,10 @@ const WorkspaceBilling = () => {
   const [awaitingCredits, setAwaitingCredits] = useState(false)
   const [balanceBeforeCheckout, setBalanceBeforeCheckout] = useState<number | null>(null)
   const [checkoutStartedAt, setCheckoutStartedAt] = useState<number | null>(null)
+  const [autoRefillChecked, setAutoRefillChecked] = useState(false)
+  // The pack to keep buying, chosen with the checkbox before checkout and
+  // switched on once the payment (and with it the saved card) is confirmed.
+  const [pendingAutoRefillPack, setPendingAutoRefillPack] = useState<number | null>(null)
 
   useEffect(() => {
     const outcome = searchParams.get('checkout')
@@ -102,13 +71,14 @@ const WorkspaceBilling = () => {
     if (!outcome && !planOutcome) return
     if (outcome === 'success') {
       try {
-        const marker = JSON.parse(window.sessionStorage.getItem('billing-checkout-marker-v1') ?? 'null') as
-          | { startedAt?: number; balanceBefore?: number | null }
+        const marker = JSON.parse(window.sessionStorage.getItem(CHECKOUT_MARKER_KEY) ?? 'null') as
+          | { startedAt?: number; balanceBefore?: number | null; autoRefillPack?: number | null }
           | null
-        window.sessionStorage.removeItem('billing-checkout-marker-v1')
+        window.sessionStorage.removeItem(CHECKOUT_MARKER_KEY)
         if (marker && typeof marker.startedAt === 'number') {
           setCheckoutStartedAt(marker.startedAt)
           if (typeof marker.balanceBefore === 'number') setBalanceBeforeCheckout(marker.balanceBefore)
+          if (typeof marker.autoRefillPack === 'number') setPendingAutoRefillPack(marker.autoRefillPack)
         }
       } catch {
         // No marker: the grant heuristic below still works, minus the
@@ -178,9 +148,12 @@ const WorkspaceBilling = () => {
        * the webhook usually beats the redirect.
        */
       try {
-        window.sessionStorage.setItem('billing-checkout-marker-v1', JSON.stringify({
+        window.sessionStorage.setItem(CHECKOUT_MARKER_KEY, JSON.stringify({
           startedAt: Date.now(),
           balanceBefore: overview?.balance ?? null,
+          autoRefillPack: autoRefillChecked && !overview?.has_saved_card
+            ? CREDIT_PACKS.find((option) => option.key === pack)?.credits ?? null
+            : null,
         }))
       } catch {
         // Storage unavailable: arrival falls back to the grant heuristic.
@@ -247,50 +220,63 @@ const WorkspaceBilling = () => {
       setAwaitingCredits(false)
       setBalanceBeforeCheckout(null)
       setCheckoutStartedAt(null)
+      // Unconfirmed credits mean an unconfirmed card: nothing is switched on.
+      setPendingAutoRefillPack(null)
     }, CREDIT_ARRIVAL_TIMEOUT_MS)
     return () => window.clearTimeout(timer)
   }, [awaitingCredits, balance, balanceBeforeCheckout, recentPurchaseAt, checkoutStartedAt, queryClient, workspaceId])
 
+  /*
+   * Auto-refill asked for at checkout is switched on only once the credits
+   * have arrived and Stripe reports a saved card. If either never happens
+   * (the tab closed, or a guest payment saved nothing) nothing is set up, and
+   * nothing is ever charged without the card the person agreed to.
+   */
+  useEffect(() => {
+    if (pendingAutoRefillPack === null || awaitingCredits || !overview) return
+    const packCredits = pendingAutoRefillPack
+    setPendingAutoRefillPack(null)
+    if (!overview.has_saved_card) {
+      toast.info('Your card was not saved at checkout, so automatic top-ups could not be switched on.')
+      return
+    }
+    if (typeof overview.refill_threshold_credits === 'number') return
+    setWorkspaceAutoRefill(workspaceId, { thresholdCredits: DEFAULT_REFILL_THRESHOLD, packCredits, monthlyCapCents: null })
+      .then(() => {
+        toast.success(`Automatic top-ups are on: ${packCredits} credits when you reach ${DEFAULT_REFILL_THRESHOLD}.`)
+        void overviewQuery.refetch()
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : 'Automatic top-ups could not be switched on.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoRefillPack, awaitingCredits, overview])
+
   if (!canManageWorkspaceStaff && !isPlatformAdmin) return <Navigate to="/app/clients" replace />
 
   const prices = overview?.prices ?? {}
-  // Counts alone cannot be reconciled against a balance. Each operation is
-  // priced, and runs on the workspace's own API keys are free, so what is
-  // charged is the metered runs times the price of that operation.
-  const usageRows = Object.entries(overview?.usage_this_month ?? {})
-    .map(([type, counts]) => {
-      const charged = Math.max(0, counts.total - counts.byo)
-      const unitCost = prices[type] ?? 0
-      return { type, total: counts.total, byo: counts.byo, charged, unitCost, credits: charged * unitCost }
+  const ledgerUsage = overview?.ledger_usage_this_month
+  /*
+   * Credits per operation come from the ledger, the same rows as "Used this
+   * month", so the table's total is that figure. Pricing run counts instead
+   * charged runs that failed and were refunded, and the two disagreed. An
+   * older overview has no ledger breakdown, so runs are priced as before.
+   */
+  const usageTypes = new Set([...Object.keys(overview?.usage_this_month ?? {}), ...Object.keys(ledgerUsage ?? {})])
+  const usageRows = [...usageTypes]
+    .map((type) => {
+      const counts = overview?.usage_this_month?.[type] ?? { total: 0, byo: 0 }
+      const ledger = ledgerUsage?.[type]
+      const credits = ledger
+        ? ledger.credits
+        : Math.max(0, counts.total - counts.byo) * (prices[type] ?? 0)
+      return { type, total: counts.total, byo: counts.byo, refunds: ledger?.refunds ?? 0, credits }
     })
     .sort((left, right) => right.credits - left.credits || right.total - left.total)
-  // The meter reports what the ledger took, not what the run counts imply. A
-  // price that changed mid-month makes those two disagree, and only one of them
-  // matches the balance above it.
-  const estimatedSpend = usageRows.reduce((sum, row) => sum + row.credits, 0)
-  const creditsSpent = overview?.credits_spent_this_month ?? estimatedSpend
+  const usageTotal = usageRows.reduce((sum, row) => sum + row.credits, 0)
+  const creditsSpent = overview?.credits_spent_this_month ?? usageTotal
   const allowance = overview?.monthly_credit_allowance ?? 0
-  // What Stripe charges, or the plan's price before there is a subscription.
-  // The profile's base_price_cents is a column default until then, which put
-  // $29 on a button that opened a $49 checkout.
-  const planPriceCents = overview
-    ? resolveWorkspacePrice(overview).cents ?? overview.base_price_cents
-    : 0
-  const spentPercent = allowance > 0 ? Math.min(100, Math.round((creditsSpent / allowance) * 100)) : 0
-  const status = overview ? billingStatusBadge(overview.billing_status) : undefined
-  const renewalDate = knownDate(overview?.current_period_end)
+  const nextAllowance = knownDate(overview?.next_allowance_at)
   // Live prices first; the shared table is what they were seeded at.
   const priceFor = (operation: MeteredOperation): number => prices[operation] ?? CREDIT_COSTS[operation]
-  // Everything the explainer says, with the clauses it cannot fill left out.
-  const creditsExplainer = [
-    'Credits pay for the AI and data work in your workspace.',
-    allowance > 0
-      ? `Your plan includes ${allowance.toLocaleString()} credits every month; monthly credits you do not use expire at the end of the following month.`
-      : null,
-    'Credits you buy never expire and are only used once the monthly ones are gone.',
-    `When the balance reaches zero, research, contact finding and prospect page builds pause until ${renewalDate ? `${renewalDate} or until you buy more` : 'you buy more'}.`,
-    'Anything that runs on your own AI keys is free.',
-  ].filter(Boolean).join(' ')
   // Purchases are hidden until credits are actually being spent. Selling a pack
   // while the page says the balance will not move is asking for money for
   // something the product has just admitted it is not doing yet.
@@ -299,28 +285,11 @@ const WorkspaceBilling = () => {
   return (
     <WorkspaceLayout>
       <div className="mx-auto w-full max-w-5xl space-y-8 pb-12">
-        <header className="space-y-5 border-b border-border/70 pb-6">
-          <Button asChild variant="ghost" size="sm" className="-ml-3 w-fit">
-            <Link to="/app/settings"><ArrowLeft className="mr-2 h-4 w-4" />Back to settings</Link>
-          </Button>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <Badge variant="secondary"><CreditCard className="mr-1.5 h-3.5 w-3.5" />Settings</Badge>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Billing &amp; credits</h1>
-              <p className="mt-2 max-w-2xl text-muted-foreground">
-                Your plan, and the credits your workspace spends on research, outreach and email lookups.
-              </p>
-            </div>
-            {/* Pricing the product and crediting another agency are platform
-                administration, not this workspace's billing. */}
-            {isPlatformAdmin && (
-              <Button asChild variant="outline" size="sm" className="w-fit shrink-0">
-                <Link to="/app/platform/billing">
-                  <ShieldCheck className="mr-2 h-4 w-4" />Billing administration
-                </Link>
-              </Button>
-            )}
-          </div>
+        <header className="border-b border-border/70 pb-6">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Billing &amp; credits</h1>
+          <p className="mt-2 max-w-2xl text-muted-foreground">
+            Your plan, and the credits your workspace spends on research, outreach and email lookups.
+          </p>
         </header>
 
         {overviewQuery.isLoading ? (
@@ -335,71 +304,14 @@ const WorkspaceBilling = () => {
           </Card>
         ) : (
           <>
-            {/* 1. The plan, first: what you are on, and whether it is healthy. */}
-            <section aria-labelledby="plan-title" className="space-y-3">
-              <h2 id="plan-title" className="text-lg font-semibold">Plan</h2>
-              <Card>
-                <CardContent className="flex flex-col gap-5 p-6 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-2xl font-semibold">{PLAN_LABELS[overview.plan_key] || overview.plan_key}</p>
-                      {status && <Badge variant="outline" className={status.className}>{status.label}</Badge>}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatPrice(planPriceCents)}/month
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Includes unlimited clients and {allowance.toLocaleString()} credits each month.
-                    </p>
-                    {/* Cancelled from the portal, but still running. The status
-                        stays active through this window, so without saying so
-                        the plan looks like one that is staying. */}
-                    {overview.cancel_at_period_end && overview.billing_status !== 'suspended' && (
-                      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
-                        This plan is set to end on {formatShortDate(overview.current_period_end ?? null)} and will not
-                        renew. Reopen Manage plan to keep it.
-                      </p>
-                    )}
-                    {overview.billing_status === 'past_due' && (
-                      <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-                        A payment did not go through. Update your card to keep your workspace running.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-2">
-                    <Button
-                      type="button"
-                      disabled={openingPlan}
-                      onClick={() => void openPlanManagement(Boolean(overview.has_subscription))}
-                    >
-                      {openingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      {overview.has_subscription
-                        ? 'Manage plan'
-                        : `Start the Founding member plan · ${packPriceLabel(planPriceCents)}/month`}
-                    </Button>
-                    {/* Invoices, receipts and card details are Stripe's pages.
-                        The portal is where they live, so the link goes there
-                        rather than rebuilding any of it here. */}
-                    {overview.has_subscription && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={openingPlan}
-                        onClick={() => void openPlanManagement(true)}
-                      >
-                        Invoices &amp; receipts<ExternalLink className="ml-2 h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
-
-            {/* 2. Credits: what is left, and how fast it is going. */}
-            <section aria-labelledby="credits-title" className="space-y-3">
-              <h2 id="credits-title" className="text-lg font-semibold">Credits</h2>
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{creditsExplainer}</p>
+            {/* 1. Where things stand: plan, balance, and when more arrives. */}
+            <section aria-label="Summary" className="space-y-3">
+              <BillingSummary
+                overview={overview}
+                creditsSpent={creditsSpent}
+                openingPlan={openingPlan}
+                onManagePlan={(hasSubscription) => void openPlanManagement(hasSubscription)}
+              />
 
               {!overview.enforcement_enabled && (
                 <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900" role="status">
@@ -419,130 +331,32 @@ const WorkspaceBilling = () => {
                 </div>
               )}
 
-              <Card>
-                <CardContent className="space-y-5 p-6">
-                  <div className="flex flex-wrap items-end justify-between gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Balance</p>
-                      <p className="text-4xl font-semibold tracking-tight">{overview.balance.toLocaleString()}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {overview.expiring_credits > 0
-                          ? `${overview.expiring_credits.toLocaleString()} expire ${formatShortDate(overview.next_expiry_at)}`
-                          : 'No expiring credits'}
-                      </p>
-                      {allowance > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Next monthly credits: {allowance.toLocaleString()}{renewalDate ? ` on ${renewalDate}` : ''}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">Used this month</p>
-                      <p className="text-2xl font-semibold">
-                        {creditsSpent.toLocaleString()}
-                        <span className="text-base font-normal text-muted-foreground"> / {allowance.toLocaleString()}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Consumption against the included allowance, rather than a
-                      bare number nobody can place. */}
-                  <div>
-                    <div
-                      className="h-2 w-full overflow-hidden rounded-full bg-muted"
-                      role="progressbar"
-                      aria-valuenow={spentPercent}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label="Monthly allowance used"
-                    >
-                      <div
-                        className={`h-full rounded-full ${spentPercent >= 90 ? 'bg-red-500' : spentPercent >= 70 ? 'bg-amber-500' : 'bg-violet-600'}`}
-                        style={{ width: `${spentPercent}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {allowance === 0
-                        ? 'This plan includes no monthly credits.'
-                        : `${spentPercent}% of this month's included credits used.`}
-                    </p>
-                  </div>
-
-                  {overview.enforcement_enabled && overview.balance === 0 && (
-                    <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-                      You have no credits left. Research, contact finding and prospect page builds are paused
-                      until {renewalDate ? `${renewalDate}, or until you buy a pack` : 'you buy a pack'}.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Every price, before anything is clicked. The buttons quote the
-                  same numbers; this is where they can all be read at once. */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">What credits pay for</CardTitle>
-                  <CardDescription>The price of each operation. Anything that runs on your own AI keys is free.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-                    {WORK_OPERATIONS.map((operation) => (
-                      <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
-                        <dt>{OPERATION_NAMES[operation]}</dt>
-                        <dd className="shrink-0 tabular-nums text-muted-foreground">{creditsLabel(priceFor(operation))}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mailboxes</h3>
-                    <dl className="mt-1.5 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-                      {MAILBOX_OPERATIONS.map((operation) => (
-                        <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
-                          <dt>{OPERATION_NAMES[operation]}</dt>
-                          <dd className="shrink-0 tabular-nums text-muted-foreground">{creditsLabel(priceFor(operation))}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Beside buying a pack by hand, because it is the same decision
-                  made once instead of every time. */}
-              {canBuyCredits && (
-                <AutoRefillCard workspaceId={workspaceId} overview={overview} onSaved={() => void overviewQuery.refetch()} />
-              )}
-
-              {canBuyCredits && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Buy credits</CardTitle>
-                    <CardDescription>One-time packs. Purchased credits never expire and are used after your monthly allowance.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-3 sm:grid-cols-3">
-                    {CREDIT_PACKS.map((pack) => (
-                      <div key={pack.key} className="flex flex-col rounded-xl border p-4">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{pack.note}</p>
-                        <p className="mt-2 text-2xl font-bold">{pack.credits} <span className="text-sm font-normal text-muted-foreground">credits</span></p>
-                        <p className="mt-1 text-sm text-muted-foreground">{packPriceLabel(pack.amountCents)} · ${(pack.amountCents / 100 / pack.credits).toFixed(2)}/credit</p>
-                        <Button
-                          type="button"
-                          className="mt-4"
-                          variant={pack.key === 'growth' ? 'default' : 'outline'}
-                          disabled={checkoutPack !== null}
-                          onClick={() => void buyPack(pack.key)}
-                        >
-                          {checkoutPack === pack.key ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          {checkoutPack === pack.key ? 'Opening checkout…' : `Buy for ${packPriceLabel(pack.amountCents)}`}
-                        </Button>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
+              {overview.enforcement_enabled && overview.balance === 0 && (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+                  You have no credits left. Research, contact finding and prospect page builds are paused
+                  until {nextAllowance ? `${nextAllowance}, or until you buy a pack` : 'you buy a pack'}.
+                </p>
               )}
             </section>
 
-            {/* 3. Usage, priced — so the number above can be checked. */}
+            {/* 2. Topping up, with the automatic version beside it. */}
+            {canBuyCredits && (
+              <section aria-label="Buy credits" className="space-y-3">
+                <CreditPackPicker
+                  balance={overview.balance}
+                  checkoutPack={checkoutPack}
+                  offerAutoRefill={!overview.has_saved_card}
+                  autoRefill={autoRefillChecked}
+                  onAutoRefillChange={setAutoRefillChecked}
+                  onBuy={(pack) => void buyPack(pack)}
+                />
+                {overview.has_saved_card && (
+                  <AutoRefillCard workspaceId={workspaceId} overview={overview} onSaved={() => void overviewQuery.refetch()} />
+                )}
+              </section>
+            )}
+
+            {/* 3. Usage, from the ledger — so it adds up to the figure above. */}
             <section aria-labelledby="usage-title" className="space-y-3">
               <h2 id="usage-title" className="text-lg font-semibold">Usage this month</h2>
               <Card>
@@ -556,7 +370,6 @@ const WorkspaceBilling = () => {
                           <tr>
                             <th scope="col" className="px-5 py-2.5 text-left font-medium">Operation</th>
                             <th scope="col" className="px-5 py-2.5 text-right font-medium">Runs</th>
-                            <th scope="col" className="px-5 py-2.5 text-right font-medium">Each</th>
                             <th scope="col" className="px-5 py-2.5 text-right font-medium">Credits</th>
                           </tr>
                         </thead>
@@ -570,17 +383,23 @@ const WorkspaceBilling = () => {
                                     {row.byo.toLocaleString()} on your own key, free
                                   </span>
                                 )}
+                                {row.refunds > 0 && (
+                                  <span className="ml-2 text-xs text-muted-foreground">
+                                    {row.refunds.toLocaleString()} failed, refunded
+                                  </span>
+                                )}
                               </td>
                               <td className="px-5 py-2.5 text-right tabular-nums">{row.total.toLocaleString()}</td>
-                              <td className="px-5 py-2.5 text-right tabular-nums text-muted-foreground">{row.unitCost.toLocaleString()}</td>
                               <td className="px-5 py-2.5 text-right font-medium tabular-nums">{row.credits.toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot className="border-t bg-muted/20">
                           <tr>
-                            <td className="px-5 py-2.5 font-medium" colSpan={3}>Total at today&rsquo;s rates</td>
-                            <td className="px-5 py-2.5 text-right font-semibold tabular-nums">{estimatedSpend.toLocaleString()}</td>
+                            <td className="px-5 py-2.5 font-medium" colSpan={2}>Total</td>
+                            <td className="px-5 py-2.5 text-right font-semibold tabular-nums">
+                              {(ledgerUsage ? creditsSpent : usageTotal).toLocaleString()}
+                            </td>
                           </tr>
                         </tfoot>
                       </table>
@@ -590,35 +409,54 @@ const WorkspaceBilling = () => {
               </Card>
             </section>
 
-            {/* 4. The ledger, with the balance each entry left behind. */}
-            {overview.recent_activity.length > 0 && (
-              <section aria-labelledby="activity-title" className="space-y-3">
-                <h2 id="activity-title" className="text-lg font-semibold">Recent activity</h2>
-                <Card>
-                  <CardContent className="p-0">
-                    <ul className="divide-y">
-                      {overview.recent_activity.slice(0, 10).map((entry) => (
-                        <li key={entry.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                          <span className="min-w-0">
-                            <span className="block truncate">
-                              {entry.entry_type === 'grant'
-                                ? 'Credits added'
-                                : entry.operation_type
-                                  ? operationName(entry.operation_type)
-                                  : entry.entry_type}
-                            </span>
-                            <span className="text-xs text-muted-foreground">{formatShortDate(entry.created_at)}</span>
-                          </span>
-                          <span className={`shrink-0 font-medium tabular-nums ${entry.amount > 0 ? 'text-emerald-700' : ''}`}>
-                            {entry.amount > 0 ? `+${entry.amount}` : entry.amount}
-                          </span>
-                        </li>
+            {/* 4. The ledger, with failed runs folded into their refunds. */}
+            <BillingActivityList entries={overview.recent_activity} />
+
+            {/* 5. Reference: every price, and the rules. */}
+            <div className="space-y-3">
+              <Disclosure title="What credits pay for">
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">The price of each operation. Anything that runs on your own AI keys is free.</p>
+                  <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                    {WORK_OPERATIONS.map((operation) => (
+                      <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
+                        <dt>{OPERATION_NAMES[operation]}</dt>
+                        <dd className="shrink-0 tabular-nums text-muted-foreground">{priceLabel(priceFor(operation))}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mailboxes</h3>
+                    <dl className="mt-1.5 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+                      {MAILBOX_OPERATIONS.map((operation) => (
+                        <div key={operation} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-1">
+                          <dt>{OPERATION_NAMES[operation]}</dt>
+                          <dd className="shrink-0 tabular-nums text-muted-foreground">{priceLabel(priceFor(operation))}</dd>
+                        </div>
                       ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              </section>
-            )}
+                    </dl>
+                  </div>
+                </div>
+              </Disclosure>
+
+              <Disclosure title="How credits work">
+                <ul className="list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
+                  <li>Credits pay for the AI and data work in your workspace.</li>
+                  {allowance > 0 && (
+                    <li>
+                      Your plan includes {allowance.toLocaleString()} credits every month. Monthly credits you do not
+                      use expire at the end of the following month.
+                    </li>
+                  )}
+                  <li>Credits you buy never expire and are only used once the monthly ones are gone.</li>
+                  <li>
+                    When the balance reaches zero, research, contact finding and prospect page builds pause
+                    until {nextAllowance ? `${nextAllowance} or until you buy more` : 'you buy more'}.
+                  </li>
+                  <li>Anything that runs on your own AI keys is free.</li>
+                </ul>
+              </Disclosure>
+            </div>
           </>
         )}
       </div>

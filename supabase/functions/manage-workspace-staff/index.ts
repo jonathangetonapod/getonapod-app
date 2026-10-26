@@ -3103,16 +3103,18 @@ serve(async (req) => {
           .eq("workspace_id", workspaceId)
           .gt("remaining", 0),
         admin.from("workspace_credit_ledger")
-          .select("id, entry_type, amount, operation_type, reference_kind, created_at")
+          .select("id, entry_type, amount, operation_type, reference_kind, reference_id, created_at")
           .eq("workspace_id", workspaceId)
           .order("created_at", { ascending: false })
-          .limit(25),
+          // Enough to pair each failed run's refund with its charge and still
+          // fill a page once the pairs are folded together.
+          .limit(50),
         // What was actually taken this month. Multiplying run counts by today's
         // price is only right while the price has never moved: the ledger holds
         // the amount charged at the time, and a mid-month price change made the
         // total on the page disagree with the balance underneath it.
         admin.from("workspace_credit_ledger")
-          .select("amount, entry_type")
+          .select("amount, entry_type, operation_type")
           .eq("workspace_id", workspaceId)
           .in("entry_type", ["debit", "refund"])
           .gte("created_at", monthStart.toISOString())
@@ -3196,6 +3198,38 @@ serve(async (req) => {
         usageByType[key].total += 1;
         if (row.used_byo_key === true) usageByType[key].byo += 1;
       }
+      // The usage table's credits, from the same ledger rows as the meter, so
+      // the two can never disagree. Pricing run counts instead charged a run
+      // that failed and was refunded, and the table out-totalled the meter.
+      const ledgerUsage: Record<string, { credits: number; refunds: number }> = {};
+      for (const row of spentResult.data ?? []) {
+        const key = typeof row.operation_type === "string" && row.operation_type ? row.operation_type : "other";
+        ledgerUsage[key] = ledgerUsage[key] ?? { credits: 0, refunds: 0 };
+        const amount = Math.abs(Number(row.amount) || 0);
+        if (row.entry_type === "debit") {
+          ledgerUsage[key].credits += amount;
+        } else {
+          ledgerUsage[key].credits -= amount;
+          ledgerUsage[key].refunds += 1;
+        }
+      }
+      for (const usage of Object.values(ledgerUsage)) usage.credits = Math.max(0, usage.credits);
+      // Only the lots on the earliest date: summing every expiring lot under
+      // that date said all of them lapse at once.
+      const nextExpiryAt = expiringLots[0]?.expires_at ?? null;
+      const nextExpiryDay = nextExpiryAt ? String(nextExpiryAt).slice(0, 10) : null;
+      const expiringNext = expiringLots
+        .filter((lot) => String(lot.expires_at).slice(0, 10) === nextExpiryDay)
+        .reduce((sum, lot) => sum + (Number(lot.remaining) || 0), 0);
+      // Allowances are granted on the 1st of each UTC month (see
+      // grant_monthly_allowances_v1), whatever the subscription's own period.
+      const allowanceStatus = profileResult.data?.billing_status ?? "trialing";
+      const nextMonthStart = new Date(monthStart);
+      nextMonthStart.setUTCMonth(nextMonthStart.getUTCMonth() + 1);
+      const nextAllowanceAt = ["trialing", "active", "comped"].includes(String(allowanceStatus))
+        && (profileResult.data?.monthly_credit_allowance ?? 100) > 0
+        ? nextMonthStart.toISOString()
+        : null;
       const currentPrices: Record<string, number> = {};
       for (const row of pricesResult.data ?? []) {
         const key = String(row.operation_type);
@@ -3268,8 +3302,15 @@ serve(async (req) => {
           current_period_end: profileResult.data?.current_period_end ?? null,
           balance,
           expiring_credits: expiringLots.reduce((sum, lot) => sum + (Number(lot.remaining) || 0), 0),
-          next_expiry_at: expiringLots[0]?.expires_at ?? null,
+          next_expiry_at: nextExpiryAt,
+          expiring_next_credits: expiringNext,
+          // Lots with no expiry: purchases, and anything granted to keep.
+          purchased_credits: activeLots
+            .filter((lot) => !lot.expires_at)
+            .reduce((sum, lot) => sum + (Number(lot.remaining) || 0), 0),
+          next_allowance_at: nextAllowanceAt,
           usage_this_month: usageByType,
+          ledger_usage_this_month: ledgerUsage,
           prices: currentPrices,
           recent_activity: (ledgerResult.data ?? []).map((entry) => ({
             id: entry.id,
@@ -3277,6 +3318,8 @@ serve(async (req) => {
             amount: entry.amount,
             operation_type: entry.operation_type,
             reference_kind: entry.reference_kind,
+            // For a refund, the debit it reverses, so the page can pair them.
+            reference_id: entry.reference_kind === "refund_of" ? entry.reference_id : null,
             created_at: entry.created_at,
           })),
         },
