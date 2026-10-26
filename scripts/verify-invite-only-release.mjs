@@ -66,7 +66,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // 182 with _shared/finderScans.ts and _shared/compatibilityPrompt.ts and
   // their tests: stored Podcast Finder scans, and group scoring with the
   // client's pitch profile and stored episode titles (2026-10-27).
-  edgeTypeScriptFiles: 182,
+  // 183: email moved to n8n — _shared/appEmail.ts and its test added,
+  // _shared/email-templates.ts removed (2026-10-26).
+  edgeTypeScriptFiles: 183,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

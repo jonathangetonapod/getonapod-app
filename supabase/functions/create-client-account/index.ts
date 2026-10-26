@@ -1,6 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { getPortalInvitationEmail } from '../_shared/email-templates.ts'
 import { errorResponse, requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 import {
   hashPortalPassword,
@@ -8,7 +7,6 @@ import {
   MAX_PORTAL_PASSWORD_LENGTH,
   MIN_PORTAL_PASSWORD_LENGTH,
 } from '../_shared/portalSecurity.ts'
-import { whiteLabelOnboardingSender } from '../_shared/workspaceOnboarding.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
@@ -184,7 +182,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const portalBaseUrl = Deno.env.get('PORTAL_BASE_URL') || 'http://localhost:5173'
     const expectedApiKey = Deno.env.get('API_KEY')
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')
 
     // API key authentication (optional, for security)
     if (expectedApiKey && api_key !== expectedApiKey) {
@@ -390,92 +387,14 @@ serve(async (req) => {
       }
     }
 
-    // Send invitation email if requested and portal access is enabled
-    let invitationSent = false
-    let invitationTrackingError: string | null = null
-    if (client.portal_access_enabled && send_invitation_email && resendApiKey) {
-      try {
-        const portalUrl = `${portalBaseUrl}/portal/login`
-        // The client belongs to an agency workspace; the invitation speaks in
-        // that workspace's name, never the platform's.
-        let workspaceName: string | null = null
-        if (client.workspace_id) {
-          const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('name')
-            .eq('id', client.workspace_id)
-            .maybeSingle()
-          workspaceName = typeof workspace?.name === 'string' && workspace.name.trim() ? workspace.name.trim() : null
-        }
-        const emailTemplate = getPortalInvitationEmail(client.name, portalUrl, workspaceName)
-        const sender = whiteLabelOnboardingSender(
-          Deno.env.get('RESEND_FROM_EMAIL') || 'portal@mail.getonapod.com',
-          workspaceName || 'Client portal',
-        ) ?? '"Client portal" <portal@mail.getonapod.com>'
-
-        const emailResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: sender,
-            to: [email],
-            subject: emailTemplate.subject,
-            html: emailTemplate.html,
-            text: emailTemplate.text,
-          }),
-        })
-
-        if (emailResponse.ok) {
-          const emailData = await emailResponse.json() as { id?: unknown }
-          const resendEmailId = typeof emailData.id === 'string' && emailData.id.length <= 255
-            ? emailData.id
-            : null
-          invitationSent = true
-          console.log('[Create Client] Invitation email sent')
-
-          // Update portal_invitation_sent_at
-          const { error: invitationTimestampError } = await supabase
-            .from('clients')
-            .update({ portal_invitation_sent_at: new Date().toISOString() })
-            .eq('id', client.id)
-          if (invitationTimestampError) {
-            invitationTrackingError = 'Invitation sent, but its client timestamp was not recorded'
-            console.error('[Create Client] Invitation timestamp update failed')
-          }
-
-          // Resend delivery webhooks match this ID. Surface a warning when the
-          // send succeeded but its receipt could not be persisted, so an
-          // operator can reconcile it instead of silently losing tracking.
-          if (!resendEmailId) {
-            invitationTrackingError = 'Invitation sent, but the provider receipt was invalid'
-            console.error('[Create Client] Invitation provider receipt was invalid')
-          } else {
-            const { error: emailLogError } = await supabase.from('email_logs').insert({
-              resend_email_id: resendEmailId,
-              email_type: 'portal_invitation',
-              from_address: sender,
-              to_address: email,
-              subject: emailTemplate.subject,
-              status: 'sent',
-              client_id: client.id,
-            })
-            if (emailLogError) {
-              invitationTrackingError = 'Invitation sent, but its delivery receipt was not recorded'
-              console.error('[Create Client] Invitation delivery receipt insert failed')
-            }
-          }
-        } else {
-          const errorText = await emailResponse.text()
-          console.error('[Create Client] Failed to send invitation email:', errorText)
-        }
-      } catch (emailError) {
-        console.error('[Create Client] Error sending invitation email:', emailError)
-        // Don't fail the whole request if email fails
-      }
-    }
+    // This legacy path no longer emails. Portal invitations go out from the
+    // workspace app (manage-client-portal-password), which issues a single-use
+    // setup link through the shared n8n email workflow; a caller that still
+    // asks is told so rather than silently getting nothing.
+    const invitationSent = false
+    const invitationTrackingError: string | null = client.portal_access_enabled && send_invitation_email
+      ? 'Invitation email was not sent: send the portal invite from the workspace app'
+      : null
 
     // Send webhook with all onboarding data
     const webhookUrl = Deno.env.get('ONBOARDING_WEBHOOK_URL')

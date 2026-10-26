@@ -28,13 +28,14 @@ const server = read('scripts/serve-production.mjs')
 // gets the neutral shell.
 assert.match(server, /pathname !== '\/'\) \{\s*\/\/[^\n]*\n\s*const source = await readFile[\s\S]*?INDEXABLE_ROUTE_PATTERN\.test\(pathname\)\s*\? marketingPageShell\(source\)\s*: neutralApplicationShell\(source, pathname\)/u)
 
-// The portal invitation email speaks in the workspace's name.
-const template = read('supabase/functions/_shared/email-templates.ts')
-assert.doesNotMatch(template, /Get On A Pod|getonapod/iu)
-assert.match(template, /export function getPortalInvitationEmail\(\s*clientName: string,\s*portalUrl: string,\s*workspaceName\?: string \| null,/u)
+// Client-facing emails speak in the workspace's name: every one passes the
+// workspace as the sender, and the workflow signs it as the agency.
+for (const file of ['_shared/portalResetEmail.ts', '_shared/clientNotify.ts', '_shared/workspaceOnboarding.ts']) {
+  assert.match(read(`supabase/functions/${file}`), /senderName: (?:input\.workspaceName|recipient\.workspaceName|input\.workspaceName,)/u, `${file} must send under the workspace's name`)
+}
+// The legacy client-creation path no longer emails at all.
 const createClient = read('supabase/functions/create-client-account/index.ts')
-assert.match(createClient, /getPortalInvitationEmail\(client\.name, portalUrl, workspaceName\)/u)
-assert.doesNotMatch(createClient, /Jonathan Garces|reply_to: 'jonathan@/u)
+assert.doesNotMatch(createClient, /api\.resend\.com|sendAppEmail|Jonathan Garces|reply_to: 'jonathan@/u)
 
 // A prospect dashboard view is counted once per caller per hour, and the
 // response no longer invents an extra view.

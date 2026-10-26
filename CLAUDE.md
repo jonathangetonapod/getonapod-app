@@ -189,9 +189,11 @@ AI, email, Google, Instantly, and webhook secrets are server-only.
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` — AI features / embeddings
 - `PODSCAN_API_KEY` — podcast data
 - `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts per-workspace Instantly keys
-- `RESEND_API_KEY` — transactional email
+- `N8N_EMAIL_WEBHOOK_URL`, `N8N_EMAIL_WEBHOOK_SECRET` — transactional email. Every app email posts an
+  event to the n8n `GOAP email` workflow (`_shared/appEmail.ts`), which renders it and sends it from
+  Google Workspace; the copy lives in n8n, not here. Supabase Auth invites and password resets go
+  through the same mailbox via the Send Email hook (n8n `GOAP auth email`). Nothing calls Resend
 - `STRIPE_SECRET_KEY`, `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET`, `STRIPE_CREDIT_WEBHOOK_SECRET` — workspace subscriptions and credit packs
-- `ACCESS_REQUEST_NOTIFY_EMAIL` — recipient for landing-page access requests (optional; the request is stored regardless)
 - Custom domains: `CUSTOM_DOMAIN_PROVIDER` (`railway` default, or `cloudflare`) selects where
   *new* tenant domains are created. Existing rows keep the provider recorded on them, so
   switching never strands a domain that is already serving. Railway needs `RAILWAY_API_TOKEN`,

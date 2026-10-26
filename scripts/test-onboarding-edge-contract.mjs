@@ -46,7 +46,9 @@ assert.doesNotMatch(client, /console\.(?:log|error)/u)
 assert.match(shared, /name: 'HMAC', hash: 'SHA-256'/u)
 assert.match(shared, /crypto\.subtle\.digest\('SHA-256'/u)
 assert.match(shared, /timingSafeText/u)
-assert.match(shared, /whiteLabelOnboardingSender/u)
+// The email leaves through the n8n workflow under the agency's name.
+assert.match(shared, /senderName: input\.workspaceName/u)
+assert.doesNotMatch(shared, /api\.resend\.com|<html/u)
 assert.doesNotMatch(shared, /kind: 'invitation' \| 'reminder'/u)
 assert.doesNotMatch(shared, /localStorage|sessionStorage/u)
 
@@ -166,9 +168,11 @@ assert.match(client, /upload: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
 assert.match(client, /delete_upload: \{ limit: \d+, windowSeconds: [\d *]+ \}/u)
 
 // Invitations reply to the agency and speak in the link's own welcome.
-assert.match(shared, /reply_to: replyTo/u)
+assert.match(shared, /replyTo: validEmailAddress\(input\.replyTo\)/u)
 assert.match(shared, /experienceTitle\?: string \| null/u)
-assert.match(shared, /reason: 'not_configured'/u)
+// An unset webhook surfaces as not configured, not a silent skip.
+assert.match(shared, /reason\?: 'not_configured'/u)
+assert.match(shared, /delivery\.reason \? \{ reason: delivery\.reason \}/u)
 assert.match(staff, /select\('client_contact_email'\)/u)
 assert.match(staff, /email_delivery = \{ configured: onboardingEmailConfigured\(\) \}/u)
 // The stored kind is 'changes_requested'; asking for 'change_request'

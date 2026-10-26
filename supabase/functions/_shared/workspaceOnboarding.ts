@@ -1,3 +1,4 @@
+import { appEmailConfigured, sendAppEmail, validEmailAddress } from './appEmail.ts'
 import { platformOrigin } from './workspaceOrigin.ts'
 import { HttpError } from './httpError.ts'
 
@@ -489,15 +490,6 @@ export function onboardingUrl(token: string, origin?: string): string {
   return new URL(`/onboarding/${encodeURIComponent(token)}`, base).toString()
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
 /**
  * Whether invitation emails can leave at all. A missing key or sender used to
  * surface only as a quiet 'skipped' on each invitation, so an agency learned
@@ -505,19 +497,7 @@ function escapeHtml(value: string): string {
  * action reports this up front so the page can say so before the first send.
  */
 export function onboardingEmailConfigured(): boolean {
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  return Boolean(apiKey && whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), 'Check'))
-}
-
-const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u
-
-function paragraphsHtml(value: string): string {
-  return value
-    .split(/\n{2,}/u)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p style="line-height:1.65;color:#514d68">${escapeHtml(paragraph).replaceAll('\n', '<br>')}</p>`)
-    .join('')
+  return appEmailConfigured()
 }
 
 export async function sendOnboardingEmail(input: {
@@ -541,17 +521,10 @@ export async function sendOnboardingEmail(input: {
   error: string | null
   reason?: 'not_configured'
 }> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  if (!apiKey) return { status: 'skipped', providerMessageId: null, error: null, reason: 'not_configured' }
-  const from = whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), input.workspaceName)
-  if (!from) return { status: 'skipped', providerMessageId: null, error: null, reason: 'not_configured' }
-  const workspaceName = escapeHtml(input.workspaceName)
-  const recipientName = escapeHtml(input.recipientName)
-  const url = escapeHtml(input.url)
   const accentColor = /^#[0-9a-f]{6}$/iu.test(input.accentColor ?? '')
     ? (input.accentColor as string).toUpperCase()
     : '#665CF2'
-  const expiry = new Date(input.expiresAt).toLocaleDateString('en-US', {
+  const expiresOn = new Date(input.expiresAt).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -561,75 +534,39 @@ export async function sendOnboardingEmail(input: {
   // The invitation speaks in the agency's own words when it has them: the
   // welcome on the form is what they chose to say to this client, and an
   // email that talks about a podcast profile is wrong for any agency whose
-  // form is about something else. The fixed text remains the fallback.
+  // form is about something else. The workflow keeps the fixed text as the
+  // fallback when these are empty.
   const customTitle = changesRequested ? '' : (input.experienceTitle ?? '').replace(/[\r\n]+/gu, ' ').trim().slice(0, 300)
   const customBody = changesRequested ? '' : (input.experienceBody ?? '').trim().slice(0, 3000)
-  const baseSubject = changesRequested
-    ? `${input.workspaceName} requested onboarding updates`
-    : customTitle
-      ? `${customTitle} | ${input.workspaceName}`
-      : `${input.workspaceName} invited you to complete onboarding`
-  const subject = input.reminder && !changesRequested ? `Reminder: ${baseSubject}` : baseSubject
-  const heading = changesRequested
-    ? 'A few onboarding updates are needed'
-    : customTitle ? escapeHtml(customTitle) : 'Let’s build your podcast profile'
-  const leadHtml = changesRequested
-    ? paragraphsHtml(`${input.workspaceName} left question-level notes for you. Open your secure form to review them and submit a new revision.`)
-    : customBody
-      ? paragraphsHtml(customBody)
-      : paragraphsHtml(`${input.workspaceName} has invited you to complete a secure podcast guest onboarding.`)
-  const button = changesRequested ? 'Review requested changes' : 'Start onboarding'
-  const textLead = changesRequested
-    ? `${input.workspaceName} requested updates to your onboarding.`
-    : customBody
-      ? `${customTitle ? `${customTitle}\n\n` : ''}${customBody}`
-      : `${input.workspaceName} invited you to complete onboarding.`
-  const text = `${textLead}\n\nContinue securely: ${input.url}\n\nThis private link expires ${expiry}. Do not forward it.`
-  const html = `<!doctype html><html><body style="margin:0;background:#f5f6f8;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:linear-gradient(135deg,#171827,${accentColor});border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:28px">${heading}</h1></div><div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px">Hi ${recipientName},</p>${leadHtml}<div style="padding:20px 0;text-align:center"><a href="${url}" style="display:inline-block;background:${accentColor};color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${button}</a></div><p style="font-size:13px;color:#77728e">This private link expires ${escapeHtml(expiry)}. Please do not forward it.</p></div></div></body></html>`
-  // The sender is the platform's address under the agency's name, so without
-  // a reply-to a client's reply went to a mailbox the agency never reads.
-  const replyTo = typeof input.replyTo === 'string' && EMAIL_PATTERN.test(input.replyTo.trim()) && input.replyTo.trim().length <= 254
-    ? input.replyTo.trim()
-    : null
 
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [input.recipientEmail],
-        ...(replyTo ? { reply_to: replyTo } : {}),
-        subject,
-        html,
-        text,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) return { status: 'failed', providerMessageId: null, error: 'Email provider rejected the message' }
-    const data = await response.json() as { id?: unknown }
-    return {
-      status: 'sent',
-      providerMessageId: typeof data.id === 'string' ? data.id.slice(0, 255) : null,
-      error: null,
-    }
-  } catch {
-    return { status: 'failed', providerMessageId: null, error: 'Email provider was unavailable' }
+  const delivery = await sendAppEmail({
+    event: changesRequested ? 'onboarding.changes_requested' : 'onboarding.invitation',
+    to: [input.recipientEmail],
+    senderName: input.workspaceName,
+    // The sender is the platform's mailbox under the agency's name, so without
+    // a reply-to a client's reply went to a mailbox the agency never reads.
+    replyTo: validEmailAddress(input.replyTo),
+    data: {
+      workspace_name: input.workspaceName,
+      recipient_name: input.recipientName,
+      url: input.url,
+      expires_on: expiresOn,
+      accent_color: accentColor,
+      ...(changesRequested
+        ? {}
+        : {
+          custom_title: customTitle || null,
+          custom_body: customBody || null,
+          reminder: Boolean(input.reminder),
+        }),
+    },
+  })
+  return {
+    status: delivery.status,
+    providerMessageId: delivery.providerMessageId,
+    error: delivery.error,
+    ...(delivery.reason ? { reason: delivery.reason } : {}),
   }
-}
-
-export function whiteLabelOnboardingSender(configuredSender: string | undefined, workspaceName: string): string | null {
-  const configured = configuredSender?.trim() ?? ''
-  const bracketed = configured.match(/<([^<>]+)>\s*$/u)?.[1]?.trim()
-  const address = bracketed || configured
-  const safeAddress = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u.test(address) ? address : null
-  if (!safeAddress) return null
-  const safeName = workspaceName
-    .replace(/[\r\n]/gu, ' ')
-    .replace(/["\\]/gu, '')
-    .trim()
-    .slice(0, 120) || 'Client Services'
-  return `"${safeName}" <${safeAddress}>`
 }
 
 export async function generatePitchProfile(

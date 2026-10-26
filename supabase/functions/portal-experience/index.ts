@@ -14,6 +14,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { reservePublicRate } from '../_shared/publicRateLimit.ts'
+import { sendAppEmail } from '../_shared/appEmail.ts'
 
 const METHODS = ['POST'] as const
 
@@ -290,9 +291,7 @@ serve(async (req) => {
 
       // Best-effort owner notification; the recorded request is the source
       // of truth even when email is not configured.
-      const resendKey = Deno.env.get('RESEND_API_KEY')
-      const fromEmail = Deno.env.get('RESEND_FROM_EMAIL')
-      if (resendKey && fromEmail && clientRecord.workspace_id) {
+      if (clientRecord.workspace_id) {
         const { data: owner } = await admin
           .from('workspace_memberships')
           .select('email_normalized')
@@ -302,22 +301,15 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle()
         if (owner?.email_normalized) {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${resendKey}`,
-              'Content-Type': 'application/json',
+          await sendAppEmail({
+            event: 'portal.addon_request',
+            to: [owner.email_normalized],
+            data: {
+              client_name: clientRecord.name,
+              package_name: packageName,
+              episode_name: episodeName || null,
             },
-            body: JSON.stringify({
-              from: fromEmail,
-              to: owner.email_normalized,
-              subject: `Add-on request from ${clientRecord.name}: ${packageName}`,
-              text: `${clientRecord.name} requested the ${packageName} clipping package`
-                + `${episodeName ? ` for the episode on ${episodeName}` : ''} from their client portal.\n\n`
-                + 'Follow up with them to confirm details. No payment has been collected.',
-            }),
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => null)
+          })
         }
       }
       return jsonResponse(req, METHODS, 200, { success: true })

@@ -40,7 +40,7 @@ Drafts autosave to the server with an optimistic lock version. No onboarding
 answers or capability tokens are stored in browser storage. A submitted answer
 set becomes an immutable numbered revision. Reviewers leave notes on specific
 questions, and the client can submit another immutable revision in response.
-Requesting changes can send a workspace-branded email when Resend is configured
+Requesting changes can send a workspace-branded email when the n8n email webhook is configured
 and always returns the current secure link for manual delivery. The product
 does not schedule or send reminder emails; the agency owns follow-up and can
 resend the link from its own mailbox. "Needs chasing" in the list is computed

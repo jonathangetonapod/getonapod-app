@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
+import { sendAppEmail } from '../_shared/appEmail.ts'
 import { HttpError } from '../_shared/httpError.ts'
 import {
   createAdminClient,
@@ -191,53 +192,6 @@ async function hashSourceIp(req: Request): Promise<string | null> {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-interface MailSettings {
-  apiKey: string
-  from: string
-}
-
-function mailSettings(): MailSettings | null {
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  const from = Deno.env.get('RESEND_FROM_EMAIL')?.trim()
-  if (!apiKey || !from) return null
-  return { apiKey, from }
-}
-
-async function sendMail(
-  settings: MailSettings,
-  message: { to: string; subject: string; text: string; html?: string; replyTo?: string },
-): Promise<void> {
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${settings.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: settings.from,
-        to: [message.to],
-        ...(message.replyTo ? { reply_to: message.replyTo } : {}),
-        subject: message.subject,
-        text: message.text,
-        ...(message.html ? { html: message.html } : {}),
-      }),
-      // A hung provider must not hold the host's request open; the lead row is
-      // already stored, so a missed mail loses nothing that cannot be resent.
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) console.error('[Clips Lead] A notification was rejected by the provider')
-  } catch (_error) {
-    console.error('[Clips Lead] Notification provider was unavailable')
-  }
-}
-
 function formatStartedAt(startedAt: Date): string {
   return new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
@@ -261,8 +215,6 @@ async function notifyEditors(lead: {
   landingPath: string | null
   startedAt: Date
 }): Promise<void> {
-  const settings = mailSettings()
-  if (!settings) return
   const to = Deno.env.get('CLIPS_LEAD_NOTIFY_EMAIL')?.trim() || NOTIFY_FALLBACK
   const due = new Date(lead.startedAt.getTime() + SEVENTY_TWO_HOURS_MS)
 
@@ -278,43 +230,27 @@ async function notifyEditors(lead: {
     ['Referrer', lead.referrer ?? '—'],
     ['Landing path', lead.landingPath ?? '—'],
   ]
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#19172d"><h2 style="margin:0 0 12px">Free cut requested</h2><p style="margin:0 0 16px"><a href="${escapeHtml(lead.showUrl)}" style="display:inline-block;background:#c8f542;color:#0a0a0b;padding:10px 16px;border-radius:999px;text-decoration:none;font-weight:700">Open the episode on YouTube</a></p><table cellpadding="6" style="border-collapse:collapse">${rows
-    .map(([label, value]) => `<tr><td style="color:#77728e">${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`)
-    .join('')}</table></body></html>`
-  const text = `Free cut requested\n\nOpen the episode: ${lead.showUrl}\n\n${rows.map(([label, value]) => `${label}: ${value}`).join('\n')}`
-
-  await sendMail(settings, {
-    to,
+  await sendAppEmail({
+    event: 'clips.lead_alert',
+    to: [to],
     replyTo: lead.email,
-    subject: `Free cut — ${lead.name} — ${lead.showUrl}`,
-    text,
-    html,
+    data: { name: lead.name, email: lead.email, show_url: lead.showUrl, rows },
   })
 }
 
 async function confirmToLead(lead: { name: string; email: string; showUrl: string; startedAt: Date }): Promise<void> {
-  const settings = mailSettings()
-  if (!settings) return
-  const text = [
-    `Hi ${lead.name},`,
-    '',
-    'Thanks. We pulled your episode from here:',
-    lead.showUrl,
-    '',
-    `The clock started at ${formatStartedAt(lead.startedAt)}. Five clips and two thumbnails land in this inbox within 72 hours.`,
-    '',
-    'If you have favorite moments, reply to this email with timestamps and they jump the queue. No call needed.',
-    '',
-    `If you would rather talk, fifteen minutes is here: ${CAL_URL}`,
-    '',
-    'Jonathan',
-    'Get On A Pod',
-  ].join('\n')
-
-  await sendMail(settings, {
-    to: lead.email,
+  await sendAppEmail({
+    event: 'clips.lead_confirmation',
+    to: [lead.email],
     replyTo: Deno.env.get('CLIPS_LEAD_NOTIFY_EMAIL')?.trim() || NOTIFY_FALLBACK,
-    subject: 'Your clips are in the queue',
-    text,
+    // One a day per inbox is already enforced by the RPC; the key keeps a
+    // retried request from mailing the host twice inside that day.
+    idempotencyKey: `clips-lead-confirmation:${lead.email.toLowerCase()}:${lead.startedAt.toISOString().slice(0, 10)}`,
+    data: {
+      name: lead.name,
+      show_url: lead.showUrl,
+      started_at_label: formatStartedAt(lead.startedAt),
+      cal_url: CAL_URL,
+    },
   })
 }

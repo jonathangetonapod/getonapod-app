@@ -72,14 +72,14 @@ assert.match(sql, /clips_lead_email:' \|\| normalized_key/u)
 assert.match(sql, /RETURN 'recorded_repeat'/u)
 assert.match(code, /outcome === 'recorded' \? confirmToLead/u)
 
-// Both mails, after the row exists, best effort.
-assert.match(code, /'Your clips are in the queue'/u)
-assert.match(code, /function escapeHtml/u)
-assert.doesNotMatch(code, /<td>\$\{(?!escapeHtml)/u)
-assert.match(code, /href="\$\{escapeHtml\(lead\.showUrl\)\}"/u, 'the one-click link to the episode is escaped')
+// Both mails, after the row exists, best effort. They leave through the n8n
+// email workflow, which owns the copy and does the escaping; the function only
+// hands over the facts, so no markup may be built here.
+assert.match(code, /event: 'clips\.lead_alert'/u)
+assert.match(code, /event: 'clips\.lead_confirmation'/u)
+assert.doesNotMatch(code, /<html|<td>|api\.resend\.com/u)
 const notifyIndex = fn.indexOf('notifyEditors({')
 assert.ok(notifyIndex > rpcIndex, 'the lead must be saved before anyone is emailed')
-assert.match(code, /signal: AbortSignal\.timeout\(10_000\)/u)
 
 // The UTM trio, referrer and landing path land in the row.
 for (const column of ['utm_source', 'utm_medium', 'utm_campaign', 'referrer', 'landing_path', 'user_agent']) {

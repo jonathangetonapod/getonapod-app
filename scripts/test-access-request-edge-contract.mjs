@@ -84,9 +84,10 @@ assert.ok(
   `the unidentified bucket (${unidentified}) must be no larger than the per-address limit (${perIp})`,
 )
 
-// The only thing between a stranger's name and HTML in the admin's inbox.
-assert.match(code, /function escapeHtml/u)
-assert.doesNotMatch(code, /<td>\$\{(?!escapeHtml)/u)
+// The function emails nobody: the insert trigger hands the row to the n8n
+// "Request to join" workflow, which tells the platform team. A second email
+// from here would announce every request twice.
+assert.doesNotMatch(code, /notifyPlatform|sendAppEmail|api\.resend\.com|<td>/u)
 // The address is hashed with a secret that never leaves the function, so the
 // stored value cannot be turned back into an address by anyone reading the row.
 assert.match(code, /SHA-256/u)
@@ -97,11 +98,9 @@ assert.doesNotMatch(code, /source_ip:\s/u)
 assert.match(code, /jsonResponse\(req, METHODS, 200, \{ received: true \}\)/u)
 assert.doesNotMatch(code, /already (requested|applied|exists)/iu)
 
-// Notification is best effort: the request is saved first, and a mail provider
-// having a bad afternoon must not turn a saved request into a visible error.
-const insertIndex = fn.indexOf("admin.rpc('record_workspace_access_request'")
-const notifyIndex = fn.indexOf('await notifyPlatform')
-assert.ok(insertIndex > 0 && notifyIndex > insertIndex, 'the request must be saved before notifying')
+// The request is saved through the atomic RPC; the notification is the
+// database trigger's job, so a mail outage can never turn it into an error.
+assert.ok(fn.indexOf("admin.rpc('record_workspace_access_request'") > 0, 'the request must be saved through the RPC')
 
 // The rate limit reads an address the caller cannot choose. Reading the FIRST
 // x-forwarded-for entry lets anyone reset their own bucket every request by

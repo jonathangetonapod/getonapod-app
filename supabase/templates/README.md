@@ -1,18 +1,23 @@
 # Supabase Auth email templates
 
-These are the emails sent by **Supabase Auth (GoTrue)**, not by Resend. Resend
-sends onboarding, portal reset and client notifications from
-`supabase/functions/_shared/`; anything triggered by `admin.auth.admin.*` comes
-from GoTrue and is rendered from the templates configured on the project.
+**These templates are not what users receive.** Supabase Auth's Send Email hook
+hands every auth email (invite, password recovery, email change) to the n8n
+`GOAP auth email` workflow, which sends it from the Google Workspace mailbox.
+`invite.html` was ported into that workflow and is kept here as the reference
+copy of the wording; change the email in n8n, then mirror the change here.
 
-| File | Supabase template | Sent by |
+GoTrue falls back to the templates below only if the hook is switched off
+(Authentication → Hooks). With the hook on, editing the dashboard copy changes
+nothing anyone sees.
+
+| File | Supabase template | Triggered by |
 | --- | --- | --- |
 | `invite.html` | Invite user | `manage-workspace-users` (new workspace owner), `manage-workspace-staff` (joining an existing workspace) |
 
-## How to apply a change
+## Keeping the fallback current
 
-The dashboard is the live copy; this folder is the source of truth. After
-editing a file here:
+So the fallback says the same thing as n8n if the hook is ever switched off,
+after editing a file here:
 
 1. Supabase dashboard → **Authentication → Emails → Invite user**
 2. Set the subject to: `Your invitation to Get On A Pod`

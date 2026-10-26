@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { createAdminClient, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { CREDIT_PACKS } from '../_shared/creditPacks.ts'
+import { sendAppEmail } from '../_shared/appEmail.ts'
 
 /**
  * Buy credits back for a workspace that is running out, without a person.
@@ -35,15 +36,6 @@ const PAGE_SIZE = 200
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
 /**
  * Tells the workspace owner that automatic top-ups have stopped.
  *
@@ -56,10 +48,6 @@ async function notifyOwnerRefillPaused(
   workspaceId: string,
   reason: string,
 ): Promise<void> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  const from = Deno.env.get('RESEND_FROM_EMAIL')?.trim()
-  if (!apiKey || !from) return
-
   const { data: owners } = await admin
     .from('workspace_memberships')
     .select('workspace_id,email_normalized,role,status')
@@ -81,33 +69,17 @@ async function notifyOwnerRefillPaused(
   const workspaceName = String((workspace as { name?: unknown } | null)?.name ?? '').trim() || 'your workspace'
   const origin = (Deno.env.get('APP_URL') || 'https://getonapod.com').replace(/\/+$/u, '')
   const billingUrl = `${origin}/app/settings/billing`
-  const lines = [
-    `Automatic top-ups for ${workspaceName} failed ${MAX_CONSECUTIVE_FAILURES} times in a row, so we have paused them. Nothing more will be charged automatically.`,
-    `The last attempt failed with: ${reason}`,
-    'Check the card on file in the billing portal, then save your automatic top-up settings again to resume them.',
-  ]
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#19172d"><h2 style="margin:0 0 16px">Automatic top-ups paused</h2>${lines
-    .map((line) => `<p style="line-height:1.6;margin:0 0 12px">${escapeHtml(line)}</p>`)
-    .join('')}<p><a href="${escapeHtml(billingUrl)}">Open billing</a></p></body></html>`
-  const text = `${lines.join('\n\n')}\n\nOpen billing: ${billingUrl}`
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: emails,
-        subject: `Automatic top-ups paused for ${workspaceName}`,
-        html,
-        text,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) console.error('[Credit Refill Tick] Pause notification was rejected by the provider')
-  } catch (_error) {
-    console.error('[Credit Refill Tick] Pause notification provider was unavailable')
-  }
+  const delivery = await sendAppEmail({
+    event: 'billing.auto_refill_paused',
+    to: emails,
+    data: {
+      workspace_name: workspaceName,
+      failure_count: MAX_CONSECUTIVE_FAILURES,
+      reason,
+      billing_url: billingUrl,
+    },
+  })
+  if (delivery.status === 'failed') console.error('[Credit Refill Tick] Pause notification was not sent')
 }
 
 /**

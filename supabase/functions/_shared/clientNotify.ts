@@ -3,17 +3,16 @@
 // The platform knew about every meaningful moment in a client's journey and
 // told them about none of it. This module is the one place that speaks: it
 // resolves the recipient, claims the event so it can only be announced once,
-// sends under the workspace's own name, and records the outcome.
+// sends under the workspace's own name, and records the outcome. The wording
+// and layout live in the n8n email workflow (see appEmail.ts); this module
+// decides who hears what, and hands over the facts.
 //
 // Every entry point is best-effort by contract. A notification must never fail
 // the mutation that triggered it — callers await the promise but the promise
 // resolves rather than throws, and the send log carries the failure.
 
-import { whiteLabelOnboardingSender } from './workspaceOnboarding.ts'
+import { type AppEmailEvent, sendAppEmail } from './appEmail.ts'
 import { workspaceLinkOrigin } from './workspaceOrigin.ts'
-
-// A hung provider must not hold the calling request open.
-const RESEND_TIMEOUT_MS = 10_000
 
 // deno-lint-ignore no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,15 +37,6 @@ interface Recipient {
   replyTo: string | null
   reviewUrl: string | null
   portalUrl: string | null
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
 }
 
 function appOrigin(): string | null {
@@ -126,34 +116,6 @@ async function resolveRecipient(
   }
 }
 
-function renderEmail(input: {
-  workspaceName: string
-  heading: string
-  greetingName: string
-  body: string[]
-  ctaLabel: string | null
-  ctaUrl: string | null
-  footer: string | null
-}): { html: string; text: string } {
-  const workspaceName = escapeHtml(input.workspaceName)
-  const heading = escapeHtml(input.heading)
-  const paragraphs = input.body
-    .map((line) => `<p style="line-height:1.65;color:#514d68;margin:0 0 14px">${escapeHtml(line)}</p>`)
-    .join('')
-  const cta = input.ctaUrl && input.ctaLabel
-    ? `<div style="padding:14px 0 4px;text-align:center"><a href="${escapeHtml(input.ctaUrl)}" style="display:inline-block;background:#171827;color:#fff;text-decoration:none;font-weight:700;padding:14px 24px;border-radius:10px">${escapeHtml(input.ctaLabel)}</a></div>`
-    : ''
-  const footer = input.footer
-    ? `<p style="font-size:13px;color:#77728e;margin:18px 0 0">${escapeHtml(input.footer)}</p>`
-    : ''
-  const html = `<!doctype html><html><body style="margin:0;background:#f5f6f8;font-family:Arial,sans-serif;color:#19172d"><div style="max-width:600px;margin:0 auto;padding:32px 18px"><div style="background:#171827;border-radius:20px 20px 0 0;padding:32px;color:#fff"><div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8">${workspaceName}</div><h1 style="margin:10px 0 0;font-size:26px">${heading}</h1></div><div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 20px 20px;padding:32px"><p style="font-size:17px;margin:0 0 14px">Hi ${escapeHtml(input.greetingName)},</p>${paragraphs}${cta}${footer}</div></div></body></html>`
-
-  const textCta = input.ctaUrl ? `\n\n${input.ctaLabel}: ${input.ctaUrl}` : ''
-  const textFooter = input.footer ? `\n\n${input.footer}` : ''
-  const text = `Hi ${input.greetingName},\n\n${input.body.join('\n\n')}${textCta}${textFooter}`
-  return { html, text }
-}
-
 async function deliver(
   admin: AdminClient,
   input: {
@@ -164,9 +126,8 @@ async function deliver(
     recipients: string[]
     workspaceName: string
     replyTo?: string | null
-    subject: string
-    html: string
-    text: string
+    event: AppEmailEvent
+    data: Record<string, unknown>
     metadata?: Record<string, unknown>
   },
 ): Promise<ClientNotificationResult> {
@@ -220,50 +181,34 @@ async function deliver(
     }
   }
 
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  const from = whiteLabelOnboardingSender(Deno.env.get('RESEND_FROM_EMAIL'), input.workspaceName)
-  if (!apiKey || !from) {
+  const delivery = await sendAppEmail({
+    event: input.event,
+    to: input.recipients,
+    senderName: input.workspaceName,
+    replyTo: input.replyTo,
+    data: input.data,
+    // The claim already makes this event once-only here; the key makes it
+    // once-only in the workflow too, should a retry reach it twice.
+    idempotencyKey: `client-notification:${input.workspaceId}:${input.clientId}:${input.eventKey.slice(0, 200)}`,
+  })
+  if (delivery.status === 'skipped') {
     await finish('skipped', { error: 'Email delivery is not configured' })
     return { status: 'skipped', reason: 'not_configured' }
   }
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: input.recipients,
-        ...(input.replyTo ? { reply_to: input.replyTo } : {}),
-        subject: input.subject,
-        html: input.html,
-        text: input.text,
-      }),
-      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
-    })
-    if (!response.ok) {
-      console.error('[Client Notify] Provider rejected the message')
-      if (response.status === 429 || response.status >= 500) {
-        // The provider definitively did not take the message, so release the
-        // claim and let the next trigger for this event try again. A timeout
-        // or network failure is NOT released: the message may have gone out,
-        // and a second copy is worse than a missed one.
-        await release()
-      } else {
-        await finish('failed', { error: 'Email provider rejected the message' })
-      }
-      return { status: 'failed', reason: 'provider_rejected' }
+  if (delivery.status === 'failed') {
+    if (delivery.retryable) {
+      // The workflow definitively did not send it, so release the claim and
+      // let the next trigger for this event try again. A timeout is NOT
+      // released: the message may have gone out, and a second copy is worse
+      // than a missed one.
+      await release()
+      return { status: 'failed', reason: 'provider_unavailable' }
     }
-    const data = await response.json().catch(() => ({}))
-    await finish('sent', {
-      providerMessageId: typeof data?.id === 'string' ? data.id.slice(0, 255) : null,
-    })
-    return { status: 'sent' }
-  } catch {
-    console.error('[Client Notify] Provider unavailable')
-    await finish('failed', { error: 'Email provider was unavailable' })
-    return { status: 'failed', reason: 'provider_unavailable' }
+    await finish('failed', { error: delivery.error })
+    return { status: 'failed', reason: 'provider_rejected' }
   }
+  await finish('sent', { providerMessageId: delivery.providerMessageId })
+  return { status: 'sent' }
 }
 
 /**
@@ -304,19 +249,6 @@ export async function notifyShortlistReady(
   const count = (visible || []).filter((row: { podcast_id: string }) => !answered.has(row.podcast_id)).length
   if (count < 1) return { status: 'skipped', reason: 'nothing_pending' }
 
-  const shows = count === 1 ? '1 podcast' : `${count} podcasts`
-  const { html, text } = renderEmail({
-    workspaceName: recipient.workspaceName,
-    heading: `${shows} ready for your review`,
-    greetingName: recipient.name,
-    body: [
-      `We researched ${shows} that look like a strong fit for you and added them to your review list.`,
-      'Take a look and mark the ones you are interested in. We only reach out to shows you pick.',
-    ],
-    ctaLabel: 'Review the shows',
-    ctaUrl: url,
-    footer: `Sent by ${recipient.workspaceName}.`,
-  })
   return deliver(admin, {
     workspaceId: input.workspaceId,
     clientId: input.clientId,
@@ -325,9 +257,13 @@ export async function notifyShortlistReady(
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
     replyTo: recipient.replyTo,
-    subject: `${shows} ready for your review`,
-    html,
-    text,
+    event: 'client.shortlist_ready',
+    data: {
+      workspace_name: recipient.workspaceName,
+      greeting_name: recipient.name,
+      pending_count: count,
+      review_url: url,
+    },
     metadata: { pending_count: count },
   })
 }
@@ -348,26 +284,8 @@ export async function notifyBookingConfirmed(
   if (!recipient) return { status: 'skipped', reason: 'no_recipient' }
 
   const show = input.podcastName?.trim() || 'a podcast'
-  const when = formatDate(input.recordingDate)
-  const host = input.hostName?.trim()
-  // A client with a portal has a calendar to look at; one without only has
-  // this email, so it has to say where the details will come from instead.
-  const body = [
-    when
-      ? `You are booked on ${show}${host ? ` with ${host}` : ''}. The recording is set for ${when}.`
-      : `You are booked on ${show}${host ? ` with ${host}` : ''}. We are confirming the recording date and will let you know as soon as it is set.`,
-    ...(recipient.portalUrl ? ['It is on your portal calendar with everything else in flight.'] : []),
-    'Your team will send the recording link and any prep notes before the date.',
-  ]
-  const { html, text } = renderEmail({
-    workspaceName: recipient.workspaceName,
-    heading: `You are booked on ${show}`,
-    greetingName: recipient.name,
-    body,
-    ctaLabel: recipient.portalUrl ? 'Open your calendar' : null,
-    ctaUrl: recipient.portalUrl,
-    footer: `Sent by ${recipient.workspaceName}.`,
-  })
+  // The copy branches on these in the workflow: no date means "we are
+  // confirming it", and no portal means no calendar to point at.
   return deliver(admin, {
     workspaceId: input.workspaceId,
     clientId: input.clientId,
@@ -376,9 +294,15 @@ export async function notifyBookingConfirmed(
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
     replyTo: recipient.replyTo,
-    subject: `You are booked on ${show}`,
-    html,
-    text,
+    event: 'client.booking_confirmed',
+    data: {
+      workspace_name: recipient.workspaceName,
+      greeting_name: recipient.name,
+      show_name: show,
+      host_name: input.hostName?.trim() || null,
+      recording_date_label: formatDate(input.recordingDate),
+      portal_url: recipient.portalUrl,
+    },
     metadata: { booking_id: input.bookingId, recording_date: input.recordingDate || null },
   })
 }
@@ -398,19 +322,6 @@ export async function notifyEpisodePublished(
   if (!recipient) return { status: 'skipped', reason: 'no_recipient' }
 
   const show = input.podcastName?.trim() || 'your podcast'
-  const listenUrl = input.episodeUrl?.trim() || recipient.portalUrl
-  const { html, text } = renderEmail({
-    workspaceName: recipient.workspaceName,
-    heading: `Your episode of ${show} is live`,
-    greetingName: recipient.name,
-    body: [
-      `Your interview on ${show} has been published.`,
-      'Sharing it with your own audience in the first week is what turns one appearance into real reach.',
-    ],
-    ctaLabel: listenUrl ? (input.episodeUrl?.trim() ? 'Listen to the episode' : 'Open your portal') : null,
-    ctaUrl: listenUrl,
-    footer: `Sent by ${recipient.workspaceName}.`,
-  })
   return deliver(admin, {
     workspaceId: input.workspaceId,
     clientId: input.clientId,
@@ -419,9 +330,14 @@ export async function notifyEpisodePublished(
     recipients: [recipient.email],
     workspaceName: recipient.workspaceName,
     replyTo: recipient.replyTo,
-    subject: `Your episode of ${show} is live`,
-    html,
-    text,
+    event: 'client.episode_published',
+    data: {
+      workspace_name: recipient.workspaceName,
+      greeting_name: recipient.name,
+      show_name: show,
+      episode_url: input.episodeUrl?.trim() || null,
+      portal_url: recipient.portalUrl,
+    },
     metadata: { booking_id: input.bookingId, episode_url: input.episodeUrl || null },
   })
 }
@@ -471,33 +387,25 @@ export async function notifyWorkspaceOfApprovals(
     .eq('status', 'approved')
   const approved = typeof count === 'number' ? count : 0
   if (approved < 1) return { status: 'skipped', reason: 'nothing_approved' }
-  const shows = approved === 1 ? '1 show' : `${approved} shows`
   // Deliberately the platform origin: /app is the agency's own workspace, not
   // a page their client is ever meant to open.
   const origin = appOrigin()
   const url = origin ? `${origin}/app/clients/${input.clientId}` : null
-  const { html, text } = renderEmail({
-    workspaceName: String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team',
-    heading: `${clientName} is approving shows`,
-    greetingName: 'team',
-    body: [
-      `${clientName} just approved a show for outreach. That is ${shows} approved in total.`,
-      'They are ready to be researched and pitched.',
-    ],
-    ctaLabel: url ? 'Open the client' : null,
-    ctaUrl: url,
-    footer: null,
-  })
+  const workspaceName = String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team'
   return deliver(admin, {
     workspaceId: input.workspaceId,
     clientId: input.clientId,
     kind: 'client_approved',
     eventKey: `approvals:${input.day}`,
     recipients: emails,
-    workspaceName: String(workspace?.name || 'Your podcast team').trim() || 'Your podcast team',
-    subject: `${clientName} approved a podcast`,
-    html,
-    text,
+    workspaceName,
+    event: 'workspace.client_approved',
+    data: {
+      workspace_name: workspaceName,
+      client_name: clientName,
+      approved_total: approved,
+      client_url: url,
+    },
     metadata: { approved_total: approved, recipients: emails.length },
   })
 }

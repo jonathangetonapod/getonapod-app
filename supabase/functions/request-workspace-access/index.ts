@@ -104,9 +104,9 @@ serve(async (req) => {
       throw new HttpError(500, 'REQUEST_NOT_SAVED', 'The request could not be saved. Please try again.')
     }
 
-    // Best effort: the request is already recorded, so a mail provider having a
-    // bad afternoon must not turn a saved request into an error the person sees.
-    await notifyPlatform({ email, fullName, company, website, audience, clientsNow, notes })
+    // Nobody is emailed from here. The insert fires notify_workspace_access_request,
+    // which hands the row to the n8n "Request to join" workflow; that is what
+    // tells the platform team, so a saved request is the whole job.
 
     return jsonResponse(req, METHODS, 200, { received: true })
   } catch (error) {
@@ -140,63 +140,4 @@ async function hashSourceIp(req: Request): Promise<string | null> {
   const salt = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${address}`))
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-async function notifyPlatform(request: {
-  email: string
-  fullName: string
-  company: string | null
-  website: string | null
-  audience: string
-  clientsNow: string | null
-  notes: string | null
-}): Promise<void> {
-  const apiKey = Deno.env.get('RESEND_API_KEY')?.trim()
-  const from = Deno.env.get('RESEND_FROM_EMAIL')?.trim()
-  const to = Deno.env.get('ACCESS_REQUEST_NOTIFY_EMAIL')?.trim()
-  if (!apiKey || !from || !to) return
-
-  const rows: Array<[string, string]> = [
-    ['Name', request.fullName],
-    ['Email', request.email],
-    ['Company', request.company ?? '—'],
-    ['Website', request.website ?? '—'],
-    ['Describes themselves as', request.audience],
-    ['Clients today', request.clientsNow ?? '—'],
-    ['Notes', request.notes ?? '—'],
-  ]
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#19172d"><h2 style="margin:0 0 16px">Access request</h2><table cellpadding="6" style="border-collapse:collapse">${rows
-    .map(([label, value]) => `<tr><td style="color:#77728e">${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`)
-    .join('')}</table></body></html>`
-  const text = rows.map(([label, value]) => `${label}: ${value}`).join('\n')
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        reply_to: request.email,
-        subject: `Access request — ${request.fullName}`,
-        html,
-        text,
-      }),
-      // A hung provider must not hold the visitor's request open; the request
-      // row is already stored, so a missed notification loses nothing.
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!response.ok) console.error('[Request Workspace Access] Notification was rejected by the provider')
-  } catch (_error) {
-    console.error('[Request Workspace Access] Notification provider was unavailable')
-  }
 }
