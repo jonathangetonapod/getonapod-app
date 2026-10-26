@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ClientNextStep } from '@/lib/clientNextStep'
 
 export interface ClientHeaderLink {
@@ -22,6 +23,8 @@ interface ClientHeaderActionsProps {
   pipelineHref: string
   campaignHref: string
   finderHref: string
+  /** The four required host brief sections are approved. */
+  briefReady: boolean
 }
 
 /*
@@ -35,6 +38,7 @@ export const ClientHeaderActions = ({
   pipelineHref,
   campaignHref,
   finderHref,
+  briefReady,
 }: ClientHeaderActionsProps) => {
   const links: ClientHeaderLink[] = [
     { label: 'Onboarding', href: onboardingHref, icon: BookOpenCheck },
@@ -43,9 +47,22 @@ export const ClientHeaderActions = ({
     { label: 'Podcast Finder', href: finderHref, icon: Search },
   ].filter((link) => link.href !== nextStepHref)
 
+  // A shortlist built before the brief is ready is researched against
+  // unapproved context. It stays one click away, only no longer the lead.
+  const briefPending = nextStep.action === 'build_shortlist' && !briefReady
+
   return (
     <div className="flex items-center gap-2">
-      <Button asChild><Link to={nextStepHref}>{nextStep.label}</Link></Button>
+      {briefPending ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button asChild variant="outline"><Link to={nextStepHref}>{nextStep.label}</Link></Button>
+          </TooltipTrigger>
+          <TooltipContent>Finish the host brief first</TooltipContent>
+        </Tooltip>
+      ) : (
+        <Button asChild><Link to={nextStepHref}>{nextStep.label}</Link></Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="outline" size="icon" aria-label="More client actions">

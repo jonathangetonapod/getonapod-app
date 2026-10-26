@@ -82,11 +82,37 @@ describe('ClientSdrPromptsCard', () => {
     expect(screen.queryByText('Workspace default')).not.toBeInTheDocument()
   })
 
+  it('folds the prompts behind a one-line summary of the workspace defaults', async () => {
+    renderCard()
+
+    const summary = await screen.findByRole('button', { name: /AI prompts\s*Using workspace defaults\s*Customize/ })
+    expect(summary).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: /Edit Pitch email/i })).not.toBeInTheDocument()
+
+    fireEvent.click(summary)
+    // One Edit per row; Save and Reset wait inside the editor.
+    expect(await screen.findAllByRole('button', { name: /^Edit / })).toHaveLength(6)
+    expect(screen.queryByRole('button', { name: /^Save/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/house style/i)).not.toBeInTheDocument()
+  })
+
+  it('counts the prompts customized for this client', async () => {
+    mockedPrompts.mockResolvedValue({
+      write_email: { content: 'Custom pitch prompt', updated_at: null },
+      find_topics: { content: 'Custom topics prompt', updated_at: null },
+    } as never)
+    renderCard()
+
+    expect(await screen.findByRole('button', { name: /AI prompts\s*2 customized\s*Edit/ })).toBeInTheDocument()
+  })
+
   it('asks before resetting a custom prompt to the workspace default', async () => {
     mockedPrompts.mockResolvedValue({ write_email: { content: 'Custom pitch prompt', updated_at: null } } as never)
     renderCard()
 
-    fireEvent.click(await screen.findByRole('button', { name: /Reset Pitch email/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /AI prompts\s*1 customized/ }))
+    await openStage('Pitch email')
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset to workspace default' }))
     expect(vi.mocked(resetClientSdrPrompt)).not.toHaveBeenCalled()
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('Reset Pitch email to the workspace default?')
@@ -95,7 +121,7 @@ describe('ClientSdrPromptsCard', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
     expect(vi.mocked(resetClientSdrPrompt)).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: /Reset Pitch email/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to workspace default' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Reset prompt' }))
     await waitFor(() => expect(vi.mocked(resetClientSdrPrompt)).toHaveBeenCalledWith(workspaceId, clientId, 'write_email'))
   })

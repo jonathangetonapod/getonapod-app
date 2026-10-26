@@ -89,7 +89,7 @@ const RequiredToggle = ({
     aria-label={`Require ${variableId}`}
     disabled={disabled}
     title={required
-      ? `${variableId} is required — this podcast skips the stage when it is empty`
+      ? `${variableId} is required. This podcast skips the stage when it is empty.`
       : `Require ${variableId}`}
     // The layer ignores pointers so the textarea keeps the caret; the switch
     // is the one thing on it that does not.
@@ -513,7 +513,7 @@ export const PromptVariableTextarea = ({
                               {{
                                 filled: '● has a value',
                                 degrades: '● empty',
-                                blocks: '● empty — required, blocks the run',
+                                blocks: '● empty, required, blocks the run',
                               }[state]}
                             </span>
                           )
@@ -521,7 +521,7 @@ export const PromptVariableTextarea = ({
                       </span>
                       <span className="block text-[10px] leading-4 text-muted-foreground">
                         {marked(variable.producedBy
-                          ? `${variable.label} — from the ${variable.producedBy} stage`
+                          ? `${variable.label}, from the ${variable.producedBy} stage`
                           : variable.label)}
                       </span>
                       {/*

@@ -5,7 +5,6 @@ import {
   Activity,
   ArrowLeft,
   ArrowRight,
-  Bot,
   BookOpenCheck,
   CalendarDays,
   CheckCircle2,
@@ -14,13 +13,10 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  Globe2,
   KeyRound,
   LayoutDashboard,
   Link as LinkIcon,
-  Linkedin,
   Loader2,
-  Sparkles,
   Mail,
   Mic2,
   Pencil,
@@ -28,7 +24,6 @@ import {
   Radio,
   RefreshCw,
   Search,
-  ShieldCheck,
   ThumbsDown,
   ThumbsUp,
   UserRound,
@@ -46,6 +41,8 @@ import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEdi
 import { OpportunityDetailSheet } from '@/components/workspace/OpportunityDetailSheet'
 import { ClientFunnel } from '@/components/workspace/client/ClientFunnel'
 import { ClientHeaderActions } from '@/components/workspace/client/ClientHeaderActions'
+import { ClientHostBriefCard } from '@/components/workspace/client/ClientHostBriefCard'
+import { ClientSourceProfileCard } from '@/components/workspace/client/ClientSourceProfileCard'
 import { ClientSetupCard } from '@/components/workspace/client/ClientSetupCard'
 import { ClientUpcomingCard } from '@/components/workspace/client/ClientUpcomingCard'
 import { Badge } from '@/components/ui/badge'
@@ -79,34 +76,27 @@ import {
   rotateWorkspaceClientDashboardSlug,
   createWorkspaceClientPortalPreview,
   createWorkspaceClientPortalSetupLink,
-  draftWorkspaceClientSdrProfile,
   linkWorkspaceClientProspect,
   setWorkspaceClientPassword,
   updateWorkspaceClient,
   updateWorkspaceClientProfile,
-  updateWorkspaceClientSdrProfile,
   type WorkspaceClientBooking,
   type WorkspaceClientOnboardingSummary,
 } from '@/services/clients'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import {
-  CLIENT_SDR_PROFILE_FIELD_DEFINITIONS,
-  CLIENT_SDR_PROFILE_MAX_FIELD_LENGTH,
-  clientSdrProfileReadiness,
-  clientSdrProfilesEqual,
-  normalizeClientSdrProfile,
-  type ClientSdrProfile,
-} from '@/lib/clientSdrProfile'
+import { clientBriefStatus } from '@/lib/clientSdrProfile'
+import { possessive } from '@/lib/clientName'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-const CLIENT_DETAIL_TABS = new Set(['overview', 'profile', 'shortlist', 'placements', 'sharing', 'intake'])
+const CLIENT_DETAIL_TABS = new Set(['overview', 'brief', 'shortlist', 'placements', 'sharing', 'intake'])
 /*
  * The ids this page used before it became the one client record. Other
  * modules, bookmarks and the inbox still link with them, so each lands on the
  * tab that now holds that content.
  */
 const LEGACY_TAB_ALIASES: Record<string, string> = {
-  'ai-sdr': 'profile',
+  'ai-sdr': 'brief',
+  profile: 'brief',
   approval: 'shortlist',
   podcasts: 'placements',
   calendar: 'placements',
@@ -321,7 +311,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   // A link the clipboard refused, shown so it is never lost.
   const [revealedLink, setRevealedLink] = useState<{ title: string; description: string; url: string } | null>(null)
   const [portalPreviewBusy, setPortalPreviewBusy] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
   const [profileEditorOpen, setProfileEditorOpen] = useState(false)
   const [prospectPickerOpen, setProspectPickerOpen] = useState(false)
   const [prospectSearch, setProspectSearch] = useState('')
@@ -329,17 +318,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const [profileExpectedUpdatedAt, setProfileExpectedUpdatedAt] = useState('')
   const [profileBusy, setProfileBusy] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
-  const [sdrEditorFieldId, setSdrEditorFieldId] = useState<keyof ClientSdrProfile | null>(null)
-  const [sdrDraft, setSdrDraft] = useState<ClientSdrProfile>(() => normalizeClientSdrProfile({}))
-  const [sdrExpectedUpdatedAt, setSdrExpectedUpdatedAt] = useState<string | null>(null)
-  const [sdrBusy, setSdrBusy] = useState(false)
-  const [sdrDrafting, setSdrDrafting] = useState(false)
-  // True only after a deliberate unsaved change: typing in the editor or an
-  // AI draft. The draft-vs-saved comparison cannot stand in for this — the
-  // never-seeded initial draft is empty and always "differs".
-  const [sdrDraftDirty, setSdrDraftDirty] = useState(false)
-  const [sdrDiscardOpen, setSdrDiscardOpen] = useState(false)
-  const [sdrError, setSdrError] = useState<string | null>(null)
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesExpanded, setNotesExpanded] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
@@ -486,24 +464,8 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   // credit from the platform screen, the same split the header chip makes.
   const relationshipsHref = `${baseHref}/relationships`
   const billingHref = isPlatformWorkspace ? '/app/platform/billing' : '/app/settings/billing'
-  const sdrProfile = normalizeClientSdrProfile(client.ai_sdr_profile)
-  const sdrReadiness = clientSdrProfileReadiness(sdrProfile)
-  const sdrDraftReadiness = clientSdrProfileReadiness(sdrDraft)
-  const sdrDraftChanged = !clientSdrProfilesEqual(sdrDraft, sdrProfile)
-  const activeSdrField = sdrEditorFieldId
-    ? CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.find((field) => field.id === sdrEditorFieldId) || null
-    : null
-  const nextSdrField = CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.find(
-    (field) => field.core && !sdrProfile[field.id],
-  ) || CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.find(
-    (field) => !sdrProfile[field.id],
-  ) || CLIENT_SDR_PROFILE_FIELD_DEFINITIONS[0]
-  const missingSdrCoreLabels = CLIENT_SDR_PROFILE_FIELD_DEFINITIONS
-    .filter((field) => sdrReadiness.missing_core_fields.includes(field.id))
-    .map((field) => field.shortLabel)
-  const profilePreview = client.bio ? textPreview(client.bio, 420) : ''
-  const profileWordCount = client.bio ? wordCount(client.bio) : 0
-  const profileWordLabel = `${profileWordCount.toLocaleString()} ${profileWordCount === 1 ? 'word' : 'words'}`
+  const briefStatus = clientBriefStatus(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields)
+  const generateCost = creditCostSuffix('pitch_profile', { byo: detail.ai_keys?.anthropic })
   const profileDraftWordCount = wordCount(profileDraft)
   const profileDraftChanged = profileDraft.trim() !== (client.bio || '').trim()
   const normalizedNotes = client.notes ? normalizedText(client.notes) : ''
@@ -614,7 +576,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       // A link was just minted server-side; when the clipboard refuses it,
       // show the URL instead of implying nothing happened.
       if (await copied) {
-        toast.success('Setup link copied. Share it with the client — they set their own password. Expires in 7 days.')
+        toast.success('Setup link copied. Share it with the client so they can set their own password. It expires in 7 days.')
       } else {
         setRevealedLink({
           title: 'Client setup link',
@@ -691,7 +653,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     setProfileDraft(client.bio || '')
     setProfileExpectedUpdatedAt(client.updated_at)
     setProfileError(null)
-    setProfileOpen(false)
     setProfileEditorOpen(true)
   }
 
@@ -714,9 +675,9 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       )
       await detailQuery.refetch()
       setProfileEditorOpen(false)
-      toast.success(profileDraft.trim() ? 'Approved client profile updated.' : 'Approved client profile removed.')
+      toast.success(profileDraft.trim() ? 'Source profile updated.' : 'Source profile removed.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The approved client profile could not be updated.'
+      const message = error instanceof Error ? error.message : 'The source profile could not be updated.'
       setProfileError(message)
       if (/changed since you opened/i.test(message)) await detailQuery.refetch()
     } finally {
@@ -743,106 +704,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       toast.error(error instanceof Error ? error.message : 'The prospect page could not be linked.')
     } finally {
       setProspectLinkBusy(false)
-    }
-  }
-
-  const openSdrFieldEditor = (fieldId: keyof ClientSdrProfile) => {
-    if (!canManage) return
-    // Only re-seed from the saved profile when nothing unsaved is sitting in
-    // the draft — re-seeding unconditionally threw away the AI-drafted
-    // fields the operator just paid for, before they could ever save them.
-    if (!sdrDraftDirty) {
-      setSdrDraft(normalizeClientSdrProfile(client.ai_sdr_profile))
-      setSdrExpectedUpdatedAt(client.ai_sdr_profile_updated_at)
-    }
-    setSdrError(null)
-    setSdrEditorFieldId(fieldId)
-  }
-
-  // An AI draft cost credits. Closing the editor around it (outside click,
-  // Escape, Cancel) asks first instead of throwing it away.
-  const requestCloseSdrFieldEditor = () => {
-    if (sdrBusy) return
-    if (sdrDraftDirty) {
-      setSdrDiscardOpen(true)
-      return
-    }
-    closeSdrFieldEditor()
-  }
-  const closeSdrFieldEditor = () => {
-    if (sdrBusy) return
-    setSdrDiscardOpen(false)
-    setSdrDraft(normalizeClientSdrProfile(client.ai_sdr_profile))
-    setSdrExpectedUpdatedAt(client.ai_sdr_profile_updated_at)
-    setSdrDraftDirty(false)
-    setSdrError(null)
-    setSdrEditorFieldId(null)
-  }
-
-  const draftSdrProfileWithAi = async () => {
-    if (!canManage || sdrDrafting) return
-    setSdrDrafting(true)
-    try {
-      const result = await draftWorkspaceClientSdrProfile(workspaceId, canonicalClientId)
-      let filled = 0
-      // AI fills only what the owner has not written — hand-edited fields win.
-      // The merge base is the SAVED profile unless the operator has unsaved
-      // edits: merging into the never-seeded (empty) initial draft would
-      // blank every saved field the AI left alone the moment this was saved.
-      const base = sdrDraftDirty ? sdrDraft : normalizeClientSdrProfile(client.ai_sdr_profile)
-      const next = { ...base }
-      for (const [field, value] of Object.entries(result.draft)) {
-        const key = field as keyof ClientSdrProfile
-        if (!String(next[key] ?? '').trim() && typeof value === 'string' && value.trim()) {
-          next[key] = value
-          filled += 1
-        }
-      }
-      setSdrDraft(next)
-      if (filled === 0) {
-        toast.info('Every field already has content — clear a field first if you want it redrafted.')
-      } else {
-        // Open the editor on the drafted content directly. The toast said
-        // "review and save", but the only path to the save button used to
-        // re-seed the draft from the saved profile — discarding the output.
-        if (!sdrDraftDirty) setSdrExpectedUpdatedAt(client.ai_sdr_profile_updated_at)
-        setSdrDraftDirty(true)
-        setSdrError(null)
-        setSdrEditorFieldId(nextSdrField.id)
-        toast.success(`Drafted ${filled} field${filled === 1 ? '' : 's'} from the client profile${result.evidence_shows > 0 ? ` and ${result.evidence_shows} researched shows` : ''}. Review and save.`)
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The profile draft could not be generated.')
-    } finally {
-      setSdrDrafting(false)
-    }
-  }
-
-  const saveSdrProfile = async () => {
-    if (!canManage || sdrBusy || !sdrDraftChanged) return
-    setSdrBusy(true)
-    setSdrError(null)
-    try {
-      const updated = await updateWorkspaceClientSdrProfile(
-        workspaceId,
-        canonicalClientId,
-        sdrDraft,
-        sdrExpectedUpdatedAt,
-      )
-      await detailQuery.refetch()
-      setSdrDraft(updated.ai_sdr_profile)
-      setSdrExpectedUpdatedAt(updated.ai_sdr_profile_updated_at)
-      setSdrDraftDirty(false)
-      setSdrEditorFieldId(null)
-      toast.success(updated.ai_sdr_readiness.ready
-        ? 'Host brief saved and ready.'
-        : 'Host brief draft saved.')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'The host brief could not be updated.'
-      setSdrError(message)
-      if (/changed since you opened/i.test(message)) await detailQuery.refetch()
-    } finally {
-      setSdrBusy(false)
     }
   }
 
@@ -900,6 +761,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{client.name}</h1>
                   <Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="capitalize">{client.status}</Badge>
+                  {briefStatus.ready && (
+                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Brief ready
+                    </Badge>
+                  )}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   {client.contact_person && <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />{client.contact_person}</span>}
@@ -915,6 +781,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               pipelineHref={podcastSystemHref}
               campaignHref={campaignHref}
               finderHref={finderHref}
+              briefReady={briefStatus.ready}
             />
           </div>
         </section>
@@ -925,7 +792,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               {/* Tab ids are stable: ?tab= links elsewhere depend on them, and
                   LEGACY_TAB_ALIASES keeps the previous ids landing here. */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="brief">Guest brief</TabsTrigger>
               <TabsTrigger value="shortlist">Shortlist</TabsTrigger>
               <TabsTrigger value="placements">Placements</TabsTrigger>
               <TabsTrigger value="sharing">Sharing</TabsTrigger>
@@ -963,152 +830,34 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             <ClientUpcomingCard items={upcomingItems} pipelineHref={podcastSystemHref} formatDate={formatDate} />
           </TabsContent>
 
-          <TabsContent value="profile" className="mt-0 space-y-5">
-            <Card className="overflow-hidden">
-              <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <CardTitle>Approved client profile</CardTitle>
-                  <CardDescription>Positioning used across discovery and outreach, and the source the host brief is drafted from.</CardDescription>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  {client.bio && <Button type="button" variant="outline" size="sm" onClick={() => setProfileOpen(true)}><BookOpenCheck className="mr-2 h-4 w-4" />View full profile</Button>}
-                  {canManage && <Button type="button" size="sm" onClick={openProfileEditor}><Pencil className="mr-2 h-4 w-4" />{client.bio ? 'Edit profile' : 'Add profile'}</Button>}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {client.bio ? (
-                  <div className="rounded-xl border bg-muted/20 p-4">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Approved source · {profileWordLabel}</p>
-                    <p className="leading-7 text-muted-foreground">{profilePreview}</p>
-                  </div>
-                ) : <div className="rounded-xl border border-dashed p-4"><p className="font-medium">No approved profile yet</p><p className="mt-1 text-sm text-muted-foreground">Add a focused profile before running personalized research or preparing outreach.</p></div>}
-                <div className="flex flex-wrap gap-2 border-t pt-4">
-                  {websiteUrl && <Button asChild variant="outline" size="sm"><a href={websiteUrl} target="_blank" rel="noreferrer"><Globe2 className="mr-2 h-4 w-4" />Website<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                  {linkedInUrl && <Button asChild variant="outline" size="sm"><a href={linkedInUrl} target="_blank" rel="noreferrer"><Linkedin className="mr-2 h-4 w-4" />LinkedIn<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                  {calendarUrl && <Button asChild variant="outline" size="sm"><a href={calendarUrl} target="_blank" rel="noreferrer"><CalendarDays className="mr-2 h-4 w-4" />Calendar<ExternalLink className="ml-2 h-3.5 w-3.5" /></a></Button>}
-                  {!websiteUrl && !linkedInUrl && !calendarUrl && <p className="text-sm text-muted-foreground">No external profile links are connected yet.</p>}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden border-primary/20">
-              <div className="bg-gradient-to-br from-primary/10 via-violet-500/5 to-fuchsia-400/10 p-5 sm:p-7">
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="max-w-3xl">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Bot className="h-5 w-5" /></div>
-                      <Badge
-                        variant="outline"
-                        className={sdrReadiness.ready
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : 'border-amber-200 bg-amber-50 text-amber-800'}
-                      >
-                        {sdrReadiness.ready ? 'Context ready' : `Draft · ${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}
-                      </Badge>
-                      {client.ai_sdr_profile_updated_at && <Badge variant="secondary">Updated {formatDate(client.ai_sdr_profile_updated_at)}</Badge>}
-                    </div>
-                    <h2 className="text-2xl font-bold tracking-tight">{client.name} host brief</h2>
-                    <p className="mt-2 max-w-2xl leading-6 text-muted-foreground">
-                      What the AI knows about this client when it researches shows and writes pitches. It explains why they are a compelling guest, what they can discuss, what listeners gain, and how to book them.
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {canManage && !sdrReadiness.ready && (
-                      <Button type="button" variant="outline" disabled={sdrDrafting || (client.bio ?? '').trim().length < 40} title={(client.bio ?? '').trim().length < 40 ? 'Add an approved client profile of at least 40 characters first. The draft is built from it.' : undefined} onClick={() => void draftSdrProfileWithAi()}>
-                        {sdrDrafting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                        {sdrDrafting ? 'Drafting…' : `Draft brief ${creditCostSuffix('pitch_profile', { byo: detail.ai_keys?.anthropic })}`}
-                      </Button>
-                    )}
-                    {canManage && (
-                      <Button type="button" onClick={() => openSdrFieldEditor(nextSdrField.id)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        {sdrReadiness.ready ? 'Edit brief' : sdrReadiness.completed_fields > 0 ? 'Continue brief' : 'Start brief'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.42fr)]">
-                  <div className="rounded-xl border bg-background/80 p-4">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium">Brief coverage</span>
-                      <span className="tabular-nums text-muted-foreground">{sdrReadiness.completed_fields} / {sdrReadiness.total_fields}</span>
-                    </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                      <div
-                        className="h-full rounded-full bg-primary transition-[width]"
-                        style={{ width: `${Math.round((sdrReadiness.completed_fields / sdrReadiness.total_fields) * 100)}%` }}
-                      />
-                    </div>
-                    {!sdrReadiness.ready && (
-                      <p className="mt-3 text-xs leading-5 text-amber-800">
-                        Add the core {missingSdrCoreLabels.join(', ')} context before the brief is considered ready.
-                      </p>
-                    )}
-                    {sdrReadiness.ready && (
-                      <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />Core context is ready.</p>
-                    )}
-                  </div>
-                  <div className="flex items-start gap-2.5 rounded-xl border border-dashed bg-background/80 p-4">
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Draft context only.</span> Saving this brief never sends a message or enables automation.</p>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
+          <TabsContent value="brief" className="mt-0 space-y-5">
+            {/* One flow, top to bottom: the source, the brief drafted from it,
+                and the prompts that read the brief, folded away by default. */}
+            <ClientSourceProfileCard
+              bio={client.bio}
+              websiteUrl={websiteUrl}
+              linkedInUrl={linkedInUrl}
+              calendarUrl={calendarUrl}
+              canManage={canManage}
+              onEdit={openProfileEditor}
+            />
+            <ClientHostBriefCard
+              workspaceId={workspaceId}
+              clientId={client.id}
+              bio={client.bio}
+              profile={client.ai_sdr_profile}
+              approvedFields={client.ai_sdr_profile_approved_fields}
+              profileUpdatedAt={client.ai_sdr_profile_updated_at}
+              canManage={canManage}
+              generateCostSuffix={generateCost === '· Included' ? '' : ` ${generateCost}`}
+              onSaved={() => detailQuery.refetch()}
+            />
             <ClientSdrPromptsCard
               workspaceId={workspaceId}
               clientId={client.id}
               clientName={client.name}
               canManage={canManage && ['owner', 'platform_admin'].includes(detail.viewer_role)}
             />
-
-            <section aria-labelledby="ai-sdr-context-heading">
-              <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h3 id="ai-sdr-context-heading" className="text-xl font-semibold">Approved host context</h3>
-                  <p className="text-sm text-muted-foreground">Open one section at a time to give the client-specific AI approved information for helping a host evaluate and book this guest.</p>
-                </div>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.map((field) => {
-                  const value = sdrProfile[field.id]
-                  return (
-                    <Card key={field.id} className={!value ? 'border-dashed' : ''}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <CardTitle className="text-base">{field.label}</CardTitle>
-                              <Badge variant="secondary" className="text-[10px]">{field.core ? 'Core' : 'Extra'}</Badge>
-                            </div>
-                            <CardDescription className="mt-2">{field.description}</CardDescription>
-                          </div>
-                          {canManage && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="shrink-0"
-                              aria-label={`${value ? 'Edit' : 'Add'} ${field.label}`}
-                              onClick={() => openSdrFieldEditor(field.id)}
-                            >
-                              <Pencil className="mr-1.5 h-3.5 w-3.5" />{value ? 'Edit' : 'Add'}
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        {value
-                          ? <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-foreground/85">{value}</p>
-                          : <p className="text-sm italic text-muted-foreground">Not set yet.</p>}
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            </section>
           </TabsContent>
 
           <TabsContent value="shortlist" className="mt-0 space-y-6">
@@ -1217,7 +966,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
             <ClientActivityCalendar
               activities={clientActivities}
               showClientFilter={false}
-              title={`${client.name}'s schedule`}
+              title={`${possessive(client.name)} schedule`}
               description="Every recording and release date on this client's placements. Select one for the detail, and to put it in your own calendar."
             />
           </TabsContent>
@@ -1407,108 +1156,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       </div>
 
       <Dialog
-        open={Boolean(activeSdrField)}
-        onOpenChange={(open) => {
-          if (open) return
-          requestCloseSdrFieldEditor()
-        }}
-      >
-        <DialogContent
-          className="grid max-h-[94vh] w-[calc(100%-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl"
-          onEscapeKeyDown={(event) => {
-            if (sdrBusy || sdrDraftDirty) {
-              event.preventDefault()
-              if (sdrDraftDirty) setSdrDiscardOpen(true)
-            }
-          }}
-          onPointerDownOutside={(event) => {
-            if (sdrBusy || sdrDraftDirty) {
-              event.preventDefault()
-              if (sdrDraftDirty) setSdrDiscardOpen(true)
-            }
-          }}
-        >
-          {activeSdrField && (
-            <>
-              <DialogHeader className="border-b py-5 pl-6 pr-12 text-left">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Badge variant={activeSdrField.core ? 'default' : 'secondary'} className="text-[10px]">
-                    {activeSdrField.core ? 'Required for readiness' : 'Recommended'}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    Section {CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.findIndex((field) => field.id === activeSdrField.id) + 1} of {CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.length}
-                  </span>
-                </div>
-                <DialogTitle>{sdrProfile[activeSdrField.id] ? 'Edit' : 'Add'} {activeSdrField.label}</DialogTitle>
-                <DialogDescription>{activeSdrField.description}</DialogDescription>
-              </DialogHeader>
-              <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
-                <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-                  <p className="font-medium">Write for a podcast host</p>
-                  <p className="mt-1 leading-6 text-sky-900">Be specific, easy to scan, and factual. Include only positioning, claims, links, or logistics the client has approved.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`client-sdr-${activeSdrField.id}`}>{activeSdrField.label}</Label>
-                  <Textarea
-                    id={`client-sdr-${activeSdrField.id}`}
-                    value={sdrDraft[activeSdrField.id]}
-                    maxLength={CLIENT_SDR_PROFILE_MAX_FIELD_LENGTH}
-                    disabled={sdrBusy}
-                    className="min-h-[280px] resize-y leading-7"
-                    placeholder={activeSdrField.placeholder}
-                    autoFocus
-                    onChange={(event) => {
-                      setSdrDraftDirty(true)
-                      setSdrDraft((current) => ({ ...current, [activeSdrField.id]: event.target.value }))
-                      setSdrError(null)
-                    }}
-                  />
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{wordCount(sdrDraft[activeSdrField.id]).toLocaleString()} {wordCount(sdrDraft[activeSdrField.id]) === 1 ? 'word' : 'words'}</span>
-                    <span className="tabular-nums">{sdrDraft[activeSdrField.id].length.toLocaleString()} / {CLIENT_SDR_PROFILE_MAX_FIELD_LENGTH.toLocaleString()} characters</span>
-                  </div>
-                </div>
-                <div className={`rounded-xl border px-4 py-3 text-xs leading-5 ${sdrDraftReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-                  {sdrDraftReadiness.ready
-                    ? 'Saving this section keeps all four core sections ready.'
-                    : `This profile can still be saved as a draft. ${sdrDraftReadiness.missing_core_fields.length} core section${sdrDraftReadiness.missing_core_fields.length === 1 ? '' : 's'} will remain before the brief is ready.`}
-                </div>
-                {sdrError && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{sdrError}</p>}
-              </div>
-              {/* Same footer shape as the prompt editor: anything destructive
-                  or secondary on the left, the decision on the right. */}
-              <DialogFooter className="gap-2 border-t px-6 py-4 sm:justify-between">
-                <div className="flex items-center gap-2" />
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" disabled={sdrBusy} onClick={requestCloseSdrFieldEditor}>Cancel</Button>
-                  <Button type="button" disabled={sdrBusy || !sdrDraftChanged} onClick={() => void saveSdrProfile()}>
-                    {sdrBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save section
-                  </Button>
-                </div>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="grid max-h-[92vh] w-[calc(100%-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-4xl">
-          <DialogHeader className="border-b py-5 pl-6 pr-12 text-left">
-            <DialogTitle>Approved client profile</DialogTitle>
-            <DialogDescription>The complete approved positioning source used for discovery and outreach{profileWordCount ? ` · ${profileWordLabel}` : ''}.</DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto px-6 py-5">
-            {client.bio ? <article className="whitespace-pre-wrap text-sm leading-7 text-foreground/90">{client.bio}</article> : <p className="text-sm text-muted-foreground">No approved profile is available.</p>}
-          </div>
-          <DialogFooter className="border-t px-6 py-4">
-            {canManage && <Button type="button" onClick={openProfileEditor}><Pencil className="mr-2 h-4 w-4" />Edit profile</Button>}
-            <Button type="button" variant="outline" onClick={() => setProfileOpen(false)}>Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
         open={profileEditorOpen}
         onOpenChange={(open) => {
           if (open) return
@@ -1525,18 +1172,18 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           }}
         >
           <DialogHeader className="border-b py-5 pl-6 pr-12 text-left">
-            <DialogTitle>{client.bio ? 'Edit approved client profile' : 'Add approved client profile'}</DialogTitle>
+            <DialogTitle>{client.bio ? 'Edit source profile' : 'Add source profile'}</DialogTitle>
             <DialogDescription>
-              This is the source used for podcast discovery, fit analysis, pitch writing, and outreach.
+              The bio the host brief is generated from. Discovery and fit analysis read it too.
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-y-auto px-6 py-5">
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
               <p className="font-medium">Keep it focused and host-ready</p>
-              <p className="mt-1 leading-6 text-sky-900">Aim for 150–500 words covering credible experience, specific expertise, strong story angles, and the audiences this client can help.</p>
+              <p className="mt-1 leading-6 text-sky-900">Aim for 150 to 500 words covering credible experience, specific expertise, strong story angles, and the audiences this client can help.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="approved-client-profile">Approved client profile</Label>
+              <Label htmlFor="approved-client-profile">Source profile</Label>
               <Textarea
                 id="approved-client-profile"
                 value={profileDraft}
@@ -1823,21 +1470,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={sdrDiscardOpen} onOpenChange={setSdrDiscardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved AI draft?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The drafted sections have not been saved. Closing now throws them away, and drafting again costs credits.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction onClick={closeSdrFieldEditor}>Discard draft</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={slugRotateOpen} onOpenChange={(open) => { if (!slugRotateBusy) setSlugRotateOpen(open) }}>
         <AlertDialogContent>

@@ -338,9 +338,11 @@ describe('getWorkspaceClientDetail', () => {
 
     // An older function build sends no public_base_url; it reads as null and
     // the page falls back to the app origin.
+    // An older function build sends no approvals either; nothing reads as approved.
     await expect(getWorkspaceClientDetail(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual({
       ...detail,
       public_base_url: null,
+      client: { ...detail.client, ai_sdr_profile_approved_fields: [] },
     })
     expect(invoke).toHaveBeenCalledWith('workspace-clients', {
       body: {
@@ -616,6 +618,45 @@ describe('client AI SDR profile', () => {
         },
         expected_profile_updated_at: null,
       },
+    })
+  })
+
+  it('sends section approvals in brief order, only for sections with text', async () => {
+    const workspaceId = '11111111-1111-4111-8111-111111111111'
+    const clientId = '22222222-2222-4222-8222-222222222222'
+    invoke.mockResolvedValue({
+      data: {
+        client: {
+          id: clientId,
+          workspace_id: workspaceId,
+          ai_sdr_profile: { positioning: profile.positioning, booking_details: profile.booking_details },
+          ai_sdr_profile_approved_fields: ['booking_details', 'positioning', 'not_a_section'],
+          ai_sdr_profile_updated_at: '2026-07-25T00:00:00.000Z',
+          ai_sdr_readiness: {
+            ready: false, completed_fields: 2, total_fields: 6,
+            missing_fields: ['topics_and_angles', 'listener_takeaways', 'proof_points', 'ideal_opportunities'],
+            missing_core_fields: ['topics_and_angles', 'listener_takeaways'],
+          },
+        },
+      },
+      error: null,
+    })
+
+    const result = await updateWorkspaceClientSdrProfile(
+      workspaceId,
+      clientId,
+      { ...profile, topics_and_angles: '', listener_takeaways: '' },
+      '2026-07-24T00:00:00.000Z',
+      ['booking_details', 'topics_and_angles', 'positioning'],
+    )
+    expect(result.ai_sdr_profile_approved_fields).toEqual(['positioning', 'booking_details'])
+    expect(invoke).toHaveBeenCalledWith('workspace-clients', {
+      body: expect.objectContaining({
+        action: 'sdr-profile-update',
+        // topics_and_angles has no text, so it cannot be approved.
+        approved_fields: ['positioning', 'booking_details'],
+        expected_profile_updated_at: '2026-07-24T00:00:00.000Z',
+      }),
     })
   })
 })

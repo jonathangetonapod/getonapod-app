@@ -45,6 +45,10 @@ const clientAiSdrProfileMigration = readFileSync(
   'supabase/migrations/20260725000200_client_ai_sdr_profiles.sql',
   'utf8',
 )
+const clientBriefApprovalsMigration = readFileSync(
+  'supabase/migrations/20261028000100_client_brief_approvals_and_name_cleanup.sql',
+  'utf8',
+)
 
 function shortlistActionSource(action) {
   const marker = `    if (action === '${action}') {`
@@ -61,9 +65,9 @@ assert.match(edge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
 assert.match(edge, /const workspaceId = requireUuid\(body\.workspace_id, 'workspace_id'\)/u)
 assert.match(edge, /if \(action === 'research-get' \|\| action === 'detail-get' \|\| action === 'sdr-context-get'\)[\s\S]*?clientId = requireUuid\(body\.client_id, 'client_id'\)/u)
 assert.match(edge, /action === 'profile-update'[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'bio', 'expected_updated_at'\]\)[\s\S]*?optionalString\(body\.bio, 'bio', 20_000\)/u)
-assert.match(edge, /action === 'sdr-profile-update'[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'ai_sdr_profile', 'expected_profile_updated_at'\]\)[\s\S]*?aiSdrProfile\(body\.ai_sdr_profile\)/u)
+assert.match(edge, /action === 'sdr-profile-update'[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'ai_sdr_profile', 'approved_fields', 'expected_profile_updated_at'\]\)[\s\S]*?aiSdrProfile\(body\.ai_sdr_profile\)[\s\S]*?aiSdrApprovedFields\(body\.approved_fields\)/u)
 assert.match(edge, /if \(action === 'profile-update'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\)[\s\S]*?admin\.rpc\('update_workspace_client_profile_v1'/u)
-assert.match(edge, /if \(action === 'sdr-profile-update'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\)[\s\S]*?admin\.rpc\('update_workspace_client_ai_sdr_profile_v1'/u)
+assert.match(edge, /if \(action === 'sdr-profile-update'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\)[\s\S]*?admin\.rpc\('update_workspace_client_ai_sdr_profile_v2'[\s\S]*?p_approved_fields: sdrApprovedFields/u)
 assert.match(edge, /if \(action === 'sdr-context-get'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\.eq\('id', clientId!\)[\s\S]*?\.eq\('workspace_id', workspaceId\)[\s\S]*?safe_to_draft: client\.status === 'active' && readiness\.ready,[\s\S]*?delivery_authorized: false/u)
 assert.match(edge, /if \(action === 'detail-get'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
 assert.match(edge, /if \(action === 'dashboard-slug-rotate'\)[\s\S]*?await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\['owner', 'admin', 'platform_admin'\]\.includes\(access\.role\)[\s\S]*?admin\.rpc\('rotate_client_dashboard_slug_v1'[\s\S]*?writeAudit\(admin/u)
@@ -323,6 +327,19 @@ assert.doesNotMatch(clientAiSdrProfileMigration, /char_length\(p_profile::TEXT\)
 assert.match(clientAiSdrProfileMigration, /current_profile_updated_at IS DISTINCT FROM p_expected_profile_updated_at[\s\S]*?client\.ai_sdr_profile_updated_at IS NOT DISTINCT FROM p_expected_profile_updated_at/u)
 assert.match(clientAiSdrProfileMigration, /'workspace\.client\.ai_sdr_profile_updated'[\s\S]*?'completed_fields'[\s\S]*?'ready'[\s\S]*?'cleared'/u)
 assert.match(clientAiSdrProfileMigration, /REVOKE ALL ON FUNCTION public\.update_workspace_client_ai_sdr_profile_v1\([\s\S]*?FROM PUBLIC, anon, authenticated, service_role;[\s\S]*?GRANT EXECUTE[\s\S]*?TO service_role;/u)
+// Section approvals: existing text starts approved, a changed section loses
+// its approval unless the same save approves it, and only managers write.
+assert.match(clientBriefApprovalsMigration, /ADD COLUMN IF NOT EXISTS ai_sdr_profile_approved_fields TEXT\[\] NOT NULL DEFAULT/u)
+assert.match(clientBriefApprovalsMigration, /CHECK \(ai_sdr_profile_approved_fields <@ ARRAY\[/u)
+assert.match(clientBriefApprovalsMigration, /CREATE OR REPLACE FUNCTION public\.update_workspace_client_ai_sdr_profile_v2\([\s\S]*?p_approved_fields TEXT\[\][\s\S]*?SECURITY DEFINER[\s\S]*?SET search_path = ''/u)
+assert.match(clientBriefApprovalsMigration, /workspace_staff_actor_role_v1\([\s\S]*?true[\s\S]*?actor_role NOT IN \('owner', 'admin', 'platform_admin'\)/u)
+assert.match(clientBriefApprovalsMigration, /COALESCE\(p_approved_fields, ARRAY\([\s\S]*?IS NOT DISTINCT FROM \(normalized_profile ->> field\)/u)
+assert.match(clientBriefApprovalsMigration, /current_profile_updated_at IS DISTINCT FROM p_expected_profile_updated_at[\s\S]*?client\.ai_sdr_profile_updated_at IS NOT DISTINCT FROM p_expected_profile_updated_at/u)
+assert.match(clientBriefApprovalsMigration, /REVOKE ALL ON FUNCTION public\.update_workspace_client_ai_sdr_profile_v2\([\s\S]*?FROM PUBLIC, anon, authenticated, service_role;[\s\S]*?GRANT EXECUTE[\s\S]*?TO service_role;/u)
+assert.match(clientBriefApprovalsMigration, /CREATE TRIGGER clients_clean_name[\s\S]*?BEFORE INSERT OR UPDATE OF name ON public\.clients/u)
+assert.match(clientBriefApprovalsMigration, /UPDATE public\.clients\s+SET name = public\.clean_client_name_v1\(name\)/u)
+assert.match(edge, /ai_sdr_profile,ai_sdr_profile_approved_fields,ai_sdr_profile_updated_at/u)
+
 assert.doesNotMatch(shortlistEdge, /'hidden'/u)
 assert.doesNotMatch(publicDashboardEdge, /dashboard_enabled/u)
 assert.doesNotMatch(clientPodcastsEdge, /dashboard_enabled/u)

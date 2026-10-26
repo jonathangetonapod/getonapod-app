@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, MessageSquareText, Pencil, RefreshCw, RotateCcw } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquareText, Pencil, RefreshCw, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -24,8 +24,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { PromptVariableTextarea } from './PromptVariableTextarea'
 import { PromptRequiredFields } from './PromptRequiredFields'
+import { possessive } from '@/lib/clientName'
 import { unavailableVariableIds } from '@/lib/promptVariableMenu'
 import { RESEARCH_PROMPT_DEFAULTS_BY_ID, type ResearchPromptId } from '@/lib/researchPromptDefaults'
 import {
@@ -113,6 +115,9 @@ export const ClientSdrPromptsCard = ({
   // Reset is confirmed: it deletes the client's own prompt, and the text it
   // falls back to is not shown until the row is opened again.
   const [resetTarget, setResetTarget] = useState<ResearchPromptId | null>(null)
+  // Most clients run on the workspace defaults, so the editors stay folded
+  // behind a one-line summary until someone asks for them.
+  const [open, setOpen] = useState(false)
   const promptsKey = ['client-sdr-prompts', workspaceId, clientId] as const
 
   const promptsQuery = useQuery({
@@ -151,10 +156,10 @@ export const ClientSdrPromptsCard = ({
   /*
    * The text a prompt falls back to when this client has no override. The
    * runtime resolves client -> workspace -> shipped, but this card used to
-   * fall back straight to the shipped default: with a workspace house style
+   * fall back straight to the shipped default: with workspace defaults
    * in place, the badge said "Workspace default" over shipped text, Reset
    * seeded shipped text, and saving what was displayed quietly reverted the
-   * client from the house style.
+   * client from the workspace defaults.
    */
   const workspaceFallback = (id: ResearchPromptId): string =>
     promptOverridesQuery.data?.[id]?.content
@@ -173,7 +178,7 @@ export const ClientSdrPromptsCard = ({
   // when this client has none.
   useEffect(() => {
     // Wait for the workspace layer too: seeding from the shipped default
-    // while the house style was still loading marked every prompt "Unsaved"
+    // while the workspace defaults were still loading marked every prompt "Unsaved"
     // against text nobody typed.
     // Success, not merely "not loading": a failed workspace read would seed
     // shipped text that a later successful retry could no longer replace.
@@ -226,6 +231,17 @@ export const ClientSdrPromptsCard = ({
     : promptOverridesQuery.isError
       ? promptOverridesQuery.error
       : null
+  const customizedCount = PROMPT_GROUPS
+    .flatMap((group) => group.prompts)
+    .filter((prompt) => Boolean(overrides[prompt.id]?.content))
+    .length
+  const summary = promptsQuery.isLoading
+    ? 'Loading'
+    : customizedCount > 0 ? `${customizedCount} customized` : 'Using workspace defaults'
+  // A load failure is shown, not folded away: the retry has to be reachable.
+  useEffect(() => {
+    if (loadError) setOpen(true)
+  }, [loadError])
   const retryLoad = () => {
     if (promptsQuery.isError) void promptsQuery.refetch()
     if (promptOverridesQuery.isError) void promptOverridesQuery.refetch()
@@ -233,14 +249,29 @@ export const ClientSdrPromptsCard = ({
 
   return (
     <>
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
     <Card aria-labelledby="client-sdr-prompts-heading">
-      <CardHeader>
-        <CardTitle id="client-sdr-prompts-heading" className="flex items-center gap-2">
-          <MessageSquareText className="h-4 w-4 text-muted-foreground" />AI prompts
-        </CardTitle>
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 rounded-lg px-5 py-4 text-left text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <MessageSquareText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span id="client-sdr-prompts-heading" className="font-semibold">AI prompts</span>
+            <span className="text-muted-foreground" aria-hidden="true">·</span>
+            <span className="text-muted-foreground">{summary}</span>
+            <span className="text-muted-foreground" aria-hidden="true">·</span>
+            <span className="font-medium text-primary">{customizedCount > 0 ? 'Edit' : 'Customize'}</span>
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+      <CardHeader className="pt-0">
         <CardDescription>
-          Every prompt {clientName}’s AI uses for research and pitch writing. Saving one here overrides the workspace default for {clientName} only;
-          untouched prompts follow the workspace house style.
+          The prompts {possessive(clientName)} AI uses for research and pitch writing. Saving one here overrides the workspace default for {clientName} only.
+          Untouched prompts follow the workspace defaults.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
@@ -269,42 +300,21 @@ export const ClientSdrPromptsCard = ({
                 const fallback = workspaceFallback(prompt.id)
                 const value = drafts[prompt.id] ?? saved ?? fallback
                 const dirty = value !== (saved ?? fallback)
-                const busy = saveMutation.isPending || resetMutation.isPending
+                // Save and Reset live in the editor: a row only says whose
+                // prompt it is and opens it.
                 return (
-                  <div key={prompt.id} className="rounded-xl border">
-                    <div className="flex flex-wrap items-start justify-between gap-2 p-3.5">
-                      <button
-                        type="button"
-                        onClick={() => setExpanded(prompt.id)}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                          {prompt.title}
-                          {saved
-                            ? <Badge variant="secondary" className="text-[10px]">Custom for {clientName.split(' ')[0]}</Badge>
-                            : <Badge variant="outline" className="text-[10px] text-muted-foreground">Workspace default</Badge>}
-                          {dirty && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-800">Unsaved</Badge>}
-                        </span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">{prompt.detail}</span>
-                      </button>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {canManage && saved && (
-                          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setResetTarget(prompt.id)}>
-                            <RotateCcw className="mr-2 h-3.5 w-3.5" />Reset
-                            <span className="sr-only"> {prompt.title}</span>
-                          </Button>
-                        )}
-                        {canManage && (
-                          <Button type="button" size="sm" disabled={!dirty || busy} onClick={() => saveMutation.mutate({ id: prompt.id, content: value })}>
-                            {saveMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}Save
-                          </Button>
-                        )}
-                        <Button type="button" size="sm" variant="outline" onClick={() => setExpanded(prompt.id)}>
-                          <Pencil className="mr-2 h-3.5 w-3.5" />Edit
-                          <span className="sr-only"> {prompt.title}</span>
-                        </Button>
-                      </div>
-                    </div>
+                  <div key={prompt.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3.5">
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-sm font-semibold">
+                      {prompt.title}
+                      {saved
+                        ? <Badge variant="secondary" className="text-[10px]">Custom</Badge>
+                        : <Badge variant="outline" className="text-[10px] text-muted-foreground">Workspace default</Badge>}
+                      {dirty && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-800">Unsaved</Badge>}
+                    </span>
+                    <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setExpanded(prompt.id)}>
+                      <Pencil className="mr-2 h-3.5 w-3.5" />Edit
+                      <span className="sr-only"> {prompt.title}</span>
+                    </Button>
                   </div>
                 )
               })}
@@ -312,7 +322,9 @@ export const ClientSdrPromptsCard = ({
           ))
         )}
       </CardContent>
+      </CollapsibleContent>
     </Card>
+    </Collapsible>
 
       {/* A prompt is a page of writing, not a form field. Editing it inside the
           card meant a 13-line monospace box wedged between other rows, with the
@@ -332,7 +344,7 @@ export const ClientSdrPromptsCard = ({
                 <DialogHeader className="border-b py-5 pl-6 pr-12 text-left">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     {saved
-                      ? <Badge variant="secondary" className="text-[10px]">Custom for {clientName.split(' ')[0]}</Badge>
+                      ? <Badge variant="secondary" className="text-[10px]">Custom for {clientName}</Badge>
                       : <Badge variant="outline" className="text-[10px] text-muted-foreground">Workspace default</Badge>}
                     {dirty && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-800">Unsaved</Badge>}
                   </div>
@@ -356,21 +368,19 @@ export const ClientSdrPromptsCard = ({
                   disabled={!canManage || busy}
                   inheritedNote={clientRequirements[prompt.id]
                     ? undefined
-                    : `Inherited from the workspace. Changing one here sets it for ${clientName.split(' ')[0]} only.`}
+                    : `Inherited from the workspace. Changing one here sets it for ${clientName} only.`}
                   onChange={(next) => saveRequirementsMutation.mutate({ id: prompt.id, required: next })}
                 />
               </div>
                 </div>
-                <DialogFooter className="gap-2 border-t px-6 py-4 sm:justify-between">
-                  <div className="flex items-center gap-2">
+                <DialogFooter className="flex-wrap gap-2 border-t px-6 py-4">
+                  <Button type="button" variant="outline" onClick={() => setExpanded(null)} disabled={busy}>Cancel</Button>
+                  <div className="flex flex-wrap items-center gap-2">
                     {canManage && saved && (
                       <Button type="button" variant="ghost" disabled={busy} onClick={() => setResetTarget(prompt.id)}>
                         <RotateCcw className="mr-2 h-4 w-4" />Reset to workspace default
                       </Button>
                     )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button type="button" variant="outline" onClick={() => setExpanded(null)} disabled={busy}>Cancel</Button>
                     {canManage && (
                       <Button type="button" disabled={!dirty || busy} onClick={() => saveMutation.mutate({ id: prompt.id, content: value })}>
                         {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save prompt
@@ -389,7 +399,7 @@ export const ClientSdrPromptsCard = ({
           <AlertDialogHeader>
             <AlertDialogTitle>Reset {resetPrompt?.title ?? 'this prompt'} to the workspace default?</AlertDialogTitle>
             <AlertDialogDescription>
-              {clientName}’s own version of this prompt is deleted and the workspace house style applies again. This cannot be undone.
+              {possessive(clientName)} own version of this prompt is deleted and the workspace default applies again. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

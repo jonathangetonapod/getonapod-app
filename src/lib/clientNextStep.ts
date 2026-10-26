@@ -1,4 +1,4 @@
-import { clientSdrProfileReadiness } from '@/lib/clientSdrProfile'
+import { clientBriefStatus } from '@/lib/clientSdrProfile'
 import type { WorkspaceClientBooking, WorkspaceClientDetail } from '@/services/clients'
 
 /*
@@ -41,7 +41,7 @@ export const CLIENT_NEXT_STEP_LABELS: Record<ClientNextStepAction, string> = {
 export type SetupItemStatus = 'done' | 'in_progress' | 'not_started'
 
 /** Where a checklist row sends the user: a page, or a tab of this record. */
-export type SetupItemTarget = 'onboarding' | 'profile' | 'sharing' | 'shortlist'
+export type SetupItemTarget = 'onboarding' | 'brief' | 'sharing' | 'shortlist'
 
 export interface ClientSetupItem {
   key: 'onboarding' | 'host_brief' | 'portal' | 'shortlist' | 'dashboard'
@@ -132,16 +132,16 @@ export function getClientSetupItems(state: ClientProgressState): ClientSetupItem
     })
   }
 
-  const brief = clientSdrProfileReadiness(state.client.ai_sdr_profile)
+  const brief = clientBriefStatus(state.client.ai_sdr_profile, state.client.ai_sdr_profile_approved_fields)
   items.push({
     key: 'host_brief',
     label: 'Host brief',
-    status: brief.ready ? 'done' : brief.completed_fields > 0 ? 'in_progress' : 'not_started',
-    detail: `${brief.completed_fields} of ${brief.total_fields} sections`,
+    status: brief.ready ? 'done' : brief.started ? 'in_progress' : 'not_started',
+    detail: `${brief.approved_required} of ${brief.total_required} required`,
     actionLabel: brief.ready
       ? 'View host brief'
-      : `Complete host brief (${brief.completed_fields}/${brief.total_fields})`,
-    target: 'profile',
+      : `Finish host brief (${brief.approved_required}/${brief.total_required})`,
+    target: 'brief',
   })
 
   items.push({

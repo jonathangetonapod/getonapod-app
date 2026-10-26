@@ -117,3 +117,50 @@ export function clientSdrProfilesEqual(left: unknown, right: unknown): boolean {
     normalizedLeft[field.id] === normalizedRight[field.id]
   ))
 }
+
+export type ClientBriefSectionStatus = 'empty' | 'draft' | 'approved'
+
+export interface ClientBriefStatus {
+  sections: Record<ClientSdrProfileField, ClientBriefSectionStatus>
+  approved_required: number
+  total_required: number
+  /** All four required sections are approved. */
+  ready: boolean
+  /** At least one section has text. */
+  started: boolean
+}
+
+export const CLIENT_SDR_REQUIRED_FIELDS = CLIENT_SDR_PROFILE_FIELD_DEFINITIONS
+  .filter((field) => field.core)
+  .map((field) => field.id)
+
+/** Known sections, in brief order, that have text to be approved. */
+export function normalizeClientSdrApprovedFields(value: unknown, profile: unknown): ClientSdrProfileField[] {
+  if (!Array.isArray(value)) return []
+  const normalizedProfile = normalizeClientSdrProfile(profile)
+  return CLIENT_SDR_PROFILE_FIELD_DEFINITIONS
+    .filter((field) => value.includes(field.id) && Boolean(normalizedProfile[field.id]))
+    .map((field) => field.id)
+}
+
+/*
+ * Where the host brief stands on the Guest brief tab. Text alone makes a
+ * section a draft; an operator approving it makes it count. Readiness is the
+ * four required sections approved, never the total of six.
+ */
+export function clientBriefStatus(profile: unknown, approvedFields: unknown): ClientBriefStatus {
+  const normalizedProfile = normalizeClientSdrProfile(profile)
+  const approved = new Set(normalizeClientSdrApprovedFields(approvedFields, normalizedProfile))
+  const sections = CLIENT_SDR_PROFILE_FIELD_DEFINITIONS.reduce((result, field) => {
+    result[field.id] = !normalizedProfile[field.id] ? 'empty' : approved.has(field.id) ? 'approved' : 'draft'
+    return result
+  }, {} as Record<ClientSdrProfileField, ClientBriefSectionStatus>)
+  const approvedRequired = CLIENT_SDR_REQUIRED_FIELDS.filter((field) => sections[field] === 'approved').length
+  return {
+    sections,
+    approved_required: approvedRequired,
+    total_required: CLIENT_SDR_REQUIRED_FIELDS.length,
+    ready: approvedRequired === CLIENT_SDR_REQUIRED_FIELDS.length,
+    started: Object.values(sections).some((status) => status !== 'empty'),
+  }
+}

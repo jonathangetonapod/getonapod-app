@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clientBriefStatus,
   clientSdrProfileReadiness,
   clientSdrProfilesEqual,
   isClientSdrProfile,
+  normalizeClientSdrApprovedFields,
   normalizeClientSdrProfile,
 } from '@/lib/clientSdrProfile'
 
@@ -62,5 +64,36 @@ describe('client AI SDR profile policy', () => {
       completed_fields: 6,
       missing_fields: [],
     })
+  })
+})
+
+describe('clientBriefStatus', () => {
+  const written = {
+    positioning: 'a', topics_and_angles: 'b', listener_takeaways: 'c',
+    proof_points: 'd', ideal_opportunities: '', booking_details: 'f',
+  }
+
+  it('reads each section as empty, draft or approved', () => {
+    const status = clientBriefStatus(written, ['positioning', 'proof_points', 'ideal_opportunities'])
+    expect(status.sections).toEqual({
+      positioning: 'approved',
+      topics_and_angles: 'draft',
+      listener_takeaways: 'draft',
+      proof_points: 'approved',
+      // Approval of a section with no text does not count.
+      ideal_opportunities: 'empty',
+      booking_details: 'draft',
+    })
+    expect(status).toMatchObject({ approved_required: 1, total_required: 4, ready: false, started: true })
+  })
+
+  it('is ready once the four required sections are approved, extras or not', () => {
+    const status = clientBriefStatus(written, ['positioning', 'topics_and_angles', 'listener_takeaways', 'booking_details'])
+    expect(status).toMatchObject({ approved_required: 4, ready: true })
+  })
+
+  it('is not started with no text, and ignores unknown approvals', () => {
+    expect(clientBriefStatus({}, ['positioning', 'nonsense'])).toMatchObject({ approved_required: 0, started: false, ready: false })
+    expect(normalizeClientSdrApprovedFields('positioning', written)).toEqual([])
   })
 })

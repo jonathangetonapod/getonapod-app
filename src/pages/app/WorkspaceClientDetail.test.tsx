@@ -10,6 +10,7 @@ import {
   updateWorkspaceClient,
   updateWorkspaceClientProfile,
   updateWorkspaceClientSdrProfile,
+  draftWorkspaceClientSdrProfile,
   linkWorkspaceClientProspect,
   type WorkspaceClientDetail as WorkspaceClientDetailData,
 } from '@/services/clients'
@@ -70,6 +71,7 @@ const mockedSetPortalPassword = vi.mocked(setWorkspaceClientPassword)
 const mockedUpdateClient = vi.mocked(updateWorkspaceClient)
 const mockedUpdateProfile = vi.mocked(updateWorkspaceClientProfile)
 const mockedUpdateSdrProfile = vi.mocked(updateWorkspaceClientSdrProfile)
+const mockedDraftSdrProfile = vi.mocked(draftWorkspaceClientSdrProfile)
 const mockedGetSystem = vi.mocked(getWorkspaceClientPodcastSystem)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
@@ -107,6 +109,9 @@ const detail: WorkspaceClientDetailData = {
       ideal_opportunities: 'Founder and operations podcasts for growth-stage teams.',
       booking_details: 'Remote interviews preferred. Route sponsorships and unclear scheduling to a human.',
     },
+    ai_sdr_profile_approved_fields: [
+      'positioning', 'topics_and_angles', 'listener_takeaways', 'proof_points', 'ideal_opportunities', 'booking_details',
+    ],
     ai_sdr_profile_updated_at: '2026-07-23T01:00:00.000Z',
     ai_sdr_readiness: {
       ready: true,
@@ -326,6 +331,7 @@ describe('WorkspaceClientDetail', () => {
         ideal_opportunities: detail.client.ai_sdr_profile.ideal_opportunities || '',
         booking_details: detail.client.ai_sdr_profile.booking_details || '',
       },
+      ai_sdr_profile_approved_fields: detail.client.ai_sdr_profile_approved_fields,
       ai_sdr_profile_updated_at: '2026-07-24T00:00:00.000Z',
       ai_sdr_readiness: detail.client.ai_sdr_readiness,
     })
@@ -357,7 +363,7 @@ describe('WorkspaceClientDetail', () => {
       .toHaveAttribute('href', '/app/settings/billing')
   })
 
-  it('is the one client record: overview, profile, shortlist, placements, sharing, intake', async () => {
+  it('is the one client record: overview, guest brief, shortlist, placements, sharing, intake', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
@@ -365,7 +371,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.queryByText(/Client record/)).not.toBeInTheDocument()
     expect(screen.getByText('Added Jul 1, 2026')).toBeInTheDocument()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Overview', 'Profile', 'Shortlist', 'Placements', 'Sharing', 'Intake & files',
+      'Overview', 'Guest brief', 'Shortlist', 'Placements', 'Sharing', 'Intake & files',
     ])
     // Outreach is live, so the one primary action is the pipeline.
     expect(screen.getByRole('link', { name: 'View pipeline' })).toHaveAttribute(
@@ -440,11 +446,11 @@ describe('WorkspaceClientDetail', () => {
     expect(within(placements).getByText('Operator Weekly')).toBeInTheDocument()
     expect(screen.getByRole('grid', { name: 'Client activity calendar' })).toBeInTheDocument()
 
-    // The profile tab holds both what the client approved and the host brief drafted from it.
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    // The guest brief tab holds the source profile and the host brief drafted from it.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
+    expect(screen.getByText('Source profile')).toBeInTheDocument()
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
+    expect(screen.getByText('Host brief')).toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Intake & files' }), { button: 0 })
     expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
@@ -456,7 +462,9 @@ describe('WorkspaceClientDetail', () => {
 
   it('lands every previous tab id on the tab that now holds its content', async () => {
     const aliases: Array<[string, string]> = [
-      ['ai-sdr', 'Profile'],
+      ['ai-sdr', 'Guest brief'],
+      ['profile', 'Guest brief'],
+      ['brief', 'Guest brief'],
       ['approval', 'Shortlist'],
       ['podcasts', 'Placements'],
       ['calendar', 'Placements'],
@@ -527,23 +535,112 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByText('Booking dialog')).toBeInTheDocument()
   })
 
-  it('prices the host brief draft as included for a workspace on its own key', async () => {
-    const unready: WorkspaceClientDetailData = {
+  it('offers exactly one primary action on an empty brief, priced unless the workspace uses its own key', async () => {
+    const empty: WorkspaceClientDetailData = {
       ...detail,
       client: {
         ...detail.client,
-        ai_sdr_profile: { ...detail.client.ai_sdr_profile, listener_takeaways: '' },
-        ai_sdr_readiness: { ready: false, completed_fields: 5, total_fields: 6, missing_fields: ['listener_takeaways'], missing_core_fields: ['listener_takeaways'] },
+        bio: 'Taylor helps founders build durable operations and repeatable growth systems.',
+        ai_sdr_profile: {},
+        ai_sdr_profile_approved_fields: [],
+        ai_sdr_readiness: { ready: false, completed_fields: 0, total_fields: 6, missing_fields: [], missing_core_fields: [] },
       },
     }
-    mockedDetail.mockResolvedValueOnce({ ...unready, ai_keys: { anthropic: true, openai: false } })
-    const first = renderPageWithHandle(`/app/clients/${clientId}?tab=profile`)
-    expect(await screen.findByRole('button', { name: 'Draft brief · Included' })).toBeInTheDocument()
+    mockedDetail.mockResolvedValueOnce({ ...empty, ai_keys: { anthropic: true, openai: false } })
+    const first = renderPageWithHandle(`/app/clients/${clientId}?tab=brief`)
+    const brief = await screen.findByTestId('client-host-brief')
+    expect(within(brief).getByRole('button', { name: 'Generate from profile' })).toBeInTheDocument()
+    expect(within(brief).getByText('0 of 4 required')).toBeInTheDocument()
+    // The old pair of brief buttons is gone.
+    expect(screen.queryByRole('button', { name: /Draft brief/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Start brief/ })).not.toBeInTheDocument()
     first.unmount()
 
-    mockedDetail.mockResolvedValueOnce(unready)
-    renderPage(`/app/clients/${clientId}?tab=profile`)
-    expect(await screen.findByRole('button', { name: 'Draft brief · 3 credits' })).toBeInTheDocument()
+    mockedDetail.mockResolvedValueOnce(empty)
+    renderPage(`/app/clients/${clientId}?tab=brief`)
+    expect(await screen.findByRole('button', { name: 'Generate from profile · 3 credits' })).toBeInTheDocument()
+  })
+
+  it('generates every empty section as a draft, then approves sections into a ready brief', async () => {
+    const empty: WorkspaceClientDetailData = {
+      ...detail,
+      client: {
+        ...detail.client,
+        bio: 'Taylor helps founders build durable operations and repeatable growth systems.',
+        ai_sdr_profile: {},
+        ai_sdr_profile_approved_fields: [],
+      },
+      onboarding: { ...detail.onboarding!, status: 'approved' },
+      dashboard: { ...detail.dashboard, podcast_count: 0, reviewed_count: 0, approved_count: 0, rejected_count: 0, to_review_count: 0, analyzed_count: 0 },
+      outreach: { initial_emails_sent: 0, podcasts_contacted: 0, pending_review_count: 0, approved_count: 0, failed_count: 0, last_sent_at: null },
+      bookings: [],
+    }
+    const drafted = {
+      positioning: 'Taylor is an operations leader.',
+      topics_and_angles: 'Sustainable scale.',
+      listener_takeaways: 'A bottleneck audit.',
+      proof_points: 'Case studies.',
+      ideal_opportunities: 'Founder shows.',
+      booking_details: 'Remote only.',
+    }
+    mockedDetail.mockResolvedValue(empty)
+    mockedDraftSdrProfile.mockResolvedValue({ draft: drafted, evidence_shows: 0 })
+    renderPage(`/app/clients/${clientId}?tab=brief`)
+
+    // Before the brief is ready the shortlist is offered, but not as the lead action.
+    const shortlistLink = await screen.findByRole('link', { name: 'Build shortlist' })
+    expect(shortlistLink.className).toMatch(/border/)
+
+    const brief = screen.getByTestId('client-host-brief')
+    mockedDetail.mockResolvedValue({
+      ...empty,
+      client: { ...empty.client, ai_sdr_profile: drafted, ai_sdr_profile_updated_at: '2026-07-24T00:00:00.000Z' },
+    })
+    fireEvent.click(within(brief).getByRole('button', { name: 'Generate from profile · 3 credits' }))
+    await waitFor(() => expect(mockedUpdateSdrProfile).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      expect.objectContaining(drafted),
+      '2026-07-23T01:00:00.000Z',
+      [],
+    ))
+    // Generated sections are drafts until someone approves them.
+    await waitFor(() => expect(within(brief).getAllByText('Draft')).toHaveLength(6))
+    expect(within(brief).getByText('0 of 4 required')).toBeInTheDocument()
+
+    // The first required section opens for review; approving it sends the approval.
+    mockedUpdateSdrProfile.mockClear()
+    fireEvent.click(await within(brief).findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(mockedUpdateSdrProfile).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      expect.objectContaining({ positioning: 'Taylor is an operations leader.' }),
+      '2026-07-24T00:00:00.000Z',
+      ['positioning'],
+    ))
+  })
+
+  it('shows Brief ready and leads with Build shortlist once the required sections are approved', async () => {
+    mockedDetail.mockResolvedValueOnce({
+      ...detail,
+      client: {
+        ...detail.client,
+        ai_sdr_profile_approved_fields: ['positioning', 'topics_and_angles', 'listener_takeaways', 'booking_details'],
+      },
+      onboarding: { ...detail.onboarding!, status: 'approved' },
+      dashboard: { ...detail.dashboard, podcast_count: 0, reviewed_count: 0, approved_count: 0, rejected_count: 0, to_review_count: 0, analyzed_count: 0 },
+      outreach: { initial_emails_sent: 0, podcasts_contacted: 0, pending_review_count: 0, approved_count: 0, failed_count: 0, last_sent_at: null },
+      bookings: [],
+    })
+    renderPage(`/app/clients/${clientId}?tab=brief`)
+
+    const brief = await screen.findByTestId('client-host-brief')
+    // Once in the page header, once on the card.
+    expect(screen.getAllByText('Brief ready')).toHaveLength(2)
+    // The optional sections were left as drafts and do not hold the brief back.
+    expect(within(brief).getAllByText('Approved')).toHaveLength(4)
+    expect(within(brief).getAllByText('Draft')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'Build shortlist' }).className).not.toMatch(/border-input/)
   })
 
   it('gives one client their own calendar, built from the bookings already loaded', async () => {
@@ -561,38 +658,38 @@ describe('WorkspaceClientDetail', () => {
     expect(mockedDetail).toHaveBeenCalledTimes(1)
   })
 
-  it('edits each client-scoped host brief section in a focused modal', async () => {
+  it('edits a host brief section inline, and saving an edit makes it a draft again', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
 
-    expect(screen.getByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
-    expect(screen.getByText('Context ready')).toBeInTheDocument()
-    expect(screen.getByText('A practical framework for diagnosing and fixing the bottleneck behind stalled growth.')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Open inbox' })).not.toBeInTheDocument()
+    const brief = screen.getByTestId('client-host-brief')
+    expect(within(brief).getByText('Host brief')).toBeInTheDocument()
+    expect(within(brief).getByText('What the AI uses to research shows and write pitches.')).toBeInTheDocument()
+    expect(within(brief).getByText('Optional')).toBeInTheDocument()
+    expect(screen.queryByText('Approved host context')).not.toBeInTheDocument()
     // Reply drafting is retired with the inbox; the brief stays for research and pitching.
     expect(screen.queryByText('Reply drafting')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Listener value & takeaways' }))
-    const editor = screen.getByRole('dialog', { name: 'Edit Listener value & takeaways' })
-    expect(within(editor).getByText('Section 3 of 6')).toBeInTheDocument()
-    expect(within(editor).getAllByRole('textbox')).toHaveLength(1)
-    const takeaways = within(editor).getByLabelText('Listener value & takeaways')
+    fireEvent.click(within(brief).getByRole('button', { name: /Listener value & takeaways/ }))
+    const takeaways = within(brief).getByLabelText('Listener value & takeaways')
+    expect(takeaways).toHaveValue('A practical framework for diagnosing and fixing the bottleneck behind stalled growth.')
     fireEvent.change(takeaways, { target: { value: 'Listeners leave with a repeatable operating-system audit.' } })
-    fireEvent.click(within(editor).getByRole('button', { name: 'Save section' }))
+    fireEvent.click(within(brief).getByRole('button', { name: 'Save draft' }))
 
     await waitFor(() => expect(mockedUpdateSdrProfile).toHaveBeenCalledWith(
       workspaceId,
       clientId,
       expect.objectContaining({ listener_takeaways: 'Listeners leave with a repeatable operating-system audit.' }),
       '2026-07-23T01:00:00.000Z',
+      ['positioning', 'topics_and_angles', 'proof_points', 'ideal_opportunities', 'booking_details'],
     ))
   })
 
   it('tells a brand-new client what to do first instead of showing zeros', async () => {
     mockedDetail.mockResolvedValueOnce({
       ...detail,
-      client: { ...detail.client, ai_sdr_profile: {}, portal_access_enabled: false },
+      client: { ...detail.client, ai_sdr_profile: {}, ai_sdr_profile_approved_fields: [], portal_access_enabled: false },
       dashboard: { ...detail.dashboard, configured: false, podcast_count: 0, reviewed_count: 0, approved_count: 0, rejected_count: 0, to_review_count: 0 },
       outreach: { initial_emails_sent: 0, podcasts_contacted: 0, pending_review_count: 0, approved_count: 0, failed_count: 0, last_sent_at: null },
       bookings: [],
@@ -608,7 +705,7 @@ describe('WorkspaceClientDetail', () => {
     const setup = screen.getByTestId('client-setup')
     expect(within(setup).getByText('0 of 5 complete')).toBeInTheDocument()
     expect(within(setup).getAllByText('Not started')).toHaveLength(5)
-    expect(within(setup).getByRole('link', { name: /Complete host brief \(0\/6\)/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=profile`)
+    expect(within(setup).getByRole('link', { name: /Finish host brief \(0\/4\)/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=brief`)
     expect(within(setup).getByRole('link', { name: /Enable portal/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=sharing`)
     expect(within(setup).getByRole('link', { name: /Build shortlist/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
 
@@ -639,8 +736,8 @@ describe('WorkspaceClientDetail', () => {
   it('opens directly to the host brief from its stable client deep link', async () => {
     renderPage(`/app/clients/${clientId}?tab=ai-sdr`)
 
-    expect(await screen.findByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByTestId('client-host-brief')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Guest brief' })).toHaveAttribute('data-state', 'active')
     expect(screen.queryByRole('heading', { name: 'Funnel' })).not.toBeInTheDocument()
   })
 
@@ -648,18 +745,19 @@ describe('WorkspaceClientDetail', () => {
     mockedDetail.mockResolvedValueOnce({ ...detail, viewer_role: 'member', can_manage: false })
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
 
-    expect(screen.getByText('Sustainable scale, founder leverage, and the operator systems behind durable growth.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit brief' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit Guest positioning' })).not.toBeInTheDocument()
+    const brief = screen.getByTestId('client-host-brief')
+    fireEvent.click(within(brief).getByRole('button', { name: /Topics & signature angles/ }))
+    expect(within(brief).getByText('Sustainable scale, founder leverage, and the operator systems behind durable growth.')).toBeInTheDocument()
+    expect(within(brief).queryByRole('textbox')).not.toBeInTheDocument()
+    expect(within(brief).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
   })
 
-  it('keeps long approved profiles compact until the full profile is opened', async () => {
+  it('shows the source profile two lines deep until Show more', async () => {
     const longProfile = [
       'PODCAST OUTREACH STRATEGY FOR TAYLOR CLIENT',
-      'EXECUTIVE SUMMARY',
       'Taylor helps founders build durable operations and repeatable growth systems. '.repeat(12),
       'FINAL APPROVED TOPIC: The operator playbook for sustainable scale.',
     ].join('\n\n')
@@ -670,20 +768,17 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
 
-    expect(screen.queryByText(/FINAL APPROVED TOPIC/)).not.toBeInTheDocument()
-    expect(screen.getByText(/PODCAST OUTREACH STRATEGY FOR TAYLOR CLIENT/)).toHaveTextContent(/…$/)
-
-    fireEvent.click(screen.getByRole('button', { name: 'View full profile' }))
-    const profileDialog = screen.getByRole('dialog', { name: 'Approved client profile' })
-    expect(within(profileDialog).getByText(/FINAL APPROVED TOPIC/)).toBeInTheDocument()
-
-    fireEvent.click(within(profileDialog).getByRole('button', { name: 'Done' }))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Approved client profile' })).not.toBeInTheDocument())
+    const text = screen.getByText(/PODCAST OUTREACH STRATEGY FOR TAYLOR CLIENT/)
+    expect(text).toHaveClass('line-clamp-2')
+    expect(screen.queryByRole('button', { name: 'View full profile' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }))
+    expect(text).not.toHaveClass('line-clamp-2')
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('lets a workspace manager edit the approved profile where it is used', async () => {
+  it('lets a workspace manager edit the source profile where it is used', async () => {
     mockedUpdateProfile.mockResolvedValue({
       id: clientId,
       workspace_id: workspaceId,
@@ -693,11 +788,11 @@ describe('WorkspaceClientDetail', () => {
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit profile' }))
-    const editor = screen.getByRole('dialog', { name: 'Edit approved client profile' })
-    const profile = within(editor).getByLabelText('Approved client profile')
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const editor = screen.getByRole('dialog', { name: 'Edit source profile' })
+    const profile = within(editor).getByLabelText('Source profile')
     expect(profile).toHaveValue('Taylor helps founders build durable operations.')
     expect(within(editor).getByText(/6 words · 47 \/ 20,000 characters/i)).toBeInTheDocument()
 
@@ -712,18 +807,18 @@ describe('WorkspaceClientDetail', () => {
       'Taylor helps operational leaders turn complexity into durable growth.',
       '2026-07-23T00:00:00.000Z',
     ))
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit approved client profile' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit source profile' })).not.toBeInTheDocument())
   })
 
-  it('keeps approved profile editing manager-only', async () => {
+  it('keeps source profile editing manager-only', async () => {
     mockedDetail.mockResolvedValueOnce({ ...detail, viewer_role: 'member', can_manage: false })
 
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Guest brief' }), { button: 0 })
 
-    expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument()
+    expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     expect(mockedUpdateProfile).not.toHaveBeenCalled()
   })
 

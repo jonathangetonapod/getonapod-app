@@ -12,6 +12,7 @@ function postgrestLiteral(value: string): string {
 import {
   clientSdrProfileReadiness,
   isClientSdrProfile,
+  normalizeClientSdrApprovedFields,
   normalizeClientSdrProfile,
   type ClientSdrProfile,
   type ClientSdrProfileField,
@@ -89,6 +90,8 @@ export interface WorkspaceClientProfile extends WorkspaceClient {
   portal_last_login_at: string | null
   password_set_at: string | null
   ai_sdr_profile: Partial<ClientSdrProfile>
+  /** Host brief sections an operator approved as written. */
+  ai_sdr_profile_approved_fields: ClientSdrProfileField[]
   ai_sdr_profile_updated_at: string | null
   ai_sdr_mode?: WorkspaceClientSdrMode
   ai_sdr_readiness: ClientSdrProfileReadiness
@@ -105,6 +108,7 @@ export interface WorkspaceClientSdrProfileUpdate {
   id: string
   workspace_id: string
   ai_sdr_profile: ClientSdrProfile
+  ai_sdr_profile_approved_fields: ClientSdrProfileField[]
   ai_sdr_profile_updated_at: string
   ai_sdr_readiness: ClientSdrProfileReadiness
 }
@@ -514,6 +518,10 @@ export async function getWorkspaceClientDetail(
     client: {
       ...detail.client,
       ai_sdr_profile: sdrProfile,
+      ai_sdr_profile_approved_fields: normalizeClientSdrApprovedFields(
+        detail.client.ai_sdr_profile_approved_fields,
+        sdrProfile,
+      ),
       ai_sdr_readiness: sdrReadiness,
     },
     outreach,
@@ -722,6 +730,7 @@ export async function updateWorkspaceClientSdrProfile(
   clientId: string,
   profile: ClientSdrProfile,
   expectedProfileUpdatedAt: string | null,
+  approvedFields?: ClientSdrProfileField[],
 ): Promise<WorkspaceClientSdrProfileUpdate> {
   const canonicalWorkspaceId = workspaceId.toLowerCase()
   const canonicalClientId = clientId.toLowerCase()
@@ -735,6 +744,8 @@ export async function updateWorkspaceClientSdrProfile(
       workspace_id: canonicalWorkspaceId,
       client_id: canonicalClientId,
       ai_sdr_profile: compactProfile,
+      // Left out, the server keeps the approvals of sections whose text is unchanged.
+      ...(approvedFields ? { approved_fields: normalizeClientSdrApprovedFields(approvedFields, normalizedProfile) } : {}),
       expected_profile_updated_at: expectedProfileUpdatedAt,
     },
   })
@@ -759,6 +770,10 @@ export async function updateWorkspaceClientSdrProfile(
     id: canonicalClientId,
     workspace_id: canonicalWorkspaceId,
     ai_sdr_profile: updatedProfile,
+    ai_sdr_profile_approved_fields: normalizeClientSdrApprovedFields(
+      updated.ai_sdr_profile_approved_fields,
+      updatedProfile,
+    ),
     ai_sdr_profile_updated_at: updated.ai_sdr_profile_updated_at,
     ai_sdr_readiness: readiness,
   }

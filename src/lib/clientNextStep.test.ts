@@ -51,7 +51,7 @@ function state(overrides: {
 } = {}): ClientProgressState {
   return {
     viewer_role: overrides.viewer_role ?? 'owner',
-    client: { ai_sdr_profile: {}, portal_access_enabled: false, ...overrides.client } as ClientProgressState['client'],
+    client: { ai_sdr_profile: {}, ai_sdr_profile_approved_fields: [], portal_access_enabled: false, ...overrides.client } as ClientProgressState['client'],
     dashboard: {
       configured: false, enabled: false, tagline: null, view_count: 0, last_viewed_at: null,
       podcast_count: 0, reviewed_count: 0, approved_count: 0, rejected_count: 0, to_review_count: 0,
@@ -111,7 +111,7 @@ describe('getClientSetupItems', () => {
     const items = getClientSetupItems(state())
     expect(items.map((item) => [item.key, item.status, item.actionLabel])).toEqual([
       ['onboarding', 'not_started', 'Start onboarding'],
-      ['host_brief', 'not_started', 'Complete host brief (0/6)'],
+      ['host_brief', 'not_started', 'Finish host brief (0/4)'],
       ['portal', 'not_started', 'Enable portal'],
       ['shortlist', 'not_started', 'Build shortlist'],
       ['dashboard', 'not_started', 'Set up dashboard'],
@@ -121,22 +121,36 @@ describe('getClientSetupItems', () => {
   it('marks partial work as in progress', () => {
     const items = getClientSetupItems(state({
       onboarding: onboarding('invited'),
-      client: { ai_sdr_profile: { positioning: 'x', topics_and_angles: 'y' } },
+      client: {
+        ai_sdr_profile: { positioning: 'x', topics_and_angles: 'y', proof_points: 'z' },
+        ai_sdr_profile_approved_fields: ['positioning', 'proof_points'],
+      },
       dashboard: { podcast_count: 10, reviewed_count: 4, to_review_count: 6 },
     }))
     const byKey = Object.fromEntries(items.map((item) => [item.key, item]))
     expect(byKey.onboarding.status).toBe('in_progress')
-    expect(byKey.host_brief).toMatchObject({ status: 'in_progress', actionLabel: 'Complete host brief (2/6)' })
+    // Only approved required sections count: the approved extra section and
+    // the unapproved draft do not.
+    expect(byKey.host_brief).toMatchObject({ status: 'in_progress', detail: '1 of 4 required', actionLabel: 'Finish host brief (1/4)' })
     expect(byKey.shortlist).toMatchObject({ status: 'in_progress', detail: '4 of 10 reviewed', actionLabel: 'Review shortlist' })
   })
 
   it('is all done for a fully set up client', () => {
     const items = getClientSetupItems(state({
       onboarding: onboarding('approved'),
-      client: { ai_sdr_profile: FULL_BRIEF, portal_access_enabled: true },
+      client: {
+        ai_sdr_profile: FULL_BRIEF,
+        ai_sdr_profile_approved_fields: ['positioning', 'topics_and_angles', 'listener_takeaways', 'booking_details'],
+        portal_access_enabled: true,
+      },
       dashboard: { configured: true, podcast_count: 5, reviewed_count: 5, to_review_count: 0 },
     }))
     expect(items.every((item) => item.status === 'done')).toBe(true)
+  })
+
+  it('keeps a written but unapproved brief in progress', () => {
+    const items = getClientSetupItems(state({ client: { ai_sdr_profile: FULL_BRIEF } }))
+    expect(items.find((item) => item.key === 'host_brief')).toMatchObject({ status: 'in_progress', detail: '0 of 4 required' })
   })
 
   it('leaves onboarding out for a member, who cannot see it', () => {

@@ -103,6 +103,31 @@ function aiSdrProfile(value: unknown): AiSdrProfile {
   return normalized
 }
 
+/*
+ * The sections an operator approved as written. Undefined leaves the saved
+ * approvals to the database, which keeps those whose text did not change.
+ */
+function aiSdrApprovedFields(value: unknown): AiSdrProfileField[] | null {
+  if (value === undefined) return null
+  if (!Array.isArray(value) || value.length > AI_SDR_PROFILE_FIELDS.length) {
+    throw new HttpError(400, 'INVALID_AI_SDR_PROFILE', 'approved_fields must be a list of host brief sections')
+  }
+  const fields = new Set<AiSdrProfileField>()
+  for (const field of value) {
+    if (typeof field !== 'string' || !(AI_SDR_PROFILE_FIELDS as readonly string[]).includes(field)) {
+      throw new HttpError(400, 'INVALID_AI_SDR_PROFILE', 'approved_fields must be a list of host brief sections')
+    }
+    fields.add(field as AiSdrProfileField)
+  }
+  return AI_SDR_PROFILE_FIELDS.filter((field) => fields.has(field))
+}
+
+function aiSdrApprovedFieldList(value: unknown): AiSdrProfileField[] {
+  return Array.isArray(value)
+    ? AI_SDR_PROFILE_FIELDS.filter((field) => value.includes(field))
+    : []
+}
+
 function aiSdrReadiness(value: unknown) {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -324,6 +349,7 @@ serve(async (req) => {
     let expectedUpdatedAt: string | null = null
     let sdrProfile: AiSdrProfile = {}
     let expectedSdrProfileUpdatedAt: string | null = null
+    let sdrApprovedFields: AiSdrProfileField[] | null = null
     let prospectSlug: string | null = null
     let scanToSave: StoredScanInput | null = null
     let scanId: string | null = null
@@ -337,9 +363,10 @@ serve(async (req) => {
       profileBio = optionalString(body.bio, 'bio', 20_000)
       expectedUpdatedAt = requireTimestamp(body.expected_updated_at, 'expected_updated_at')
     } else if (action === 'sdr-profile-update') {
-      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'ai_sdr_profile', 'expected_profile_updated_at'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'ai_sdr_profile', 'approved_fields', 'expected_profile_updated_at'])
       clientId = requireUuid(body.client_id, 'client_id')
       sdrProfile = aiSdrProfile(body.ai_sdr_profile)
+      sdrApprovedFields = aiSdrApprovedFields(body.approved_fields)
       expectedSdrProfileUpdatedAt = nullableTimestamp(
         body.expected_profile_updated_at,
         'expected_profile_updated_at',
@@ -611,10 +638,11 @@ serve(async (req) => {
       if (!['owner', 'admin', 'platform_admin'].includes(access.role)) {
         throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Workspace manager access is required')
       }
-      const { data, error } = await admin.rpc('update_workspace_client_ai_sdr_profile_v1', {
+      const { data, error } = await admin.rpc('update_workspace_client_ai_sdr_profile_v2', {
         p_workspace_id: workspaceId,
         p_client_id: clientId!,
         p_profile: sdrProfile,
+        p_approved_fields: sdrApprovedFields,
         p_expected_profile_updated_at: expectedSdrProfileUpdatedAt,
         p_actor_user_id: user.id,
         p_token_issued_at: tokenIssuedAt,
@@ -624,6 +652,7 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, {
         client: {
           ...updated,
+          ai_sdr_profile_approved_fields: aiSdrApprovedFieldList(updated.ai_sdr_profile_approved_fields),
           ai_sdr_readiness: aiSdrReadiness(updated.ai_sdr_profile),
         },
       })
@@ -858,7 +887,7 @@ serve(async (req) => {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
       const { data: client, error: clientError } = await admin
         .from('clients')
-        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_tagline,dashboard_enabled,dashboard_view_count,dashboard_last_viewed_at,portal_access_enabled,portal_last_login_at,password_set_at,ai_sdr_profile,ai_sdr_profile_updated_at,ai_sdr_mode,created_at,updated_at')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,calendar_link,status,notes,bio,photo_url,media_kit_url,prospect_dashboard_slug,dashboard_slug,dashboard_tagline,dashboard_enabled,dashboard_view_count,dashboard_last_viewed_at,portal_access_enabled,portal_last_login_at,password_set_at,ai_sdr_profile,ai_sdr_profile_approved_fields,ai_sdr_profile_updated_at,ai_sdr_mode,created_at,updated_at')
         .eq('id', clientId!)
         .eq('workspace_id', workspaceId)
         .maybeSingle()
@@ -993,6 +1022,7 @@ serve(async (req) => {
           ai_sdr_mode: client.ai_sdr_mode === 'auto_send'
             ? 'auto_draft'
             : typeof client.ai_sdr_mode === 'string' ? client.ai_sdr_mode : 'manual',
+          ai_sdr_profile_approved_fields: aiSdrApprovedFieldList(client.ai_sdr_profile_approved_fields),
           ai_sdr_readiness: aiSdrReadiness(client.ai_sdr_profile),
         },
         dashboard: {
