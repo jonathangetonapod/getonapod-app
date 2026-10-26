@@ -6,6 +6,7 @@ import {
   setWorkspaceMailboxesPaused,
   type WorkspaceMailboxAccount,
 } from '@/services/workspaceCampaigns'
+import { plural } from '@/lib/plural'
 
 const PAUSE_BATCH_SIZE = 100
 
@@ -14,9 +15,40 @@ interface MailboxFailure {
   message: string
 }
 
+interface AssignFailure extends MailboxFailure {
+  clientName: string
+}
+
+export interface MailboxClientTarget {
+  id: string
+  name: string
+}
+
+interface AssignJob {
+  clientId: string
+  clientName: string
+  emails: string[]
+}
+
+interface AssignInput {
+  jobs: AssignJob[]
+  assigned: boolean
+}
+
 interface MailboxActionOptions {
   /** Called with the mailboxes a write succeeded for, so the page can drop them from the selection. */
   onDone?: (emails: string[]) => void
+}
+
+function jobEmails(jobs: AssignJob[]): string[] {
+  return [...new Set(jobs.flatMap((job) => job.emails))]
+}
+
+/** "Dallas", "Dallas and Rae", "Dallas, Rae and Sam"; past three, a count. */
+function clientList(names: string[]): string {
+  if (names.length > 3) return `${names.length} clients`
+  if (names.length <= 1) return names[0] ?? ''
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -63,21 +95,23 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
     queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
   ])
 
-  const runAssign = async (input: { emails: string[]; clientId: string; clientName: string; assigned: boolean }) => {
-    const failed: MailboxFailure[] = []
+  const runAssign = async (input: AssignInput) => {
+    const failed: AssignFailure[] = []
+    const total = input.jobs.reduce((sum, job) => sum + job.emails.length, 0)
+    const target = clientList(input.jobs.map((job) => job.clientName))
     let done = 0
-    const progress = input.emails.length > 1
-      ? toast.loading(`Assigning 0 of ${input.emails.length} to ${input.clientName}`)
-      : undefined
+    const progress = total > 1 ? toast.loading(`Assigning 0 of ${total} to ${target}`) : undefined
     try {
-      for (const email of input.emails) {
-        try {
-          await setWorkspaceMailboxClient({ workspaceId, clientId: input.clientId, email, assigned: input.assigned })
-        } catch (error) {
-          failed.push({ email, message: errorMessage(error, 'The assignment could not be saved.') })
+      for (const job of input.jobs) {
+        for (const email of job.emails) {
+          try {
+            await setWorkspaceMailboxClient({ workspaceId, clientId: job.clientId, email, assigned: input.assigned })
+          } catch (error) {
+            failed.push({ email, clientName: job.clientName, message: errorMessage(error, 'The assignment could not be saved.') })
+          }
+          done += 1
+          if (progress !== undefined) toast.loading(`Assigning ${done} of ${total} to ${target}`, { id: progress })
         }
-        done += 1
-        if (progress !== undefined) toast.loading(`Assigning ${done} of ${input.emails.length} to ${input.clientName}`, { id: progress })
       }
     } finally {
       if (progress !== undefined) toast.dismiss(progress)
@@ -86,32 +120,38 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
   }
 
   const assignMutation = useMutation({
-    mutationFn: (input: { emails: string[]; clientId: string; clientName: string; assigned: boolean }) => {
-      markPending(input.emails, true)
+    mutationFn: (input: AssignInput) => {
+      markPending(jobEmails(input.jobs), true)
       const run = assignQueue.current.then(() => runAssign(input))
       assignQueue.current = run.catch(() => undefined)
       return run
     },
-    onSuccess: ({ emails, clientName, assigned, failed }) => {
+    onSuccess: ({ jobs, assigned, failed }) => {
+      const emails = jobEmails(jobs)
       const failedEmails = new Set(failed.map((failure) => failure.email))
       onDone?.(emails.filter((email) => !failedEmails.has(email)))
-      const saved = emails.length - failed.length
+      const target = clientList(jobs.map((job) => job.clientName))
+      const total = jobs.reduce((sum, job) => sum + job.emails.length, 0)
       if (failed.length === 0) {
-        if (emails.length === 1) {
+        if (total === 1) {
           toast.success(assigned
-            ? `Connected to ${clientName}. It sends their outreach whenever their campaign is active.`
-            : `Removed from ${clientName}'s campaign.`)
+            ? `Connected to ${target}. It sends their outreach whenever their campaign is active.`
+            : `Removed from ${target}'s campaign.`)
         } else {
-          toast.success(`${saved} mailboxes connected to ${clientName}.`)
+          toast.success(`${plural(emails.length, 'mailbox', 'mailboxes')} connected to ${target}.`)
         }
         return
       }
-      toast.error(emails.length === 1
-        ? failed[0].message
-        : `${saved} of ${emails.length} connected to ${clientName}. ${failed.length} failed: ${failed[0].message}`)
+      if (total === 1) {
+        toast.error(failed[0].message)
+      } else if (jobs.length === 1) {
+        toast.error(`${total - failed.length} of ${total} connected to ${target}. ${failed.length} failed: ${failed[0].message}`)
+      } else {
+        toast.error(`${total - failed.length} of ${total} connections saved. ${failed.length} failed (${failed[0].clientName}): ${failed[0].message}`)
+      }
     },
     onSettled: async (_result, _error, input) => {
-      markPending(input.emails, false)
+      markPending(jobEmails(input.jobs), false)
       await invalidate()
     },
   })
@@ -152,26 +192,35 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
   })
 
   /**
-   * Assign to a client, skipping mailboxes that cannot send: the server
-   * refuses those (a campaign pointed at a broken sender silently stops), so
-   * sending them would only produce a list of failures.
+   * Assign to one or more clients, skipping mailboxes that cannot send: the
+   * server refuses those (a campaign pointed at a broken sender silently
+   * stops), so sending them would only produce a list of failures. Mailboxes
+   * already on a client are left out of that client's writes.
    */
-  const assign = (accounts: WorkspaceMailboxAccount[], clientId: string, clientName: string) => {
+  const assign = (accounts: WorkspaceMailboxAccount[], clients: MailboxClientTarget[]) => {
     const active = accounts.filter((account) => account.status === 1)
-    const eligible = active.filter((account) => !(account.campaigns ?? []).some((link) => link.client_id === clientId))
     const skipped = accounts.length - active.length
     if (skipped > 0) {
       toast.info(`${skipped} mailbox${skipped === 1 ? '' : 'es'} skipped because ${skipped === 1 ? 'it is' : 'they are'} not active in Instantly.`)
     }
-    if (eligible.length === 0) {
-      if (active.length > 0) toast.info(`Already connected to ${clientName}.`)
+    const jobs = clients
+      .map((client) => ({
+        clientId: client.id,
+        clientName: client.name,
+        emails: active
+          .filter((account) => !(account.campaigns ?? []).some((link) => link.client_id === client.id))
+          .map((account) => account.email),
+      }))
+      .filter((job) => job.emails.length > 0)
+    if (jobs.length === 0) {
+      if (active.length > 0) toast.info(`Already connected to ${clientList(clients.map((client) => client.name))}.`)
       return
     }
-    assignMutation.mutate({ emails: eligible.map((account) => account.email), clientId, clientName, assigned: true })
+    assignMutation.mutate({ jobs, assigned: true })
   }
 
   const unassign = (email: string, clientId: string, clientName: string) => {
-    assignMutation.mutate({ emails: [email], clientId, clientName, assigned: false })
+    assignMutation.mutate({ jobs: [{ clientId, clientName, emails: [email] }], assigned: false })
   }
 
   /** Resume only what is paused; pause anything that is not already paused. */

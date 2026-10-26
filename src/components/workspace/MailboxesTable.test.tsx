@@ -191,7 +191,8 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     const trigger = within(screen.getByRole('region', { name: 'Bulk actions' })).getByRole('button', { name: /Assign to client/ })
     trigger.focus()
     fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rae Whitfield' }))
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Assign to 1 client' }))
 
     await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(2))
     expect(vi.mocked(setWorkspaceMailboxClient).mock.calls.map(([input]) => input.email)).toEqual([
@@ -199,6 +200,30 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
       'sender021@example.com',
     ])
     expect(vi.mocked(setWorkspaceMailboxClient).mock.calls[0][0]).toMatchObject({ workspaceId, clientId: 'client-2', assigned: true })
+  })
+
+  it('assigns a selection to several clients at once, skipping ones already connected', async () => {
+    renderTable()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select sender010@example.com' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select sender020@example.com' }))
+
+    const trigger = within(screen.getByRole('region', { name: 'Bulk actions' })).getByRole('button', { name: /Assign to clients/ })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+    expect(await screen.findByRole('menuitem', { name: 'Tick one or more clients' })).toHaveAttribute('aria-disabled', 'true')
+    // Ticking keeps the menu open so a second client can be ticked.
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Dallas Fontaine' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Dallas Fontaine' })).toHaveAttribute('data-state', 'checked')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Assign to 2 clients' }))
+
+    // sender010 is already on Dallas Fontaine, so it only goes to Rae Whitfield.
+    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(3))
+    expect(vi.mocked(setWorkspaceMailboxClient).mock.calls.map(([input]) => [input.email, input.clientId])).toEqual([
+      ['sender020@example.com', 'client-1'],
+      ['sender010@example.com', 'client-2'],
+      ['sender020@example.com', 'client-2'],
+    ])
   })
 
   it('groups by error type with only the first group open', () => {

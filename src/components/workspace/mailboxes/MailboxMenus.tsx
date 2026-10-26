@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ChevronDown, Loader2, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { clientNames } from '@/lib/mailboxView'
+import { plural } from '@/lib/plural'
 import type { WorkspaceClient } from '@/services/clients'
 import type { WorkspaceMailboxAccount } from '@/services/workspaceCampaigns'
 import type { useMailboxActions } from '@/hooks/useMailboxActions'
@@ -36,20 +38,43 @@ function clientOptions(account: WorkspaceMailboxAccount, clients: WorkspaceClien
 interface ClientListProps {
   clients: WorkspaceClient[]
   clientsError: Error | null
-  onPick: (client: ClientOption) => void
+  onApply: (clients: ClientOption[]) => void
 }
 
-/** The plain "pick a client" list shared by the row menu and the bulk bar. */
-export const ClientPickItems = ({ clients, clientsError, onPick }: ClientListProps) => {
+/**
+ * The "assign to clients" list shared by the row menu and the bulk bar.
+ * Ticking a client keeps the menu open so several can be chosen; the last
+ * item applies them all. The choice resets each time the menu closes.
+ */
+export const ClientPickItems = ({ clients, clientsError, onApply }: ClientListProps) => {
+  const [chosen, setChosen] = useState<string[]>([])
   if (clientsError) return <DropdownMenuItem disabled>Clients could not be loaded</DropdownMenuItem>
   if (clients.length === 0) return <DropdownMenuItem disabled>No clients yet</DropdownMenuItem>
+  const toggle = (id: string, checked: boolean) => setChosen((current) => (
+    checked ? [...current, id] : current.filter((value) => value !== id)
+  ))
   return (
     <>
       {clients.map((client) => (
-        <DropdownMenuItem key={client.id} onSelect={() => onPick({ id: client.id, name: client.name })}>
+        <DropdownMenuCheckboxItem
+          key={client.id}
+          checked={chosen.includes(client.id)}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(checked) => toggle(client.id, checked)}
+        >
           {client.name}
-        </DropdownMenuItem>
+        </DropdownMenuCheckboxItem>
       ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        disabled={chosen.length === 0}
+        className="font-semibold text-primary"
+        onSelect={() => onApply(clients
+          .filter((client) => chosen.includes(client.id))
+          .map((client) => ({ id: client.id, name: client.name })))}
+      >
+        {chosen.length === 0 ? 'Tick one or more clients' : `Assign to ${plural(chosen.length, 'client')}`}
+      </DropdownMenuItem>
     </>
   )
 }
@@ -103,7 +128,7 @@ export const MailboxClientMenu = ({ account, canManage, clients, clientsError, a
             key={client.id}
             checked={assignedIds.has(client.id)}
             onCheckedChange={(checked) => {
-              if (checked) actions.assign([account], client.id, client.name)
+              if (checked) actions.assign([account], [client])
               else actions.unassign(account.email, client.id, client.name)
             }}
           >
@@ -141,12 +166,12 @@ export const MailboxActionsMenu = ({
       {canManage && (
         <>
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Assign to client</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-80 overflow-y-auto">
+            <DropdownMenuSubTrigger>Assign to clients</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-80 w-56 overflow-y-auto">
               <ClientPickItems
                 clients={clients}
                 clientsError={clientsError}
-                onPick={(client) => actions.assign([account], client.id, client.name)}
+                onApply={(picked) => actions.assign([account], picked)}
               />
             </DropdownMenuSubContent>
           </DropdownMenuSub>

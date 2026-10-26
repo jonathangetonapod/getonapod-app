@@ -41,14 +41,14 @@ export const MailboxBulkBar = ({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="sm" className="h-8 bg-background" disabled={actions.busy}>
-                Assign to client<ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+                Assign to clients<ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-80 w-56 overflow-y-auto">
               <ClientPickItems
                 clients={clients}
                 clientsError={clientsError}
-                onPick={(client) => actions.assign(selected, client.id, client.name)}
+                onApply={(picked) => actions.assign(selected, picked)}
               />
             </DropdownMenuContent>
           </DropdownMenu>
