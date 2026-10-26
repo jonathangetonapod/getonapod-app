@@ -618,6 +618,9 @@ describe('WorkspaceLayout', () => {
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-10', 'w-20', 'bg-transparent')
     expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
+    // Painted on mount, not after a load check, so it does not flash to
+    // initials each time a page mounts the shell again.
+    expect(within(screen.getByTestId('workspace-logo-sidebar')).getByRole('img')).toHaveAttribute('alt', expect.stringMatching(/ logo$/))
   })
 
   /*

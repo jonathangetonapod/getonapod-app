@@ -49,7 +49,7 @@ import { JoinRequestsBadge } from '@/components/workspace/JoinRequestsBadge'
 import { describeWaitingJoinRequests, useWaitingJoinRequests } from '@/hooks/useWaitingJoinRequests'
 import { CreditBalanceWarning } from '@/components/workspace/CreditBalanceWarning'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -342,6 +342,33 @@ const brandLogoFallbackSizes: Record<WorkspaceBrandLogoProps['placement'], strin
   settings: 'text-2xl',
 }
 
+interface ShellAvatarImageProps {
+  src: string | null
+  alt: string
+  className?: string
+  fallback: React.ReactNode
+}
+
+/*
+ * Every page mounts its own WorkspaceLayout, so the shell's pictures mount
+ * again on each navigation. Radix's AvatarImage hides the image until its own
+ * load check finishes, even for one the browser already has, so the initials
+ * flashed in between pages. A plain img paints a cached picture at once; the
+ * initials show only when there is no picture or it fails to load.
+ */
+const ShellAvatarImage = ({ src, alt, className, fallback }: ShellAvatarImageProps) => {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  if (!src || failedSrc === src) return <>{fallback}</>
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={cn('aspect-square h-full w-full', className)}
+      onError={() => setFailedSrc(src)}
+    />
+  )
+}
+
 export const WorkspaceBrandLogo = ({
   logoUrl,
   workspaceName,
@@ -363,28 +390,28 @@ export const WorkspaceBrandLogo = ({
       placement === 'sidebar' && logoUrl && 'w-20',
     )}
   >
-    {logoUrl && (
-      <AvatarImage
-        src={logoUrl}
-        alt={`${workspaceName} logo`}
-        className={cn(
-          'aspect-auto h-full w-full object-contain',
-          brandLogoImageSpacing[placement],
-        )}
-      />
-    )}
-    <AvatarFallback
+    <ShellAvatarImage
+      src={logoUrl}
+      alt={`${workspaceName} logo`}
       className={cn(
-        // A soft top sheen over the gradient, white initials with a little
-        // depth — reads as an intentional brand mark rather than a placeholder.
-        'relative rounded-[inherit] bg-transparent font-bold tracking-tight text-white',
-        'before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:bg-gradient-to-b before:from-white/25 before:to-transparent',
-        '[text-shadow:0_1px_2px_rgba(13,27,42,0.35)]',
-        brandLogoFallbackSizes[placement],
+        'aspect-auto object-contain',
+        brandLogoImageSpacing[placement],
       )}
-    >
-      <span className="relative">{workspaceInitials}</span>
-    </AvatarFallback>
+      fallback={(
+        <AvatarFallback
+          className={cn(
+            // A soft top sheen over the gradient, white initials with a little
+            // depth — reads as an intentional brand mark rather than a placeholder.
+            'relative rounded-[inherit] bg-transparent font-bold tracking-tight text-white',
+            'before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:bg-gradient-to-b before:from-white/25 before:to-transparent',
+            '[text-shadow:0_1px_2px_rgba(13,27,42,0.35)]',
+            brandLogoFallbackSizes[placement],
+          )}
+        >
+          <span className="relative">{workspaceInitials}</span>
+        </AvatarFallback>
+      )}
+    />
   </Avatar>
 )
 
@@ -878,10 +905,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Avatar className="h-9 w-9">
-                    {viewerAvatarUrl && <AvatarImage src={viewerAvatarUrl} alt={viewerName ? `${viewerName} profile picture` : 'Profile picture'} className="object-cover" />}
-                    <AvatarFallback>
-                      {viewerInitials || <User className="h-5 w-5" />}
-                    </AvatarFallback>
+                    <ShellAvatarImage
+                      src={viewerAvatarUrl}
+                      alt={viewerName ? `${viewerName} profile picture` : 'Profile picture'}
+                      className="object-cover"
+                      fallback={(
+                        <AvatarFallback>
+                          {viewerInitials || <User className="h-5 w-5" />}
+                        </AvatarFallback>
+                      )}
+                    />
                   </Avatar>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{viewerName}</span>
