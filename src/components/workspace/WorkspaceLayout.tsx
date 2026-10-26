@@ -329,7 +329,7 @@ interface WorkspaceBrandLogoProps {
 }
 
 const brandLogoSizes: Record<WorkspaceBrandLogoProps['placement'], string> = {
-  sidebar: 'h-10 w-10 shrink-0 rounded-xl',
+  sidebar: 'h-12 w-12 shrink-0 rounded-xl',
   mobile: 'h-12 w-20 rounded-xl',
   settings: 'h-24 w-40 rounded-xl sm:h-28 sm:w-48',
 }
@@ -391,7 +391,7 @@ export const WorkspaceBrandLogo = ({
         : 'border-0 bg-gradient-to-br from-primary via-violet-500 to-fuchsia-500 shadow-lg shadow-primary/25 ring-1 ring-inset ring-white/20',
       brandLogoSizes[placement],
       // An uploaded logo is often a wordmark; a square would shrink it unreadable.
-      placement === 'sidebar' && logoUrl && 'w-20',
+      placement === 'sidebar' && logoUrl && 'w-24',
     )}
   >
     <ShellAvatarImage

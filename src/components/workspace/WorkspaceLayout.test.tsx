@@ -651,7 +651,7 @@ describe('WorkspaceLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reorder' }))
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
-    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-10', 'w-20', 'bg-transparent')
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveClass('h-12', 'w-24', 'bg-transparent')
     expect(screen.getByTestId('workspace-logo-sidebar')).not.toHaveClass('bg-gradient-to-br')
     expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
     // Painted on mount, not after a load check, so it does not flash to
