@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Crown, Plus, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -13,13 +13,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import {
   CREDIT_REASON_LABELS,
   QUICK_CREDIT_AMOUNTS,
@@ -55,6 +55,9 @@ export function WorkspaceCreditGrantPreview({
   // is the same grant and the ledger records it once.
   const [reviewKey, setReviewKey] = useState<string | null>(null)
   const reviewOpen = reviewKey !== null
+  // Opened by a submit, not a dialog trigger, so Radix has nowhere to send
+  // focus on close; it goes back to the button that opened the review.
+  const reviewButtonRef = useRef<HTMLButtonElement | null>(null)
 
   // The same query, by key, as every other card for this workspace. A private
   // key meant a second fetch, and when only that one failed this card said the
@@ -121,13 +124,14 @@ export function WorkspaceCreditGrantPreview({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 id="workspace-credits-title" className="text-2xl font-semibold tracking-tight">Workspace credits</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Add complimentary credits for support, onboarding, or account adjustments without changing the workspace plan.
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+              Add credits without changing the plan.
+              <InfoTip topic="adding credits">
+                For support, onboarding or account adjustments. A grant applies immediately and is recorded in the
+                credit history and the audit log against your account.
+              </InfoTip>
             </p>
           </div>
-          <Badge variant="outline" className="w-fit rounded-full border-emerald-300 bg-emerald-50 text-emerald-800">
-            Live · grants apply immediately
-          </Badge>
         </div>
 
         <Card className="min-w-0 overflow-hidden border-border/70 shadow-sm">
@@ -300,7 +304,7 @@ export function WorkspaceCreditGrantPreview({
                       </div>
                     )}
                   </div>
-                  <Button type="submit" disabled={!formReady} className="shrink-0">
+                  <Button ref={reviewButtonRef} type="submit" disabled={!formReady} className="shrink-0">
                     Review credit grant
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -313,7 +317,17 @@ export function WorkspaceCreditGrantPreview({
       </section>
 
       <AlertDialog open={reviewOpen} onOpenChange={(open) => { if (!open && !grantMutation.isPending) setReviewKey(null) }}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className="billing-admin"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            // After a grant the form is empty and the button disabled, so the
+            // amount field, where the next grant starts, takes focus instead.
+            const button = reviewButtonRef.current
+            if (button && !button.disabled) button.focus()
+            else document.getElementById('workspace-credit-amount')?.focus()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Add {parsedAmount?.toLocaleString() || 0} credits to {workspaceName}?</AlertDialogTitle>
             <AlertDialogDescription>

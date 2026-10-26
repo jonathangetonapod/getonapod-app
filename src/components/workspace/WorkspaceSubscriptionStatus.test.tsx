@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceSubscriptionStatus } from '@/components/workspace/WorkspaceSubscriptionStatus'
 import { getWorkspaceBillingOverview, listBillingPlans } from '@/services/workspaceStaff'
@@ -164,6 +164,22 @@ describe('WorkspaceSubscriptionStatus', () => {
     expect(await screen.findByRole('button', { name: 'Extend trial' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Send checkout link' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeDisabled()
+  })
+
+  // The dialog unmounts on close; focus used to fall to the page body.
+  it('returns focus to the action button when the dialog closes', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'trialing', plan_key: 'founding_member', has_subscription: false,
+    } as never)
+    renderCard()
+
+    const opener = await screen.findByRole('button', { name: 'Extend trial' })
+    await waitFor(() => expect(opener).toBeEnabled())
+    fireEvent.click(opener)
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(opener).toHaveFocus())
   })
 
   it('opens a confirm dialog for an action', async () => {

@@ -93,6 +93,19 @@ describe('WorkspaceCreditAdjustment', () => {
     expect(screen.getByRole('button', { name: 'Review removal' })).toBeEnabled()
   })
 
+  it('returns focus to the review button when the review is dismissed', async () => {
+    renderCard()
+    await ready()
+
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '10' } })
+    await chooseReason('Other')
+    const review = screen.getByRole('button', { name: 'Review removal' })
+    fireEvent.click(review)
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(review).toHaveFocus())
+  })
+
   it('sends the same key for a retry within one review', async () => {
     vi.mocked(adjustWorkspaceCredits).mockRejectedValueOnce(new Error('Network timeout'))
     renderCard()

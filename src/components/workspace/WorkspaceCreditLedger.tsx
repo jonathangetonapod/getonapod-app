@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, History, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LEDGER_TYPE_LABELS, ledgerReasonLabel } from '@/lib/creditAdjustments'
 import { getWorkspaceCreditLedger, type CreditLedgerType } from '@/services/workspaceStaff'
@@ -41,7 +42,13 @@ export const WorkspaceCreditLedger = ({ workspaceId }: WorkspaceCreditLedgerProp
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2 text-lg"><History className="h-5 w-5" aria-hidden="true" />Credit history</CardTitle>
-          <CardDescription>Every grant, removal, allowance, purchase and spend on this workspace.</CardDescription>
+          <CardDescription className="flex items-center gap-1.5">
+            Every grant, removal, allowance, purchase and spend on this workspace.
+            <InfoTip topic="credit history">
+              Balance after is the running total of every entry up to that one. Admin shows who made a grant or a
+              removal; spend is by whoever ran the work.
+            </InfoTip>
+          </CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Label htmlFor="credit-ledger-type" className="whitespace-nowrap text-sm">Type</Label>

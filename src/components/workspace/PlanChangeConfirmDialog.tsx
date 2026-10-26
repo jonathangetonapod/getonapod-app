@@ -50,7 +50,7 @@ export const PlanChangeConfirmDialog = ({ plan, change, onClose, onSaved }: Plan
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !mutation.isPending) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="billing-admin max-w-lg">
         <DialogHeader>
           <DialogTitle>Save {plan.display_name}?</DialogTitle>
           <DialogDescription>Check what changes and for whom.</DialogDescription>

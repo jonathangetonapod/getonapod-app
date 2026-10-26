@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Loader2, MinusCircle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { CREDIT_REASON_LABELS, parseCreditAmount, projectBalance, type CreditReason } from '@/lib/creditAdjustments'
 import { adjustWorkspaceCredits, getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 
@@ -51,6 +52,8 @@ export function WorkspaceCreditAdjustment({ workspaceId, workspaceName }: Worksp
   // One key per review: a double click or a retry inside the same review is
   // the same removal, and the ledger records it once.
   const [reviewKey, setReviewKey] = useState<string | null>(null)
+  // Opened by a submit, not a dialog trigger: focus returns here on close.
+  const reviewButtonRef = useRef<HTMLButtonElement | null>(null)
 
   // Capped at what the workspace holds. The server refuses more anyway; saying
   // so here stops an admin reviewing a removal that cannot happen.
@@ -90,7 +93,13 @@ export function WorkspaceCreditAdjustment({ workspaceId, workspaceName }: Worksp
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><MinusCircle className="h-5 w-5" aria-hidden="true" />Remove credits</CardTitle>
-        <CardDescription>Correct a grant that was too large or went to the wrong workspace.</CardDescription>
+        <CardDescription className="flex items-center gap-1.5">
+          Correct a grant that was too large or went to the wrong workspace.
+          <InfoTip topic="removing credits">
+            Credits are taken from the newest and longest-lived first, so the soonest to expire stay spendable. A
+            balance cannot go below zero.
+          </InfoTip>
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -141,14 +150,22 @@ export function WorkspaceCreditAdjustment({ workspaceId, workspaceName }: Worksp
               onChange={(event) => setNote(event.target.value)}
             />
           </div>
-          <Button type="submit" variant="destructive" disabled={!ready}>
+          <Button ref={reviewButtonRef} type="submit" variant="destructive" disabled={!ready}>
             <MinusCircle className="mr-2 h-4 w-4" aria-hidden="true" />Review removal
           </Button>
         </form>
       </CardContent>
 
       <AlertDialog open={reviewKey !== null} onOpenChange={(open) => { if (!open && !adjustMutation.isPending) setReviewKey(null) }}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          className="billing-admin"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const button = reviewButtonRef.current
+            if (button && !button.disabled) button.focus()
+            else document.getElementById('adjust-amount')?.focus()
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {amount?.toLocaleString() ?? 0} credits from {workspaceName || 'this workspace'}?</AlertDialogTitle>
             <AlertDialogDescription>The removal is recorded in the ledger and the audit log against your account.</AlertDialogDescription>

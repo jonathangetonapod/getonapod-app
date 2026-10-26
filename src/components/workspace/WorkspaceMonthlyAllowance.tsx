@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { allowanceIsOverride } from '@/lib/billingAttention'
 import { CREDIT_REASON_LABELS, type CreditReason } from '@/lib/creditAdjustments'
 import { getWorkspaceBillingOverview, setWorkspaceMonthlyAllowance } from '@/services/workspaceStaff'
@@ -87,9 +88,12 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><RefreshCw className="h-5 w-5" />Monthly credits</CardTitle>
-        <CardDescription>
-          Credits granted to {workspaceName || 'this workspace'} at the start of every month. They expire at the end of
-          the following month.
+        <CardDescription className="flex items-center gap-1.5">
+          Credits granted to {workspaceName || 'this workspace'} at the start of every month.
+          <InfoTip topic="monthly credits">
+            They expire at the end of the following month. A change applies from the next monthly grant: this month
+            was already granted at the current figure. To add credits now, use the grant above.
+          </InfoTip>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -175,7 +179,7 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
         <p className="text-xs leading-5 text-muted-foreground">
           {draft.trim() && !valid
             ? <span className="text-destructive">Enter a whole number of credits between 0 and 1,000,000.</span>
-            : 'Takes effect at the next monthly grant. This month was already granted at the current figure; to add credits now, use the grant above.'}
+            : 'Takes effect at the next monthly grant.'}
         </p>
       </CardContent>
     </Card>

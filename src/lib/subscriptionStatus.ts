@@ -19,7 +19,7 @@ const STATUS_VIEW: Record<string, SubscriptionStatusView> = {
   trialing: {
     label: 'Trialing',
     className: 'border-sky-200 bg-sky-50 text-sky-900',
-    note: 'On trial — no subscription is being charged yet.',
+    note: 'On trial. No subscription is being charged yet.',
   },
   comped: {
     label: 'Comped',

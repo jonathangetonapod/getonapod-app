@@ -261,3 +261,42 @@
 body:has([data-podcast-selection-bar]) [data-sonner-toaster][data-y-position='bottom'] {
   transform: translateY(-64px);
 }
+
+/* Billing administration meets WCAG AA (4.5:1) for text, including disabled
+   controls. Scoped rather than global: the app-wide red (3.8:1 on white) and
+   faded disabled buttons are a wider change than this screen.
+   - destructive 0 72% 42%: 6.5:1 on white, 6.0:1 on its /5 tint, and for
+     white text on a destructive button.
+   - muted-foreground 0 0% 40%: 5.7:1 on white, 5.3:1 on the muted background.
+   - disabled buttons keep full opacity: dark grey on light grey, 6.9:1.
+   Dialogs render outside the page, so they carry the class themselves. */
+.billing-admin {
+  --destructive: 0 72% 42%;
+  --muted-foreground: 0 0% 40%;
+}
+
+.dark .billing-admin {
+  --destructive: 0 63% 31%;
+  --muted-foreground: 0 0% 65%;
+}
+
+.billing-admin button:disabled {
+  opacity: 1;
+  color: hsl(0 0% 32%);
+  cursor: not-allowed;
+}
+
+.billing-admin button:disabled:is([class*='bg-primary'], [class*='bg-destructive']) {
+  background-color: hsl(0 0% 94%);
+  border: 1px solid hsl(0 0% 86%);
+  box-shadow: none;
+}
+
+.dark .billing-admin button:disabled {
+  color: hsl(0 0% 70%);
+}
+
+.dark .billing-admin button:disabled:is([class*='bg-primary'], [class*='bg-destructive']) {
+  background-color: hsl(0 0% 20%);
+  border-color: hsl(0 0% 28%);
+}

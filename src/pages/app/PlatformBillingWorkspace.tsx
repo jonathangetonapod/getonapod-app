@@ -55,7 +55,7 @@ const PlatformBillingWorkspace = () => {
 
   return (
     <WorkspaceLayout>
-      <div className="mx-auto w-full max-w-5xl space-y-6 pb-12">
+      <div className="billing-admin mx-auto w-full max-w-5xl space-y-6 pb-12">
         <Button asChild variant="ghost" size="sm" className="-ml-3 w-fit">
           <Link to={backHref}><ArrowLeft className="mr-2 h-4 w-4" />All workspaces</Link>
         </Button>

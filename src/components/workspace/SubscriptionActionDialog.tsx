@@ -127,7 +127,7 @@ export const SubscriptionActionDialog = ({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !mutation.isPending) onClose() }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="billing-admin max-w-lg">
         <DialogHeader>
           <DialogTitle>{SUBSCRIPTION_ACTION_LABELS[operation].title}: {workspaceName}</DialogTitle>
           <DialogDescription>{summary[operation]}</DialogDescription>

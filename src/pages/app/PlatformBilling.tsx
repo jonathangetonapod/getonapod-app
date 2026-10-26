@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BillingPortfolio } from '@/components/workspace/BillingPortfolio'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { PlatformPlanPricing } from '@/components/workspace/PlatformPlanPricing'
 import { platformBillingWorkspaceHref } from '@/lib/workspaceRoutes'
 import type { PlatformBillingListState } from '@/pages/app/PlatformBillingWorkspace'
@@ -43,7 +44,7 @@ const PlatformBilling = () => {
 
   return (
     <WorkspaceLayout>
-      <div className="mx-auto w-full max-w-7xl space-y-8 pb-12">
+      <div className="billing-admin mx-auto w-full max-w-7xl space-y-8 pb-12">
         <header className="space-y-5 border-b border-border/70 pb-6">
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="ghost" size="sm" className="-ml-3 w-fit">
@@ -60,10 +61,12 @@ const PlatformBilling = () => {
               <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />Platform administration
             </Badge>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Billing administration</h1>
-            <p className="mt-2 max-w-2xl text-muted-foreground">
-              Everything that decides what a workspace pays and what it can spend: what each plan costs across the
-              platform, a one-off credit grant to a single workspace, and the credits that workspace is granted every
-              month. A workspace&rsquo;s own plan, invoices and card live on its billing page, not here.
+            <p className="mt-2 flex items-center gap-1.5 text-muted-foreground">
+              Plan prices, and every workspace&rsquo;s credits and subscription.
+              <InfoTip topic="billing administration">
+                What each plan costs across the platform, plus each workspace&rsquo;s credits, monthly allowance and
+                subscription. A workspace&rsquo;s own invoices and card live on its billing page, not here.
+              </InfoTip>
             </p>
           </div>
         </header>

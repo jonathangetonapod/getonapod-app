@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -27,6 +27,12 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
   // is never a side effect of a save.
   const [applyToExisting, setApplyToExisting] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // The dialog unmounts on close; focus goes back to Save rather than the body.
+  const saveRef = useRef<HTMLButtonElement | null>(null)
+  const closeConfirm = () => {
+    setConfirming(false)
+    requestAnimationFrame(() => saveRef.current?.focus())
+  }
 
   const sold = plan.is_purchasable
   const dollars = priceDraft ?? (plan.base_price_cents / 100).toFixed(2)
@@ -97,7 +103,7 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
             <Label htmlFor={`plan-credits-${plan.plan_key}`} className="text-xs">Credits/month</Label>
             <Input id={`plan-credits-${plan.plan_key}`} inputMode="numeric" className="w-28" value={creditsText} onChange={(event) => setCreditsDraft(event.target.value)} />
           </div>
-          <Button type="button" size="sm" disabled={!changed} onClick={() => setConfirming(true)}>
+          <Button ref={saveRef} type="button" size="sm" disabled={!changed} onClick={() => setConfirming(true)}>
             Save
           </Button>
         </div>
@@ -118,7 +124,7 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
         <PlanChangeConfirmDialog
           plan={plan}
           change={{ cents, credits, applyToExisting }}
-          onClose={() => setConfirming(false)}
+          onClose={closeConfirm}
           onSaved={reset}
         />
       )}

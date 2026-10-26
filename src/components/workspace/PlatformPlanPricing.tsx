@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { listBillingPlans } from '@/services/workspaceStaff'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { PlatformPlanRow } from '@/components/workspace/PlatformPlanRow'
 
 /**
@@ -26,8 +27,12 @@ export function PlatformPlanPricing() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg" id="platform-plan-pricing-title">Plan pricing</CardTitle>
-          <CardDescription>
-            A new price applies to new subscribers only. Existing subscribers keep the price they signed up at.
+          <CardDescription className="flex items-center gap-1.5">
+            A new price applies to new subscribers only.
+            <InfoTip topic="plan pricing">
+              Stripe prices cannot be edited, so saving creates a new price and points the plan at it. Existing
+              subscribers keep the price they signed up at. Credits change for them only if you tick the box.
+            </InfoTip>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

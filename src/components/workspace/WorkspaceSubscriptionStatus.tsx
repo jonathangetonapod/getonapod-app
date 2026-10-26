@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Copy, CreditCard, ExternalLink, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -34,6 +34,13 @@ const stripeCustomerUrl = (customerId: string) => `https://dashboard.stripe.com/
  */
 export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName, ownerEmail = null }: WorkspaceSubscriptionStatusProps) {
   const [operation, setOperation] = useState<SubscriptionOperation | null>(null)
+  // The dialog unmounts on close, which leaves Radix nothing to return focus
+  // to, so a keyboard user landed on the page body. The opener takes it back.
+  const openerRef = useRef<HTMLButtonElement | null>(null)
+  const closeDialog = () => {
+    setOperation(null)
+    requestAnimationFrame(() => openerRef.current?.focus())
+  }
   const overviewQuery = useQuery({
     queryKey: ['workspace-billing-overview', workspaceId],
     queryFn: () => getWorkspaceBillingOverview(workspaceId),
@@ -144,7 +151,10 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName, ownerE
                   variant={action.operation === 'cancel' ? 'destructive' : 'outline'}
                   disabled={Boolean(action.disabled) || !plansQuery.data}
                   title={action.disabled ?? undefined}
-                  onClick={() => setOperation(action.operation)}
+                  onClick={(event) => {
+                    openerRef.current = event.currentTarget
+                    setOperation(action.operation)
+                  }}
                 >
                   {SUBSCRIPTION_ACTION_LABELS[action.operation].title}
                 </Button>
@@ -173,7 +183,7 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName, ownerE
           billing={billing}
           plans={plansQuery.data}
           ownerEmail={ownerEmail}
-          onClose={() => setOperation(null)}
+          onClose={closeDialog}
         />
       )}
     </Card>

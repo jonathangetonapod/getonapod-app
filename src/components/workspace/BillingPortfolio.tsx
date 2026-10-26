@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { BillingPortfolioSummary } from '@/components/workspace/BillingPortfolioSummary'
 import { BillingPortfolioTable } from '@/components/workspace/BillingPortfolioTable'
 import { compareByAttention } from '@/lib/billingAttention'
@@ -93,7 +94,13 @@ export function BillingPortfolio({ workspaceId, onSelect }: BillingPortfolioProp
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><Wallet className="h-5 w-5" />All workspaces</CardTitle>
-        <CardDescription>Most urgent first. Open a row to manage that workspace.</CardDescription>
+        <CardDescription className="flex items-center gap-1.5">
+          Most urgent first. Open a row to manage that workspace.
+          <InfoTip topic="needs attention">
+            A workspace needs attention when a payment failed, its trial ended without a subscription, its trial ends
+            within 7 days, or its balance is under 20% of its monthly credits. Ties sort by balance, lowest first.
+          </InfoTip>
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {portfolioQuery.isLoading ? (
