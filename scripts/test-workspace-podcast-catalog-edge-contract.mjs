@@ -91,6 +91,12 @@ assert.match(v3Migration, /'languages', COALESCE\(/u)
 assert.match(v3Migration, /CASE WHEN effective_sort = 'reach' THEN podcast_reach_score END DESC NULLS LAST/u)
 // "uk" is folded into the ISO "gb", or United Kingdom is offered twice.
 assert.match(v3Migration, /WHEN lower\(btrim\(podcast\.region\)\) = 'uk' THEN 'gb'/u)
+// A search matches every word in any order, not only the exact phrase, and
+// Best fit ranks by reach inside doubling audience bands around 50K.
+assert.match(v3Migration, /regexp_split_to_array\(lower\(btrim\(p_search\)\), '\\s\+'\)/u)
+assert.match(v3Migration, /OR NOT EXISTS \(\s+SELECT 1\s+FROM unnest\(search_words\) search_word/u)
+assert.doesNotMatch(v3Migration, /OR position\(normalized_search IN lower\(concat_ws\(/u)
+assert.match(v3Migration, /round\(abs\(ln\(audience_size::NUMERIC \/ 50000\)\) \/ ln\(2\)\)/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)

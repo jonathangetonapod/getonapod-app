@@ -27,6 +27,17 @@
 -- sorts. Rating sorts by the rating the list shows: Apple Podcasts, or Spotify
 -- where a show has no Apple rating, with more ratings breaking ties.
 --
+-- A search matches shows containing every word typed, in any order and
+-- anywhere in the show's text, rather than the exact phrase: "real estate
+-- investing" used to miss a show about "investing in real estate". Exact
+-- phrases still rank first under Relevance.
+--
+-- Within a Best fit tier, audiences are grouped into doubling bands around
+-- 50K (about 35K to 70K, then 18K to 35K and 70K to 140K, and so on), nearest
+-- band first, and ranked by reach score inside each band. Ranking by reach
+-- alone filled the first page with shows just under the 250K edge; ranking by
+-- distance alone filled it with shows at exactly 50K.
+--
 -- v2 is left as it was: the client shortlist editor's search still calls it.
 
 CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
@@ -56,6 +67,11 @@ DECLARE
   normalized_language TEXT := lower(NULLIF(btrim(COALESCE(p_language, '')), ''));
   normalized_region TEXT := lower(NULLIF(btrim(COALESCE(p_region, '')), ''));
   normalized_sort TEXT := lower(btrim(COALESCE(p_sort, 'best_fit')));
+  -- The search split into words; a show must contain every one of them.
+  search_words TEXT[] := CASE
+    WHEN p_search IS NULL OR btrim(p_search) = '' THEN NULL
+    ELSE regexp_split_to_array(lower(btrim(p_search)), '\s+')
+  END;
   effective_sort TEXT;
   normalized_page INTEGER := COALESCE(p_page, 1);
   normalized_page_size INTEGER := COALESCE(p_page_size, 24);
@@ -221,16 +237,20 @@ BEGIN
       )
       AND (
         normalized_search IS NULL
-        OR position(normalized_search IN lower(concat_ws(
-          ' ',
-          podcast_name,
-          publisher_name,
-          host_name,
-          podcast_description,
-          podcast_categories::TEXT,
-          language,
-          region
-        ))) > 0
+        OR NOT EXISTS (
+          SELECT 1
+          FROM unnest(search_words) search_word
+          WHERE position(search_word IN lower(concat_ws(
+            ' ',
+            podcast_name,
+            publisher_name,
+            host_name,
+            podcast_description,
+            podcast_categories::TEXT,
+            language,
+            region
+          ))) = 0
+        )
         OR COALESCE(semantic_similarity, 0) >= 0.22
       )
       AND (
@@ -281,8 +301,20 @@ BEGIN
             WHEN lower(COALESCE(host_name, '')) = normalized_search
               OR lower(COALESCE(publisher_name, '')) = normalized_search THEN 7
             WHEN position(normalized_search IN lower(concat_ws(' ', host_name, publisher_name))) > 0 THEN 6
+            -- Every word in the name, in another order: nearly as good as the phrase.
+            WHEN NOT EXISTS (
+              SELECT 1 FROM unnest(search_words) search_word
+              WHERE position(search_word IN lower(podcast_name)) = 0
+            ) THEN 5
             WHEN position(normalized_search IN lower(COALESCE(podcast_description, ''))) > 0 THEN 4
             WHEN position(normalized_search IN lower(COALESCE(podcast_categories::TEXT, ''))) > 0 THEN 3
+            -- Every word somewhere in the show's text.
+            WHEN NOT EXISTS (
+              SELECT 1 FROM unnest(search_words) search_word
+              WHERE position(search_word IN lower(concat_ws(
+                ' ', podcast_name, publisher_name, host_name, podcast_description, podcast_categories::TEXT
+              ))) = 0
+            ) THEN 2
             ELSE 0
           END
           + COALESCE(GREATEST(semantic_similarity - 0.15, 0) * 6, 0)
@@ -314,8 +346,10 @@ BEGIN
         ORDER BY
           CASE WHEN effective_sort = 'relevance' THEN search_rank END DESC NULLS LAST,
           CASE WHEN effective_sort = 'best_fit' THEN fit_score END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'best_fit' AND audience_size > 0 THEN
+            round(abs(ln(audience_size::NUMERIC / 50000)) / ln(2))
+          END ASC NULLS LAST,
           CASE WHEN effective_sort = 'best_fit' THEN podcast_reach_score END DESC NULLS LAST,
-          CASE WHEN effective_sort = 'best_fit' THEN audience_size END DESC NULLS LAST,
           CASE WHEN effective_sort = 'audience' THEN audience_size END DESC NULLS LAST,
           CASE WHEN effective_sort = 'community' THEN shortlist_uses END DESC NULLS LAST,
           CASE WHEN effective_sort = 'recent' THEN last_posted_at END DESC NULLS LAST,
