@@ -126,7 +126,10 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       page,
       pageSize,
     ],
-    queryFn: () => getWorkspacePodcastCatalog(workspaceId, {
+    // The signal cancels a request the person has already typed past; each
+    // answer also lands in its own cache slot, so a late one can never
+    // replace the results of a newer search.
+    queryFn: ({ signal }) => getWorkspacePodcastCatalog(workspaceId, {
       search,
       category: category === 'all' ? undefined : category,
       contact,
@@ -135,7 +138,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       sort,
       page,
       pageSize,
-    }),
+    }, signal),
     enabled: validWorkspaceId,
     retry: false,
     // Catalogue rows change when somebody adds a show, not continuously, so a
@@ -172,7 +175,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         nextPage,
         pageSize,
       ],
-      queryFn: () => getWorkspacePodcastCatalog(workspaceId, {
+      queryFn: ({ signal }) => getWorkspacePodcastCatalog(workspaceId, {
         search,
         category: category === 'all' ? undefined : category,
         contact,
@@ -181,7 +184,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         sort,
         page: nextPage,
         pageSize,
-      }),
+      }, signal),
       staleTime: 5 * 60_000,
     })
   }, [
@@ -486,6 +489,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             to={pageTo}
             total={total}
             loading={catalogQuery.isLoading}
+            searching={refreshing}
+            searchActive={Boolean(search)}
             catalogUpdated={catalog?.summary.catalog_refreshed_at ?? null}
             fetching={catalogQuery.isFetching}
             onRefresh={() => void catalogQuery.refetch()}
@@ -534,7 +539,10 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                   <Button variant="outline" size="sm" onClick={() => void catalogQuery.refetch()}>Retry</Button>
                 </div>
               )}
-              <div className={refreshing ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
+              {/* While a new search or page is on its way the old results fade
+                  well back and stop taking clicks, so nobody acts on a list
+                  that is about to change. */}
+              <div className={refreshing ? 'pointer-events-none select-none opacity-35 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
                 {view === 'list' ? (
                   <Card className="overflow-hidden">
                     <PodcastCatalogRowHeader selectable={canAddToClient} />

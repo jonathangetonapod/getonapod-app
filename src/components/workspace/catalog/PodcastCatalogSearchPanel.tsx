@@ -30,6 +30,9 @@ interface ActiveChip {
 
 function activeChips(params: PodcastCatalogParams): ActiveChip[] {
   const chips: ActiveChip[] = []
+  if (params.search) {
+    chips.push({ key: 'search', label: `Search: “${params.search}”`, clear: { search: '' } })
+  }
   if (params.category !== 'all') {
     chips.push({ key: 'category', label: `Category: ${categoryLabel(params.category)}`, clear: { category: 'all' } })
   }
@@ -129,6 +132,8 @@ export const PodcastCatalogSearchPanel = ({
   }, [input, params.search, update])
 
   const chips = activeChips(params)
+  // The search box is not in the sheet, so its chip is not counted on the button.
+  const filterCount = chips.filter((chip) => chip.key !== 'search').length
 
   return (
     <Card>
@@ -155,7 +160,7 @@ export const PodcastCatalogSearchPanel = ({
             <SheetTrigger asChild>
               <Button type="button" variant="outline" className="shrink-0 md:hidden">
                 <SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />Filters
-                {chips.length > 0 && <Badge variant="secondary" className="ml-2 px-1.5">{chips.length}</Badge>}
+                {filterCount > 0 && <Badge variant="secondary" className="ml-2 px-1.5">{filterCount}</Badge>}
               </Button>
             </SheetTrigger>
             <SheetContent side="bottom" className="space-y-4">

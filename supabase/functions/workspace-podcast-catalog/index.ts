@@ -22,7 +22,7 @@ const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 // 250k_plus predates the 250K to 1M / 1M+ split and is kept for old addresses.
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
-const SORT_OPTIONS = new Set(['best_fit', 'audience', 'name', 'recent', 'community'])
+const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community'])
 // Semantic search embeds every search box change on the platform OpenAI key.
 // Charging credits per keystroke would punish ordinary typing, so instead
 // each workspace (and each member) gets a generous embedding allowance; past

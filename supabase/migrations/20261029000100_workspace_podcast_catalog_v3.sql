@@ -17,6 +17,11 @@
 -- band is split into 250K to 1M and 1M+; 250k_plus is still accepted for old
 -- addresses.
 --
+-- A search used to put its own match ranking ahead of whichever sort was
+-- chosen, so "Largest audience" came back in match order. Now the chosen sort
+-- applies, with match ranking only breaking ties, and a Relevance sort orders
+-- by the match itself (the page selects it while a search is active).
+--
 -- v2 is left as it was: the client shortlist editor's search still calls it.
 
 CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
@@ -42,6 +47,7 @@ DECLARE
   normalized_activity TEXT := lower(btrim(COALESCE(p_activity, 'active')));
   normalized_audience TEXT := lower(btrim(COALESCE(p_audience, 'all')));
   normalized_sort TEXT := lower(btrim(COALESCE(p_sort, 'best_fit')));
+  effective_sort TEXT;
   normalized_page INTEGER := COALESCE(p_page, 1);
   normalized_page_size INTEGER := COALESCE(p_page_size, 24);
   result JSONB;
@@ -70,9 +76,14 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'audience filter is invalid';
   END IF;
-  IF normalized_sort NOT IN ('best_fit', 'audience', 'name', 'recent', 'community') THEN
+  IF normalized_sort NOT IN ('best_fit', 'relevance', 'audience', 'name', 'recent', 'community') THEN
     RAISE EXCEPTION 'sort is invalid';
   END IF;
+  -- Relevance with nothing searched has nothing to rank by.
+  effective_sort := CASE
+    WHEN normalized_sort = 'relevance' AND normalized_search IS NULL THEN 'best_fit'
+    ELSE normalized_sort
+  END;
   IF normalized_page < 1 OR normalized_page > 10000 THEN
     RAISE EXCEPTION 'page is invalid';
   END IF;
@@ -275,15 +286,16 @@ BEGIN
       scored.*,
       row_number() OVER (
         ORDER BY
+          CASE WHEN effective_sort = 'relevance' THEN search_rank END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'best_fit' THEN fit_score END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'best_fit' THEN podcast_reach_score END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'best_fit' THEN audience_size END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'audience' THEN audience_size END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'community' THEN shortlist_uses END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'recent' THEN last_posted_at END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'name' THEN lower(podcast_name) END ASC NULLS LAST,
           CASE WHEN normalized_search IS NOT NULL THEN search_rank END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'best_fit' THEN fit_score END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'best_fit' THEN podcast_reach_score END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'best_fit' THEN audience_size END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'audience' THEN audience_size END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'community' THEN shortlist_uses END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'recent' THEN last_posted_at END DESC NULLS LAST,
-          CASE WHEN normalized_sort = 'name' THEN lower(podcast_name) END ASC NULLS LAST,
-          CASE WHEN normalized_sort <> 'name' THEN lower(podcast_name) END ASC NULLS LAST,
+          CASE WHEN effective_sort <> 'name' THEN lower(podcast_name) END ASC NULLS LAST,
           podscan_id ASC
       ) AS result_order
     FROM scored

@@ -136,7 +136,7 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByRole('combobox', { name: 'Any audience size' })).toHaveTextContent('Any audience size')
     // Best fit, not the biggest shows nobody can book.
     expect(screen.getByRole('combobox', { name: 'Sort: Best fit' })).toBeInTheDocument()
-    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ sort: 'best_fit' }))
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ sort: 'best_fit' }), expect.anything())
     expect(screen.getByText(/^Showing 1 to 1 of 1 ·/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Find new podcasts' })).toHaveAttribute('href', '/app/podcast-finder')
     // No internal names or how-it-works paragraphs on the page itself.
@@ -161,6 +161,7 @@ describe('WorkspacePodcastDatabase', () => {
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
       workspaceId,
       expect.objectContaining({ contact: 'direct', activity: 'last_180_days', audience: '10k_50k', page: 1 }),
+      expect.anything(),
     ))
     expect(screen.getByText('Email: Verified email')).toBeInTheDocument()
     expect(screen.getByText('Activity: Published in 6 months')).toBeInTheDocument()
@@ -171,10 +172,10 @@ describe('WorkspacePodcastDatabase', () => {
   it('starts on shows with an email and lets the chip be removed', async () => {
     renderPage()
     await screen.findByText('The Founder Show')
-    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'any' }))
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'any' }), expect.anything())
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Email: Public or verified' }))
-    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' })))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' }), expect.anything()))
     expect(screen.queryByText('Email: Public or verified')).not.toBeInTheDocument()
   })
 
@@ -189,7 +190,7 @@ describe('WorkspacePodcastDatabase', () => {
       sort: 'recent',
       page: 3,
       pageSize: 48,
-    }))
+    }), expect.anything())
     expect(screen.getByLabelText('Search podcasts')).toHaveValue('founders')
     expect(screen.getByRole('combobox', { name: 'Sort: Most recent episode' })).toBeInTheDocument()
   })
@@ -206,7 +207,7 @@ describe('WorkspacePodcastDatabase', () => {
     const [pageInput] = screen.getAllByRole('textbox', { name: 'Page, of 399' })
     fireEvent.change(pageInput, { target: { value: '212' } })
     fireEvent.keyDown(pageInput, { key: 'Enter' })
-    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ page: 212 })))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ page: 212 }), expect.anything()))
   })
 
   it('offers a way out when nothing matches', async () => {
@@ -216,7 +217,7 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByRole('link', { name: 'Not finding it? Open Finder' })).toHaveAttribute('href', '/app/podcast-finder')
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear all filters' }))
-    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ category: undefined, contact: 'all' })))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ category: undefined, contact: 'all' }), expect.anything()))
   })
 
   it('says the catalog could not load and retries', async () => {
@@ -475,7 +476,7 @@ describe('WorkspacePodcastDatabase', () => {
     expect(await screen.findByRole('option', { name: '250K to 1M' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '250K+' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('option', { name: '1M+' }))
-    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ audience: '1m_plus' })))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ audience: '1m_plus' }), expect.anything()))
   })
 
   // The client this person last worked on comes back on the next visit, so the
@@ -500,6 +501,60 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage(`/app/podcast-database?client=${clientId}`)
     await screen.findByText('The Founder Show')
     expect(screen.queryByText('Pick a client in the top bar to add shows with one click.')).not.toBeInTheDocument()
+  })
+
+  /*
+   * A search shows as a chip like the filters, Clear all clears it, and while
+   * it is searching the sort is Relevance unless somebody picked another one.
+   */
+  it('shows the search as a removable chip and sorts it by relevance', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    fireEvent.change(screen.getByLabelText('Search podcasts'), { target: { value: 'founders' } })
+
+    expect(await screen.findByText('Search: “founders”')).toBeInTheDocument()
+    expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ search: 'founders', sort: 'relevance' }),
+      expect.anything(),
+    )
+    expect(screen.getByRole('combobox', { name: 'Sort: Relevance' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ search: '', sort: 'best_fit' }),
+      expect.anything(),
+    ))
+    expect(screen.getByLabelText('Search podcasts')).toHaveValue('')
+    expect(screen.queryByText(/^Search:/)).not.toBeInTheDocument()
+  })
+
+  it('applies a sort chosen on purpose to a search', async () => {
+    renderPage('/app/podcast-database?sort=audience')
+    await screen.findByText('The Founder Show')
+    fireEvent.change(screen.getByLabelText('Search podcasts'), { target: { value: 'founders' } })
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ search: 'founders', sort: 'audience' }),
+      expect.anything(),
+    ))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Search: “founders”' }))
+    // Back to the unsearched list (served from cache), still on the chosen sort.
+    await waitFor(() => expect(screen.queryByText(/^Search:/)).not.toBeInTheDocument())
+    expect(screen.getByRole('combobox', { name: 'Sort: Largest audience' })).toBeInTheDocument()
+  })
+
+  it('says it is searching and fades the old results while a search is in flight', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    mockedCatalog.mockImplementation(() => new Promise(() => undefined))
+    fireEvent.change(screen.getByLabelText('Search podcasts'), { target: { value: 'founders' } })
+
+    expect(await screen.findByText('Searching…')).toBeInTheDocument()
+    const list = screen.getByRole('listitem', { name: 'The Founder Show' }).closest('[aria-busy]')
+    expect(list).toHaveAttribute('aria-busy', 'true')
+    expect(list).toHaveClass('opacity-35')
   })
 
   // The catalog function rejects a search longer than 120 characters.

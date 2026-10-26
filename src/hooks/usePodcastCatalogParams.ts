@@ -49,7 +49,7 @@ export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
 const CONTACTS = new Set<string>(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus'])
-const SORTS = new Set<string>(['best_fit', 'audience', 'name', 'recent', 'community'])
+const SORTS = new Set<string>(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community'])
 
 // Address names are short and stable; the client parameter belongs to the header.
 const KEYS: Record<keyof PodcastCatalogParams, string> = {
@@ -70,16 +70,35 @@ function choice<T extends string>(value: string | null, allowed: Set<string>, fa
 export function readCatalogParams(params: URLSearchParams): PodcastCatalogParams {
   const page = Number.parseInt(params.get(KEYS.page) || '', 10)
   const size = Number.parseInt(params.get(KEYS.pageSize) || '', 10)
+  const search = (params.get(KEYS.search) || '').slice(0, 120)
+  const sort = choice(params.get(KEYS.sort), SORTS, DEFAULT_CATALOG_PARAMS.sort)
   return {
-    search: (params.get(KEYS.search) || '').slice(0, 120),
+    search,
     category: (params.get(KEYS.category) || '').slice(0, 200) || 'all',
     contact: choice(params.get(KEYS.contact), CONTACTS, DEFAULT_CATALOG_PARAMS.contact),
     activity: choice(params.get(KEYS.activity), ACTIVITIES, DEFAULT_CATALOG_PARAMS.activity),
     audience: choice(params.get(KEYS.audience), AUDIENCES, DEFAULT_CATALOG_PARAMS.audience),
-    sort: choice(params.get(KEYS.sort), SORTS, DEFAULT_CATALOG_PARAMS.sort),
+    // Relevance ranks a search; with nothing searched it means the default.
+    sort: sort === 'relevance' && !search ? DEFAULT_CATALOG_PARAMS.sort : sort,
     page: Number.isSafeInteger(page) && page >= 1 && page <= 10_000 ? page : 1,
     pageSize: (CATALOG_PAGE_SIZES as readonly number[]).includes(size) ? size : DEFAULT_CATALOG_PARAMS.pageSize,
   }
+}
+
+/*
+ * Starting a search switches the default sort to Relevance, so the closest
+ * matches lead; ending one switches Relevance back. A sort somebody picked on
+ * purpose is left alone either way.
+ */
+export function withSearchSort(current: PodcastCatalogParams, merged: PodcastCatalogParams, patch: Partial<PodcastCatalogParams>): PodcastCatalogParams {
+  if ('sort' in patch) return merged
+  if (merged.search && !current.search && merged.sort === DEFAULT_CATALOG_PARAMS.sort) {
+    return { ...merged, sort: 'relevance' }
+  }
+  if (!merged.search && merged.sort === 'relevance') {
+    return { ...merged, sort: DEFAULT_CATALOG_PARAMS.sort }
+  }
+  return merged
 }
 
 /*
@@ -95,7 +114,8 @@ export function usePodcastCatalogParams() {
   const update = useCallback((patch: Partial<PodcastCatalogParams>, options: { replace?: boolean } = {}) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
-      const merged = { ...readCatalogParams(current), ...patch }
+      const before = readCatalogParams(current)
+      const merged = withSearchSort(before, { ...before, ...patch }, patch)
       if (!('page' in patch)) merged.page = 1
       ;(Object.keys(KEYS) as Array<keyof PodcastCatalogParams>).forEach((field) => {
         const value = merged[field]

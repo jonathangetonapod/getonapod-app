@@ -25,6 +25,8 @@ export const PodcastResultsHeader = ({
   to,
   total,
   loading,
+  searching,
+  searchActive,
   catalogUpdated,
   fetching,
   onRefresh,
@@ -40,6 +42,10 @@ export const PodcastResultsHeader = ({
   to: number
   total: number
   loading: boolean
+  /** A newer page is on its way and the rows on screen are the old ones. */
+  searching: boolean
+  /** Relevance is only offered while there is a search to rank. */
+  searchActive: boolean
   catalogUpdated: string | null
   fetching: boolean
   onRefresh: () => void
@@ -64,10 +70,12 @@ export const PodcastResultsHeader = ({
       <p className="text-sm text-muted-foreground" aria-live="polite">
         {loading
           ? 'Loading shows'
+          : searching
+          ? 'Searching…'
           : total === 0
           ? 'No results'
           : `Showing ${from.toLocaleString()} to ${to.toLocaleString()} of ${total.toLocaleString()}`}
-        {catalogUpdated && (
+        {catalogUpdated && !searching && (
           <>
             {' · '}
             {/* One date for the whole catalogue, so it does not move with the
@@ -108,7 +116,9 @@ export const PodcastResultsHeader = ({
           </SelectValue>
         </SelectTrigger>
         <SelectContent align="end">
-          {(Object.keys(SORT_LABELS) as WorkspacePodcastCatalogSort[]).map((value) => (
+          {(Object.keys(SORT_LABELS) as WorkspacePodcastCatalogSort[])
+            .filter((value) => value !== 'relevance' || searchActive)
+            .map((value) => (
             <SelectItem key={value} value={value}>
               {SORT_LABELS[value]}
               {SORT_HINTS[value] && <span className="block text-xs text-muted-foreground">{SORT_HINTS[value]}</span>}

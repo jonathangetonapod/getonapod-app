@@ -5,7 +5,7 @@ import { decodeFeedText } from '@/lib/feedText'
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
 export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus'
-export type WorkspacePodcastCatalogSort = 'best_fit' | 'audience' | 'name' | 'recent' | 'community'
+export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community'
 
 export interface WorkspacePodcastCatalogCategory {
   category_id?: string
@@ -109,9 +109,14 @@ function cleanCatalogItem(item: WorkspacePodcastCatalogItem): WorkspacePodcastCa
   }
 }
 
+/**
+ * One page of the catalogue. Pass the query's AbortSignal so a search that has
+ * been typed past is cancelled instead of finishing and spending a request.
+ */
 export async function getWorkspacePodcastCatalog(
   workspaceId: string,
   params: WorkspacePodcastCatalogParams = {},
+  signal?: AbortSignal,
 ): Promise<WorkspacePodcastCatalogPage> {
   const canonicalWorkspaceId = workspaceId.toLowerCase()
   const { data, error } = await supabase.functions.invoke('workspace-podcast-catalog', {
@@ -127,6 +132,7 @@ export async function getWorkspacePodcastCatalog(
       page: params.page || 1,
       page_size: params.pageSize || 24,
     },
+    signal,
   })
   if (error) throw await toFunctionError(error, 'The shared podcast database could not be loaded.')
 

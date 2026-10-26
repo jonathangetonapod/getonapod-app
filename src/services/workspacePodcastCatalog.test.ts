@@ -54,7 +54,21 @@ describe('workspacePodcastCatalog service', () => {
         page: 2,
         page_size: 24,
       },
+      signal: undefined,
     })
+  })
+
+  // A search typed past is cancelled, not left to finish.
+  it('passes the abort signal through to the function call', async () => {
+    invoke.mockResolvedValueOnce({ data: response, error: null } as never)
+    const controller = new AbortController()
+
+    await getWorkspacePodcastCatalog(workspaceId, { search: 'founders', sort: 'relevance' }, controller.signal)
+
+    expect(invoke).toHaveBeenCalledWith('workspace-podcast-catalog', expect.objectContaining({
+      body: expect.objectContaining({ search: 'founders', sort: 'relevance' }),
+      signal: controller.signal,
+    }))
   })
 
   // You're Wrong About and Armchair Expert arrive wrapped in <p>; SmartLess and
