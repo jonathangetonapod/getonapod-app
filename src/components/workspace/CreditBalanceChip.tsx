@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Coins, Info } from 'lucide-react'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 import { creditHealth } from '@/lib/creditHealth'
@@ -49,6 +50,11 @@ export function CreditBalanceChip({ workspaceId, canViewBalance, billingHref }: 
   })
 
   const overview = overviewQuery.data
+  // The chip's space is held while the balance loads, or the header's other
+  // buttons slide left when it lands.
+  if (overviewQuery.isLoading) {
+    return <Skeleton data-testid="credit-balance-loading" className="h-7 w-24 shrink-0 rounded-full sm:w-28" aria-hidden="true" />
+  }
   // Nothing is being charged, so a balance would be a number about nothing.
   if (!overview || overview.enforcement_enabled === false) return null
 

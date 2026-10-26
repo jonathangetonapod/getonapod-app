@@ -557,6 +557,8 @@ describe('WorkspacePodcastDatabase', () => {
     const list = screen.getByRole('listitem', { name: 'The Founder Show' }).closest('[aria-busy]')
     expect(list).toHaveAttribute('aria-busy', 'true')
     expect(list).toHaveClass('opacity-35')
+    // Faded, not frozen: the row menu still opens while the search runs.
+    expect(list).not.toHaveClass('pointer-events-none')
   })
 
   // The table explains its numbers, sorts by them, and shows whose inbox the email is.
@@ -700,6 +702,8 @@ describe('WorkspacePodcastDatabase', () => {
     expect(dialog.getByText(/On 4 shortlists across 2 workspaces/i)).toBeInTheDocument()
     expect(dialog.getByText('English')).toBeInTheDocument()
     expect(dialog.getByText('United States')).toBeInTheDocument()
+    // One copy button, next to the address; the footer only adds.
+    expect(dialog.getAllByRole('button', { name: /copy/i })).toHaveLength(1)
     // The show's own refresh date, named as the show's.
     expect(dialog.getByText(/This show’s data last refreshed/)).toBeInTheDocument()
   })

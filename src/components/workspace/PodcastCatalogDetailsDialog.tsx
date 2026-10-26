@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, Mail, Rss } from 'lucide-react'
+import { ExternalLink, Mail, Rss } from 'lucide-react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -167,17 +167,9 @@ export function PodcastCatalogDetailsDialog({
           </div>
         </div>
 
+        {/* Copy lives next to the address in Contact; one copy button is enough. */}
         {action && (
-          <DialogFooter className="sticky -bottom-6 -mx-6 -mb-6 flex-row justify-between gap-2 sm:justify-between sm:space-x-0 border-t bg-background px-6 py-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!email.email}
-              onClick={() => { if (email.email) onCopyEmail?.(email.email) }}
-            >
-              <Copy className="mr-2 h-4 w-4" aria-hidden="true" />Copy email
-            </Button>
+          <DialogFooter className="sticky -bottom-6 -mx-6 -mb-6 flex-row justify-end gap-2 sm:justify-end sm:space-x-0 border-t bg-background px-6 py-4">
             <PodcastPrimaryAction action={action} podcastName={podcast.podcast_name} />
           </DialogFooter>
         )}

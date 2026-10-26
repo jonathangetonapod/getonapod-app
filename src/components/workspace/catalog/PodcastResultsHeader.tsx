@@ -67,7 +67,7 @@ export const PodcastResultsHeader = ({
           <Label htmlFor="select-catalog-page" className="whitespace-nowrap text-sm font-normal">Select this page</Label>
         </div>
       )}
-      <p className="text-sm text-muted-foreground" aria-live="polite">
+      <div className="text-sm text-muted-foreground" aria-live="polite">
         {loading
           ? 'Loading shows'
           : searching
@@ -92,7 +92,7 @@ export const PodcastResultsHeader = ({
             </Tooltip>
           </>
         )}
-      </p>
+      </div>
     </div>
     <div className="flex items-center gap-2">
       <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Refresh podcast database" onClick={onRefresh} disabled={fetching}>

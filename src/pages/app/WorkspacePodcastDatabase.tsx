@@ -551,9 +551,10 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                 </div>
               )}
               {/* While a new search or page is on its way the old results fade
-                  well back and stop taking clicks, so nobody acts on a list
-                  that is about to change. */}
-              <div className={refreshing ? 'pointer-events-none select-none opacity-35 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
+                  well back. They still take clicks: they are real shows, and a
+                  list that swallowed clicks for the seconds a search takes made
+                  the row menu and buttons look broken. */}
+              <div className={refreshing ? 'opacity-35 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
                 {view === 'list' ? (
                   <Card className="overflow-hidden">
                     <PodcastCatalogRowHeader selectable={canAddToClient} sort={sort} onSortChange={(next) => update({ sort: next })} />

@@ -45,6 +45,18 @@ describe('CreditBalanceChip', () => {
     expect(screen.getByText('850')).toBeInTheDocument()
   })
 
+  // The header's other buttons used to slide left when the balance landed.
+  it('holds its place while the balance loads', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockReturnValue(new Promise(() => undefined) as never)
+    renderChip()
+    expect(screen.getByTestId('credit-balance-loading')).toBeInTheDocument()
+  })
+
+  it('holds no place for someone who cannot see the balance', () => {
+    renderChip(false)
+    expect(screen.queryByTestId('credit-balance-loading')).not.toBeInTheDocument()
+  })
+
   // The number needs a one-line answer to "what is this" beside it; the long
   // version lives on the billing page the chip links to.
   it('explains what credits are without leaving the chip', async () => {

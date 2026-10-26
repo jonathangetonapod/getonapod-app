@@ -64,14 +64,14 @@ const ColumnSortButton = ({
     </button>
   )
   return (
-    <span className={column.className}>
+    <div className={column.className}>
       {column.hint ? (
         <Tooltip>
           <TooltipTrigger asChild>{button}</TooltipTrigger>
           <TooltipContent className="max-w-xs normal-case tracking-normal">{column.hint}</TooltipContent>
         </Tooltip>
       ) : button}
-    </span>
+    </div>
   )
 }
 
