@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { withDecodedPodcastNamesIn } from '@/lib/feedText'
 import { normalizeChartCategories } from '@/lib/podcastResearch'
+import { classifyPodscanError, podscanFailureReason, withPodscanRetry } from '@/lib/podscanRetry'
 
 export interface PodscanRateLimit {
   limit?: number
@@ -48,6 +49,9 @@ export interface PodcastData {
   podcast_spotify_id?: string;
   podcast_has_guests?: boolean;
   podcast_has_sponsors?: boolean;
+  /** Set when Podscan knows this feed is a copy of another show. */
+  is_duplicate?: boolean;
+  is_duplicate_of?: string;
   reach?: {
     itunes?: {
       itunes_rating_average?: string;
@@ -74,8 +78,17 @@ export interface PodcastData {
   };
 }
 
+/** Podscan's note that part of a search query was not read as written. */
+export interface PodcastSearchWarning {
+  code: string
+  message: string
+  position: number
+  length: number
+}
+
 export interface PodcastSearchResponse {
   podcasts: PodcastData[];
+  query_warnings?: PodcastSearchWarning[];
   pagination?: {
     total?: string;
     per_page?: string;
@@ -124,6 +137,19 @@ export async function searchPodcastsWithMeta(
   })
   // Search results are drawn straight into the finder's cards.
   return { ...envelope, data: withDecodedPodcastNamesIn(envelope.data, ['podcasts']) }
+}
+
+/**
+ * One sentence naming the searches Podscan flagged with query_warnings (an
+ * unbalanced quote, a dangling AND), or null when there were none. Their
+ * results came back, just possibly broader than the query meant.
+ */
+export function describeQueryWarnings(queries: string[]): string | null {
+  if (queries.length === 0) return null
+  const shown = queries.slice(0, 3).map((query) => `“${query}”`).join(', ')
+  const more = queries.length > 3 ? ` and ${queries.length - 3} more` : ''
+  const subject = queries.length === 1 ? 'one search' : `${queries.length} searches`
+  return `The podcast index could not read ${subject} exactly as written (${shown}${more}), so ${queries.length === 1 ? 'its' : 'their'} results may be broader than intended.`
 }
 
 /**
@@ -282,7 +308,7 @@ export async function searchAllPodcasts(
     totalPages?: number
     abortSignal?: AbortSignal
   },
-): Promise<{ totalFound: number; totalPages: number }> {
+): Promise<{ totalFound: number; totalPages: number; failedPages: number }> {
   let totalCount: number
   let lastPage: number
   let firstPagePodcasts: PodcastData[]
@@ -306,56 +332,53 @@ export async function searchAllPodcasts(
   }
 
   if (totalCount === 0) {
-    return { totalFound: 0, totalPages: 0 }
+    return { totalFound: 0, totalPages: 0, failedPages: 0 }
   }
 
   onProgress?.(`Importing ${pagesToFetch} of ${lastPage} pages (${Math.min(pagesToFetch * 50, totalCount)} of ${totalCount} podcasts)...`)
 
   // Fetch remaining pages up to maxPages
+  let failedPages = 0
   for (let page = 2; page <= pagesToFetch; page++) {
     // Check for cancellation
     if (opts?.abortSignal?.aborted) {
       onProgress?.(`Cancelled at page ${page - 1}/${pagesToFetch}`)
-      return { totalFound: totalCount, totalPages: page - 1 }
+      return { totalFound: totalCount, totalPages: page - 1, failedPages }
     }
 
     // Rate limit: ~500ms between requests
     await new Promise(resolve => setTimeout(resolve, 500))
 
-    // Retry logic for rate limits (429)
-    let retries = 0
-    const maxRetries = 2
-    while (retries <= maxRetries) {
-      if (opts?.abortSignal?.aborted) break
+    try {
+      const response = await withPodscanRetry(
+        () => searchPodcasts({ ...options, per_page: 50, page }),
+        { shouldContinue: () => !opts?.abortSignal?.aborted },
+      )
+      const podcasts = response.podcasts || []
 
-      try {
-        const response = await searchPodcasts({ ...options, per_page: 50, page })
-        const podcasts = response.podcasts || []
-
-        if (podcasts.length > 0) {
-          await onPage(podcasts, page, pagesToFetch, totalCount)
-        }
-
-        onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
-        break // Success, exit retry loop
-      } catch (error: unknown) {
-        const requestError = error as { message?: string; status?: number }
-        const is429 = requestError.message?.includes('429') || requestError.status === 429
-        if (is429 && retries < maxRetries) {
-          retries++
-          const backoffMs = 1000 * Math.pow(2, retries) // 2s, 4s
-          onProgress?.(`Rate limited on page ${page}, retrying in ${backoffMs / 1000}s...`)
-          await new Promise(resolve => setTimeout(resolve, backoffMs))
-        } else {
-          console.error(`Failed to fetch page ${page}:`, error)
-          onProgress?.(`Page ${page}/${pagesToFetch} failed, continuing...`)
-          break
-        }
+      if (podcasts.length > 0) {
+        await onPage(podcasts, page, pagesToFetch, totalCount)
       }
+
+      onProgress?.(`Page ${page}/${pagesToFetch} — ${podcasts.length} podcasts`)
+    } catch (error) {
+      if (opts?.abortSignal?.aborted) {
+        onProgress?.(`Cancelled at page ${page - 1}/${pagesToFetch}`)
+        return { totalFound: totalCount, totalPages: page - 1, failedPages }
+      }
+      // A refused key or account fails every page the same way, so the import
+      // stops on the first one instead of burning through the rest.
+      if (classifyPodscanError(error) !== 'retryable') {
+        throw new Error(`Import stopped at page ${page}. ${podscanFailureReason(error)}`)
+      }
+      // A flaky page that is still failing after its retries is skipped.
+      failedPages += 1
+      console.error(`Failed to fetch page ${page}:`, error)
+      onProgress?.(`Page ${page}/${pagesToFetch} failed after retries, continuing...`)
     }
   }
 
-  return { totalFound: totalCount, totalPages: pagesToFetch }
+  return { totalFound: totalCount, totalPages: pagesToFetch, failedPages }
 }
 
 /**

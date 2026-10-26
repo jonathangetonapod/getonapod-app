@@ -91,6 +91,7 @@ import {
   type ProspectShortlistPodcastInput,
 } from '@/services/prospectDashboards'
 import {
+  describeQueryWarnings,
   getChartCategories,
   getChartCountries,
   getPodcastById,
@@ -1052,6 +1053,7 @@ export default function PodcastFinder({
        */
       const spent = new Set<string>()
       const queryFailures = new Map<string, number>()
+      const warnedQueries = new Set<string>()
       for (let page = 1; page <= MAX_PAGES_PER_QUERY && completed < targetCount && !stopRequestedRef.current; page += 1) {
         for (const query of normalizedQueries) {
           if (completed >= targetCount || stopRequestedRef.current) break
@@ -1074,9 +1076,12 @@ export default function PodcastFinder({
                 break
               } catch (error) {
                 const requestError = error as Error & { status?: number; retryAfterSeconds?: number }
-                const throttled = requestError.status === 429
+                // A spent daily quota is a 429 too, but waiting seconds cannot help.
+                const throttled = requestError.name !== 'PODSCAN_DAILY_LIMIT' && (
+                  requestError.status === 429
                   || requestError.name === 'PODSCAN_RATE_LIMIT'
                   || requestError.name === 'PODSCAN_CONCURRENCY_LIMIT'
+                )
                 if (!throttled || attempt === 1) throw error
                 const retrySeconds = Math.min(30, Math.max(1, requestError.retryAfterSeconds || 5))
                 setProgress({
@@ -1093,6 +1098,10 @@ export default function PodcastFinder({
             }
             if (!response) throw new Error('The podcast index did not return a search response.')
             if (response.rateLimit) setRateLimit(response.rateLimit)
+            if (response.data.query_warnings?.length) {
+              warnedQueries.add(query)
+              console.warn('Podscan query warnings:', query, response.data.query_warnings)
+            }
             const podcasts = response.data.podcasts || []
             rawResults += podcasts.length
             collected = mergeResearchResults(collected, podcasts, 'AI search', query)
@@ -1146,6 +1155,8 @@ export default function PodcastFinder({
       } else {
         toast.success(`Found ${found.toLocaleString()} podcasts for ${selectedClient.name}.`)
       }
+      const warningNote = describeQueryWarnings([...warnedQueries])
+      if (warningNote) toast.warning(warningNote, { duration: 10000 })
     } finally {
       setIsDiscovering(false)
     }

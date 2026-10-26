@@ -3,11 +3,12 @@ import { CREDIT_COSTS, creditsLabel } from '@/lib/creditCosts'
 /**
  * How the finder treats a failed podcast index request.
  *
- * - `auth`: the index refused our key (401) or our account (403). Retrying
- *   cannot fix that, so the scan stops on the first one.
+ * - `auth`: the index refused our key (401) or our account (403), or no key
+ *   is configured. Retrying cannot fix that, so the scan stops on the first one.
  * - `retryable`: a timeout, a 5xx, a rate limit or a dropped connection. Worth
  *   a couple more tries with backoff, never more.
- * - `fatal`: anything else, such as an empty credit balance. Stop and say so.
+ * - `fatal`: anything else, such as an empty credit balance or the index's
+ *   spent daily quota. Stop and say so.
  */
 export type PodscanErrorKind = 'auth' | 'retryable' | 'fatal'
 
@@ -34,7 +35,8 @@ export function podscanErrorStatus(error: unknown): number | null {
 export function classifyPodscanError(error: unknown): PodscanErrorKind {
   const { code } = fields(error)
   const status = podscanErrorStatus(error)
-  if (status === 401 || status === 403) return 'auth'
+  if (status === 401 || status === 403 || code === 'PODSCAN_NOT_CONFIGURED') return 'auth'
+  if (code === 'PODSCAN_DAILY_LIMIT') return 'fatal'
   if (code === 'PODSCAN_TIMEOUT' || code === 'PODSCAN_UNAVAILABLE'
     || code === 'PODSCAN_RATE_LIMIT' || code === 'PODSCAN_CONCURRENCY_LIMIT') return 'retryable'
   if (status === null || status === 429 || status >= 500) return 'retryable'
@@ -46,7 +48,9 @@ export function podscanFailureReason(error: unknown): string {
   const { code } = fields(error)
   const status = podscanErrorStatus(error)
   if (status === 401 || status === 403) return `The podcast index rejected the request (error ${status}).`
+  if (code === 'PODSCAN_NOT_CONFIGURED') return 'The podcast index is not set up on the server. Contact support.'
   if (code === 'INSUFFICIENT_CREDITS' || status === 402) return 'The workspace is out of credits.'
+  if (code === 'PODSCAN_DAILY_LIMIT') return 'The podcast index\'s daily request limit is used up. It resets within a day.'
   if (code === 'PODSCAN_TIMEOUT') return 'The podcast index did not respond in time.'
   if (code === 'PODSCAN_RATE_LIMIT' || code === 'PODSCAN_CONCURRENCY_LIMIT' || status === 429) {
     return 'The podcast index is busy and turned the request away.'

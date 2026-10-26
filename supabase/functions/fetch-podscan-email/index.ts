@@ -1,47 +1,38 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { requirePlatformAdmin } from '../_shared/workspaceAuth.ts'
+import {
+  createAdminClient,
+  HttpError,
+  jsonResponse,
+  optionsResponse,
+  parseJsonObject,
+  requirePlatformAdmin,
+} from '../_shared/workspaceAuth.ts'
+import { isPodscanId, podscanFetch, podscanPodcastPayload } from '../_shared/podscan.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
+const METHODS = ['POST'] as const
 const NEGATIVE_CACHE_DAYS = 30
 
 function optionalText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function podscanPodcastPayload(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  const record = value as Record<string, unknown>
-  const nested = record.podcast
-  return nested && typeof nested === 'object' && !Array.isArray(nested)
-    ? nested as Record<string, unknown>
-    : record
-}
-
 serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
   try {
-    await requirePlatformAdmin(req)
-    const { podcast_id } = await req.json()
-
-    if (!podcast_id) {
-      throw new Error('podcast_id is required')
+    if (req.method !== 'POST') {
+      throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
     }
+    await requirePlatformAdmin(req)
+    const body = await parseJsonObject(req)
+    // The id goes into the Podscan URL path, so it must be a bare id and not
+    // something like "../" that reaches a different endpoint.
+    if (!isPodscanId(body.podcast_id)) {
+      throw new HttpError(400, 'INVALID_FIELD', 'podcast_id is invalid')
+    }
+    const podcast_id = body.podcast_id
 
-    console.log('[Fetch Podscan Email] Fetching email for podcast:', podcast_id)
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const supabase = createAdminClient()
 
     // The canonical catalog is the primary free-email cache. The legacy table
     // remains during the transition and is reflected back into the catalog.
@@ -60,27 +51,19 @@ serve(async (req) => {
     if (catalogResult.error) throw catalogResult.error
     if (legacyCacheResult.error) throw legacyCacheResult.error
 
+
     const canonicalEmail = optionalText(catalogResult.data?.podscan_email)
     if (canonicalEmail) {
       console.log('[Fetch Podscan Email] Free Podscan email found in global catalog')
-      return new Response(
-        JSON.stringify({
-          success: true,
-          email: canonicalEmail,
-          podcast_id: podcast_id,
-          cached: true,
-          global: true,
-          contact_type: 'podscan_free',
-          fetched_at: catalogResult.data?.podscan_last_fetched_at,
-        }),
-        {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        email: canonicalEmail,
+        podcast_id,
+        cached: true,
+        global: true,
+        contact_type: 'podscan_free',
+        fetched_at: catalogResult.data?.podscan_last_fetched_at,
+      })
     }
 
     const legacyEmail = optionalText(legacyCacheResult.data?.email)
@@ -90,18 +73,15 @@ serve(async (req) => {
         .update({ podscan_email: legacyEmail.toLowerCase(), updated_at: new Date().toISOString() })
         .eq('id', catalogResult.data.id)
       if (syncError) throw syncError
-      return new Response(
-        JSON.stringify({
-          success: true,
-          email: legacyEmail,
-          podcast_id,
-          cached: true,
-          global: true,
-          contact_type: 'podscan_free',
-          fetched_at: legacyCacheResult.data?.fetched_at,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        email: legacyEmail,
+        podcast_id,
+        cached: true,
+        global: true,
+        contact_type: 'podscan_free',
+        fetched_at: legacyCacheResult.data?.fetched_at,
+      })
     }
 
     const negativeFetchedAt = legacyCacheResult.data?.fetched_at
@@ -114,42 +94,19 @@ serve(async (req) => {
       && !Number.isNaN(negativeFetchedAt.getTime())
       && Date.now() - negativeFetchedAt.getTime() < NEGATIVE_CACHE_DAYS * 24 * 60 * 60 * 1_000
     ) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          email: null,
-          podcast_id,
-          cached: true,
-          global: true,
-          contact_type: 'podscan_free',
-          fetched_at: legacyCacheResult.data.fetched_at,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        email: null,
+        podcast_id,
+        cached: true,
+        global: true,
+        contact_type: 'podscan_free',
+        fetched_at: legacyCacheResult.data.fetched_at,
+      })
     }
 
     // Not in cache, fetch from Podscan API
-    const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
-    if (!podscanApiKey) {
-      throw new Error('PODSCAN_API_KEY not configured')
-    }
-
-    // Call Podscan API
-    const response = await fetch(`https://podscan.fm/api/v1/podcasts/${podcast_id}`, {
-      headers: {
-        'Authorization': `Bearer ${podscanApiKey}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      }
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[Fetch Podscan Email] API error:', errorText)
-      throw new Error(`Podscan API error: ${response.status} ${response.statusText}`)
-    }
-
-    const data = await response.json()
+    const { data } = await podscanFetch(`/podcasts/${encodeURIComponent(podcast_id)}`, { retries: 1 })
     const podcast = podscanPodcastPayload(data)
 
     // Extract email from reach.email field
@@ -176,7 +133,7 @@ serve(async (req) => {
       const podcastName = optionalText(podcast.podcast_name)
         || optionalText(podcast.name)
         || optionalText(podcast.title)
-      if (!podcastName) throw new Error('Podscan returned a podcast without a name')
+      if (!podcastName) throw new HttpError(502, 'PODSCAN_INVALID_RESPONSE', 'Podscan returned a podcast without a name')
       const { data: insertedPodcast, error: insertPodcastError } = await supabase
         .from('podcasts')
         .upsert({
@@ -211,38 +168,27 @@ serve(async (req) => {
 
     console.log('[Fetch Podscan Email] Free email saved to the global catalog')
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-          email: email,
-          podcast_id: podcast_id,
-          cached: false,
-          global: true,
-          contact_type: 'podscan_free',
-        }),
-      {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    return jsonResponse(req, METHODS, 200, {
+      success: true,
+      email,
+      podcast_id,
+      cached: false,
+      global: true,
+      contact_type: 'podscan_free',
+    })
   } catch (error) {
-    console.error('[Fetch Podscan Email] Error:', error)
-
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
-      }),
-      {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    // Same { success: false, error } body as before, now with the real status
+    // (a Podscan outage is a 502, not a bad request) and a code. Database
+    // errors are logged, not echoed.
+    if (error instanceof HttpError) {
+      console.error('[Fetch Podscan Email] Error:', error.code)
+      return jsonResponse(req, METHODS, error.status, { success: false, error: error.message, code: error.code })
+    }
+    console.error('[Fetch Podscan Email] Unexpected error')
+    return jsonResponse(req, METHODS, 500, {
+      success: false,
+      error: 'Something went wrong on our side. Try again in a moment',
+      code: 'INTERNAL_ERROR',
+    })
   }
 })

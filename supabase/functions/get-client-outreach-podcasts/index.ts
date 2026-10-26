@@ -217,8 +217,8 @@ serve(async (req) => {
     console.log('[Get Outreach Podcasts] Found', podcastIds.length, 'podcast IDs')
     console.log('[Get Outreach Podcasts] Sample IDs:', JSON.stringify(podcastIds.slice(0, 3)))
 
-    // Return podcast IDs for frontend to fetch details
-    // (Supabase Edge Functions have DNS issues reaching api.podscan.fm)
+    // Only the ids: the caller fetches details through podscan-proxy, which
+    // owns the Podscan key, timeout and rate-limit handling.
     return new Response(
       JSON.stringify({
         success: true,

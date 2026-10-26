@@ -18,6 +18,18 @@ describe('classifyPodscanError', () => {
     expect(classifyPodscanError(edgeError({ code: 'PODSCAN_UPSTREAM_401', status: 502 }))).toBe('auth')
   })
 
+  it('does not retry a spent daily quota, which resets once a day', () => {
+    const error = edgeError({ code: 'PODSCAN_DAILY_LIMIT', status: 429 })
+    expect(classifyPodscanError(error)).toBe('fatal')
+    expect(podscanFailureReason(error)).toBe('The podcast index\'s daily request limit is used up. It resets within a day.')
+  })
+
+  it('treats a missing server key as final rather than a 500 worth retrying', () => {
+    const error = edgeError({ code: 'PODSCAN_NOT_CONFIGURED', status: 500 })
+    expect(classifyPodscanError(error)).toBe('auth')
+    expect(podscanFailureReason(error)).toBe('The podcast index is not set up on the server. Contact support.')
+  })
+
   it('retries timeouts, 5xx, rate limits and dropped connections', () => {
     expect(classifyPodscanError(edgeError({ code: 'PODSCAN_TIMEOUT', status: 504 }))).toBe('retryable')
     expect(classifyPodscanError(edgeError({ code: 'PODSCAN_UPSTREAM_503', status: 502 }))).toBe('retryable')

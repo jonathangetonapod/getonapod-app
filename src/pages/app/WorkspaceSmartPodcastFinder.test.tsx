@@ -36,7 +36,10 @@ vi.mock('@/services/queryGeneration', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/queryGeneration')>(),
   generatePodcastQueries: vi.fn(),
 }))
-vi.mock('@/services/podscan', () => ({ searchPodcastsWithMeta: vi.fn() }))
+vi.mock('@/services/podscan', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/podscan')>(),
+  searchPodcastsWithMeta: vi.fn(),
+}))
 vi.mock('@/services/compatibilityScoring', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/compatibilityScoring')>(),
   scoreCompatibilityBatch: vi.fn(),
@@ -462,6 +465,26 @@ describe('WorkspaceSmartPodcastFinder', () => {
     expect(items[1]).toHaveTextContent('In your database')
     expect(items[2]).toHaveTextContent('Low Fit Weekly')
     expect(screen.queryByText('Already Listed')).not.toBeInTheDocument()
+  })
+
+  it('says when the index could not read a search as written, and still ranks its results', async () => {
+    vi.mocked(searchPodcastsWithMeta).mockResolvedValue({
+      data: {
+        podcasts: [podcast('pd-high', 'Founder Stories')],
+        pagination: { last_page: '1' },
+        query_warnings: [{ code: 'UNBALANCED_QUOTE', message: 'Unbalanced quote', position: 0, length: 1 }],
+      },
+      rateLimit: {},
+    } as never)
+    renderFinder()
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Scan podcasts for Taylor Client/ }))
+
+    expect(await screen.findByText('Ranked by fit for Taylor Client')).toBeInTheDocument()
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      'The podcast index could not read one search exactly as written (“founder stories”), so its results may be broader than intended.',
+      { duration: 10000 },
+    )
   })
 
   it('adds the ranked podcasts to the client list with their compatibility scores', async () => {

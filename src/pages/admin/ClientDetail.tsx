@@ -1216,6 +1216,16 @@ export default function ClientDetail() {
         })
       }
 
+      // Shows Podscan could not return are missing from the list above.
+      const failed = typeof result.failed === 'number' ? result.failed : 0
+      if (failed > 0) {
+        toast({
+          title: `${failed} ${failed === 1 ? 'podcast' : 'podcasts'} could not be fetched`,
+          description: 'Podscan did not return them. Click again to retry, or check the IDs in the sheet.',
+          variant: 'destructive'
+        })
+      }
+
       // Refresh cache status directly without calling handleCheckDashboardCache,
       // which would reset dashboardCacheLoading mid-function and cause state conflicts.
       const podcastIds = result.podcasts.map((p: any) => p.podcast_id)

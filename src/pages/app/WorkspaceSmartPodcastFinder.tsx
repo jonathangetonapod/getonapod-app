@@ -64,7 +64,7 @@ import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClients, getWorkspaceResearchContext } from '@/services/clients'
 import { generatePodcastQueries, ProfileTooThinError, StrategyGenerationError } from '@/services/queryGeneration'
-import { searchPodcastsWithMeta } from '@/services/podscan'
+import { describeQueryWarnings, searchPodcastsWithMeta } from '@/services/podscan'
 import { InsufficientCreditsError, PartialScoringError, scoreCompatibilityBatch, type CompatibilityScore } from '@/services/compatibilityScoring'
 import {
   addClientShortlistPodcasts,
@@ -500,6 +500,13 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         setStatusMessage(`${collected.size.toLocaleString()} matches in the shared database. Expanding the search…`)
       }
 
+      // Searches Podscan flagged as not read exactly as written. Their results
+      // still count; the scan just says so at the end.
+      const warnedQueries = new Set<string>()
+      const warnAboutQueries = () => {
+        const note = describeQueryWarnings([...warnedQueries])
+        if (note) toast.warning(note, { duration: 10000 })
+      }
       const totalRequests = queries.length * PAGES_PER_QUERY
       let completedRequests = 0
       for (const query of queries) {
@@ -541,6 +548,10 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
             })
           }
           credits.successfulLookups += 1
+          if (response.data.query_warnings?.length) {
+            warnedQueries.add(query)
+            console.warn('Podscan query warnings:', query, response.data.query_warnings)
+          }
           const podcasts = response.data.podcasts || []
           for (const podcast of podcasts) collect(fromPodscan(podcast), query)
           const lastPage = Number.parseInt(String(response.data.pagination?.last_page ?? PAGES_PER_QUERY), 10)
@@ -591,6 +602,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         toast.info(collected.size > 0
           ? 'No new podcasts were found. Everything discovered is already on this client’s list.'
           : 'No podcasts matched these searches and filters.')
+        warnAboutQueries()
         return
       }
 
@@ -664,6 +676,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       ].filter(Boolean).join(', ')
       if (notes) toast.warning(`${ranked.length - unscored} ranked for ${selectedClient.name}: ${notes}.`)
       else toast.success(`${ranked.length} podcasts ranked for ${selectedClient.name}.`)
+      warnAboutQueries()
     } catch (error) {
       if (scanRunId.current !== runId) return
       // A scoring failure must not bin discovery the workspace already paid

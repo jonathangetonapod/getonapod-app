@@ -1248,7 +1248,7 @@ export default function PodcastDatabase() {
     let totalSaved = 0
 
     try {
-      await searchAllPodcasts(
+      const { failedPages } = await searchAllPodcasts(
         buildBulkSearchOptions(),
         async (podcasts, pageNum, totalPages, totalCount) => {
           const { saved } = await savePodcastsToDatabase(podcasts)
@@ -1271,6 +1271,8 @@ export default function PodcastDatabase() {
 
       if (controller.signal.aborted) {
         toast.success(`Cancelled. ${totalSaved} podcasts saved before stopping.`)
+      } else if (failedPages > 0) {
+        toast.warning(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}". ${failedPages} ${failedPages === 1 ? 'page' : 'pages'} could not be fetched and ${failedPages === 1 ? 'was' : 'were'} skipped.`)
       } else {
         toast.success(`Imported ${totalSaved} podcasts from "${bulkImportKeywords}"`)
       }
@@ -1279,7 +1281,8 @@ export default function PodcastDatabase() {
       refetch()
     } catch (error) {
       console.error('Bulk import failed:', error)
-      toast.error(error instanceof Error ? error.message : 'Bulk import failed')
+      const reason = error instanceof Error ? error.message : 'Bulk import failed.'
+      toast.error(totalSaved > 0 ? `${reason} ${totalSaved} podcasts were saved before it stopped.` : reason)
       setBulkImportProgress('Import failed.')
     } finally {
       setIsBulkImporting(false)

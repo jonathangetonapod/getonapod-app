@@ -2,6 +2,15 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 import {
+  isPodscanId,
+  type PodscanDemographics,
+  type PodscanPodcast,
+  podscanApiKey,
+  podscanFetch,
+  podscanPodcastPayload,
+  podscanRating,
+} from '../_shared/podscan.ts'
+import {
   HttpError,
   parseJsonObject,
   createAdminClient,
@@ -528,6 +537,9 @@ serve(async (req) => {
     // Stats tracking
     const stats = {
       podscanFetched: 0,
+      // Shows Podscan could not return. They used to vanish from the list
+      // without a word; now the response counts and names them.
+      podscanFailed: 0,
       demographicsFetched: 0,
       aiAnalysesGenerated: 0,
       cachedWithAi: cachedPodcasts.filter(p => p.ai_fit_reasons && p.ai_fit_reasons.length > 0).length,
@@ -738,13 +750,13 @@ serve(async (req) => {
 
     // Fetch missing podcasts from Podscan (+ AI analysis if not skipping)
     const newPodcasts: CachedPodcast[] = []
+    const podscanFailedIds: string[] = []
     const startTime = Date.now()
     const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
     let stoppedEarly = false
 
     if (missingPodcastIds.length > 0) {
-      const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
-      if (!podscanApiKey) {
+      if (!podscanApiKey()) {
         throw new Error('PODSCAN_API_KEY not configured')
       }
 
@@ -771,21 +783,24 @@ serve(async (req) => {
           const batchPromise = Promise.all(
             batch.map(async (podcastId): Promise<CachedPodcast | null> => {
             try {
-              // 1. Fetch from Podscan
+              // 1. Fetch from Podscan (ids come from a sheet, so check them
+              // before they go into the URL path)
               console.log('[Get Client Podcasts] Fetching from Podscan:', podcastId)
-              const podscanRes = await fetch(
-                `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
-              )
-
-              if (!podscanRes.ok) {
+              let podcast: PodscanPodcast
+              try {
+                if (!isPodscanId(podcastId)) throw new Error('invalid podcast id')
+                podcast = podscanPodcastPayload((await podscanFetch(
+                  `/podcasts/${encodeURIComponent(podcastId)}`,
+                  { retries: 2 },
+                )).data) as PodscanPodcast
+              } catch (_error) {
                 console.error('[Get Client Podcasts] Podscan error for', podcastId)
+                stats.podscanFailed++
+                podscanFailedIds.push(podcastId)
                 return null
               }
 
               stats.podscanFetched++
-              const podscanData = await podscanRes.json()
-              const podcast = podscanData.podcast || podscanData
 
               const podcastData: CachedPodcast = {
                 podcast_id: podcastId,
@@ -794,7 +809,7 @@ serve(async (req) => {
                 podcast_image_url: podcast.podcast_image_url || podcast.thumbnail || null,
                 podcast_url: podcast.podcast_url || null,
                 publisher_name: podcast.publisher_name || null,
-                itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.rating || null,
+                itunes_rating: podscanRating(podcast),
                 episode_count: podcast.episode_count || null,
                 audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
                 last_posted_at: podcast.last_posted_at || null,
@@ -810,17 +825,15 @@ serve(async (req) => {
               // 2. Fetch demographics from Podscan
               try {
                 console.log('[Get Client Podcasts] Fetching demographics for:', podcastData.podcast_name)
-                const demoRes = await fetch(
-                  `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
+                // Most shows have no demographics; a 404 here is normal.
+                const { data: demoData } = await podscanFetch<PodscanDemographics | null>(
+                  `/podcasts/${encodeURIComponent(podcastId)}/demographics`,
+                  { retries: 1 },
                 )
-                if (demoRes.ok) {
-                  const demoData = await demoRes.json()
-                  if (demoData && demoData.episodes_analyzed) {
-                    podcastData.demographics = demoData
-                    stats.demographicsFetched++
-                    console.log('[Get Client Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
-                  }
+                if (demoData && demoData.episodes_analyzed) {
+                  podcastData.demographics = demoData
+                  stats.demographicsFetched++
+                  console.log('[Get Client Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
                 }
               } catch (demoErr) {
                 console.log('[Get Client Podcasts] No demographics available')
@@ -954,6 +967,8 @@ serve(async (req) => {
         total: orderedPodcasts.length,
         cached: cachedPodcasts.length,
         fetched: newPodcasts.length,
+        failed: stats.podscanFailed,
+        failedPodcastIds: podscanFailedIds,
         stoppedEarly,
         remaining: stoppedEarly ? remaining : 0,
         cachePerformance: {

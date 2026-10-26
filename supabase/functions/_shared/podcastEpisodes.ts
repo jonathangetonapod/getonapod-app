@@ -3,6 +3,8 @@
 // degrade gracefully — every failure path returns [] / stored data and the
 // prompts are written to handle missing episode data explicitly.
 
+import { isPodscanId, podscanFetch } from './podscan.ts'
+
 /** A host or guest from Podscan's per-episode speaker analysis. */
 export interface EpisodePerson {
   name: string
@@ -29,13 +31,8 @@ export interface RecentEpisode {
   topics: string[]
 }
 
-const PODSCAN_BASE = 'https://podscan.fm/api/v1'
 const MAX_EPISODES = 3
 const MAX_TRANSCRIPT_CHARS = 60_000
-
-function podscanKey(): string | null {
-  return (Deno.env.get('PODSCAN_API_KEY') || Deno.env.get('PODSCAN_TOKEN'))?.trim() || null
-}
 
 function text(value: unknown, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : ''
@@ -44,15 +41,12 @@ function text(value: unknown, max: number): string {
 // Host names from Podscan's aggregated episode analysis. Best-effort like
 // everything else in this module — failures return [].
 export async function fetchPodcastHosts(podscanId: string): Promise<string[]> {
-  const apiKey = podscanKey()
-  if (!apiKey || !/^[a-zA-Z0-9_-]+$/.test(podscanId)) return []
+  if (!isPodscanId(podscanId)) return []
   try {
-    const response = await fetch(`${PODSCAN_BASE}/podcasts/${encodeURIComponent(podscanId)}/analysis`, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
-    })
-    if (!response.ok) return []
-    const payload = await response.json().catch(() => null) as { hosts?: unknown[] } | null
+    const { data: payload } = await podscanFetch<{ hosts?: unknown[] } | null>(
+      `/podcasts/${encodeURIComponent(podscanId)}/analysis`,
+      { timeoutMs: 15_000, retries: 1 },
+    )
     if (!Array.isArray(payload?.hosts)) return []
     return payload.hosts.flatMap((raw) => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
@@ -71,29 +65,25 @@ export async function fetchPodcastHosts(podscanId: string): Promise<string[]> {
  * responded and the show has no processable episodes.
  */
 export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpisode[] | null> {
-  const apiKey = podscanKey()
-  if (!apiKey || !/^[a-zA-Z0-9_-]+$/.test(podscanId)) return null
+  if (!isPodscanId(podscanId)) return null
 
   try {
-    const url = new URL(`${PODSCAN_BASE}/podcasts/${encodeURIComponent(podscanId)}/episodes`)
-    url.searchParams.set('per_page', String(MAX_EPISODES))
-    url.searchParams.set('order_by', 'posted_at')
-    url.searchParams.set('order_dir', 'desc')
-    url.searchParams.set('show_full_podcast', 'false')
-    // Plain prose keeps prompt input compact — no timestamps or speaker labels.
-    url.searchParams.set('transcript_formatter', 'plain_text')
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(15_000),
+    const params = new URLSearchParams({
+      per_page: String(MAX_EPISODES),
+      order_by: 'posted_at',
+      order_dir: 'desc',
+      show_full_podcast: 'false',
+      // Podscan only looks back a year unless told otherwise, which made a
+      // show that paused for thirteen months read as having no episodes.
+      since: '2000-01-01 00:00:00',
+      // Plain prose keeps prompt input compact — no timestamps or speaker labels.
+      transcript_formatter: 'plain_text',
     })
-    if (!response.ok) {
-      console.warn('[Podcast Episodes] Podscan returned a non-success status', response.status)
-      return null
-    }
-    const payload = await response.json().catch(() => null) as
+    const { data: payload } = await podscanFetch<
       | { episodes?: unknown[]; data?: unknown[] }
       | unknown[]
       | null
+    >(`/podcasts/${encodeURIComponent(podscanId)}/episodes`, { params, timeoutMs: 15_000, retries: 1 })
     const rows = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.episodes)
@@ -114,7 +104,9 @@ export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpis
       const metadata = (episode.metadata && typeof episode.metadata === 'object' && !Array.isArray(episode.metadata)
         ? episode.metadata
         : {}) as Record<string, unknown>
-      const persons = (value: unknown, nameKey: string, companyKey: string, roleKey: string): EpisodePerson[] =>
+      // Podscan's host entries carry no occupation (guests do), so a host's
+      // role is always null rather than read from a field that is never sent.
+      const persons = (value: unknown, nameKey: string, companyKey: string, roleKey: string | null): EpisodePerson[] =>
         (Array.isArray(value) ? value : []).flatMap((entry) => {
           if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
           const record = entry as Record<string, unknown>
@@ -123,7 +115,7 @@ export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpis
           return [{
             name,
             company: text(record[companyKey], 200).trim() || null,
-            role: text(record[roleKey], 200).trim() || null,
+            role: roleKey ? text(record[roleKey], 200).trim() || null : null,
           }]
         }).slice(0, 6)
       const strings = (value: unknown, max: number): string[] =>
@@ -142,7 +134,7 @@ export async function fetchRecentEpisodes(podscanId: string): Promise<RecentEpis
         duration_seconds: typeof episode.episode_duration === 'number' ? episode.episode_duration : null,
         word_count: typeof episode.episode_word_count === 'number' ? episode.episode_word_count : null,
         has_guests: episode.episode_has_guests === true || metadata.has_guests === true,
-        hosts: persons(metadata.hosts, 'host_name', 'host_company', 'host_occupation'),
+        hosts: persons(metadata.hosts, 'host_name', 'host_company', null),
         guests: persons(metadata.guests, 'guest_name', 'guest_company', 'guest_occupation'),
         summary: text(metadata.summary_long ?? metadata.summary_short, 2_000) || null,
         keywords: strings(metadata.summary_keywords, 20),

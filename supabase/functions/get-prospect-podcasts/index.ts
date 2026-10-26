@@ -3,6 +3,15 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { ensureWorkspaceOriginAllowed, getCorsHeaders } from '../_shared/cors.ts'
 import { getCachedPodcasts, batchUpsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
 import {
+  isPodscanId,
+  type PodscanDemographics,
+  type PodscanPodcast,
+  podscanApiKey,
+  podscanFetch,
+  podscanPodcastPayload,
+  podscanRating,
+} from '../_shared/podscan.ts'
+import {
   HttpError,
   parseJsonObject,
   requireOnlyKeys,
@@ -928,6 +937,9 @@ serve(async (req) => {
     // Stats tracking
     const stats = {
       podscanFetched: 0,
+      // Shows Podscan could not return. They used to vanish from the list
+      // without a word; now the response counts and names them.
+      podscanFailed: 0,
       demographicsFetched: 0,
       aiAnalysesGenerated: 0,
       cachedWithAi: cachedPodcasts.filter(p => p.ai_fit_reasons && p.ai_fit_reasons.length > 0).length,
@@ -1160,13 +1172,13 @@ serve(async (req) => {
 
     // Fetch missing podcasts from Podscan (+ AI analysis if not skipping)
     const newPodcasts: CachedPodcast[] = []
+    const podscanFailedIds: string[] = []
     const startTime = Date.now()
     const MAX_RUNTIME_MS = 50000 // 50 seconds max to avoid timeout
     let stoppedEarly = false
 
     if (missingPodcastIds.length > 0) {
-      const podscanApiKey = Deno.env.get('PODSCAN_API_KEY')
-      if (!podscanApiKey) {
+      if (!podscanApiKey()) {
         throw new Error('PODSCAN_API_KEY not configured')
       }
 
@@ -1195,39 +1207,42 @@ serve(async (req) => {
             try {
               // 1. Fetch podcast data + demographics from Podscan in parallel
               console.log('[Get Prospect Podcasts] Fetching from Podscan:', podcastId)
-              const [podscanRes, demoRes] = await Promise.all([
-                fetch(
-                  `https://podscan.fm/api/v1/podcasts/${podcastId}`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
+              // Ids come from a sheet, so they are checked before they go
+              // into the URL path. Most shows have no demographics, so that
+              // half is best-effort (a 404 there is normal).
+              if (!isPodscanId(podcastId)) {
+                console.error('[Get Prospect Podcasts] Invalid podcast id in sheet:', podcastId)
+                stats.podscanFailed++
+                podscanFailedIds.push(podcastId)
+                return null
+              }
+              const [podscanResult, demoResult] = await Promise.allSettled([
+                podscanFetch(`/podcasts/${encodeURIComponent(podcastId)}`, { retries: 2 }),
+                podscanFetch<PodscanDemographics | null>(
+                  `/podcasts/${encodeURIComponent(podcastId)}/demographics`,
+                  { retries: 1 },
                 ),
-                fetch(
-                  `https://podscan.fm/api/v1/podcasts/${podcastId}/demographics`,
-                  { headers: { 'Authorization': `Bearer ${podscanApiKey}`, 'Accept': 'application/json' }, signal: AbortSignal.timeout(20_000) }
-                ).catch(() => null),
               ])
 
-              if (!podscanRes.ok) {
+              if (podscanResult.status === 'rejected') {
                 console.error('[Get Prospect Podcasts] Podscan error for', podcastId)
+                stats.podscanFailed++
+                podscanFailedIds.push(podcastId)
                 return null
               }
 
               stats.podscanFetched++
-              const podscanData = await podscanRes.json()
-              const podcast = podscanData.podcast || podscanData
+              const podcast = podscanPodcastPayload(podscanResult.value.data) as PodscanPodcast
 
               // Process demographics response
               let demographics: Record<string, unknown> | null = null
-              if (demoRes && demoRes.ok) {
-                try {
-                  const demoData = await demoRes.json()
-                  if (demoData && demoData.episodes_analyzed) {
-                    demographics = demoData
-                    stats.demographicsFetched++
-                    console.log('[Get Prospect Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
-                  }
-                } catch {
-                  console.log('[Get Prospect Podcasts] No demographics available')
-                }
+              const demoData = demoResult.status === 'fulfilled' ? demoResult.value.data : null
+              if (demoData && demoData.episodes_analyzed) {
+                demographics = demoData
+                stats.demographicsFetched++
+                console.log('[Get Prospect Podcasts] Demographics loaded:', demoData.episodes_analyzed, 'episodes')
+              } else {
+                console.log('[Get Prospect Podcasts] No demographics available')
               }
 
               const podcastScores = sheetScores.get(podcastId)
@@ -1238,7 +1253,7 @@ serve(async (req) => {
                 podcast_image_url: podcast.podcast_image_url || podcast.thumbnail || null,
                 podcast_url: podcast.podcast_url || null,
                 publisher_name: podcast.publisher_name || null,
-                itunes_rating: podcast.reach?.itunes?.itunes_rating_average || podcast.rating || null,
+                itunes_rating: podscanRating(podcast),
                 episode_count: podcast.episode_count || null,
                 audience_size: podcast.reach?.audience_size || podcast.audience_size || null,
                 podscan_email: podcast.reach?.email || null,
@@ -1405,6 +1420,8 @@ serve(async (req) => {
         total: orderedPodcasts.length,
         cached: cachedPodcasts.length,
         fetched: newPodcasts.length,
+        failed: stats.podscanFailed,
+        failedPodcastIds: podscanFailedIds,
         stoppedEarly,
         remaining: stoppedEarly ? remaining : 0,
         cachePerformance: {

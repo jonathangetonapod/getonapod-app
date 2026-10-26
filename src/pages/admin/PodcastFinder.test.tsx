@@ -57,7 +57,8 @@ vi.mock('@/services/prospectDashboards', async () => {
     getWorkspaceProspects: vi.fn(),
   }
 })
-vi.mock('@/services/podscan', () => ({
+vi.mock('@/services/podscan', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/podscan')>(),
   getChartCategories: vi.fn(),
   getChartCountries: vi.fn(),
   getPodcastById: vi.fn(),

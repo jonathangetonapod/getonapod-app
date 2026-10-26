@@ -14,10 +14,14 @@ import {
   requireWorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
+import {
+  type PodscanFetchResult,
+  PodscanRateLimitError,
+  podscanFetch,
+  withoutDuplicateShows,
+} from '../_shared/podscan.ts'
 
 const METHODS = ['POST'] as const
-const API_BASE = 'https://podscan.fm/api/v1'
-const PODSCAN_TIMEOUT_MS = 20_000
 const SEARCH_KEYS = new Set([
   'query',
   'category_ids',
@@ -37,12 +41,6 @@ const SEARCH_KEYS = new Set([
   'has_sponsors',
   'page',
 ])
-
-function requiredSecret(): string {
-  const value = (Deno.env.get('PODSCAN_API_KEY') || Deno.env.get('PODSCAN_TOKEN'))?.trim()
-  if (!value) throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Podscan is not configured')
-  return value
-}
 
 function podcastId(value: unknown): string {
   const id = requireString(value, 'podcast_id', { max: 200 })
@@ -82,121 +80,18 @@ function searchParams(value: unknown): URLSearchParams {
   return params
 }
 
-interface PodscanFetchResult {
-  data: unknown
-  rateLimit: {
-    limit?: number
-    remaining?: number
-    retryAfterSeconds?: number
-    concurrencyLimit?: number
-  }
-}
-
-class PodscanRateLimitError extends HttpError {
-  readonly retryAfter: string | null
-  readonly concurrencyLimit: string | null
-
-  constructor(code: string, message: string, headers: Headers) {
-    super(429, code, message)
-    this.retryAfter = headers.get('Retry-After')
-    this.concurrencyLimit = headers.get('X-Concurrency-Limit')
-  }
-}
-
-function positiveHeaderNumber(headers: Headers, name: string): number | undefined {
-  const rawValue = headers.get(name)
-  if (rawValue === null || rawValue.trim() === '') return undefined
-  const value = Number(rawValue)
-  return Number.isFinite(value) && value >= 0 ? value : undefined
-}
-
-function podscanTransportError(error: unknown): HttpError {
-  if (error instanceof HttpError) return error
-  if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-    return new HttpError(504, 'PODSCAN_TIMEOUT', 'Podscan did not respond in time')
-  }
-  return new HttpError(502, 'PODSCAN_UNAVAILABLE', 'Podscan could not be reached')
-}
-
 async function fetchPodscan(path: string, params?: URLSearchParams): Promise<PodscanFetchResult> {
-  const url = new URL(`${API_BASE}${path}`)
-  if (params) url.search = params.toString()
+  // No retries here: the browser decides, and each retry is its own charge.
+  return await podscanFetch(path, { params })
+}
 
-  // One signal covers the request and the body read, so a stalled index
-  // cannot hold the request open; the caller's catch refunds the charge.
-  const signal = AbortSignal.timeout(PODSCAN_TIMEOUT_MS)
-  let response: Response
-  try {
-    response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${requiredSecret()}`,
-        Accept: 'application/json',
-      },
-      signal,
-    })
-  } catch (error) {
-    throw podscanTransportError(error)
-  }
-
-  const declaredLength = Number(response.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declaredLength) && declaredLength > 5_000_000) {
-    throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
-  }
-
-  let raw: string
-  try {
-    raw = await response.text()
-  } catch (error) {
-    throw podscanTransportError(error)
-  }
-  if (new TextEncoder().encode(raw).byteLength > 5_000_000) {
-    throw new HttpError(502, 'PODSCAN_RESPONSE_TOO_LARGE', 'Podscan returned an oversized response')
-  }
-  if (!response.ok) {
-    if (response.status === 429) {
-      let upstreamCode = ''
-      try {
-        const payload = JSON.parse(raw) as { error?: unknown; code?: unknown }
-        upstreamCode = typeof payload.code === 'string'
-          ? payload.code
-          : typeof payload.error === 'string' ? payload.error : ''
-      } catch {
-        // The status and headers still provide a safe retry path.
-      }
-      const concurrencyExceeded = upstreamCode.includes('concurrency_limit_exceeded')
-      throw new PodscanRateLimitError(
-        concurrencyExceeded ? 'PODSCAN_CONCURRENCY_LIMIT' : 'PODSCAN_RATE_LIMIT',
-        concurrencyExceeded ? 'Podscan concurrency limit reached' : 'Podscan rate limit reached',
-        response.headers,
-      )
-    }
-    // A 403 means Podscan knew the key and refused it (a bad key is a 401), and
-    // only the body says why: plan, quota or a block. Logged without the key.
-    const upstreamDetail = raw
-      .replaceAll(requiredSecret(), '[redacted]')
-      .replace(/\s+/gu, ' ')
-      .slice(0, 200)
-    console.error(`[podscan-proxy] upstream ${response.status} on ${path}: ${upstreamDetail}`)
-    throw new HttpError(
-      502,
-      `PODSCAN_UPSTREAM_${response.status}`,
-      `Podscan API error: ${response.status}`,
-    )
-  }
-
-  try {
-    return {
-      data: JSON.parse(raw),
-      rateLimit: {
-        limit: positiveHeaderNumber(response.headers, 'X-RateLimit-Limit'),
-        remaining: positiveHeaderNumber(response.headers, 'X-RateLimit-Remaining'),
-        retryAfterSeconds: positiveHeaderNumber(response.headers, 'Retry-After'),
-        concurrencyLimit: positiveHeaderNumber(response.headers, 'X-Concurrency-Limit'),
-      },
-    }
-  } catch {
-    throw new HttpError(502, 'PODSCAN_INVALID_RESPONSE', 'Podscan returned an invalid response')
-  }
+/** The same envelope with Podscan-flagged duplicate feeds left out of a list. */
+function dropDuplicateShows(result: PodscanFetchResult, listKey: string): PodscanFetchResult {
+  const data = result.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return result
+  const list = (data as Record<string, unknown>)[listKey]
+  if (!Array.isArray(list)) return result
+  return { ...result, data: { ...data, [listKey]: withoutDuplicateShows(list) } }
 }
 
 serve(async (req) => {
@@ -238,13 +133,16 @@ serve(async (req) => {
 
     if (action === 'search') {
       requireOnlyKeys(body, ['action', 'options', 'workspace_id'])
-      result = await fetchPodscan('/podcasts/search', searchParams(body.options))
+      result = dropDuplicateShows(await fetchPodscan('/podcasts/search', searchParams(body.options)), 'podcasts')
     } else if (action === 'podcast') {
       requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
       result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}`)
     } else if (action === 'related') {
       requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
-      result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`)
+      result = dropDuplicateShows(
+        await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/related_podcasts`),
+        'related_podcasts',
+      )
     } else if (action === 'demographics') {
       requireOnlyKeys(body, ['action', 'podcast_id', 'workspace_id'])
       result = await fetchPodscan(`/podcasts/${encodeURIComponent(podcastId(body.podcast_id))}/demographics`)

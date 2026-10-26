@@ -68,7 +68,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // client's pitch profile and stored episode titles (2026-10-27).
   // 183: email moved to n8n — _shared/appEmail.ts and its test added,
   // _shared/email-templates.ts removed (2026-10-26).
-  edgeTypeScriptFiles: 183,
+  // 185 with _shared/podscan.ts and its test: the one Podscan HTTP client
+  // every function now shares (2026-10-26).
+  edgeTypeScriptFiles: 185,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

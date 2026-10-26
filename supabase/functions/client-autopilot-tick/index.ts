@@ -10,8 +10,8 @@ import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shar
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
+import { isPodscanAuthError, podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
 
-const PODSCAN_BASE = 'https://podscan.fm/api/v1'
 const QUERY_COUNT = 4
 const RESULTS_PER_QUERY = 25
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -63,6 +63,15 @@ function backoffFor(
 
 class AnthropicError extends Error {}
 class CatalogMergeError extends Error {}
+/**
+ * The podcast index could not be searched. Kept apart from "searched and found
+ * nothing": a refused key used to read as a quiet week with no new shows.
+ */
+class PodscanSearchError extends Error {
+  constructor(readonly refused: boolean) {
+    super(refused ? 'podscan refused the request' : 'podscan search failed')
+  }
+}
 
 interface RunFailure {
   message: string
@@ -80,6 +89,11 @@ function classifyFailure(error: unknown): RunFailure {
   }
   if (error instanceof AnthropicError) {
     return { message: 'The AI provider did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
+  }
+  if (error instanceof PodscanSearchError) {
+    return error.refused
+      ? { message: 'The podcast index refused our search. Autopilot will retry; if this keeps happening, contact support.', retryMs: ACTION_RETRY_MS }
+      : { message: 'The podcast index did not respond. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
   }
   if (error instanceof CatalogMergeError) {
     return { message: 'Matches could not be saved to the podcast catalog. Autopilot will retry shortly.', retryMs: TRANSIENT_RETRY_MS }
@@ -161,55 +175,53 @@ async function anthropicJsonOnce(
   return JSON.parse(text.replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, ''))
 }
 
+/** Throws PodscanSearchError when the index could not be searched. */
 async function searchPodscan(query: string): Promise<CandidatePodcast[]> {
-  const apiKey = (Deno.env.get('PODSCAN_API_KEY') || Deno.env.get('PODSCAN_TOKEN'))?.trim()
-  if (!apiKey) return []
   const minPostedAt = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  const url = new URL(`${PODSCAN_BASE}/podcasts/search`)
-  url.searchParams.set('query', query)
-  url.searchParams.set('per_page', String(RESULTS_PER_QUERY))
-  url.searchParams.set('order_by', 'best_match')
-  url.searchParams.set('order_dir', 'desc')
-  url.searchParams.set('search_fields', 'name,description,publisher_name')
-  url.searchParams.set('has_guests', 'true')
-  url.searchParams.set('min_last_episode_posted_at', minPostedAt)
+  const params = new URLSearchParams({
+    query,
+    per_page: String(RESULTS_PER_QUERY),
+    order_by: 'best_match',
+    order_dir: 'desc',
+    search_fields: 'name,description,publisher_name',
+    has_guests: 'true',
+    min_last_episode_posted_at: minPostedAt,
+  })
+  let payload: { podcasts?: Array<Record<string, unknown>> } | null
   try {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!response.ok) return []
-    const payload = await response.json() as { podcasts?: Array<Record<string, unknown>> }
-    return (payload.podcasts ?? []).flatMap((raw): CandidatePodcast[] => {
-      const id = typeof raw.podcast_id === 'string' ? raw.podcast_id : ''
-      const name = typeof raw.podcast_name === 'string' ? raw.podcast_name : ''
-      if (!id || !name) return []
-      const reach = (raw.reach ?? {}) as Record<string, unknown>
-      const itunes = (reach.itunes ?? {}) as Record<string, unknown>
-      return [{
-        podcast_id: id,
-        podcast_name: name.slice(0, 500),
-        podcast_description: typeof raw.podcast_description === 'string' ? raw.podcast_description.slice(0, 5_000) : null,
-        podcast_image_url: typeof raw.podcast_image_url === 'string' ? raw.podcast_image_url : null,
-        podcast_url: typeof raw.podcast_url === 'string' ? raw.podcast_url : null,
-        publisher_name: typeof raw.publisher_name === 'string' ? raw.publisher_name : null,
-        itunes_rating: typeof itunes.itunes_rating_average === 'string'
-          ? Number.parseFloat(itunes.itunes_rating_average) || null
-          : null,
-        episode_count: typeof raw.episode_count === 'number' ? raw.episode_count : null,
-        audience_size: typeof reach.audience_size === 'number' ? reach.audience_size : null,
-        last_posted_at: typeof raw.last_posted_at === 'string' ? raw.last_posted_at : null,
-        podcast_categories: Array.isArray(raw.podcast_categories) ? raw.podcast_categories : null,
-        language: typeof raw.language === 'string' ? raw.language : null,
-        region: typeof raw.region === 'string' ? raw.region : null,
-        podcast_email: typeof reach.email === 'string' ? reach.email : null,
-        rss_url: typeof raw.rss_url === 'string' ? raw.rss_url : null,
-      }]
-    })
-  } catch (_error) {
-    console.warn('[Autopilot] Podscan search was unavailable')
-    return []
+    payload = (await podscanFetch<{ podcasts?: Array<Record<string, unknown>> } | null>(
+      '/podcasts/search',
+      { params, retries: 2 },
+    )).data
+  } catch (error) {
+    throw new PodscanSearchError(isPodscanAuthError(error))
   }
+  return withoutDuplicateShows(payload?.podcasts ?? []).flatMap((raw): CandidatePodcast[] => {
+    const id = typeof raw.podcast_id === 'string' ? raw.podcast_id : ''
+    const name = typeof raw.podcast_name === 'string' ? raw.podcast_name : ''
+    if (!id || !name) return []
+    const reach = (raw.reach ?? {}) as Record<string, unknown>
+    const itunes = (reach.itunes ?? {}) as Record<string, unknown>
+    return [{
+      podcast_id: id,
+      podcast_name: name.slice(0, 500),
+      podcast_description: typeof raw.podcast_description === 'string' ? raw.podcast_description.slice(0, 5_000) : null,
+      podcast_image_url: typeof raw.podcast_image_url === 'string' ? raw.podcast_image_url : null,
+      podcast_url: typeof raw.podcast_url === 'string' ? raw.podcast_url : null,
+      publisher_name: typeof raw.publisher_name === 'string' ? raw.publisher_name : null,
+      itunes_rating: typeof itunes.itunes_rating_average === 'string'
+        ? Number.parseFloat(itunes.itunes_rating_average) || null
+        : null,
+      episode_count: typeof raw.episode_count === 'number' ? raw.episode_count : null,
+      audience_size: typeof reach.audience_size === 'number' ? reach.audience_size : null,
+      last_posted_at: typeof raw.last_posted_at === 'string' ? raw.last_posted_at : null,
+      podcast_categories: Array.isArray(raw.podcast_categories) ? raw.podcast_categories : null,
+      language: typeof raw.language === 'string' ? raw.language : null,
+      region: typeof raw.region === 'string' ? raw.region : null,
+      podcast_email: typeof reach.email === 'string' ? reach.email : null,
+      rss_url: typeof raw.rss_url === 'string' ? raw.rss_url : null,
+    }]
+  })
 }
 
 serve(async (req) => {
@@ -354,14 +366,25 @@ serve(async (req) => {
     const existing = new Set((existingRows ?? []).map((row) => String(row.podcast_id).toLowerCase()))
 
     const collected = new Map<string, CandidatePodcast>()
+    // One query the index could not answer still leaves the others; a refused
+    // key, or every query failing, ends the run as a failure the client page
+    // shows rather than a week with "0 added".
+    let failedSearch: PodscanSearchError | null = null
     for (const query of queries) {
       podscanCalls += 1
-      for (const podcast of await searchPodscan(query)) {
-        const key = podcast.podcast_id.toLowerCase()
-        if (!existing.has(key) && !collected.has(key)) collected.set(key, podcast)
+      try {
+        for (const podcast of await searchPodscan(query)) {
+          const key = podcast.podcast_id.toLowerCase()
+          if (!existing.has(key) && !collected.has(key)) collected.set(key, podcast)
+        }
+      } catch (error) {
+        if (!(error instanceof PodscanSearchError) || error.refused) throw error
+        failedSearch = error
+        console.warn('[Autopilot] Podscan search failed for one query')
       }
       await new Promise((resolve) => setTimeout(resolve, 600))
     }
+    if (failedSearch && collected.size === 0) throw failedSearch
     const candidates = [...collected.values()].slice(0, 40)
     if (candidates.length === 0) {
       await admin.from('client_autopilot_settings')
