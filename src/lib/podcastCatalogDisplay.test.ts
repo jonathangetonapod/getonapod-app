@@ -3,8 +3,6 @@ import {
   formatAudience,
   formatDay,
   formatRelativeAge,
-  isStaleCatalogDate,
-  oldestCatalogUpdate,
   podcastEmailStatus,
   podcastRating,
   shortClientName,
@@ -47,15 +45,9 @@ describe('podcastCatalogDisplay', () => {
     expect(formatRelativeAge(null, now)).toBeNull()
   })
 
-  it('summarises the page by its oldest refresh and flags it past 90 days', () => {
-    const oldest = oldestCatalogUpdate([
-      { ...base, catalog_updated_at: '2026-09-01T00:00:00.000Z' },
-      { ...base, catalog_updated_at: '2026-02-03T00:00:00.000Z' },
-      { ...base, catalog_updated_at: null },
-    ])
-    expect(formatDay(oldest)).toBe('Feb 3, 2026')
-    expect(isStaleCatalogDate(oldest, now)).toBe(true)
-    expect(isStaleCatalogDate('2026-09-01T00:00:00.000Z', now)).toBe(false)
+  it('formats a refresh date as a short day', () => {
+    expect(formatDay('2026-02-03T12:00:00.000Z')).toBe('Feb 3, 2026')
+    expect(formatDay(null)).toBeNull()
   })
 
   it('formats audience and client names for tight spaces', () => {

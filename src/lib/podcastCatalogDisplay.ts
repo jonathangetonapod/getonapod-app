@@ -7,8 +7,6 @@ import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCat
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000
-/** Past this, catalogue data is old enough that a booker should know. */
-export const STALE_CATALOG_DAYS = 90
 
 const compactNumber = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
@@ -105,27 +103,6 @@ export function formatRelativeAge(value: string | null, now: Date = new Date()):
   if (days < 365) return `${Math.floor(days / 30)} mo ago`
   const years = Math.floor(days / 365)
   return years === 1 ? '1 yr ago' : `${years} yrs ago`
-}
-
-export function isStaleCatalogDate(value: string | null, now: Date = new Date()): boolean {
-  const date = parsedDate(value)
-  return Boolean(date) && now.getTime() - date.getTime() > STALE_CATALOG_DAYS * DAY_MS
-}
-
-/*
- * There is no catalogue-wide refresh date, only one per show. The oldest on
- * the page is the honest summary: a newest-date would read fresh while most
- * of the rows on screen were months old.
- */
-export function oldestCatalogUpdate(podcasts: WorkspacePodcastCatalogItem[]): string | null {
-  let oldest: { value: string; time: number } | null = null
-  for (const podcast of podcasts) {
-    const date = parsedDate(podcast.catalog_updated_at)
-    if (date && (!oldest || date.getTime() < oldest.time)) {
-      oldest = { value: podcast.catalog_updated_at as string, time: date.getTime() }
-    }
-  }
-  return oldest?.value ?? null
 }
 
 /** "Dallas Fontaine" reads as "Dallas" on a button; the toast keeps the full name. */

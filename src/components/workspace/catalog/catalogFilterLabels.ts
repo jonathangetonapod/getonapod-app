@@ -19,8 +19,7 @@ export const CONTACT_LABELS: Record<WorkspacePodcastCatalogContactFilter, string
   none: 'No email',
 }
 
-// "Still publishing" is the catalog's own active flag, not a date window; the
-// dated choices below it are the ones that check the last episode.
+// "Still publishing" is an active feed with an episode in the last 90 days.
 export const ACTIVITY_LABELS: Record<WorkspacePodcastCatalogActivityFilter, string> = {
   active: 'Still publishing',
   last_30_days: 'Published in 30 days',
@@ -29,6 +28,19 @@ export const ACTIVITY_LABELS: Record<WorkspacePodcastCatalogActivityFilter, stri
   last_year: 'Published in 1 year',
   all: 'All shows',
 }
+
+/*
+ * The choices the Activity filter offers. "Published in 90 days" is the same
+ * rule as Still publishing, so it is not offered twice; an address that still
+ * carries it keeps its label.
+ */
+export const ACTIVITY_OPTIONS: WorkspacePodcastCatalogActivityFilter[] = [
+  'active',
+  'last_30_days',
+  'last_180_days',
+  'last_year',
+  'all',
+]
 
 export const AUDIENCE_LABELS: Record<WorkspacePodcastCatalogAudienceFilter, string> = {
   all: 'Any audience size',

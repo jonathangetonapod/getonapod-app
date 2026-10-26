@@ -4,8 +4,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SORT_LABELS } from '@/components/workspace/catalog/catalogFilterLabels'
-import { formatDay, isStaleCatalogDate } from '@/lib/podcastCatalogDisplay'
+import { formatDay } from '@/lib/podcastCatalogDisplay'
 import { cn } from '@/lib/utils'
 import type { WorkspacePodcastCatalogSort } from '@/services/workspacePodcastCatalog'
 
@@ -69,12 +70,18 @@ export const PodcastResultsHeader = ({
         {catalogUpdated && (
           <>
             {' · '}
-            <span
-              className={cn('whitespace-nowrap', isStaleCatalogDate(catalogUpdated) && 'font-medium text-amber-700')}
-              title="The oldest refresh date among the shows on this page."
-            >
-              Catalog updated {formatDay(catalogUpdated)}
-            </span>
+            {/* One date for the whole catalogue, so it does not move with the
+                search or the page. Neutral: it is information, not a warning. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="cursor-help whitespace-nowrap underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  Catalog synced {formatDay(catalogUpdated)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                The last time show data was pulled from Podscan. Each show refreshes on its own schedule; a show&apos;s own date is in its details.
+              </TooltipContent>
+            </Tooltip>
           </>
         )}
       </p>

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import {
   ACTIVITY_LABELS,
+  ACTIVITY_OPTIONS,
   AUDIENCE_LABELS,
   categoryLabel,
   CONTACT_LABELS,
@@ -78,7 +79,7 @@ const FilterControls = ({
         <SelectValue>{ACTIVITY_LABELS[params.activity]}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {(Object.keys(ACTIVITY_LABELS) as Array<PodcastCatalogParams['activity']>).map((value) => (
+        {ACTIVITY_OPTIONS.map((value) => (
           <SelectItem key={value} value={value}>{ACTIVITY_LABELS[value]}</SelectItem>
         ))}
       </SelectContent>

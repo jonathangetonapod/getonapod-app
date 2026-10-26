@@ -49,6 +49,7 @@ const catalogResponse = {
     podcasts_used_in_shortlists: 1200,
     shortlist_uses: 2391,
     contributing_workspaces: 3,
+    catalog_refreshed_at: '2026-10-25T09:00:00.000Z',
   },
   items: [{
     podcast_id: 'podcast-one',
@@ -121,9 +122,11 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText('Workspaces building it')).not.toBeInTheDocument()
     expect(screen.getByText('The Founder Show')).toBeInTheDocument()
     expect(screen.getAllByText('Public email').length).toBeGreaterThan(0)
-    // The rating names its source, and the page says how old its data is.
+    // The rating names its source, and the page says how old its data is:
+    // one catalogue-wide date, not the oldest row on screen.
     expect(screen.getByText('Apple 4.8')).toBeInTheDocument()
-    expect(screen.getByText('Catalog updated Jul 20, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Catalog synced Oct 25, 2026')).toBeInTheDocument()
+    expect(screen.getByText('Catalog synced Oct 25, 2026')).not.toHaveClass('text-amber-700')
     // Every control is named by what it shows.
     expect(screen.getByRole('combobox', { name: 'Any category' })).toHaveTextContent('Any category')
     expect(screen.getByRole('combobox', { name: 'Email status: Public or verified' })).toHaveTextContent('Public or verified')
@@ -145,16 +148,18 @@ describe('WorkspacePodcastDatabase', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Email status: Public or verified' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Verified email' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Still publishing' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Published in 90 days' }))
+    // Still publishing already means an episode in 90 days, so that is not offered twice.
+    expect(screen.queryByRole('option', { name: 'Published in 90 days' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('option', { name: 'Published in 6 months' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Any audience size' }))
     fireEvent.click(await screen.findByRole('option', { name: '10K to 50K' }))
 
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
       workspaceId,
-      expect.objectContaining({ contact: 'direct', activity: 'last_90_days', audience: '10k_50k', page: 1 }),
+      expect.objectContaining({ contact: 'direct', activity: 'last_180_days', audience: '10k_50k', page: 1 }),
     ))
     expect(screen.getByText('Email: Verified email')).toBeInTheDocument()
-    expect(screen.getByText('Activity: Published in 90 days')).toBeInTheDocument()
+    expect(screen.getByText('Activity: Published in 6 months')).toBeInTheDocument()
     expect(screen.getByText('Audience: 10K to 50K')).toBeInTheDocument()
   })
 
@@ -567,6 +572,8 @@ describe('WorkspacePodcastDatabase', () => {
     expect(dialog.getByText('Reach score')).toBeInTheDocument()
     expect(dialog.getByText('Last published')).toBeInTheDocument()
     expect(dialog.getByText(/On 4 shortlists across 2 workspaces/i)).toBeInTheDocument()
+    // The show's own refresh date, named as the show's.
+    expect(dialog.getByText(/This show’s data last refreshed/)).toBeInTheDocument()
   })
 
   it('carries the relationship warning into the details', async () => {

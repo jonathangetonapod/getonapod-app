@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
 import { PodcastPrimaryAction, type PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
-import { categoryNames, isStaleCatalogDate, podcastEmailStatus, podcastInitials } from '@/lib/podcastCatalogDisplay'
+import { categoryNames, podcastEmailStatus, podcastInitials } from '@/lib/podcastCatalogDisplay'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type { RelationshipBadge } from '@/lib/relationshipLabels'
 import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCatalog'
@@ -137,11 +137,9 @@ export function PodcastCatalogDetailsDialog({
               ? `On ${podcast.shortlist_uses.toLocaleString()} ${podcast.shortlist_uses === 1 ? 'shortlist' : 'shortlists'}`
               : 'Not on any shortlist yet'}
             {podcast.workspace_uses > 0 && ` across ${podcast.workspace_uses.toLocaleString()} ${podcast.workspace_uses === 1 ? 'workspace' : 'workspaces'}`}.
-            {podcast.catalog_updated_at && (
-              <span className={isStaleCatalogDate(podcast.catalog_updated_at) ? 'font-medium text-amber-700' : undefined}>
-                {` Catalog data refreshed ${day(podcast.catalog_updated_at)}.`}
-              </span>
-            )}
+            {/* This show's own date, which can be older than the catalogue's:
+                shows refresh one at a time. */}
+            {podcast.catalog_updated_at && ` This show’s data last refreshed ${day(podcast.catalog_updated_at)}.`}
           </p>
 
           <div className="flex flex-wrap gap-2">

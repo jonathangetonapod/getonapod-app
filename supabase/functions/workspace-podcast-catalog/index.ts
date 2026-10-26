@@ -131,7 +131,7 @@ serve(async (req) => {
       })
     }
     const queryEmbedding = searchEmbedding?.embedding ?? null
-    const { data, error } = await context.admin.rpc('workspace_podcast_catalog_page_v2', {
+    const { data, error } = await context.admin.rpc('workspace_podcast_catalog_page_v3', {
       p_search: search,
       p_category: category,
       p_contact: contact,

@@ -6,6 +6,7 @@ const shortlistEdge = readFileSync('supabase/functions/workspace-client-shortlis
 const searchHelper = readFileSync('supabase/functions/_shared/podcastSearch.ts', 'utf8')
 const foundationMigration = readFileSync('supabase/migrations/20260725000600_workspace_podcast_catalog.sql', 'utf8')
 const filterMigration = readFileSync('supabase/migrations/20260725000700_workspace_podcast_catalog_filters.sql', 'utf8')
+const v3Migration = readFileSync('supabase/migrations/20261029000100_workspace_podcast_catalog_v3.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/workspacePodcastCatalog.ts', 'utf8')
 const clientEditor = readFileSync('src/components/workspace/ClientShortlistEditor.tsx', 'utf8')
@@ -14,7 +15,7 @@ const routes = readFileSync('src/App.tsx', 'utf8')
 
 assert.match(edge, /requireAuthenticatedUser\(req\)/u)
 assert.match(edge, /requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
-assert.match(edge, /rpc\('workspace_podcast_catalog_page_v2'/u)
+assert.match(edge, /rpc\('workspace_podcast_catalog_page_v3'/u)
 assert.match(edge, /generatePodcastSearchEmbedding\(search[,)]/u)
 assert.match(edge, /p_query_embedding: queryEmbedding/u)
 assert.match(edge, /search_mode: search \? \(queryEmbedding \? 'hybrid' : 'keyword'\) : 'browse'/u)
@@ -46,6 +47,26 @@ assert.match(
 assert.match(
   filterMigration,
   /GRANT EXECUTE ON FUNCTION public\.workspace_podcast_catalog_page_v2\([\s\S]+TO service_role;/u,
+)
+// v3 is what the Podcast Database calls. Still publishing needs a recent
+// episode, not only the feed's active flag, and the page gets one catalogue-wide
+// refresh date instead of deriving one from whichever rows are on screen.
+assert.match(v3Migration, /CREATE OR REPLACE FUNCTION public\.workspace_podcast_catalog_page_v3/u)
+assert.match(v3Migration, /SECURITY DEFINER/u)
+assert.match(
+  v3Migration,
+  /normalized_activity = 'active'\s+AND is_active IS TRUE\s+AND last_posted_at >= NOW\(\) - INTERVAL '90 days'/u,
+)
+assert.match(v3Migration, /'catalog_refreshed_at', \(SELECT max\(podscan_last_fetched_at\) FROM catalog\)/u)
+assert.match(v3Migration, /LEFT JOIN public\.podcast_direct_contacts/u)
+assert.match(v3Migration, /ORDER BY podcast\.embedding <=> p_query_embedding[\s\S]*?LIMIT 300/u)
+assert.match(
+  v3Migration,
+  /REVOKE ALL ON FUNCTION public\.workspace_podcast_catalog_page_v3\([\s\S]+FROM PUBLIC, anon, authenticated, service_role;/u,
+)
+assert.match(
+  v3Migration,
+  /GRANT EXECUTE ON FUNCTION public\.workspace_podcast_catalog_page_v3\([\s\S]+TO service_role;/u,
 )
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)

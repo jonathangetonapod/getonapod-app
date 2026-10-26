@@ -48,6 +48,8 @@ export interface WorkspacePodcastCatalogSummary {
   podcasts_used_in_shortlists: number
   shortlist_uses: number
   contributing_workspaces: number
+  /** The latest time any show was pulled from Podscan. One date for the whole catalogue. */
+  catalog_refreshed_at?: string | null
 }
 
 export interface WorkspacePodcastCatalogPage {

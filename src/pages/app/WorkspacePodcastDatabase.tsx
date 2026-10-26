@@ -38,7 +38,7 @@ import { PodcastCatalogDetailsDialog } from '@/components/workspace/PodcastCatal
 import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
-import { oldestCatalogUpdate, shortClientName } from '@/lib/podcastCatalogDisplay'
+import { shortClientName } from '@/lib/podcastCatalogDisplay'
 
 const VIEW_STORAGE_KEY = 'podcastDb.view'
 const CLIENT_HINT_STORAGE_KEY = 'podcastDb.clientHintDismissed'
@@ -245,7 +245,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   // Any client, not only active ones: the header can open this page on a
   // paused client by address, and the buttons have to name who that is.
   const targetClient = (clientsQuery.data || []).find((client) => client.id === targetClientId) || null
-  const pageCatalogUpdated = oldestCatalogUpdate(podcasts)
   const pagePodcastIds = podcasts.map((podcast) => podcast.podcast_id)
   const allPageSelected = pagePodcastIds.length > 0
     && pagePodcastIds.every((podcastId) => selectedPodcasts.has(podcastId))
@@ -469,7 +468,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
             to={pageTo}
             total={total}
             loading={catalogQuery.isLoading}
-            catalogUpdated={pageCatalogUpdated}
+            catalogUpdated={catalog?.summary.catalog_refreshed_at ?? null}
             fetching={catalogQuery.isFetching}
             onRefresh={() => void catalogQuery.refetch()}
             view={view}
