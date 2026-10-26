@@ -18,6 +18,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   grantWorkspaceCredits: vi.fn(),
   getWorkspaceBillingOverview: vi.fn(),
   setWorkspaceMonthlyAllowance: vi.fn(),
+  setWorkspaceClientLimit: vi.fn(),
   adjustWorkspaceCredits: vi.fn(),
 }))
 

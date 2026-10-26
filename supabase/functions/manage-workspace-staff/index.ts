@@ -3131,7 +3131,9 @@ serve(async (req) => {
           billing_status: profileResult.data?.billing_status ?? "trialing",
           base_price_cents: profileResult.data?.base_price_cents ?? 3900,
           per_client_price_cents: profileResult.data?.per_client_price_cents ?? 3900,
-          included_active_clients: profileResult.data?.included_active_clients ?? 1,
+          // 3 to match workspace_client_operation_v2, which is what actually
+          // enforces it when a workspace has no billing profile yet.
+          included_active_clients: profileResult.data?.included_active_clients ?? 3,
           monthly_credit_allowance: profileResult.data?.monthly_credit_allowance ?? 100,
           enforcement_enabled: Deno.env.get("CREDIT_ENFORCEMENT_ENABLED")?.trim() === "true",
           // Debits net of refunds. Summing every negative row counted an
@@ -3520,6 +3522,50 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, {
         success: true,
         monthly_credit_allowance: allowance,
+      });
+    }
+
+    if (action === "billing-client-limit-set") {
+      requireOnlyKeys(body, ["action", "workspace_id", "included_active_clients"]);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      if (!platformAdmin) {
+        throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
+      }
+      const clientLimit = typeof body.included_active_clients === "number"
+          && Number.isSafeInteger(body.included_active_clients)
+        ? body.included_active_clients
+        : NaN;
+      if (!Number.isSafeInteger(clientLimit) || clientLimit < 0 || clientLimit > 10_000) {
+        throw new HttpError(400, "INVALID_CLIENT_LIMIT", "Set a client limit between 0 and 10,000");
+      }
+
+      // The column workspace_client_operation_v2 checks before a client is
+      // created as, or moved to, active. Upserted for the same reason as the
+      // allowance: a workspace that has never been billed has no profile row
+      // and sits on the RPC's fallback of 3.
+      const { error: clientLimitError } = await admin
+        .from("workspace_billing_profiles")
+        .upsert(
+          { workspace_id: workspaceId, included_active_clients: clientLimit, updated_at: new Date().toISOString() },
+          { onConflict: "workspace_id" },
+        );
+      if (clientLimitError) {
+        throw new HttpError(503, "CLIENT_LIMIT_UPDATE_FAILED", "The active client limit could not be saved");
+      }
+
+      await writeAudit(admin, {
+        workspaceId,
+        actorUserId: user.id,
+        action: "workspace.clients.limit_set",
+        entityType: "workspace",
+        entityId: workspaceId,
+        metadata: { included_active_clients: clientLimit },
+      });
+      // Takes effect on the next activation. Lowering it below the current
+      // count pauses nobody; it only stops another client being made active.
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        included_active_clients: clientLimit,
       });
     }
 

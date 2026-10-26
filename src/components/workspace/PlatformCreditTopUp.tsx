@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { BillingPortfolio } from '@/components/workspace/BillingPortfolio'
 import { WorkspaceCreditGrantPreview } from '@/components/workspace/WorkspaceCreditGrantPreview'
 import { WorkspaceCreditAdjustment } from '@/components/workspace/WorkspaceCreditAdjustment'
+import { WorkspaceClientLimit } from '@/components/workspace/WorkspaceClientLimit'
 import { WorkspaceMonthlyAllowance } from '@/components/workspace/WorkspaceMonthlyAllowance'
 import { WorkspaceSubscriptionStatus } from '@/components/workspace/WorkspaceSubscriptionStatus'
 
@@ -145,6 +146,12 @@ export function PlatformCreditTopUp({ actorEmail }: PlatformCreditTopUpProps) {
               selected above. */}
           <WorkspaceMonthlyAllowance
             key={`allowance-${selectedWorkspaceId}`}
+            workspaceId={selectedWorkspaceId}
+            workspaceName={selectedName}
+          />
+          {/* What the workspace may run, beside what it is given. */}
+          <WorkspaceClientLimit
+            key={`client-limit-${selectedWorkspaceId}`}
             workspaceId={selectedWorkspaceId}
             workspaceName={selectedName}
           />

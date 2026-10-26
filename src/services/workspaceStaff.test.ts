@@ -7,6 +7,7 @@ import {
   resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeWorkspaceLogo,
+  setWorkspaceClientLimit,
   updateBillingPlanPrice,
   updateWorkspaceClientBranding,
   updateWorkspaceLogo,
@@ -638,5 +639,24 @@ describe('updateBillingPlanPrice', () => {
     expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
       body: { action: 'plans-update', plan_key: 'standard', base_price_cents: 9900, monthly_credit_allowance: 300 },
     })
+  })
+})
+
+describe('setWorkspaceClientLimit', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('sends the canonical workspace and limit, and returns the saved limit', async () => {
+    invoke.mockResolvedValue({ data: { success: true, included_active_clients: 10 }, error: null })
+
+    await expect(setWorkspaceClientLimit(workspaceId.toUpperCase(), 10)).resolves.toBe(10)
+    expect(invoke).toHaveBeenLastCalledWith('manage-workspace-staff', {
+      body: { action: 'billing-client-limit-set', workspace_id: workspaceId, included_active_clients: 10 },
+    })
+  })
+
+  it('rejects a response without the saved limit', async () => {
+    invoke.mockResolvedValue({ data: { success: true }, error: null })
+
+    await expect(setWorkspaceClientLimit(workspaceId, 10)).rejects.toThrow('The active client limit could not be saved.')
   })
 })

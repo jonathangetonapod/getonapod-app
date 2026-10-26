@@ -1063,6 +1063,32 @@ export async function setWorkspaceMonthlyAllowance(
 }
 
 /**
+ * Platform-admin only: how many clients this workspace may have active at once.
+ *
+ * Writes the number workspace_client_operation_v2 checks when a client is
+ * created as, or moved to, active. A subscription event that names a plan
+ * copies that plan's figure over it, the same as the monthly allowance.
+ */
+export async function setWorkspaceClientLimit(
+  workspaceId: string,
+  includedActiveClients: number,
+): Promise<number> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const data = await invoke({
+    action: 'billing-client-limit-set',
+    workspace_id: canonicalWorkspaceId,
+    included_active_clients: includedActiveClients,
+  }, 'The active client limit could not be saved.') as {
+    success?: boolean
+    included_active_clients?: number
+  }
+  if (data?.success !== true || typeof data.included_active_clients !== 'number') {
+    throw new Error('The active client limit could not be saved.')
+  }
+  return data.included_active_clients
+}
+
+/**
  * Platform-admin only: take credits back off a workspace.
  *
  * Every other path into the ledger adds — a grant, a purchase, an allowance —
