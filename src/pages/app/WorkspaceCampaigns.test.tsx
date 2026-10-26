@@ -778,4 +778,27 @@ describe('WorkspaceCampaigns', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review 1 assignment' }))
     expect(await screen.findByText('Campaign 10')).toBeInTheDocument()
   })
+
+  it('searches the unassigned campaigns without dropping choices already made', async () => {
+    const many = Array.from({ length: 10 }, (_, index) => ({
+      ...unassignedCampaign,
+      id: `88888888-8888-4888-8888-${String(index).padStart(12, '0')}`,
+      name: index === 9 ? 'TiC - CEDIA Expo Sept 2-4 Campaign' : `Campaign ${index + 1}`,
+    }))
+    mockedOverview.mockResolvedValue({ ...campaignOverview, integration: connectedIntegration, provider_campaigns: many })
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign campaigns' }))
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Client for Campaign 1' }))
+    fireEvent.click(await screen.findByRole('option', { name: client.name }))
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Instantly campaigns' }), { target: { value: 'cedia' } })
+    expect(screen.getByRole('combobox', { name: 'Client for TiC - CEDIA Expo Sept 2-4 Campaign' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Client for Campaign 1' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/of 10/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review 1 assignment' })).toBeEnabled()
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Instantly campaigns' }), { target: { value: 'nothing like this' } })
+    expect(screen.getByText('No campaigns match "nothing like this".')).toBeInTheDocument()
+  })
 })

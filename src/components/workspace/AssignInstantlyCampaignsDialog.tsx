@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toInstantlyTimezone } from '@/lib/instantlyTimezones'
 import { type WorkspaceClient } from '@/services/clients'
@@ -65,6 +66,7 @@ export const AssignInstantlyCampaignsDialog = ({
   const [assigning, setAssigning] = useState(false)
   const [failures, setFailures] = useState<AssignFailure[]>([])
   const [page, setPage] = useState(0)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -77,6 +79,7 @@ export const AssignInstantlyCampaignsDialog = ({
     setReviewing(false)
     setFailures([])
     setPage(0)
+    setQuery('')
     // Reset on open only; the lists refetch while the dialog is up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -87,7 +90,13 @@ export const AssignInstantlyCampaignsDialog = ({
     .filter(([campaignId]) => checked.has(campaignId))
     .map(([, clientId]) => clientId))
 
-  const listed = reviewing ? ready : campaigns
+  // Search narrows what is shown, not what is chosen: a row picked and then
+  // filtered out is still assigned when the review is confirmed.
+  const normalizedQuery = query.trim().toLowerCase()
+  const matching = normalizedQuery
+    ? campaigns.filter((campaign) => campaign.name.toLowerCase().includes(normalizedQuery))
+    : campaigns
+  const listed = reviewing ? ready : matching
   const pageCount = Math.max(1, Math.ceil(listed.length / PAGE_SIZE))
   // A refetch or a finished retry can shrink the list under the current page.
   const currentPage = Math.min(page, pageCount - 1)
@@ -193,6 +202,20 @@ export const AssignInstantlyCampaignsDialog = ({
         ) : clients.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every active client already has a campaign. Add or reactivate a client to assign another.</p>
         ) : (
+          <div className="min-w-0 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              value={query}
+              onChange={(event) => { setQuery(event.target.value); setPage(0) }}
+              placeholder="Search campaigns"
+              aria-label="Search Instantly campaigns"
+              className="h-9 pl-9"
+            />
+          </div>
+          {matching.length === 0 ? (
+            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No campaigns match "{query.trim()}".</p>
+          ) : (
           <ul className="min-w-0 divide-y rounded-xl border" aria-label="Unassigned Instantly campaigns">
             {pageRows.map((campaign) => {
               const chosen = clientByCampaign[campaign.id] || ''
@@ -234,6 +257,8 @@ export const AssignInstantlyCampaignsDialog = ({
               )
             })}
           </ul>
+          )}
+          </div>
         )}
 
         <DialogFooter className="gap-2 sm:items-center">
