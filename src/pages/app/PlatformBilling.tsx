@@ -24,7 +24,7 @@ const PlatformBilling = () => {
 
   return (
     <WorkspaceLayout>
-      <div className="mx-auto w-full max-w-5xl space-y-8 pb-12">
+      <div className="mx-auto w-full max-w-7xl space-y-8 pb-12">
         <header className="space-y-5 border-b border-border/70 pb-6">
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="ghost" size="sm" className="-ml-3 w-fit">

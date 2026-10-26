@@ -3480,14 +3480,16 @@ serve(async (req) => {
       // with every operation — were silently truncated and the balances and
       // spend shown here came out low with nothing to say so. A page that
       // fails fails the whole portfolio rather than showing partial totals.
-      const [workspacesResult, profilesResult, lotsResult, spendResult, plansResult] = await Promise.all([
+      const [
+        workspacesResult, profilesResult, lotsResult, spendResult, plansResult, membersResult, purchasesResult,
+      ] = await Promise.all([
         readAllPages((from, to) => admin.from("workspaces")
           .select("id, name, status, created_at")
           .eq("status", "active")
           .order("id", { ascending: true })
           .range(from, to)),
         readAllPages((from, to) => admin.from("workspace_billing_profiles")
-          .select("workspace_id, plan_key, billing_status, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id, trial_ends_at")
+          .select("workspace_id, plan_key, billing_status, base_price_cents, monthly_credit_allowance, cancel_at_period_end, current_period_end, stripe_subscription_id, trial_ends_at")
           .order("workspace_id", { ascending: true })
           .range(from, to)),
         readAllPages((from, to) => admin.from("workspace_credit_lots")
@@ -3498,18 +3500,34 @@ serve(async (req) => {
         // Debits net of refunds, the same arithmetic the per-workspace
         // overview uses — the two screens used to disagree by construction.
         readAllPages((from, to) => admin.from("workspace_credit_ledger")
-          .select("id, workspace_id, amount, entry_type")
+          .select("id, workspace_id, amount, entry_type, created_at")
           .in("entry_type", ["debit", "refund"])
           .gte("created_at", monthStart.toISOString())
           .order("id", { ascending: true })
           .range(from, to)),
         // Three rows. Each workspace's allowance is compared with its plan's
         // so an override can be told apart from the default.
-        admin.from("billing_plans").select("plan_key, monthly_credit_allowance"),
+        admin.from("billing_plans").select("plan_key, display_name, base_price_cents, monthly_credit_allowance"),
+        // The owner to show, and the people whose sign-ins say whether the
+        // workspace is in use.
+        readAllPages((from, to) => admin.from("workspace_memberships")
+          .select("id, workspace_id, user_id, email_normalized, role, status")
+          .neq("status", "revoked")
+          .order("id", { ascending: true })
+          .range(from, to)),
+        // A card on file, as the overview proves it when Stripe cannot be
+        // asked: a lot bought by a real payment. Asking Stripe once per row
+        // would make the list as slow as its longest answer.
+        readAllPages((from, to) => admin.from("workspace_credit_lots")
+          .select("id, workspace_id")
+          .eq("source", "purchase")
+          .not("stripe_payment_ref", "is", null)
+          .order("id", { ascending: true })
+          .range(from, to)),
       ]);
       if (
         workspacesResult.error || profilesResult.error || lotsResult.error || spendResult.error
-        || plansResult.error
+        || plansResult.error || membersResult.error || purchasesResult.error
       ) {
         throw new HttpError(503, "PORTFOLIO_UNAVAILABLE", "The billing portfolio could not be read");
       }
@@ -3525,8 +3543,14 @@ serve(async (req) => {
         balances.set(id, (balances.get(id) ?? 0) + (Number(lot.remaining) || 0));
       }
       const spend = new Map<string, number>();
+      const lastActivity = new Map<string, number>();
+      const noteActivity = (id: string, at: unknown) => {
+        const time = typeof at === "string" ? Date.parse(at) : Number.NaN;
+        if (!Number.isNaN(time) && time > (lastActivity.get(id) ?? 0)) lastActivity.set(id, time);
+      };
       for (const row of (spendResult.data ?? []) as Array<Record<string, unknown>>) {
         const id = String(row.workspace_id);
+        if (row.entry_type === "debit") noteActivity(id, row.created_at);
         const magnitude = Math.abs(Number(row.amount) || 0);
         spend.set(id, (spend.get(id) ?? 0) + (row.entry_type === "debit" ? magnitude : -magnitude));
       }
@@ -3538,12 +3562,52 @@ serve(async (req) => {
         profiles.set(String(row.workspace_id), row);
       }
 
-      const planAllowances = new Map<string, number>();
+      const plans = new Map<string, Record<string, unknown>>();
       for (const plan of (plansResult.data ?? []) as Array<Record<string, unknown>>) {
-        if (typeof plan.monthly_credit_allowance === "number") {
-          planAllowances.set(String(plan.plan_key), plan.monthly_credit_allowance);
+        plans.set(String(plan.plan_key), plan);
+      }
+
+      const cardOnFile = new Set<string>();
+      for (const lot of (purchasesResult.data ?? []) as Array<Record<string, unknown>>) {
+        cardOnFile.add(String(lot.workspace_id));
+      }
+
+      // Last active: the latest sign-in by anyone in the workspace, or the
+      // latest credit spent this month. A sign-in alone undercounts, because
+      // a session refreshes for weeks without signing in again.
+      const owners = new Map<string, string>();
+      const memberWorkspaces = new Map<string, string[]>();
+      for (const member of (membersResult.data ?? []) as Array<Record<string, unknown>>) {
+        const id = String(member.workspace_id);
+        if (member.role === "owner" && typeof member.email_normalized === "string" && !owners.has(id)) {
+          owners.set(id, member.email_normalized);
+        }
+        if (typeof member.user_id === "string") {
+          memberWorkspaces.set(member.user_id, [...(memberWorkspaces.get(member.user_id) ?? []), id]);
         }
       }
+      for (let page = 1; page <= PORTFOLIO_MAX_PAGES && memberWorkspaces.size > 0; page += 1) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+        // Sign-ins only sharpen a column; a failure leaves it to the ledger
+        // rather than failing the whole portfolio.
+        if (error || !data?.users) break;
+        for (const user of data.users) {
+          for (const id of memberWorkspaces.get(user.id) ?? []) noteActivity(id, user.last_sign_in_at);
+        }
+        if (data.users.length < 1000) break;
+      }
+
+      // What each paying workspace is charged, from Stripe. Only workspaces
+      // with a subscription are asked, in parallel; the profile's recorded
+      // price stands in when Stripe does not answer.
+      const subscriptionPrices = new Map<string, number>();
+      await Promise.all(((profilesResult.data ?? []) as Array<Record<string, unknown>>)
+        .filter((profile) => typeof profile.stripe_subscription_id === "string" && profile.stripe_subscription_id)
+        .map(async (profile) => {
+          const cents = await stripeSubscriptionPriceCents(String(profile.stripe_subscription_id));
+          const fallback = typeof profile.base_price_cents === "number" ? profile.base_price_cents : null;
+          if (cents !== null || fallback !== null) subscriptionPrices.set(String(profile.workspace_id), cents ?? fallback!);
+        }));
 
       const rows = ((workspacesResult.data ?? []) as Array<Record<string, unknown>>).map((workspace) => {
         const id = String(workspace.id);
@@ -3551,6 +3615,8 @@ serve(async (req) => {
         // A profile is created with founding_member, so a workspace without
         // one is on that plan in every sense that matters here.
         const effectivePlanKey = typeof profile?.plan_key === "string" ? profile.plan_key : "founding_member";
+        const plan = plans.get(effectivePlanKey);
+        const lastActive = lastActivity.get(id);
         const allowance = typeof profile?.monthly_credit_allowance === "number"
           ? profile.monthly_credit_allowance
           : 100;
@@ -3569,7 +3635,15 @@ serve(async (req) => {
           cancel_at_period_end: profile?.cancel_at_period_end === true,
           current_period_end: profile?.current_period_end ?? null,
           trial_ends_at: effectiveTrialEndsAt(profile?.trial_ends_at, workspace.created_at),
-          plan_monthly_credit_allowance: planAllowances.get(effectivePlanKey) ?? null,
+          plan_monthly_credit_allowance: typeof plan?.monthly_credit_allowance === "number"
+            ? plan.monthly_credit_allowance
+            : null,
+          plan_name: typeof plan?.display_name === "string" ? plan.display_name : null,
+          plan_base_price_cents: typeof plan?.base_price_cents === "number" ? plan.base_price_cents : null,
+          subscription_price_cents: subscriptionPrices.get(id) ?? null,
+          owner_email: owners.get(id) ?? null,
+          has_saved_card: cardOnFile.has(id),
+          last_active_at: lastActive ? new Date(lastActive).toISOString() : null,
         };
       });
 

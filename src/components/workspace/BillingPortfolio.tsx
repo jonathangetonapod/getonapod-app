@@ -1,18 +1,24 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Loader2, Wallet } from 'lucide-react'
+import { Loader2, Search, Wallet } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { BillingPortfolioSummary } from '@/components/workspace/BillingPortfolioSummary'
+import { BillingPortfolioTable } from '@/components/workspace/BillingPortfolioTable'
+import { compareByAttention } from '@/lib/billingAttention'
 import {
-  ATTENTION_LABELS,
-  allowanceIsOverride,
-  compareByAttention,
-  workspaceAttention,
-} from '@/lib/billingAttention'
-import { creditHealth } from '@/lib/creditHealth'
-import { getBillingPortfolio, type BillingPortfolioRow } from '@/services/workspaceStaff'
+  PORTFOLIO_FILTERS,
+  isPortfolioFilter,
+  matchesFilter,
+  matchesSearch,
+  portfolioSummary,
+  type PortfolioFilter,
+} from '@/lib/billingPortfolio'
+import { getBillingPortfolio } from '@/services/workspaceStaff'
 
 interface BillingPortfolioProps {
   /** The signed-in admin's own workspace, which authorizes the read. */
@@ -29,8 +35,33 @@ interface BillingPortfolioProps {
  * nearly out and whose card has failed, meant opening each workspace in turn.
  * Nobody does that, which means nobody asked, which means the first anyone
  * heard of an empty balance was the agency complaining.
+ *
+ * Search and filter live in the address, so leaving for a workspace and coming
+ * back returns to the same list.
  */
 export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }: BillingPortfolioProps) {
+  // Read from the address once, then held in state and written back. Writing
+  // each change straight to the address raced: setSearchParams builds on the
+  // params of the last render, so a search typed before a filter click had
+  // re-rendered wrote the old filter back over the new one.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
+  const [filter, setFilter] = useState<PortfolioFilter>(() => {
+    const requested = searchParams.get('filter')
+    return isPortfolioFilter(requested) ? requested : 'all'
+  })
+
+  useEffect(() => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (query) next.set('q', query)
+      else next.delete('q')
+      if (filter !== 'all') next.set('filter', filter)
+      else next.delete('filter')
+      return next.toString() === current.toString() ? current : next
+    }, { replace: true })
+  }, [query, filter, setSearchParams])
+
   const portfolioQuery = useQuery({
     queryKey: ['billing-portfolio', workspaceId],
     queryFn: () => getBillingPortfolio(workspaceId),
@@ -39,26 +70,31 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
     staleTime: 30_000,
   })
 
-  const rows = useMemo(() => {
+  const { sorted, summary, counts } = useMemo(() => {
     const now = Date.now()
+    const all = portfolioQuery.data?.workspaces ?? []
     // Worst first, by the same rule the count uses. A list sorted by name
     // makes an owner read all of it to find the one row that needed them.
-    return [...(portfolioQuery.data?.workspaces ?? [])].sort((left, right) => compareByAttention(left, right, now))
-  }, [portfolioQuery.data])
+    const ordered = [...all].sort((left, right) => compareByAttention(left, right, now))
+    const searched = ordered.filter((row) => matchesSearch(row, query))
+    return {
+      sorted: searched,
+      // The cards describe the platform, not the current filter.
+      summary: portfolioSummary(all, now),
+      counts: Object.fromEntries(PORTFOLIO_FILTERS.map(({ value }) => [
+        value,
+        searched.filter((row) => matchesFilter(row, value, now)).length,
+      ])) as Record<PortfolioFilter, number>,
+    }
+  }, [portfolioQuery.data, query])
 
-  const totals = useMemo(() => ({
-    balance: rows.reduce((sum, row) => sum + row.balance, 0),
-    spent: rows.reduce((sum, row) => sum + row.credits_spent_this_month, 0),
-    attention: rows.filter((row) => workspaceAttention(row).needsAttention).length,
-  }), [rows])
+  const visible = useMemo(() => sorted.filter((row) => matchesFilter(row, filter)), [sorted, filter])
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><Wallet className="h-5 w-5" />All workspaces</CardTitle>
-        <CardDescription>
-          Credit health and billing status across the platform, worst first. Pick a row to work on that workspace below.
-        </CardDescription>
+        <CardDescription>Most urgent first. Select a row to manage that workspace.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {portfolioQuery.isLoading ? (
@@ -69,115 +105,49 @@ export function BillingPortfolio({ workspaceId, selectedWorkspaceId, onSelect }:
           <p className="text-sm text-destructive">
             {portfolioQuery.error instanceof Error ? portfolioQuery.error.message : 'The portfolio could not be loaded.'}
           </p>
-        ) : rows.length === 0 ? (
+        ) : (portfolioQuery.data?.workspaces.length ?? 0) === 0 ? (
           <p className="text-sm text-muted-foreground">No active workspaces yet.</p>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">Credits outstanding</p>
-                <p className="mt-0.5 text-xl font-semibold">{totals.balance.toLocaleString()}</p>
+            <BillingPortfolioSummary summary={summary} />
+
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full max-w-sm">
+                <Label htmlFor="billing-portfolio-search" className="sr-only">Search workspaces</Label>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <Input
+                  id="billing-portfolio-search"
+                  type="search"
+                  value={query}
+                  placeholder="Search by workspace or owner email"
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="pl-9"
+                />
               </div>
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">Spent this month</p>
-                <p className="mt-0.5 text-xl font-semibold">{totals.spent.toLocaleString()}</p>
-              </div>
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">Need attention</p>
-                <p className="mt-0.5 text-xl font-semibold">{totals.attention}</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Filter workspaces">
+                {PORTFOLIO_FILTERS.map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    size="sm"
+                    variant={filter === option.value ? 'default' : 'outline'}
+                    aria-pressed={filter === option.value}
+                    onClick={() => setFilter(option.value)}
+                  >
+                    {option.label}
+                    <span className="ml-1.5 tabular-nums opacity-80">{counts[option.value]}</span>
+                  </Button>
+                ))}
               </div>
             </div>
 
-            {/* A table that scrolls itself rather than one that widens the
-                page: the row count grows with the business. */}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[46rem] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium">Workspace</th>
-                    <th className="py-2 pr-3 font-medium">Credits</th>
-                    <th className="py-2 pr-3 font-medium">
-                      {/* "Allowance" is our word, not a plain one. Say what it
-                          buys rather than making an admin infer it. */}
-                      <span title="Free credits granted to this workspace at the start of every month, on top of anything bought or granted by hand.">
-                        Free each month
-                      </span>
-                    </th>
-                    <th className="py-2 pr-3 font-medium">Spent this month</th>
-                    <th className="py-2 pr-3 font-medium">Billing</th>
-                    <th className="py-2 font-medium sr-only">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row: BillingPortfolioRow) => {
-                    const health = creditHealth(row.balance, row.monthly_credit_allowance)
-                    const attention = workspaceAttention(row)
-                    const billingFlag = attention.reasons.some((reason) => reason !== 'low_balance')
-                    const override = allowanceIsOverride(row.monthly_credit_allowance, row.plan_monthly_credit_allowance)
-                    const selected = row.workspace_id === selectedWorkspaceId
-                    return (
-                      <tr
-                        key={row.workspace_id}
-                        className={`border-b last:border-0 ${selected ? 'bg-primary/[0.04]' : ''}`}
-                      >
-                        <td className="py-2.5 pr-3 font-medium">{row.name}</td>
-                        <td className="py-2.5 pr-3">
-                          <div className="flex items-center gap-2">
-                            <span>{row.balance.toLocaleString()}</span>
-                            {health.level !== 'ok' && (
-                              <Badge variant="outline" className={health.className}>{health.label}</Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-3 text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <span>{row.monthly_credit_allowance.toLocaleString()}/mo</span>
-                            {override && (
-                              <Badge
-                                variant="outline"
-                                className="border-violet-200 bg-violet-50 text-violet-900"
-                                title={`Plan default is ${row.plan_monthly_credit_allowance?.toLocaleString()}/mo`}
-                              >
-                                Override
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-3 text-muted-foreground">{row.credits_spent_this_month.toLocaleString()}</td>
-                        <td className="py-2.5 pr-3">
-                          <div className="flex items-center gap-1.5">
-                            {billingFlag && <AlertTriangle className="h-3.5 w-3.5 text-destructive" />}
-                            <span className={billingFlag ? 'text-destructive' : 'text-muted-foreground'}>
-                              {row.billing_status.replace(/_/gu, ' ')}
-                            </span>
-                            {attention.reasons
-                              .filter((reason) => reason !== 'low_balance')
-                              .map((reason) => (
-                                <Badge key={reason} variant="outline" className="border-destructive/30 bg-destructive/5 text-destructive">
-                                  {ATTENTION_LABELS[reason]}
-                                </Badge>
-                              ))}
-                            {row.cancel_at_period_end && (
-                              <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">Ending</Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2.5 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={selected ? 'secondary' : 'outline'}
-                            onClick={() => onSelect(row.workspace_id)}
-                          >
-                            {selected ? 'Selected' : 'Manage'}
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {visible.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No workspaces match this search and filter.
+              </p>
+            ) : (
+              <BillingPortfolioTable rows={visible} selectedWorkspaceId={selectedWorkspaceId} onSelect={onSelect} />
+            )}
 
             {!portfolioQuery.data?.enforcementEnabled && (
               // Every number above is a balance nothing is drawing from.

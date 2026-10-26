@@ -1133,6 +1133,15 @@ export interface BillingPortfolioRow {
   trial_ends_at?: string | null
   /** What the workspace's plan grants by default; null if the plan is unknown. */
   plan_monthly_credit_allowance?: number | null
+  plan_name?: string | null
+  plan_base_price_cents?: number | null
+  /** What Stripe charges, for a workspace with a subscription; null otherwise. */
+  subscription_price_cents?: number | null
+  owner_email?: string | null
+  /** A credit pack was bought with a card. Stripe itself is not asked per row. */
+  has_saved_card?: boolean
+  /** Latest member sign-in or credit spent this month, whichever is later. */
+  last_active_at?: string | null
 }
 
 /**

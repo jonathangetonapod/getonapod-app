@@ -646,7 +646,7 @@ assert.match(source, /has_saved_card: hasSavedCard,/u)
 // cannot truncate its totals, and any failed page fails the whole read.
 const portfolio = source.slice(source.indexOf('if (action === "billing-portfolio")'), source.indexOf('if (action === "credits-adjust")'))
 assert.match(source, /async function readAllPages\(/u)
-assert.equal((portfolio.match(/readAllPages\(\(from, to\) => admin\.from\(/gu) ?? []).length, 4)
+assert.equal((portfolio.match(/readAllPages\(\(from, to\) => admin\.from\(/gu) ?? []).length, 6)
 assert.match(portfolio, /workspacesResult\.error \|\| profilesResult\.error \|\| lotsResult\.error \|\| spendResult\.error\s*\n\s*\|\| plansResult\.error/u)
 
 // The price a workspace pays is Stripe's, never the profile column: that one
@@ -660,4 +660,11 @@ assert.match(overview, /plan_monthly_credit_allowance:/u)
 assert.match(source, /const TRIAL_LENGTH_DAYS = 14;/u)
 assert.match(overview, /trial_ends_at: effectiveTrialEndsAt\(/u)
 assert.match(portfolio, /trial_ends_at: effectiveTrialEndsAt\(profile\?\.trial_ends_at, workspace\.created_at\)/u)
-assert.match(portfolio, /plan_monthly_credit_allowance: planAllowances\.get\(effectivePlanKey\) \?\? null/u)
+assert.match(portfolio, /plan_monthly_credit_allowance: typeof plan\?\.monthly_credit_allowance === "number"/u)
+// The table's extra columns: card on file from the purchase proof (never a
+// Stripe call per row), the owner, last activity, and Stripe's price for MRR.
+assert.match(portfolio, /owner_email: owners\.get\(id\) \?\? null,/u)
+assert.match(portfolio, /has_saved_card: cardOnFile\.has\(id\),/u)
+assert.match(portfolio, /last_active_at:/u)
+assert.match(portfolio, /subscription_price_cents: subscriptionPrices\.get\(id\) \?\? null,/u)
+assert.doesNotMatch(portfolio, /stripeHasSavedCard\(/u)
