@@ -131,7 +131,13 @@ function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: strin
  * the address under it would not move it; the Pipeline filters on every read,
  * and the Podcast Database's add buttons name whichever client is chosen.
  */
-const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'onboarding', 'podcast-database']
+const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'onboarding', 'podcast-database', 'client-campaigns']
+
+/*
+ * A client's campaign page names its client in the path rather than in
+ * ?client=, so there the header reads the path and moves between campaigns.
+ */
+const CLIENT_IN_PATH_SEGMENT = 'client-campaigns'
 
 // Radix Select needs a non-empty value for the "no client" choice.
 const ALL_CLIENTS = 'all-clients'
@@ -587,7 +593,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    */
   const workingClientWorkspaceId = (platformWorkspace?.workspaceId || workspace?.id || '').toLowerCase()
   const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId))
-  const requestedClientId = normalizeWorkingClientId(new URLSearchParams(location.search).get('client'))
+  const clientInPathHref = `${baseHref}/${CLIENT_IN_PATH_SEGMENT}`
+  const clientInPath = location.pathname.startsWith(`${clientInPathHref}/`)
+  const requestedClientId = normalizeWorkingClientId(clientInPath
+    ? location.pathname.slice(clientInPathHref.length + 1).split('/')[0]
+    : new URLSearchParams(location.search).get('client'))
   const currentSegmentReadsClient = Array.from(CLIENT_SCOPED_SEGMENTS)
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
   const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
@@ -665,6 +675,12 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     writeWorkingClient(workingClientWorkspaceId, next)
     setWorkingClientId(next)
     if (!headerDrivesAddress) return
+    if (clientInPath) {
+      // Another client's campaign, or back to the list; the open page's tabs
+      // and filters belong to the client it was showing.
+      navigate(next ? `${clientInPathHref}/${next}` : clientInPathHref)
+      return
+    }
     const params = new URLSearchParams(location.search)
     if (next) params.set('client', next)
     else params.delete('client')

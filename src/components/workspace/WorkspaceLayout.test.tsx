@@ -307,7 +307,7 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', `/app/podcast-database?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
-    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Relationships' })).toHaveAttribute('href', '/app/relationships')
     expect(within(navigation).getByRole('link', { name: 'Client intake' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}`)
@@ -401,6 +401,37 @@ describe('WorkspaceLayout', () => {
 
     await waitFor(() => expect(readWorkingClient(workspaceId)).toBeNull())
     expect(screen.getByRole('combobox', { name: 'Working client' })).toHaveTextContent('All clients')
+  })
+
+  // The campaign list's client filter and the header are one choice, so the
+  // header saying one client over every client's campaigns cannot happen.
+  it('drives the Client Campaigns list address from the working client', async () => {
+    writeWorkingClient(workspaceId, clientId)
+    renderWithLocation('/app/client-campaigns')
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('All clients'))
+    expect(readWorkingClient(workspaceId)).toBeNull()
+
+    chooseWorkingClient('Dallas Fontaine')
+    expect(screen.getByTestId('location')).toHaveTextContent(`/app/client-campaigns?client=${clientId}`)
+
+    chooseWorkingClient('All clients')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/client-campaigns$/u)
+  })
+
+  it('names the client whose campaign is open, and moves between campaigns', async () => {
+    renderWithLocation(`/app/client-campaigns/${otherClientId}?tab=leads`)
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
+    expect(readWorkingClient(workspaceId)).toBe(otherClientId)
+
+    chooseWorkingClient('Dallas Fontaine')
+    expect(screen.getByTestId('location')).toHaveTextContent(new RegExp(`^/app/client-campaigns/${clientId}$`, 'u'))
+
+    chooseWorkingClient('All clients')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/client-campaigns$/u)
   })
 
   it('leaves the address alone on a module that reads the client only on arrival', async () => {

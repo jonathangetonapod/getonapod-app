@@ -1,7 +1,7 @@
 /**
  * How old the campaign totals on screen actually are.
  *
- * Instantly analytics arrive only when somebody presses "Refresh totals", so
+ * Instantly analytics arrive only when somebody presses "Sync with Instantly", so
  * "Emails sent: 1,240" reads as equally authoritative whether it synced a
  * minute or a fortnight ago. That is the whole problem this answers.
  *
@@ -23,7 +23,8 @@ export interface SyncFreshness {
   stale: boolean
 }
 
-function relativeAge(elapsedMs: number): string {
+/** "just now", "5 minutes ago", "3 days ago". */
+export function relativeAge(elapsedMs: number): string {
   if (elapsedMs < 2 * MINUTE_MS) return 'just now'
   if (elapsedMs < HOUR_MS) {
     const minutes = Math.floor(elapsedMs / MINUTE_MS)

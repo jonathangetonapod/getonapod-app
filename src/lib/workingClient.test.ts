@@ -51,8 +51,9 @@ describe('working client', () => {
     expect(clientScopedHref('/app', 'podcast-database', clientId)).toBe(`/app/podcast-database?client=${clientId}`)
     expect(clientScopedHref('/app', 'client-podcast-system', clientId)).toBe(`/app/client-podcast-system?client=${clientId}`)
     expect(clientScopedHref('/app', 'master-inbox', clientId)).toBe(`/app/master-inbox?client=${clientId}`)
-    // Campaigns has a detail route per client, so it goes straight there.
-    expect(clientScopedHref('/app', 'client-campaigns', clientId)).toBe(`/app/client-campaigns/${clientId}`)
+    // The campaign list filtered to the client, so one with no campaign yet
+    // still lands somewhere to assign one.
+    expect(clientScopedHref('/app', 'client-campaigns', clientId)).toBe(`/app/client-campaigns?client=${clientId}`)
     expect(clientScopedHref('/app', 'relationships', clientId)).toBe('/app/relationships')
     expect(clientScopedHref('/app', 'settings', clientId)).toBe('/app/settings')
     expect(clientScopedHref(`/app/workspaces/${workspaceId}`, 'podcast-finder', null))

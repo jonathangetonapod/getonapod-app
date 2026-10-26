@@ -17,6 +17,7 @@ export const CLIENT_SCOPED_SEGMENTS = new Set([
   'client-podcast-system',
   'master-inbox',
   'onboarding',
+  'client-campaigns',
 ])
 
 export function workingClientStorageKey(workspaceId: string): string {
@@ -51,14 +52,14 @@ export function writeWorkingClient(workspaceId: string, clientId: string | null)
 }
 
 /*
- * Where a sidebar item leads once a working client is set. Client Campaigns
- * has a per-client detail route, so it goes straight there; the modules that
- * filter by ?client= get the parameter; everything else is unchanged.
+ * Where a sidebar item leads once a working client is set: the modules that
+ * filter by ?client= get the parameter; everything else is unchanged. Client
+ * Campaigns opens its list filtered to the client, not that client's campaign
+ * page, so a client with no campaign yet lands on the way to assign one.
  */
 export function clientScopedHref(baseHref: string, segment: string, clientId: string | null): string {
   const href = `${baseHref}/${segment}`
   if (!clientId) return href
-  if (segment === 'client-campaigns') return `${href}/${clientId}`
   if (CLIENT_SCOPED_SEGMENTS.has(segment)) return `${href}?client=${clientId}`
   return href
 }

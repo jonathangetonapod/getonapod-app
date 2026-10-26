@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   ArrowRight,
-  BarChart3,
   CheckCircle2,
   ChevronDown,
   ChevronsUpDown,
@@ -20,7 +19,7 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { campaignErrorToast } from '@/lib/campaignErrorGuidance'
 import {
@@ -37,6 +36,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { AssignInstantlyCampaignsDialog } from '@/components/workspace/AssignInstantlyCampaignsDialog'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
@@ -63,7 +63,7 @@ import {
 } from '@/services/workspaceCampaigns'
 import { type WorkspaceClient } from '@/services/clients'
 import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
-import { describeSyncFreshness } from '@/lib/syncFreshness'
+import { describeSyncFreshness, relativeAge } from '@/lib/syncFreshness'
 
 type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed'
 type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Paused' | 'Completed'
@@ -95,7 +95,7 @@ interface CampaignSummary {
 }
 
 const filterLabels: Array<{ value: CampaignFilter; label: string }> = [
-  { value: 'all', label: 'All campaigns' },
+  { value: 'all', label: 'All' },
   { value: 'attention', label: 'Needs attention' },
   { value: 'draft', label: 'Draft' },
   { value: 'active', label: 'Active' },
@@ -354,7 +354,22 @@ const WorkspaceCampaigns = ({
     column: 'default',
     direction: 'asc',
   })
-  const [clientGroupFilter, setClientGroupFilter] = useState('all')
+  /*
+   * The client filter lives in ?client=, which the header's Working on reads
+   * and writes too, so the two are one choice and cannot disagree about what
+   * is on screen.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const clientGroupFilter = (searchParams.get('client') || '').toLowerCase() || 'all'
+  const setClientGroupFilter = (value: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (value === 'all') next.delete('client')
+      else next.set('client', value)
+      return next
+    }, { replace: true })
+  }
+  const [assignOpen, setAssignOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createStep, setCreateStep] = useState<1 | 2>(1)
   const [selectedClientId, setSelectedClientId] = useState('')
@@ -377,15 +392,46 @@ const WorkspaceCampaigns = ({
   const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
   const unassignedProviderCampaigns = providerCampaigns.filter((campaign) => !campaign.mapped_client_id)
 
-  const refreshConnectionMutation = useMutation({
-    mutationFn: () => refreshWorkspaceInstantly(workspaceId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      toast.success('Connection refreshed.')
+  /*
+   * One sync for what used to be two buttons: the connection (senders and the
+   * campaign list) and then the campaign totals. Each step says which one
+   * failed, since a working key with failing totals is a different problem.
+   */
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      try {
+        await refreshWorkspaceInstantly(workspaceId)
+      } catch (error) {
+        throw new Error(`Instantly connection: ${error instanceof Error ? error.message : 'could not be checked.'}`)
+      }
+      try {
+        return await refreshWorkspaceCampaignAnalytics(workspaceId)
+      } catch (error) {
+        throw new Error(`Campaign totals: ${error instanceof Error ? error.message : 'could not be refreshed.'}`)
+      }
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Instantly could not be refreshed.'),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+      // A campaign Instantly no longer answers for is named as unrefreshed
+      // rather than counted as done; its numbers on this page are the last
+      // ones anybody saw.
+      if (result.missing > 0) {
+        toast.warning(`Synced. ${result.missing} of ${result.requested} campaigns could not be found in Instantly.`)
+      } else {
+        toast.success('Synced with Instantly.')
+      }
+    },
+    onError: async () => {
+      // The first step may have landed; show whatever it refreshed.
+      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+    },
   })
-  const analyticsTotals = summaries.reduce((totals, summary) => {
+  const filteredClient = clientGroupFilter === 'all' ? null : clients.find((client) => client.id.toLowerCase() === clientGroupFilter) || null
+  // The stats, the tab counts and the table all read this one scoped list.
+  const scopedSummaries = clientGroupFilter === 'all'
+    ? summaries
+    : summaries.filter((summary) => summary.client.id.toLowerCase() === clientGroupFilter)
+  const analyticsTotals = scopedSummaries.reduce((totals, summary) => {
     const analytics = summary.campaign?.analytics
     if (!analytics) return totals
     return {
@@ -410,25 +456,6 @@ const WorkspaceCampaigns = ({
   const bounceAlarm = analyticsTotals.sent >= 20
     && bouncedCount / analyticsTotals.sent > 0.03
 
-  const refreshAnalyticsMutation = useMutation({
-    mutationFn: () => refreshWorkspaceCampaignAnalytics(workspaceId),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      if (result.requested === 0) {
-        toast.info('No launched campaigns to refresh yet.')
-        return
-      }
-      // A campaign Instantly no longer answers for is named as unrefreshed
-      // rather than counted as done — its numbers on this page are the last
-      // ones anybody saw.
-      toast.success(
-        result.missing > 0
-          ? `Totals refreshed for ${result.refreshed} of ${result.requested} campaigns. ${result.missing} could not be found in Instantly.`
-          : `Totals refreshed for ${result.refreshed} campaign${result.refreshed === 1 ? '' : 's'}.`,
-      )
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Campaign totals could not be refreshed.'),
-  })
   const disconnectMutation = useMutation({
     mutationFn: () => disconnectWorkspaceInstantly(workspaceId),
     onSuccess: async () => {
@@ -469,7 +496,17 @@ const WorkspaceCampaigns = ({
 
   const selectedClient = activeClients.find((client) => client.id === selectedClientId) || null
   const normalizedSearch = search.trim().toLowerCase()
-  const filteredSummaries = summaries.filter((summary) => {
+  const statusMatches = (summary: CampaignSummary, value: CampaignFilter) => value === 'all'
+    || (value === 'attention' && summary.status === 'Needs attention')
+    || (value === 'draft' && summary.status === 'Draft')
+    || (value === 'active' && summary.status === 'Active')
+    || (value === 'paused' && summary.status === 'Paused')
+    || (value === 'completed' && summary.status === 'Completed')
+  const filterCounts = Object.fromEntries(filterLabels.map((item) => [
+    item.value,
+    scopedSummaries.filter((summary) => statusMatches(summary, item.value)).length,
+  ])) as Record<CampaignFilter, number>
+  const filteredSummaries = scopedSummaries.filter((summary) => {
     const matchesSearch = !normalizedSearch
       || summary.client.name.toLowerCase().includes(normalizedSearch)
       // The Name column shows the campaign's real name; a search that could
@@ -477,14 +514,7 @@ const WorkspaceCampaigns = ({
       // different page than the one on screen.
       || (summary.campaign?.name ?? '').toLowerCase().includes(normalizedSearch)
       || `${summary.client.name} podcast outreach`.toLowerCase().includes(normalizedSearch)
-    const matchesClient = clientGroupFilter === 'all' || summary.client.id === clientGroupFilter
-    const matchesFilter = filter === 'all'
-      || (filter === 'attention' && summary.status === 'Needs attention')
-      || (filter === 'draft' && summary.status === 'Draft')
-      || (filter === 'active' && summary.status === 'Active')
-      || (filter === 'paused' && summary.status === 'Paused')
-      || (filter === 'completed' && summary.status === 'Completed')
-    return matchesSearch && matchesClient && matchesFilter
+    return matchesSearch && statusMatches(summary, filter)
   }).sort((left, right) => {
     // Ties always fall back to client name, so re-sorting never reshuffles rows
     // that compare equal and the list stays readable between clicks.
@@ -501,8 +531,8 @@ const WorkspaceCampaigns = ({
   })
 
   const syncFreshness = useMemo(
-    () => describeSyncFreshness(summaries.map((summary) => summary.campaign?.last_synced_at), Date.now()),
-    [summaries],
+    () => describeSyncFreshness(scopedSummaries.map((summary) => summary.campaign?.last_synced_at), Date.now()),
+    [scopedSummaries],
   )
   const sendingNow = useMemo(() => {
     const sending = summaries.filter((summary) => (summary.campaign?.target_counts.staged_sending || 0) > 0)
@@ -513,11 +543,11 @@ const WorkspaceCampaigns = ({
     }
   }, [baseHref, summaries])
 
-  const activeCount = summaries.filter((summary) => summary.status === 'Active').length
-  const sentCount = summaries.reduce((total, summary) => (
+  const activeCount = scopedSummaries.filter((summary) => summary.status === 'Active').length
+  const sentCount = scopedSummaries.reduce((total, summary) => (
     total + (summary.campaign?.analytics.emails_sent_count ?? 0)
   ), 0)
-  const positiveReplyCount = summaries.reduce((total, summary) => (
+  const positiveReplyCount = scopedSummaries.reduce((total, summary) => (
     total + (summary.campaign?.analytics.total_interested || 0)
   ), 0)
   const assignedClientIds = new Set(providerBackedCampaigns.map((campaign) => campaign.client_id))
@@ -635,6 +665,16 @@ const WorkspaceCampaigns = ({
     })
   }
 
+  const openCreateFor = (clientId: string | null) => {
+    if (clientId && availableCampaignClients.some((client) => client.id === clientId)) selectClient(clientId)
+    setCreateOpen(true)
+  }
+  const lastSyncedAt = integration?.last_verified_at ? Date.parse(integration.last_verified_at) : Number.NaN
+  const lastSyncedLabel = Number.isFinite(lastSyncedAt) ? `Last synced ${relativeAge(Math.max(0, Date.now() - lastSyncedAt))}` : null
+  const canAssign = canManageCampaigns && Boolean(integration?.connected)
+    && unassignedProviderCampaigns.length > 0 && availableCampaignClients.length > 0
+  const scopeLabel = filteredClient ? `For ${filteredClient.name}` : 'All clients'
+
   if (clientsError) {
     return (
       <Card>
@@ -659,6 +699,11 @@ const WorkspaceCampaigns = ({
               {campaignOverviewQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlugZap className="h-5 w-5" />}
             </div>
             <div className="min-w-0">
+              {/* Named as the Instantly account: on its own the account's
+                  name read like a client, or like a different workspace. */}
+              {integration?.connected && !campaignOverviewQuery.isLoading && (
+                <p className="text-xs font-medium text-muted-foreground">Instantly account</p>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold">
                   {campaignOverviewQuery.isLoading
@@ -675,27 +720,48 @@ const WorkspaceCampaigns = ({
                 {campaignOverviewQuery.error instanceof Error
                   ? campaignOverviewQuery.error.message
                   : integration?.connected
-                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · ${providerCampaigns.length} Instantly campaign${providerCampaigns.length === 1 ? '' : 's'} found · key ending ${integration.api_key_last_four || '••••'}`
+                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · ${providerCampaigns.length} campaign${providerCampaigns.length === 1 ? '' : 's'}${unassignedProviderCampaigns.length > 0 ? ` (${unassignedProviderCampaigns.length} unassigned)` : ''}`
                     : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects one V2 API key before anyone sends.'}
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex shrink-0 flex-col gap-1.5 sm:items-end">
+          <div className="flex flex-wrap gap-2">
             {campaignOverviewQuery.error && (
               <Button type="button" variant="outline" size="sm" onClick={() => void campaignOverviewQuery.refetch()}>
                 <RefreshCw className="mr-2 h-4 w-4" />Try again
               </Button>
             )}
             {integration?.connected && canManageCampaigns && (
-              <Button type="button" variant="outline" size="sm" disabled={refreshConnectionMutation.isPending} onClick={() => refreshConnectionMutation.mutate()}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${refreshConnectionMutation.isPending ? 'animate-spin' : ''}`} />Refresh
+              <Button type="button" variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
+                {syncMutation.isPending ? 'Syncing campaigns...' : 'Sync with Instantly'}
               </Button>
             )}
             {integration?.can_manage && (
-              <Button type="button" size="sm" variant={integration.connected ? 'outline' : 'default'} onClick={() => setConnectionOpen(true)}>
+              <Button
+                type="button"
+                size="sm"
+                variant={integration.connected ? 'outline' : 'default'}
+                onClick={() => setConnectionOpen(true)}
+                title={integration.connected && integration.api_key_last_four ? `Key ending ${integration.api_key_last_four}` : undefined}
+              >
                 <KeyRound className="mr-2 h-4 w-4" />{integration.connected ? 'Manage key' : 'Connect Instantly'}
               </Button>
             )}
+          </div>
+          <div aria-live="polite" className="text-xs sm:text-right">
+            {syncMutation.isError ? (
+              <p className="flex flex-wrap items-center gap-x-2 text-red-700 sm:justify-end">
+                <span>Sync failed. {syncMutation.error instanceof Error ? syncMutation.error.message : ''}</span>
+                <button type="button" className="font-medium underline underline-offset-2" onClick={() => syncMutation.mutate()}>Try again</button>
+              </p>
+            ) : syncMutation.isPending ? (
+              <p className="text-muted-foreground">Syncing campaigns...</p>
+            ) : integration?.connected && lastSyncedLabel ? (
+              <p className="text-muted-foreground">{lastSyncedLabel}</p>
+            ) : null}
+          </div>
           </div>
         </CardContent>
       </Card>
@@ -707,27 +773,28 @@ const WorkspaceCampaigns = ({
         </div>
       )}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">All campaigns</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Every row is a real Instantly campaign assigned to one client.</p>
-        </div>
-        {canManageCampaigns && (
-          <div className="flex flex-wrap gap-2">
-            {integration?.connected && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={refreshAnalyticsMutation.isPending}
-                onClick={() => refreshAnalyticsMutation.mutate()}
-              >
-                <BarChart3 className={`mr-2 h-4 w-4 ${refreshAnalyticsMutation.isPending ? 'animate-pulse' : ''}`} />
-                Refresh totals
-              </Button>
+      {/* The scope everything below is showing, stats and table alike. The
+          client comes from the header's Working on or the table's filter,
+          which are the same choice. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {filteredClient ? (
+          <p className="inline-flex w-fit flex-wrap items-center gap-x-2 gap-y-1 rounded-full border bg-muted/30 px-3 py-1 text-sm">
+            <span>Showing campaigns for <span className="font-semibold">{filteredClient.name}</span></span>
+            <span aria-hidden="true" className="text-muted-foreground">·</span>
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => setClientGroupFilter('all')}>Show all clients</button>
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Showing campaigns for all clients</p>
+        )}
+        {/* With no campaigns in view, the empty state below carries these. */}
+        {canManageCampaigns && scopedSummaries.length > 0 && (
+          <div className="flex flex-wrap items-start gap-2">
+            {canAssign && (
+              <Button type="button" variant="outline" onClick={() => setAssignOpen(true)}>Assign campaigns</Button>
             )}
             <div className="flex flex-col items-end gap-1">
               <Button
-                onClick={() => setCreateOpen(true)}
+                onClick={() => openCreateFor(null)}
                 disabled={clientsLoading || campaignOverviewQuery.isLoading || Boolean(newCampaignBlockedReason)}
                 title={newCampaignBlockedReason ?? undefined}
               >
@@ -739,15 +806,23 @@ const WorkspaceCampaigns = ({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryMetric label="Active campaigns" value={activeCount} detail="Currently sending outreach" icon={CheckCircle2} />
-        <SummaryMetric label="Emails sent" value={sentCount} detail="Synced campaign outreach" icon={Mail} />
+      {/* Four zeros for a scope with no campaign read as four results. */}
+      {scopedSummaries.length === 0 ? (
+        !campaignOverviewQuery.isLoading && !clientsLoading && (
+          <p className="text-sm text-muted-foreground">Stats appear once a campaign starts sending.</p>
+        )
+      ) : (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label={`Campaign stats, ${scopeLabel.toLowerCase()}`}>
+        <SummaryMetric label="Active campaigns" value={activeCount} detail={`Sending now · ${scopeLabel}`} icon={CheckCircle2} />
+        <SummaryMetric label="Emails sent" value={sentCount} detail={`Synced from Instantly · ${scopeLabel}`} icon={Mail} />
         <SummaryMetric
           label="Positive replies"
           value={integration?.connected ? positiveReplyCount : '—'}
-          detail={integration?.connected
-            ? `Replies marked interested · ${replyRate} of ${contactedCount} contacted replied`
-            : 'Available after Instantly sync'}
+          detail={!integration?.connected
+            ? 'Available after Instantly sync'
+            : replyCount === 0
+              ? 'No replies yet'
+              : `${replyRate} of ${contactedCount} contacted replied`}
           icon={MessageSquare}
         />
         {/* Bounces and unsubscribes were collected on every sync and shown
@@ -756,23 +831,26 @@ const WorkspaceCampaigns = ({
         <SummaryMetric
           label="Bounce rate"
           value={integration?.connected ? bounceRate : '—'}
-          detail={integration?.connected
-            ? bouncedCount === 0 && unsubscribedCount === 0
-              ? 'No bounces recorded'
-              : `${bouncedCount} bounced · ${unsubscribedCount} unsubscribed`
-            : 'Available after Instantly sync'}
+          detail={!integration?.connected
+            ? 'Available after Instantly sync'
+            : analyticsTotals.sent === 0
+              ? 'No emails sent yet'
+              : bouncedCount === 0 && unsubscribedCount === 0
+                ? 'No bounces recorded'
+                : `${bouncedCount} bounced · ${unsubscribedCount} unsubscribed`}
           icon={AlertCircle}
           tone={bounceAlarm ? 'alarm' : undefined}
         />
       </div>
+      )}
 
-      {/* Every number above arrives only when somebody presses Refresh totals,
+      {/* Every number above arrives only when somebody presses Sync with Instantly,
           and without this they look equally current at one minute or one
           fortnight old. */}
       {/* Shown while the numbers are shown — disconnecting deliberately leaves
           campaigns sending, and hiding the staleness line with the connection
           made week-old totals look as current as live ones. */}
-      {(integration?.connected || summaries.length > 0) && syncFreshness && (
+      {(integration?.connected || scopedSummaries.length > 0) && syncFreshness && (
         <p className={`flex items-center gap-2 text-xs ${syncFreshness.stale ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}>
           {syncFreshness.stale && <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
           {syncFreshness.label}
@@ -806,6 +884,7 @@ const WorkspaceCampaigns = ({
 
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-muted/15 p-4">
+          <p className="mb-3 text-xs text-muted-foreground">Every row is a real Instantly campaign assigned to one client.</p>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* The search box used to take every pixel the row would give it,
                 so a field holding a campaign name ran the width of the page
@@ -833,18 +912,24 @@ const WorkspaceCampaigns = ({
               </div>
             </div>
             <div className="flex max-w-full gap-2 overflow-x-auto pb-1 lg:pb-0" aria-label="Campaign status filters">
-              {filterLabels.map((item) => (
-                <Button
-                  key={item.value}
-                  type="button"
-                  size="sm"
-                  variant={filter === item.value ? 'secondary' : 'ghost'}
-                  className="shrink-0"
-                  onClick={() => setFilter(item.value)}
-                >
-                  {item.label}
-                </Button>
-              ))}
+              {filterLabels.map((item) => {
+                const count = filterCounts[item.value]
+                const warn = item.value === 'attention' && count > 0
+                return (
+                  <Button
+                    key={item.value}
+                    type="button"
+                    size="sm"
+                    variant={filter === item.value ? 'secondary' : 'ghost'}
+                    className="shrink-0"
+                    aria-pressed={filter === item.value}
+                    onClick={() => setFilter(item.value)}
+                  >
+                    {warn && <span className="mr-1.5 h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />}
+                    {item.label} ({count})
+                  </Button>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -872,12 +957,43 @@ const WorkspaceCampaigns = ({
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">Add or reactivate a client before creating a podcast outreach campaign.</p>
             <Button asChild variant="outline" className="mt-4"><Link to={`${baseHref}/clients`}>Open clients</Link></Button>
           </div>
-        ) : summaries.length === 0 ? (
+        ) : scopedSummaries.length === 0 ? (
           <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
             <PlugZap className="h-8 w-8 text-muted-foreground/50" />
-            <h3 className="mt-3 font-semibold">No campaigns yet.</h3>
-            <p className="mt-1 max-w-md text-sm text-muted-foreground">Create one for a client; it is created in Instantly for you.</p>
-            {canManageCampaigns && integration?.connected && availableCampaignClients.length > 0 && <Button className="mt-4" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" />New campaign</Button>}
+            {/* The connection card counts every campaign in Instantly; this
+                table lists only the ones assigned to a client. Saying "No
+                campaigns yet" beside "28 found" read as a broken sync. */}
+            <h3 className="mt-3 font-semibold">
+              {filteredClient
+                ? `${filteredClient.name} has no campaign yet`
+                : unassignedProviderCampaigns.length > 0
+                  ? `${unassignedProviderCampaigns.length} campaign${unassignedProviderCampaigns.length === 1 ? '' : 's'} found in Instantly, none assigned yet`
+                  : campaignOverviewQuery.data?.provider_campaigns_error
+                    ? 'No campaigns assigned yet'
+                    : 'No campaigns yet'}
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              {!integration?.connected
+                ? 'Connect Instantly to create or assign a campaign.'
+                : unassignedProviderCampaigns.length > 0
+                  ? `Assign an existing campaign to ${filteredClient ? filteredClient.name : 'a client'}, or create a new one.`
+                  : `Create one${filteredClient ? '' : ' for a client'}. It is created in Instantly for you.`}
+            </p>
+            {canManageCampaigns && integration?.connected && (
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {canAssign && (!filteredClient || availableCampaignClients.some((client) => client.id === filteredClient.id)) && (
+                  <Button type="button" onClick={() => setAssignOpen(true)}>Assign campaigns</Button>
+                )}
+                {availableCampaignClients.length > 0 && (!filteredClient || availableCampaignClients.some((client) => client.id === filteredClient.id)) && (
+                  <Button type="button" variant={canAssign ? 'outline' : 'default'} onClick={() => openCreateFor(filteredClient?.id ?? null)}>
+                    <Plus className="mr-2 h-4 w-4" />New campaign
+                  </Button>
+                )}
+                {filteredClient && (
+                  <Button type="button" variant="ghost" onClick={() => setClientGroupFilter('all')}>Show all clients</Button>
+                )}
+              </div>
+            )}
           </div>
         ) : filteredSummaries.length === 0 ? (
           <div className="flex min-h-52 flex-col items-center justify-center px-6 text-center">
@@ -981,6 +1097,20 @@ const WorkspaceCampaigns = ({
           </>
         )}
       </Card>
+
+      <AssignInstantlyCampaignsDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        workspaceId={workspaceId}
+        campaigns={unassignedProviderCampaigns}
+        clients={availableCampaignClients}
+        defaultClientId={filteredClient?.id ?? null}
+        statusLabel={instantlyStatusLabel}
+        onAssigned={async (assigned) => {
+          await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
+          toast.success(`${assigned} campaign${assigned === 1 ? '' : 's'} assigned.`)
+        }}
+      />
 
       <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateDialog(); else setCreateOpen(true) }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">

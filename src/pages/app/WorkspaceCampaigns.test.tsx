@@ -8,6 +8,8 @@ import { getWorkspaceClientDetail, type WorkspaceClient, type WorkspaceClientDet
 import {
   connectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
+  refreshWorkspaceCampaignAnalytics,
+  refreshWorkspaceInstantly,
   saveWorkspaceCampaign,
   type WorkspaceCampaignOverview,
 } from '@/services/workspaceCampaigns'
@@ -18,6 +20,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   connectWorkspaceInstantly: vi.fn(),
   disconnectWorkspaceInstantly: vi.fn(),
   getWorkspaceCampaignOverview: vi.fn(),
+  refreshWorkspaceCampaignAnalytics: vi.fn(),
   refreshWorkspaceInstantly: vi.fn(),
   saveWorkspaceCampaign: vi.fn(),
 }))
@@ -27,6 +30,8 @@ const mockedDetail = vi.mocked(getWorkspaceClientDetail)
 const mockedOverview = vi.mocked(getWorkspaceCampaignOverview)
 const mockedSaveCampaign = vi.mocked(saveWorkspaceCampaign)
 const mockedConnectInstantly = vi.mocked(connectWorkspaceInstantly)
+const mockedRefreshInstantly = vi.mocked(refreshWorkspaceInstantly)
+const mockedRefreshAnalytics = vi.mocked(refreshWorkspaceCampaignAnalytics)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 
@@ -154,11 +159,11 @@ const Location = () => {
 const secondClientId = '77777777-7777-4777-8777-777777777777'
 const secondClient: WorkspaceClient = { ...client, id: secondClientId, name: 'Ana Boyd', email: 'ana@example.com' }
 
-function renderCampaigns(clients: WorkspaceClient[] = [client]) {
+function renderCampaigns(clients: WorkspaceClient[] = [client], initialEntry = '/app/client-campaigns') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/app/client-campaigns']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceCampaigns
           workspaceId={workspaceId}
           clients={clients}
@@ -214,7 +219,7 @@ describe('WorkspaceCampaigns', () => {
     expect(within(table).getByRole('columnheader', { name: 'Next step' })).toBeInTheDocument()
     expect(within(table).getByText('12')).toBeInTheDocument()
     expect(within(table).queryByText('active@example.com')).not.toBeInTheDocument()
-    expect(screen.getByText(/Replies marked interested · 22% of 9 contacted replied/)).toBeInTheDocument()
+    expect(screen.getByText('22% of 9 contacted replied')).toBeInTheDocument()
     expect(screen.queryByText('Ready to launch')).not.toBeInTheDocument()
     expect(screen.queryByText(/Feb 16–22|podcasts in view|Current wave/i)).not.toBeInTheDocument()
   })
@@ -447,7 +452,8 @@ describe('WorkspaceCampaigns', () => {
 
     expect(await screen.findByText('Bounce rate')).toBeInTheDocument()
     // A percentage of nothing would read as a real, reassuring zero.
-    expect(screen.getByText('No bounces recorded')).toBeInTheDocument()
+    expect(screen.getByText('No emails sent yet')).toBeInTheDocument()
+    expect(screen.getByText('No replies yet')).toBeInTheDocument()
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
@@ -592,8 +598,153 @@ describe('WorkspaceCampaigns', () => {
 
     renderCampaigns()
 
-    expect(await screen.findByRole('heading', { name: 'No campaigns yet.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No campaigns yet' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'New campaign' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect Instantly' })).not.toBeInTheDocument()
+  })
+
+  const unassignedCampaign = {
+    id: '88888888-8888-4888-8888-888888888888',
+    name: 'Existing Podcast Campaign',
+    status: 2,
+    sender_accounts: ['active@example.com'],
+    timezone: 'America/Chicago',
+    daily_limit: 25,
+    timestamp_created: '2026-07-01T12:00:00Z',
+    timestamp_updated: '2026-07-23T12:00:00Z',
+    mapped_client_id: null,
+  }
+
+  // The card counted 28 campaigns in Instantly while the table said "No
+  // campaigns yet": the table lists only assigned ones, and none were.
+  it('says campaigns exist in Instantly when none is assigned yet, and assigns them', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      provider_campaigns: [unassignedCampaign],
+    })
+    renderCampaigns([client, secondClient])
+
+    expect(await screen.findByRole('heading', { name: '1 campaign found in Instantly, none assigned yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No campaigns yet' })).not.toBeInTheDocument()
+    expect(screen.getByText('1 active sending account · 1 campaign (1 unassigned)')).toBeInTheDocument()
+    expect(screen.queryByText(/key ending/)).not.toBeInTheDocument()
+    expect(screen.getByText('Stats appear once a campaign starts sending.')).toBeInTheDocument()
+    expect(screen.queryByText('Emails sent')).not.toBeInTheDocument()
+    // One New campaign at a time: the empty state's, not the header's too.
+    expect(screen.getAllByRole('button', { name: 'New campaign' })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Assign campaigns' }))
+    expect(await screen.findByRole('heading', { name: 'Assign Instantly campaigns' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review assignments' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client for Existing Podcast Campaign' }))
+    fireEvent.click(await screen.findByRole('option', { name: secondClient.name }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review 1 assignment' }))
+    expect(await screen.findByRole('heading', { name: 'Confirm assignments' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Assign 1 campaign' }))
+
+    await waitFor(() => expect(mockedSaveCampaign).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId,
+      clientId: secondClientId,
+      providerCampaignId: unassignedCampaign.id,
+      name: 'Existing Podcast Campaign',
+      dailyLimit: 25,
+      senderAccounts: ['active@example.com'],
+    })))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Confirm assignments' })).not.toBeInTheDocument())
+  })
+
+  it('keeps a failed assignment in the dialog with the reason', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      provider_campaigns: [unassignedCampaign],
+    })
+    mockedSaveCampaign.mockRejectedValueOnce(new Error('That Instantly campaign is already assigned to another client'))
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign campaigns' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client for Existing Podcast Campaign' }))
+    fireEvent.click(await screen.findByRole('option', { name: client.name }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review 1 assignment' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign 1 campaign' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Existing Podcast Campaign: That Instantly campaign is already assigned to another client')
+    expect(screen.getByRole('heading', { name: 'Assign Instantly campaigns' })).toBeInTheDocument()
+  })
+
+  // The header's Working on writes ?client=, so the list, its stats and its
+  // tab counts open on that client.
+  it('scopes the table, stats and tab counts to the client in the address', async () => {
+    const secondCampaign = {
+      ...persistedCampaign,
+      id: '99999999-9999-4999-8999-999999999999',
+      client_id: secondClientId,
+      name: 'Ana Boyd Podcast Outreach',
+      status: 'attention' as const,
+      instantly_campaign_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      analytics: { ...persistedCampaign.analytics, emails_sent_count: 500 },
+    }
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      campaigns: [persistedCampaign, secondCampaign],
+    })
+    renderCampaigns([client, secondClient], `/app/client-campaigns?client=${clientId}`)
+
+    expect(await screen.findByText('Showing campaigns for')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Filter campaigns by client' })).toHaveTextContent(client.name)
+    expect(screen.getAllByText('Dallas Fontaine Podcast Outreach').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Ana Boyd Podcast Outreach')).not.toBeInTheDocument()
+    expect(screen.getByText('Synced from Instantly · For Dallas Fontaine')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Needs attention (0)' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all clients' }))
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/client-campaigns$/u))
+    expect(screen.getAllByText('Ana Boyd Podcast Outreach').length).toBeGreaterThan(0)
+    expect(screen.getByText('Synced from Instantly · All clients')).toBeInTheDocument()
+    expect(screen.getByText('512')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All (2)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Needs attention (1)' })).toBeInTheDocument()
+  })
+
+  it('offers to assign or create for a working client with no campaign yet', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      campaigns: [persistedCampaign],
+      provider_campaigns: [unassignedCampaign],
+    })
+    renderCampaigns([client, secondClient], `/app/client-campaigns?client=${secondClientId}`)
+
+    expect(await screen.findByRole('heading', { name: 'Ana Boyd has no campaign yet' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Assign campaigns' }))
+    // Opened for Ana, the first campaign is already set to Ana.
+    expect(await screen.findByRole('button', { name: 'Review 1 assignment' })).toBeEnabled()
+  })
+
+  it('syncs the connection and the totals from one button, and says which step failed', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: { ...connectedIntegration, last_verified_at: new Date(Date.now() - 5 * 60_000).toISOString() },
+      campaigns: [persistedCampaign],
+    })
+    mockedRefreshInstantly.mockResolvedValue(connectedIntegration)
+    mockedRefreshAnalytics.mockRejectedValueOnce(new Error('Instantly timed out.'))
+    renderCampaigns()
+
+    expect(await screen.findByText('Last synced 5 minutes ago')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Refresh totals' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sync with Instantly' }))
+
+    expect(await screen.findByText(/Sync failed\. Campaign totals: Instantly timed out\./)).toBeInTheDocument()
+    expect(mockedRefreshInstantly).toHaveBeenCalledWith(workspaceId)
+    expect(mockedRefreshAnalytics).toHaveBeenCalledWith(workspaceId)
+
+    mockedRefreshAnalytics.mockResolvedValueOnce({ requested: 1, refreshed: 1, missing: 0 } as never)
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(mockedRefreshAnalytics).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText(/Sync failed/)).not.toBeInTheDocument())
   })
 })
