@@ -44,6 +44,8 @@ assert.match(dockerfile, /^CMD \["npm", "start"\]$/mu)
 assert.match(railway, /^builder = "DOCKERFILE"$/mu)
 assert.match(railway, /^dockerfilePath = "Dockerfile"$/mu)
 assert.match(railway, /^startCommand = "npm start"$/mu)
+// A container that never answers must not replace the one that does.
+assert.match(railway, /^healthcheckPath = "\/"$/mu)
 
 assert.match(localNodeInstaller, /^VERSION = "v22\.22\.2"$/mu)
 assert.match(localNodeInstaller, /^NPM_VERSION = "10\.9\.7"$/mu)

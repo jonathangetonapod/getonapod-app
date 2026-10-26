@@ -4,5 +4,11 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "npm start"
+# A deploy goes live only once the server answers. Without this, a container
+# that crashed on start (2026-10-26: EACCES reading package.json) was promoted
+# and the site served 502s until the next deploy replaced it. "/" is the
+# prerendered home page read from disk, so it checks the server, not Supabase.
+healthcheckPath = "/"
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
