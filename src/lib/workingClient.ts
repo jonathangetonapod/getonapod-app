@@ -1,9 +1,10 @@
 /*
- * The client a person is working on right now, remembered per workspace for
- * the length of the tab. Session rather than local storage: a working client
- * is a task, not a preference, and should not follow someone into tomorrow.
+ * The client a person is working on, remembered per person and per workspace
+ * across visits. It used to last only as long as the tab, so every new tab or
+ * next morning started on All clients and the one-click add was gone until
+ * somebody picked the same client again.
  */
-const WORKING_CLIENT_STORAGE_PREFIX = 'workspace-working-client-v1'
+const WORKING_CLIENT_STORAGE_PREFIX = 'workspace-working-client-v2'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
@@ -19,8 +20,8 @@ export const CLIENT_SCOPED_SEGMENTS = new Set([
   'client-campaigns',
 ])
 
-export function workingClientStorageKey(workspaceId: string): string {
-  return `${WORKING_CLIENT_STORAGE_PREFIX}:${workspaceId.toLowerCase()}`
+export function workingClientStorageKey(workspaceId: string, userId: string): string {
+  return `${WORKING_CLIENT_STORAGE_PREFIX}:${userId.toLowerCase()}:${workspaceId.toLowerCase()}`
 }
 
 export function normalizeWorkingClientId(value: string | null | undefined): string | null {
@@ -28,23 +29,23 @@ export function normalizeWorkingClientId(value: string | null | undefined): stri
   return UUID_PATTERN.test(candidate) ? candidate : null
 }
 
-export function readWorkingClient(workspaceId: string): string | null {
-  if (!workspaceId || typeof window === 'undefined') return null
+export function readWorkingClient(workspaceId: string, userId: string | null | undefined): string | null {
+  if (!workspaceId || !userId || typeof window === 'undefined') return null
   try {
-    return normalizeWorkingClientId(window.sessionStorage.getItem(workingClientStorageKey(workspaceId)))
+    return normalizeWorkingClientId(window.localStorage.getItem(workingClientStorageKey(workspaceId, userId)))
   } catch {
     // The layout still works without a remembered client when storage is unavailable.
     return null
   }
 }
 
-export function writeWorkingClient(workspaceId: string, clientId: string | null): void {
-  if (!workspaceId || typeof window === 'undefined') return
-  const key = workingClientStorageKey(workspaceId)
+export function writeWorkingClient(workspaceId: string, userId: string | null | undefined, clientId: string | null): void {
+  if (!workspaceId || !userId || typeof window === 'undefined') return
+  const key = workingClientStorageKey(workspaceId, userId)
   const normalized = normalizeWorkingClientId(clientId)
   try {
-    if (normalized) window.sessionStorage.setItem(key, normalized)
-    else window.sessionStorage.removeItem(key)
+    if (normalized) window.localStorage.setItem(key, normalized)
+    else window.localStorage.removeItem(key)
   } catch {
     // The selection still applies in this render when storage is unavailable.
   }

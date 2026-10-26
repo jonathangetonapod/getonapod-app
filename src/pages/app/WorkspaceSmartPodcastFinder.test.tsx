@@ -691,7 +691,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
   })
 
   it('opens on the header’s working client when the address names none', async () => {
-    writeWorkingClient(workspaceId, clientId)
+    writeWorkingClient(workspaceId, 'user-1', clientId)
     renderFinder('/app/podcast-finder')
 
     expect(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeInTheDocument()

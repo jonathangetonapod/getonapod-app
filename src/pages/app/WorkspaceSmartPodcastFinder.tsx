@@ -142,7 +142,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
    * client. Read during the first render, because the layout clears the
    * remembered client in its own effect when the address names none.
    */
-  const [rememberedClientId] = useState(() => (clientId ? null : readWorkingClient(workspaceId)))
+  const [rememberedClientId] = useState(() => (clientId ? null : readWorkingClient(workspaceId, user?.id)))
   useEffect(() => {
     if (!rememberedClientId) return
     setSearchParams((current) => {

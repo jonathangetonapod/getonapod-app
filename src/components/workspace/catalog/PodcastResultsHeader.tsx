@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { SORT_LABELS } from '@/components/workspace/catalog/catalogFilterLabels'
+import { SORT_HINTS, SORT_LABELS } from '@/components/workspace/catalog/catalogFilterLabels'
 import { formatDay } from '@/lib/podcastCatalogDisplay'
 import { cn } from '@/lib/utils'
 import type { WorkspacePodcastCatalogSort } from '@/services/workspacePodcastCatalog'
@@ -109,7 +109,10 @@ export const PodcastResultsHeader = ({
         </SelectTrigger>
         <SelectContent align="end">
           {(Object.keys(SORT_LABELS) as WorkspacePodcastCatalogSort[]).map((value) => (
-            <SelectItem key={value} value={value}>{SORT_LABELS[value]}</SelectItem>
+            <SelectItem key={value} value={value}>
+              {SORT_LABELS[value]}
+              {SORT_HINTS[value] && <span className="block text-xs text-muted-foreground">{SORT_HINTS[value]}</span>}
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>

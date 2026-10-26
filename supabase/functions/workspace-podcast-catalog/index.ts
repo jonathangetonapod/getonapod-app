@@ -20,8 +20,9 @@ import { reservePublicRate } from '../_shared/publicRateLimit.ts'
 const METHODS = ['POST'] as const
 const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
-const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_plus'])
-const SORT_OPTIONS = new Set(['audience', 'name', 'recent', 'community'])
+// 250k_plus predates the 250K to 1M / 1M+ split and is kept for old addresses.
+const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
+const SORT_OPTIONS = new Set(['best_fit', 'audience', 'name', 'recent', 'community'])
 // Semantic search embeds every search box change on the platform OpenAI key.
 // Charging credits per keystroke would punish ordinary typing, so instead
 // each workspace (and each member) gets a generous embedding allowance; past
@@ -89,7 +90,7 @@ serve(async (req) => {
     const contact = optionalChoice(body.contact, 'contact', CONTACT_FILTERS, 'all')
     const activity = optionalChoice(body.activity, 'activity', ACTIVITY_FILTERS, 'active')
     const audience = optionalChoice(body.audience, 'audience', AUDIENCE_FILTERS, 'all')
-    const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'audience')
+    const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'best_fit')
     const page = optionalInteger(body.page, 'page', 1, 1, 10_000)
     const pageSize = optionalInteger(body.page_size, 'page_size', 24, 12, 48)
 

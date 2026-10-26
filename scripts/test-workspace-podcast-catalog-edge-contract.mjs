@@ -68,6 +68,13 @@ assert.match(
   v3Migration,
   /GRANT EXECUTE ON FUNCTION public\.workspace_podcast_catalog_page_v3\([\s\S]+TO service_role;/u,
 )
+// Best fit is the default: reachable, mid-size, recently publishing.
+assert.match(edge, /optionalChoice\(body\.sort, 'sort', SORT_OPTIONS, 'best_fit'\)/u)
+assert.match(edge, /'250k_1m', '1m_plus'/u)
+assert.match(v3Migration, /p_sort TEXT DEFAULT 'best_fit'/u)
+assert.match(v3Migration, /WHEN audience_size >= 10000 AND audience_size < 250000 THEN 3/u)
+assert.match(v3Migration, /CASE WHEN normalized_sort = 'best_fit' THEN fit_score END DESC NULLS LAST/u)
+assert.match(v3Migration, /normalized_audience = '1m_plus' AND audience_size >= 1000000/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)

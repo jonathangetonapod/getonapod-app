@@ -612,7 +612,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
   // Platform administration acts on every workspace, so a working client and
   // the admin's own credit balance describe nothing on these pages.
   const onPlatformPage = isPlatformAdmin && matchesPath('/app/platform')
-  const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId))
+  const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId, user?.id))
   const clientInPathHref = `${baseHref}/${CLIENT_IN_PATH_SEGMENT}`
   const clientInPath = location.pathname.startsWith(`${clientInPathHref}/`)
   const requestedClientId = normalizeWorkingClientId(clientInPath
@@ -657,16 +657,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
   const workingClient = (clientsQuery.data ?? []).find((client) => client.id.toLowerCase() === workingClientId) ?? null
 
   useEffect(() => {
-    setWorkingClientId(readWorkingClient(workingClientWorkspaceId))
-  }, [workingClientWorkspaceId])
+    setWorkingClientId(readWorkingClient(workingClientWorkspaceId, user?.id))
+  }, [user?.id, workingClientWorkspaceId])
 
   // A page opened with ?client= (from a link, a bookmark, another module's
   // handoff) is a choice too, and the header follows it rather than arguing.
   useEffect(() => {
     if (!workingClientWorkspaceId || !currentSegmentReadsClient || !requestedClientId) return
-    writeWorkingClient(workingClientWorkspaceId, requestedClientId)
+    writeWorkingClient(workingClientWorkspaceId, user?.id, requestedClientId)
     setWorkingClientId(requestedClientId)
-  }, [currentSegmentReadsClient, requestedClientId, workingClientWorkspaceId])
+  }, [currentSegmentReadsClient, requestedClientId, user?.id, workingClientWorkspaceId])
 
   // A client that has since been paused or churned drops out of the list, and
   // links should stop carrying them the moment that is known.
@@ -675,9 +675,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
     // Except while the page on screen is showing that client by address.
     if (headerDrivesAddress && requestedClientId === workingClientId) return
     if (workingClients.some((client) => client.id.toLowerCase() === workingClientId)) return
-    writeWorkingClient(workingClientWorkspaceId, null)
+    writeWorkingClient(workingClientWorkspaceId, user?.id, null)
     setWorkingClientId(null)
-  }, [clientsQuery.isSuccess, headerDrivesAddress, requestedClientId, workingClientId, workingClientWorkspaceId, workingClients])
+  }, [clientsQuery.isSuccess, headerDrivesAddress, requestedClientId, user?.id, workingClientId, workingClientWorkspaceId, workingClients])
 
   /*
    * On a page that filters by the address, the header is that page's client
@@ -687,13 +687,13 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
    */
   useEffect(() => {
     if (!headerDrivesAddress || requestedClientId || !workingClientId) return
-    writeWorkingClient(workingClientWorkspaceId, null)
+    writeWorkingClient(workingClientWorkspaceId, user?.id, null)
     setWorkingClientId(null)
-  }, [headerDrivesAddress, requestedClientId, workingClientId, workingClientWorkspaceId])
+  }, [headerDrivesAddress, requestedClientId, user?.id, workingClientId, workingClientWorkspaceId])
 
   const handleWorkingClientChange = (value: string) => {
     const next = value === ALL_CLIENTS ? null : normalizeWorkingClientId(value)
-    writeWorkingClient(workingClientWorkspaceId, next)
+    writeWorkingClient(workingClientWorkspaceId, user?.id, next)
     setWorkingClientId(next)
     if (!headerDrivesAddress) return
     if (clientInPath) {

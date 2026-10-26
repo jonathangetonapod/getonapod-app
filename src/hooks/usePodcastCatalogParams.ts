@@ -24,6 +24,7 @@ export interface PodcastCatalogParams {
  * Untouched, the email filter shows shows somebody can actually be pitched:
  * a first page full of "No email" rows is a page with nothing to do on it. The
  * filter says so as a removable chip, so nobody wonders where the rest went.
+ * Best fit leads with shows a client can book rather than the biggest ones.
  */
 export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   search: '',
@@ -31,7 +32,7 @@ export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   contact: 'any',
   activity: 'active',
   audience: 'all',
-  sort: 'audience',
+  sort: 'best_fit',
   page: 1,
   pageSize: 24,
 }
@@ -47,8 +48,8 @@ export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
 
 const CONTACTS = new Set<string>(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
-const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_plus'])
-const SORTS = new Set<string>(['audience', 'name', 'recent', 'community'])
+const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus'])
+const SORTS = new Set<string>(['best_fit', 'audience', 'name', 'recent', 'community'])
 
 // Address names are short and stable; the client parameter belongs to the header.
 const KEYS: Record<keyof PodcastCatalogParams, string> = {

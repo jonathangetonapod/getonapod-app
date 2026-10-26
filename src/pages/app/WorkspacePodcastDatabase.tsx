@@ -38,6 +38,7 @@ import { PodcastCatalogDetailsDialog } from '@/components/workspace/PodcastCatal
 import { relationshipBadge } from '@/lib/relationshipLabels'
 import { listHostRelationships } from '@/services/hostRelationships'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import { readWorkingClient } from '@/lib/workingClient'
 import { shortClientName } from '@/lib/podcastCatalogDisplay'
 
 const VIEW_STORAGE_KEY = 'podcastDb.view'
@@ -65,7 +66,7 @@ interface WorkspacePodcastDatabaseProps {
 }
 
 const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatabaseProps) => {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { isPlatformAdmin, membership, user, workspace } = useAuth()
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const selectedWorkspaceId = (platformWorkspaceId || '').toLowerCase()
@@ -80,6 +81,23 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     || membership?.role === 'admin'
   const requestedClientId = (searchParams.get('client') || '').toLowerCase()
   const targetClientId = UUID_PATTERN.test(requestedClientId) ? requestedClientId : ''
+
+  /*
+   * Arriving with no ?client= while this person last worked on a client: open
+   * on that client, so the adds stay one click. Read during the first render,
+   * because the layout clears the remembered client in its own effect when the
+   * address names none. All clients in the header clears it for good.
+   */
+  const [rememberedClientId] = useState(() => (targetClientId ? null : readWorkingClient(workspaceId, user?.id)))
+  useEffect(() => {
+    if (!rememberedClientId) return
+    setSearchParams((current) => {
+      if (current.get('client')) return current
+      const params = new URLSearchParams(current)
+      params.set('client', rememberedClientId)
+      return params
+    }, { replace: true })
+  }, [rememberedClientId, setSearchParams])
 
   const queryClient = useQueryClient()
   const { params, update } = usePodcastCatalogParams()
@@ -450,7 +468,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           searching={catalogQuery.isFetching}
         />
 
-        {canAddToClient && !targetClientId && !clientHintDismissed && (
+        {canAddToClient && !targetClientId && !rememberedClientId && !clientHintDismissed && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/[0.035] px-3 py-2 text-sm">
             <p>Pick a client in the top bar to add shows with one click.</p>
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Dismiss" onClick={dismissClientHint}>

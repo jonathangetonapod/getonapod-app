@@ -11,6 +11,12 @@
 -- The header used to show the oldest date among the rows on screen, so it
 -- changed with every search and page.
 --
+-- Best fit (the new default sort) leads with shows a client can realistically
+-- book: a reachable email, a mid-size audience (10K to 250K) and a recent
+-- episode, rather than the biggest shows in the catalogue. The 250K+ audience
+-- band is split into 250K to 1M and 1M+; 250k_plus is still accepted for old
+-- addresses.
+--
 -- v2 is left as it was: the client shortlist editor's search still calls it.
 
 CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
@@ -20,7 +26,7 @@ CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
   p_activity TEXT DEFAULT 'active',
   p_audience TEXT DEFAULT 'all',
   p_query_embedding vector(1536) DEFAULT NULL,
-  p_sort TEXT DEFAULT 'audience',
+  p_sort TEXT DEFAULT 'best_fit',
   p_page INTEGER DEFAULT 1,
   p_page_size INTEGER DEFAULT 24
 )
@@ -35,7 +41,7 @@ DECLARE
   normalized_contact TEXT := lower(btrim(COALESCE(p_contact, 'all')));
   normalized_activity TEXT := lower(btrim(COALESCE(p_activity, 'active')));
   normalized_audience TEXT := lower(btrim(COALESCE(p_audience, 'all')));
-  normalized_sort TEXT := lower(btrim(COALESCE(p_sort, 'audience')));
+  normalized_sort TEXT := lower(btrim(COALESCE(p_sort, 'best_fit')));
   normalized_page INTEGER := COALESCE(p_page, 1);
   normalized_page_size INTEGER := COALESCE(p_page_size, 24);
   result JSONB;
@@ -59,10 +65,12 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'activity filter is invalid';
   END IF;
-  IF normalized_audience NOT IN ('all', 'under_10k', '10k_50k', '50k_250k', '250k_plus') THEN
+  IF normalized_audience NOT IN (
+    'all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'
+  ) THEN
     RAISE EXCEPTION 'audience filter is invalid';
   END IF;
-  IF normalized_sort NOT IN ('audience', 'name', 'recent', 'community') THEN
+  IF normalized_sort NOT IN ('best_fit', 'audience', 'name', 'recent', 'community') THEN
     RAISE EXCEPTION 'sort is invalid';
   END IF;
   IF normalized_page < 1 OR normalized_page > 10000 THEN
@@ -218,6 +226,8 @@ BEGIN
         OR (normalized_audience = 'under_10k' AND audience_size IS NOT NULL AND audience_size < 10000)
         OR (normalized_audience = '10k_50k' AND audience_size >= 10000 AND audience_size < 50000)
         OR (normalized_audience = '50k_250k' AND audience_size >= 50000 AND audience_size < 250000)
+        OR (normalized_audience = '250k_1m' AND audience_size >= 250000 AND audience_size < 1000000)
+        OR (normalized_audience = '1m_plus' AND audience_size >= 1000000)
         OR (normalized_audience = '250k_plus' AND audience_size >= 250000)
       )
   ),
@@ -239,7 +249,25 @@ BEGIN
             ELSE 0
           END
           + COALESCE(GREATEST(semantic_similarity - 0.15, 0) * 6, 0)
-      END AS search_rank
+      END AS search_rank,
+      -- Best fit: can they be reached, can a client get on, are they recording.
+      (
+        CASE
+          WHEN direct_email IS NOT NULL THEN 3
+          WHEN free_podscan_email IS NOT NULL THEN 2
+          ELSE 0
+        END
+        + CASE
+          WHEN audience_size >= 10000 AND audience_size < 250000 THEN 3
+          WHEN audience_size >= 2500 AND audience_size < 1000000 THEN 1
+          ELSE 0
+        END
+        + CASE
+          WHEN last_posted_at >= NOW() - INTERVAL '30 days' THEN 2
+          WHEN last_posted_at >= NOW() - INTERVAL '90 days' THEN 1
+          ELSE 0
+        END
+      ) AS fit_score
     FROM filtered
   ),
   ordered AS (
@@ -248,6 +276,9 @@ BEGIN
       row_number() OVER (
         ORDER BY
           CASE WHEN normalized_search IS NOT NULL THEN search_rank END DESC NULLS LAST,
+          CASE WHEN normalized_sort = 'best_fit' THEN fit_score END DESC NULLS LAST,
+          CASE WHEN normalized_sort = 'best_fit' THEN podcast_reach_score END DESC NULLS LAST,
+          CASE WHEN normalized_sort = 'best_fit' THEN audience_size END DESC NULLS LAST,
           CASE WHEN normalized_sort = 'audience' THEN audience_size END DESC NULLS LAST,
           CASE WHEN normalized_sort = 'community' THEN shortlist_uses END DESC NULLS LAST,
           CASE WHEN normalized_sort = 'recent' THEN last_posted_at END DESC NULLS LAST,

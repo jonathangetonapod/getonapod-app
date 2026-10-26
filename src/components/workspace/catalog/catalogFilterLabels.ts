@@ -47,14 +47,21 @@ export const AUDIENCE_LABELS: Record<WorkspacePodcastCatalogAudienceFilter, stri
   under_10k: 'Under 10K',
   '10k_50k': '10K to 50K',
   '50k_250k': '50K to 250K',
-  '250k_plus': '250K+',
+  '250k_1m': '250K to 1M',
+  '1m_plus': '1M+',
 }
 
 export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
+  best_fit: 'Best fit',
   audience: 'Largest audience',
   recent: 'Most recent episode',
   community: 'Most shortlisted',
   name: 'Name A to Z',
+}
+
+/** What a sort favours, where its name alone does not say. */
+export const SORT_HINTS: Partial<Record<WorkspacePodcastCatalogSort, string>> = {
+  best_fit: 'Has an email, 10K to 250K audience, recent episodes',
 }
 
 /** The catalog spells some categories with entities; the value stays as sent. */

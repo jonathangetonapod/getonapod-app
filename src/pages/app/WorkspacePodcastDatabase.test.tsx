@@ -10,6 +10,7 @@ import { addWorkspaceProspectPodcasts, getWorkspaceProspects, PartialShortlistAd
 import { listHostRelationships } from '@/services/hostRelationships'
 import { getWorkspaceClients } from '@/services/clients'
 import { getWorkspacePodcastCatalog } from '@/services/workspacePodcastCatalog'
+import { readWorkingClient, writeWorkingClient } from '@/lib/workingClient'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
@@ -36,6 +37,7 @@ const mockedAddToProspect = vi.mocked(addWorkspaceProspectPodcasts)
 const mockedRelationships = vi.mocked(listHostRelationships)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
+const userId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 const catalogResponse = {
   workspace: { id: workspaceId, name: 'Acme Workspace' },
@@ -132,7 +134,9 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByRole('combobox', { name: 'Email status: Public or verified' })).toHaveTextContent('Public or verified')
     expect(screen.getByRole('combobox', { name: 'Still publishing' })).toHaveTextContent('Still publishing')
     expect(screen.getByRole('combobox', { name: 'Any audience size' })).toHaveTextContent('Any audience size')
-    expect(screen.getByRole('combobox', { name: 'Sort: Largest audience' })).toBeInTheDocument()
+    // Best fit, not the biggest shows nobody can book.
+    expect(screen.getByRole('combobox', { name: 'Sort: Best fit' })).toBeInTheDocument()
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ sort: 'best_fit' }))
     expect(screen.getByText(/^Showing 1 to 1 of 1 ·/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Find new podcasts' })).toHaveAttribute('href', '/app/podcast-finder')
     // No internal names or how-it-works paragraphs on the page itself.
@@ -462,6 +466,34 @@ describe('WorkspacePodcastDatabase', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByText('Pick a client in the top bar to add shows with one click.')).not.toBeInTheDocument()
     expect(window.localStorage.getItem('podcastDb.clientHintDismissed')).toBe('1')
+  })
+
+  it('splits the top audience band into 250K to 1M and 1M+', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any audience size' }))
+    expect(await screen.findByRole('option', { name: '250K to 1M' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '250K+' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: '1M+' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ audience: '1m_plus' })))
+  })
+
+  // The client this person last worked on comes back on the next visit, so the
+  // add stays one click and the pick-a-client hint stays away.
+  it('opens on the client this person last worked on', async () => {
+    writeWorkingClient(workspaceId, userId, clientId)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderPage()
+
+    expect(await screen.findByText('Browsing for Dallas Fontaine')).toBeInTheDocument()
+    expect(screen.queryByText('Pick a client in the top bar to add shows with one click.')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to Dallas: The Founder Show' }))
+    // Straight to the shortlist with an Undo, no dialog.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Added to Dallas Fontaine.', expect.objectContaining({
+      action: expect.objectContaining({ label: 'Undo' }),
+    }))
+    expect(readWorkingClient(workspaceId, userId)).toBe(clientId)
   })
 
   it('does not suggest a client when one is already working', async () => {

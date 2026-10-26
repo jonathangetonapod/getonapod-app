@@ -93,6 +93,8 @@ function chooseWorkingClient(label: string) {
   fireEvent.click(screen.getByRole('option', { name: label }))
 }
 
+const ownerUserId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
 describe('WorkspaceLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -300,7 +302,7 @@ describe('WorkspaceLayout', () => {
     chooseWorkingClient('Dallas Fontaine')
 
     expect(combobox).toHaveTextContent('Dallas Fontaine')
-    expect(readWorkingClient(workspaceId)).toBe(clientId)
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBe(clientId)
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', `/app/podcast-database?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
@@ -313,13 +315,13 @@ describe('WorkspaceLayout', () => {
     chooseWorkingClient('All clients')
 
     expect(combobox).toHaveTextContent('All clients')
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBeNull()
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
   })
 
   it('offers only active clients and remembers the choice for the tab', async () => {
-    writeWorkingClient(workspaceId, otherClientId)
+    writeWorkingClient(workspaceId, ownerUserId, otherClientId)
     renderLayout()
 
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
@@ -339,7 +341,7 @@ describe('WorkspaceLayout', () => {
   it('adopts the client a scoped page was opened on', async () => {
     renderLayout(undefined, `/app/client-podcast-system?client=${otherClientId}`)
 
-    await waitFor(() => expect(readWorkingClient(workspaceId)).toBe(otherClientId))
+    await waitFor(() => expect(readWorkingClient(workspaceId, ownerUserId)).toBe(otherClientId))
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
@@ -363,7 +365,7 @@ describe('WorkspaceLayout', () => {
 
     chooseWorkingClient('All clients')
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/client-podcast-system$/u)
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBeNull()
   })
 
   // The Database's add buttons name the working client, so the header has to
@@ -388,26 +390,26 @@ describe('WorkspaceLayout', () => {
 
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(combobox).toHaveTextContent('Former Client'))
-    expect(readWorkingClient(workspaceId)).toBe(pausedId)
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBe(pausedId)
   })
 
   it('clears the header when the Pipeline is opened on all clients', async () => {
-    writeWorkingClient(workspaceId, otherClientId)
+    writeWorkingClient(workspaceId, ownerUserId, otherClientId)
     renderLayout(undefined, '/app/client-podcast-system')
 
-    await waitFor(() => expect(readWorkingClient(workspaceId)).toBeNull())
+    await waitFor(() => expect(readWorkingClient(workspaceId, ownerUserId)).toBeNull())
     expect(screen.getByRole('combobox', { name: 'Working client' })).toHaveTextContent('All clients')
   })
 
   // The campaign list's client filter and the header are one choice, so the
   // header saying one client over every client's campaigns cannot happen.
   it('drives the Client Campaigns list address from the working client', async () => {
-    writeWorkingClient(workspaceId, clientId)
+    writeWorkingClient(workspaceId, ownerUserId, clientId)
     renderWithLocation('/app/client-campaigns')
 
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(combobox).toHaveTextContent('All clients'))
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBeNull()
 
     chooseWorkingClient('Dallas Fontaine')
     expect(screen.getByTestId('location')).toHaveTextContent(`/app/client-campaigns?client=${clientId}`)
@@ -421,7 +423,7 @@ describe('WorkspaceLayout', () => {
 
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
-    expect(readWorkingClient(workspaceId)).toBe(otherClientId)
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBe(otherClientId)
 
     chooseWorkingClient('Dallas Fontaine')
     expect(screen.getByTestId('location')).toHaveTextContent(new RegExp(`^/app/client-campaigns/${clientId}$`, 'u'))
@@ -436,7 +438,7 @@ describe('WorkspaceLayout', () => {
     await waitFor(() => expect(mockedClients).toHaveBeenCalled())
 
     chooseWorkingClient('Dallas Fontaine')
-    expect(readWorkingClient(workspaceId)).toBe(clientId)
+    expect(readWorkingClient(workspaceId, ownerUserId)).toBe(clientId)
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-finder\/advanced$/u)
   })
 
@@ -472,10 +474,10 @@ describe('WorkspaceLayout', () => {
   })
 
   it('drops a working client that is no longer active', async () => {
-    writeWorkingClient(workspaceId, '66666666-6666-4666-8666-666666666666')
+    writeWorkingClient(workspaceId, ownerUserId, '66666666-6666-4666-8666-666666666666')
     renderLayout()
 
-    await waitFor(() => expect(readWorkingClient(workspaceId)).toBeNull())
+    await waitFor(() => expect(readWorkingClient(workspaceId, ownerUserId)).toBeNull())
     expect(screen.getByRole('combobox', { name: 'Working client' })).toHaveTextContent('All clients')
   })
 

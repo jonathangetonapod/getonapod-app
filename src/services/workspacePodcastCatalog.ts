@@ -4,8 +4,8 @@ import { decodeFeedText } from '@/lib/feedText'
 
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
-export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_plus'
-export type WorkspacePodcastCatalogSort = 'audience' | 'name' | 'recent' | 'community'
+export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus'
+export type WorkspacePodcastCatalogSort = 'best_fit' | 'audience' | 'name' | 'recent' | 'community'
 
 export interface WorkspacePodcastCatalogCategory {
   category_id?: string
@@ -123,7 +123,7 @@ export async function getWorkspacePodcastCatalog(
       contact: params.contact || 'all',
       activity: params.activity || 'active',
       audience: params.audience || 'all',
-      sort: params.sort || 'audience',
+      sort: params.sort || 'best_fit',
       page: params.page || 1,
       page_size: params.pageSize || 24,
     },

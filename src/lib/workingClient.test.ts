@@ -8,39 +8,44 @@ import {
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
+const userId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 describe('working client', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     window.sessionStorage.clear()
   })
 
-  it('remembers a client per workspace for the length of the tab', () => {
-    writeWorkingClient(workspaceId, clientId)
+  // Across tabs and visits, so the next morning still opens on the same client.
+  it('remembers a client per person and per workspace across visits', () => {
+    writeWorkingClient(workspaceId, userId, clientId)
 
-    expect(readWorkingClient(workspaceId)).toBe(clientId)
-    expect(window.sessionStorage.getItem(workingClientStorageKey(workspaceId))).toBe(clientId)
-    expect(window.localStorage.getItem(workingClientStorageKey(workspaceId))).toBeNull()
-    expect(readWorkingClient('33333333-3333-4333-8333-333333333333')).toBeNull()
+    expect(readWorkingClient(workspaceId, userId)).toBe(clientId)
+    expect(window.localStorage.getItem(workingClientStorageKey(workspaceId, userId))).toBe(clientId)
+    expect(readWorkingClient('33333333-3333-4333-8333-333333333333', userId)).toBeNull()
+    // Another person signing in on the same browser does not inherit it.
+    expect(readWorkingClient(workspaceId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBeNull()
+    expect(readWorkingClient(workspaceId, null)).toBeNull()
   })
 
   it('clears the client with null and ignores anything that is not an id', () => {
-    writeWorkingClient(workspaceId, clientId)
-    writeWorkingClient(workspaceId, null)
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    writeWorkingClient(workspaceId, userId, clientId)
+    writeWorkingClient(workspaceId, userId, null)
+    expect(readWorkingClient(workspaceId, userId)).toBeNull()
 
-    writeWorkingClient(workspaceId, 'not-a-client')
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    writeWorkingClient(workspaceId, userId, 'not-a-client')
+    expect(readWorkingClient(workspaceId, userId)).toBeNull()
 
-    window.sessionStorage.setItem(workingClientStorageKey(workspaceId), '<script>')
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    window.localStorage.setItem(workingClientStorageKey(workspaceId, userId), '<script>')
+    expect(readWorkingClient(workspaceId, userId)).toBeNull()
   })
 
   it('keeps working when storage throws', () => {
     const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked') })
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked') })
 
-    expect(() => writeWorkingClient(workspaceId, clientId)).not.toThrow()
-    expect(readWorkingClient(workspaceId)).toBeNull()
+    expect(() => writeWorkingClient(workspaceId, userId, clientId)).not.toThrow()
+    expect(readWorkingClient(workspaceId, userId)).toBeNull()
 
     getItem.mockRestore()
     setItem.mockRestore()
