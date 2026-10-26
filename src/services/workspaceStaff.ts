@@ -1335,6 +1335,10 @@ export interface BillingPlan {
   monthly_credit_allowance: number
   stripe_price_id: string | null
   is_purchasable: boolean
+  /** Every workspace on the plan: what an allowance backfill rewrites. */
+  workspace_count?: number
+  /** Workspaces with a live subscription, who stay on their Stripe price. */
+  subscriber_count?: number
 }
 
 function readPlans(data: unknown): BillingPlan[] {
@@ -1363,8 +1367,8 @@ export async function listBillingPlans(): Promise<BillingPlan[]> {
 export async function updateBillingPlanPrice(
   planKey: string,
   baseCents: number,
-  monthlyCreditAllowance?: number,
-  options: { applyToExistingSubscribers?: boolean } = {},
+  monthlyCreditAllowance: number | undefined,
+  options: { applyToExistingSubscribers?: boolean; reason: string; note: string; actionKey: string },
 ): Promise<BillingPlan[]> {
   const { data, error } = await supabase.functions.invoke('workspace-billing-portal', {
     body: {
@@ -1373,6 +1377,9 @@ export async function updateBillingPlanPrice(
       base_price_cents: baseCents,
       ...(monthlyCreditAllowance === undefined ? {} : { monthly_credit_allowance: monthlyCreditAllowance }),
       ...(options.applyToExistingSubscribers ? { apply_to_existing_subscribers: true } : {}),
+      reason: options.reason,
+      note: options.note,
+      action_key: options.actionKey,
     },
   })
   if (error) throw await toFunctionError(error, 'The price could not be updated.')

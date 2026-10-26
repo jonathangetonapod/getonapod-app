@@ -52,6 +52,36 @@ async function loadPlans(admin: ReturnType<typeof createAdminClient>): Promise<B
   return (data ?? []) as BillingPlan[]
 }
 
+/**
+ * How many workspaces each plan change would reach, for the admin deciding
+ * whether to make it: subscribers who stay on their old Stripe price, and
+ * every workspace on the plan, which is what an allowance backfill rewrites.
+ * Read only for the admin responses; a checkout has no use for it.
+ */
+async function withWorkspaceCounts(
+  admin: ReturnType<typeof createAdminClient>,
+  plans: BillingPlan[],
+): Promise<Array<BillingPlan & { workspace_count: number; subscriber_count: number }>> {
+  const { data, error } = await admin
+    .from('workspace_billing_profiles')
+    .select('plan_key, billing_status, stripe_subscription_id')
+  if (error) throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Plan subscribers could not be counted')
+  const workspaces = new Map<string, number>()
+  const subscribers = new Map<string, number>()
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    const planKey = String(row.plan_key)
+    workspaces.set(planKey, (workspaces.get(planKey) ?? 0) + 1)
+    const subscribed = typeof row.stripe_subscription_id === 'string' && row.stripe_subscription_id.length > 0
+      && row.billing_status !== 'suspended'
+    if (subscribed) subscribers.set(planKey, (subscribers.get(planKey) ?? 0) + 1)
+  }
+  return plans.map((plan) => ({
+    ...plan,
+    workspace_count: workspaces.get(plan.plan_key) ?? 0,
+    subscriber_count: subscribers.get(plan.plan_key) ?? 0,
+  }))
+}
+
 function appUrl(): string {
   return (Deno.env.get('APP_URL') || 'https://getonapod.com').replace(/\/+$/u, '')
 }
@@ -60,6 +90,7 @@ async function stripePost(
   path: string,
   params: URLSearchParams,
   key: string,
+  idempotencyKey?: string,
 ): Promise<Record<string, unknown>> {
   let response: Response
   try {
@@ -68,6 +99,9 @@ async function stripePost(
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/x-www-form-urlencoded',
+        // A retried save is the same save: Stripe answers the first request
+        // again instead of minting a second Price.
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       },
       body: params.toString(),
       signal: AbortSignal.timeout(20_000),
@@ -151,10 +185,18 @@ async function handlePlanAdministration(
 
   if (action === 'plans-list') {
     requireOnlyKeys(body, ['action'])
-    return jsonResponse(req, METHODS, 200, { success: true, plans: await loadPlans(admin) })
+    return jsonResponse(req, METHODS, 200, { success: true, plans: await withWorkspaceCounts(admin, await loadPlans(admin)) })
   }
 
-  requireOnlyKeys(body, ['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers'])
+  requireOnlyKeys(body, [
+    'action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers',
+    'reason', 'note', 'action_key',
+  ])
+  // Changing what a plan costs or gives is a change for every workspace on
+  // it, so it says why, like every other billing write.
+  const reason = requireString(body.reason, 'reason', { min: 1, max: 60 })
+  const note = body.note === undefined ? '' : requireString(body.note, 'note', { min: 0, max: 500 })
+  const actionKey = requireUuid(body.action_key, 'action_key')
   if (body.apply_to_existing_subscribers !== undefined && typeof body.apply_to_existing_subscribers !== 'boolean') {
     throw new HttpError(400, 'INVALID_FIELD', 'apply_to_existing_subscribers must be true or false')
   }
@@ -184,7 +226,51 @@ async function handlePlanAdministration(
   const plan = plans.find((candidate) => candidate.plan_key === planKey)
   if (!plan) throw new HttpError(404, 'PLAN_NOT_FOUND', 'No such plan')
   if (!plan.is_purchasable) {
-    throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', 'This plan is set up by us rather than bought here. Contact support to change to it')
+    // Complimentary is assigned, never sold: it has credits and no price, so
+    // nothing here touches Stripe.
+    if (amount !== plan.base_price_cents) {
+      throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', 'This plan is never sold, so it has no price to set')
+    }
+    if (allowance === null) {
+      throw new HttpError(400, 'INVALID_AMOUNT', 'Set the credits this plan gives each month')
+    }
+    const { error: allowanceError } = await admin
+      .from('billing_plans')
+      .update({ monthly_credit_allowance: allowance, updated_at: new Date().toISOString() })
+      .eq('plan_key', planKey)
+    if (allowanceError) throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The allowance could not be recorded')
+    let backfilled: number | null = null
+    if (applyToExisting) {
+      const { data, error } = await admin
+        .from('workspace_billing_profiles')
+        .update({ monthly_credit_allowance: allowance, updated_at: new Date().toISOString() })
+        .eq('plan_key', planKey)
+        .neq('monthly_credit_allowance', allowance)
+        .select('workspace_id')
+      if (error) throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The allowance could not be applied to existing workspaces')
+      backfilled = (data ?? []).length
+    }
+    await writeAudit(admin, {
+      workspaceId: null,
+      actorUserId: authContext.user.id,
+      action: 'billing_plan_allowance_changed',
+      entityType: 'billing_plan',
+      entityId: null,
+      metadata: {
+        plan_key: planKey,
+        from_credits: plan.monthly_credit_allowance,
+        to_credits: allowance,
+        backfilled_workspaces: backfilled,
+        reason,
+        note,
+        action_key: actionKey,
+      },
+    })
+    return jsonResponse(req, METHODS, 200, {
+      success: true,
+      plans: await withWorkspaceCounts(admin, await loadPlans(admin)),
+      backfilled_workspaces: backfilled,
+    })
   }
   // Saving the price a plan already carries is not a no-op: the portal sync
   // happens after the price is recorded, so a save that failed on the sync
@@ -235,6 +321,9 @@ async function handlePlanAdministration(
         plan_key: planKey,
         to_credits: targetAllowance,
         workspaces: backfilledWorkspaces,
+        reason,
+        note,
+        action_key: actionKey,
       },
     })
   }
@@ -253,7 +342,7 @@ async function handlePlanAdministration(
       const product = await stripePost('products', new URLSearchParams({
         name: `Get On A Pod · ${plan.display_name}`,
         'metadata[plan_key]': planKey,
-      }), stripeKey)
+      }), stripeKey, `${actionKey}:product`)
       productId = typeof product.id === 'string' ? product.id : ''
     }
     if (!productId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
@@ -264,7 +353,7 @@ async function handlePlanAdministration(
       unit_amount: String(amount),
       'recurring[interval]': 'month',
       'metadata[plan_key]': planKey,
-    }), stripeKey)
+    }), stripeKey, `${actionKey}:price`)
     priceId = typeof price.id === 'string' ? price.id : ''
     if (!priceId) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
 
@@ -301,12 +390,15 @@ async function handlePlanAdministration(
           plan_key: planKey,
           from_credits: plan.monthly_credit_allowance,
           to_credits: allowance,
+          reason,
+          note,
+          action_key: actionKey,
         },
       })
     }
     return jsonResponse(req, METHODS, 200, {
       success: true,
-      plans: updated,
+      plans: await withWorkspaceCounts(admin, updated),
       unchanged: !allowanceChanged && backfilledWorkspaces === null,
       portal_configuration_id: configurationId,
       backfilled_workspaces: backfilledWorkspaces,
@@ -325,10 +417,20 @@ async function handlePlanAdministration(
       to_cents: amount,
       stripe_price_id: priceId,
       portal_configuration_id: configurationId,
+      // Allowance changes made in the same save are recorded here too; the
+      // allowance-only audit above covers saves that left the price alone.
+      ...(allowanceChanged ? { from_credits: plan.monthly_credit_allowance, to_credits: allowance } : {}),
+      reason,
+      note,
+      action_key: actionKey,
     },
   })
 
-  return jsonResponse(req, METHODS, 200, { success: true, plans: updated, backfilled_workspaces: backfilledWorkspaces })
+  return jsonResponse(req, METHODS, 200, {
+    success: true,
+    plans: await withWorkspaceCounts(admin, updated),
+    backfilled_workspaces: backfilledWorkspaces,
+  })
 }
 
 serve(async (req) => {

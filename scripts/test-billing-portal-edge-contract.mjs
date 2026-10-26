@@ -45,7 +45,17 @@ assert.match(portal, /const authContext = await requirePlatformAdmin\(req\)/u)
 assert.match(portal, /action === 'plans-list' \|\| action === 'plans-update'/u)
 // The amount is the only thing a caller may set. A caller-supplied price id
 // would let an admin screen point a plan at any Stripe object at all.
-assert.match(portal, /requireOnlyKeys\(body, \['action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers'\]\)/u)
+assert.match(portal, /requireOnlyKeys\(body, \[\s*'action', 'plan_key', 'base_price_cents', 'monthly_credit_allowance', 'apply_to_existing_subscribers',\s*'reason', 'note', 'action_key',\s*\]\)/u)
+// Every plan change says why and is keyed, so a retried save is one Stripe Price.
+assert.match(portal, /const reason = requireString\(body\.reason, 'reason', \{ min: 1, max: 60 \}\)/u)
+assert.match(portal, /const actionKey = requireUuid\(body\.action_key, 'action_key'\)/u)
+assert.match(portal, /stripeKey, `\$\{actionKey\}:price`\)/u)
+assert.match(portal, /'Idempotency-Key': idempotencyKey/u)
+// Complimentary is never sold: credits only, never a Stripe price.
+assert.match(portal, /This plan is never sold, so it has no price to set/u)
+// The admin sees how many workspaces a change reaches.
+assert.match(portal, /async function withWorkspaceCounts\(/u)
+assert.match(portal, /subscriber_count: subscribers\.get\(plan\.plan_key\) \?\? 0/u)
 // An allowance edit reaches existing subscribers only on an explicit opt-in,
 // and only rows on that plan, and it is audited with how many it touched.
 assert.match(portal, /const applyToExisting = body\.apply_to_existing_subscribers === true/u)

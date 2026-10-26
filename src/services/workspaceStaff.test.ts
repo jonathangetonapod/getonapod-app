@@ -624,11 +624,14 @@ describe('workspaceStaff', () => {
 describe('updateBillingPlanPrice', () => {
   beforeEach(() => invoke.mockReset())
 
-  it('sends the backfill opt-in only when asked, and returns the plans', async () => {
+  it('sends the backfill opt-in only when asked, with the reason and key, and returns the plans', async () => {
     const plans = [{ plan_key: 'standard', display_name: 'Standard', base_price_cents: 9900, monthly_credit_allowance: 300, stripe_price_id: 'price_x', is_purchasable: true }]
     invoke.mockResolvedValue({ data: { success: true, plans, backfilled_workspaces: 4 }, error: null })
+    const actionKey = '77777777-7777-4777-8777-777777777777'
 
-    await expect(updateBillingPlanPrice('standard', 9900, 300, { applyToExistingSubscribers: true })).resolves.toEqual(plans)
+    await expect(updateBillingPlanPrice('standard', 9900, 300, {
+      applyToExistingSubscribers: true, reason: 'contract_adjustment', note: 'Q4 pricing', actionKey,
+    })).resolves.toEqual(plans)
     expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
       body: {
         action: 'plans-update',
@@ -636,12 +639,18 @@ describe('updateBillingPlanPrice', () => {
         base_price_cents: 9900,
         monthly_credit_allowance: 300,
         apply_to_existing_subscribers: true,
+        reason: 'contract_adjustment',
+        note: 'Q4 pricing',
+        action_key: actionKey,
       },
     })
 
-    await updateBillingPlanPrice('standard', 9900, 300)
+    await updateBillingPlanPrice('standard', 9900, 300, { reason: 'other', note: '', actionKey })
     expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
-      body: { action: 'plans-update', plan_key: 'standard', base_price_cents: 9900, monthly_credit_allowance: 300 },
+      body: {
+        action: 'plans-update', plan_key: 'standard', base_price_cents: 9900, monthly_credit_allowance: 300,
+        reason: 'other', note: '', action_key: actionKey,
+      },
     })
   })
 })

@@ -1,14 +1,9 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Tag } from 'lucide-react'
-import { toast } from 'sonner'
-import { listBillingPlans, updateBillingPlanPrice, type BillingPlan } from '@/services/workspaceStaff'
-import { Badge } from '@/components/ui/badge'
+import { useQuery } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
+import { listBillingPlans } from '@/services/workspaceStaff'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { PlatformPlanRow } from '@/components/workspace/PlatformPlanRow'
 
 /**
  * What each plan costs, for everyone. Platform-admin only.
@@ -16,12 +11,9 @@ import { Label } from '@/components/ui/label'
  * A Stripe Price cannot be edited, so saving creates a new one and points the
  * plan at it. Anyone already subscribed stays on the price they signed up at
  * until they move themselves, which is Stripe's behaviour and not something
- * this screen can or should paper over — so it says so.
+ * this screen can or should paper over, so every save says so before it runs.
  */
 export function PlatformPlanPricing() {
-  const queryClient = useQueryClient()
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-
   const plansQuery = useQuery({
     queryKey: ['platform-billing-plans'],
     queryFn: listBillingPlans,
@@ -29,76 +21,14 @@ export function PlatformPlanPricing() {
     staleTime: 60_000,
   })
 
-  const [allowanceDrafts, setAllowanceDrafts] = useState<Record<string, string>>({})
-  // Per plan, off by default: applying an allowance to workspaces that already
-  // pay changes what they are given, so it is never a side effect of a save.
-  const [applyToExisting, setApplyToExisting] = useState<Record<string, boolean>>({})
-
-  const saveMutation = useMutation({
-    mutationFn: ({ planKey, cents, allowance, applyExisting }: {
-      planKey: string
-      cents: number
-      allowance: number
-      applyExisting: boolean
-    }) => updateBillingPlanPrice(planKey, cents, allowance, { applyToExistingSubscribers: applyExisting }),
-    onSuccess: (plans, variables) => {
-      queryClient.setQueryData(['platform-billing-plans'], plans)
-      setDrafts((current) => {
-        const next = { ...current }
-        delete next[variables.planKey]
-        return next
-      })
-      setAllowanceDrafts((current) => {
-        const next = { ...current }
-        delete next[variables.planKey]
-        return next
-      })
-      setApplyToExisting((current) => {
-        const next = { ...current }
-        delete next[variables.planKey]
-        return next
-      })
-      toast.success(variables.applyExisting
-        ? 'Plan updated, and the allowance applied to every workspace already on it.'
-        : 'Plan updated. Workspaces take it on when their subscription next moves.')
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'The price could not be updated.')
-    },
-  })
-
-  const dollarsFor = (plan: BillingPlan) =>
-    drafts[plan.plan_key] ?? (plan.base_price_cents / 100).toFixed(2)
-
-  const allowanceFor = (plan: BillingPlan) =>
-    allowanceDrafts[plan.plan_key] ?? String(plan.monthly_credit_allowance ?? 0)
-
-  const creditsFrom = (value: string): number | null => {
-    if (!/^\d+$/u.test(value.trim())) return null
-    const credits = Number(value)
-    return Number.isSafeInteger(credits) && credits >= 0 && credits <= 1_000_000 ? credits : null
-  }
-
-  const centsFrom = (value: string): number | null => {
-    if (!/^\d+(\.\d{1,2})?$/u.test(value.trim())) return null
-    const cents = Math.round(Number(value) * 100)
-    return Number.isSafeInteger(cents) && cents >= 0 && cents <= 1_000_000 ? cents : null
-  }
-
   return (
     <section className="space-y-4" aria-labelledby="platform-plan-pricing-title">
       <Card>
         <CardHeader>
           <CardTitle className="text-lg" id="platform-plan-pricing-title">Plan pricing</CardTitle>
           <CardDescription>
-            What each plan costs, for every workspace. Saving creates a new Stripe price and points
-            the plan at it — anyone already subscribed stays on the price they signed up at.
+            A new price applies to new subscribers only. Existing subscribers keep the price they signed up at.
           </CardDescription>
-          <p className="text-sm text-muted-foreground" data-testid="allowance-note">
-            Credit allowance changes only apply to new subscribers and to workspaces whose
-            subscription next changes plan. Existing subscribers keep their current allowance
-            unless you tick &ldquo;Apply to existing subscribers&rdquo; when you save.
-          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           {plansQuery.isLoading ? (
@@ -113,99 +43,7 @@ export function PlatformPlanPricing() {
               </Button>
             </div>
           ) : (
-            (plansQuery.data ?? []).map((plan) => {
-              const draft = dollarsFor(plan)
-              const cents = centsFrom(draft)
-              const allowanceDraft = allowanceFor(plan)
-              const credits = creditsFrom(allowanceDraft)
-              // A plan that has never been priced has to be savable at the
-              // amount it already shows. Comparing only the number disabled the
-              // button in the one state where pressing it is the whole point:
-              // the seeded amount is right, but no Stripe Price exists for it.
-              const applyExisting = applyToExisting[plan.plan_key] === true
-              const changed = cents !== null && credits !== null
-                && (cents !== plan.base_price_cents
-                  || credits !== plan.monthly_credit_allowance
-                  || !plan.stripe_price_id
-                  || applyExisting)
-              const saving = saveMutation.isPending && saveMutation.variables?.planKey === plan.plan_key
-              return (
-                <div key={plan.plan_key} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{plan.display_name}</p>
-                      {!plan.is_purchasable && <Badge variant="secondary">Assigned, not sold</Badge>}
-                      {plan.is_purchasable && !plan.stripe_price_id && (
-                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">
-                          No Stripe price yet
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {plan.stripe_price_id
-                        ? <><Tag className="mr-1 inline h-3 w-3" />{plan.stripe_price_id}</>
-                        : 'Set a price to create one in Stripe.'}
-                    </p>
-                  </div>
-
-                  {plan.is_purchasable && (
-                    <div className="flex flex-col gap-2 sm:items-end">
-                      <div className="flex items-end gap-2">
-                        <div className="space-y-1">
-                          <Label htmlFor={`plan-price-${plan.plan_key}`} className="text-xs">Per month (USD)</Label>
-                          <Input
-                            id={`plan-price-${plan.plan_key}`}
-                            inputMode="decimal"
-                            className="w-32"
-                            value={draft}
-                            onChange={(event) => setDrafts((current) => ({
-                              ...current,
-                              [plan.plan_key]: event.target.value,
-                            }))}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor={`plan-credits-${plan.plan_key}`} className="text-xs">Credits/month</Label>
-                          <Input
-                            id={`plan-credits-${plan.plan_key}`}
-                            inputMode="numeric"
-                            className="w-28"
-                            value={allowanceDraft}
-                            onChange={(event) => setAllowanceDrafts((current) => ({
-                              ...current,
-                              [plan.plan_key]: event.target.value,
-                            }))}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={!changed || saving}
-                          onClick={() => cents !== null && credits !== null
-                            && saveMutation.mutate({ planKey: plan.plan_key, cents, allowance: credits, applyExisting })}
-                        >
-                          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Save
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          id={`plan-apply-existing-${plan.plan_key}`}
-                          checked={applyExisting}
-                          onCheckedChange={(checked) => setApplyToExisting((current) => ({
-                            ...current,
-                            [plan.plan_key]: checked === true,
-                          }))}
-                        />
-                        <Label htmlFor={`plan-apply-existing-${plan.plan_key}`} className="text-xs font-normal">
-                          Apply to existing subscribers
-                        </Label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })
+            (plansQuery.data ?? []).map((plan) => <PlatformPlanRow key={plan.plan_key} plan={plan} />)
           )}
         </CardContent>
       </Card>
