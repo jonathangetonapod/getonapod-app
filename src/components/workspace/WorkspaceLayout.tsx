@@ -70,6 +70,7 @@ import {
   writeWorkingClient,
 } from '@/lib/workingClient'
 import { memberAvatarUrl, workspaceLogoUrl } from '@/lib/workspaceLogo'
+import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
 interface WorkspaceNavItem {
   id: string
@@ -312,6 +313,9 @@ export interface PlatformWorkspaceConfig {
   baseHref: string
 }
 
+/** What pages pass as the workspace name while their own load is in flight. */
+const PLATFORM_WORKSPACE_PLACEHOLDER_NAME = 'Client workspace'
+
 interface WorkspaceLayoutProps {
   children: React.ReactNode
   platformWorkspace?: PlatformWorkspaceConfig
@@ -455,12 +459,34 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
       sidebarTriggerRef.current?.focus()
     }
   }, [sidebarOpen])
-  const workspaceName = platformWorkspace?.workspaceName || workspace?.name || 'Workspace'
+  /*
+   * Each page loads the workspace it shows on its own, and hands this shell a
+   * placeholder name and no logo until that load finishes — so a platform
+   * admin moving between a tenant's pages saw the brand drop to initials and
+   * back every time. The switcher's workspace list (same query key, so the
+   * same cache) holds the brand across pages and fills in while a page loads.
+   */
+  const switchableWorkspacesQuery = useQuery({
+    queryKey: ['platform', user?.id || 'unknown', 'switchable-workspaces', 'v3'],
+    queryFn: listPodcastResearchWorkspaces,
+    enabled: isPlatformAdmin && Boolean(platformWorkspace),
+    staleTime: 30_000,
+  })
+  const listedPlatformWorkspace = platformWorkspace
+    ? (switchableWorkspacesQuery.data ?? []).find(
+      (candidate) => candidate.id.toLowerCase() === platformWorkspace.workspaceId.toLowerCase(),
+    ) ?? null
+    : null
+  const platformWorkspaceName = platformWorkspace?.workspaceName === PLATFORM_WORKSPACE_PLACEHOLDER_NAME
+    ? listedPlatformWorkspace?.name || platformWorkspace.workspaceName
+    : platformWorkspace?.workspaceName
+  const workspaceName = platformWorkspaceName || workspace?.name || 'Workspace'
   const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
     ? 'My Workspace'
     : workspaceName
   const logoUrl = platformWorkspace
-    ? platformWorkspace.logoUrl || null
+    ? platformWorkspace.logoUrl
+      || workspaceLogoUrl(listedPlatformWorkspace?.id, listedPlatformWorkspace?.logo_path, listedPlatformWorkspace?.logo_updated_at)
     : workspaceLogoUrl(workspace?.id, workspace?.logo_path, workspace?.logo_updated_at)
   const workspaceInitials = workspaceName
     .split(/\s+/u)

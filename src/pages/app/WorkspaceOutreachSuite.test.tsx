@@ -19,7 +19,7 @@ import {
 import { addOutreachSuppression, captureHostRelationshipThread } from '@/services/hostRelationships'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/clients', () => ({
   getWorkspaceClients: vi.fn(),
   getWorkspaceClientDetail: vi.fn(),

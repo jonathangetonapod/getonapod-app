@@ -12,6 +12,7 @@ import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 import { getWorkspaceClients } from '@/services/clients'
 import { countWaitingJoinRequests } from '@/services/accessRequests'
 import { readWorkingClient, writeWorkingClient } from '@/lib/workingClient'
+import { listPodcastResearchWorkspaces } from '@/services/adminWorkspaces'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
@@ -20,6 +21,7 @@ vi.mock('@/components/admin/WorkspaceSwitcher', () => ({
 vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
 vi.mock('@/services/accessRequests', () => ({ countWaitingJoinRequests: vi.fn(async () => 0) }))
+vi.mock('@/services/adminWorkspaces', () => ({ listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedBillingOverview = vi.mocked(getWorkspaceBillingOverview)
@@ -551,6 +553,40 @@ describe('WorkspaceLayout', () => {
     // Theirs, not the admin's own.
     expect(mockedBillingOverview).toHaveBeenCalledWith(viewedWorkspaceId)
     expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('keeps the viewed workspace brand on screen while a page is still loading it', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'platform@example.com' },
+      workspace: { id: workspaceId, name: 'Acme Workspace' },
+      membership: null,
+      isPlatformAdmin: true,
+      signOut,
+    } as never)
+    vi.mocked(listPodcastResearchWorkspaces).mockResolvedValue([{
+      id: viewedWorkspaceId,
+      name: 'Lindsay Agency',
+      slug: 'lindsay-agency',
+      status: 'active',
+      is_default: false,
+      logo_path: `${viewedWorkspaceId}/22222222-2222-4222-8222-222222222222.png`,
+      logo_updated_at: '2026-10-01T00:00:00.000Z',
+    }])
+
+    // What every page hands the shell before its own workspace load returns.
+    renderLayout({
+      workspaceId: viewedWorkspaceId,
+      workspaceName: 'Client workspace',
+      logoUrl: null,
+      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
+    })
+
+    const logo = await within(screen.getByTestId('workspace-logo-sidebar')).findByRole('img')
+    expect(logo).toHaveAttribute('alt', 'Lindsay Agency logo')
+    expect(logo.getAttribute('src')).toContain(`/workspace-logos/${viewedWorkspaceId}/`)
+    expect(screen.getByTestId('workspace-logo-sidebar')).toHaveAttribute('data-logo-state', 'uploaded')
+    vi.unstubAllEnvs()
   })
 
   it('renders a selected workspace as a native platform-owner context', () => {

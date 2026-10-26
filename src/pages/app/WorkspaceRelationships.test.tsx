@@ -29,7 +29,7 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
     platformWorkspace?: { baseHref?: string }
   }) => <div data-testid="workspace-layout" data-base-href={platformWorkspace?.baseHref}>{children}</div>,
 }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
 vi.mock('@/services/hostRelationships', () => {
   const listHostRelationships = vi.fn()

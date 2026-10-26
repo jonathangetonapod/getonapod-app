@@ -18,7 +18,7 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceClients: vi.fn(),
   updateWorkspaceClient: vi.fn(),
 }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 
 const mockedUseAuth = vi.mocked(useAuth)
 const mockedView = vi.mocked(getAdminWorkspaceView)

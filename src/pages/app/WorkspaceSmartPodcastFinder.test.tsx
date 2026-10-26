@@ -28,7 +28,7 @@ vi.mock('@/services/clients', () => ({
   getWorkspaceClients: vi.fn(),
   getWorkspaceResearchContext: vi.fn(),
 }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/queryGeneration', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/queryGeneration')>(),
   generatePodcastQueries: vi.fn(),

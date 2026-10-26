@@ -22,7 +22,7 @@ vi.mock('@/components/workspace/WorkspaceLayout', () => ({
     platformWorkspace?: { baseHref?: string }
   }) => <div data-testid="workspace-layout" data-base-href={platformWorkspace?.baseHref}>{children}</div>,
 }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/universityLessons', async (importOriginal) => ({
   // The embed/thumbnail helpers are pure; only the network calls are mocked.
   ...(await importOriginal<typeof import('@/services/universityLessons')>()),

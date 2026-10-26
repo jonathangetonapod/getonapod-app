@@ -16,7 +16,7 @@ import {
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 // The checklist has its own tests and its own service reads.
 vi.mock('@/components/workspace/SetupChecklist', () => ({ SetupChecklist: () => null }))
-vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/clients', () => ({
   createWorkspaceClient: vi.fn(),
   deleteWorkspaceClient: vi.fn(),

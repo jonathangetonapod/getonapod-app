@@ -10,7 +10,7 @@ import PlatformBilling from '@/pages/app/PlatformBilling'
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({ WorkspaceLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('@/services/adminWorkspaces', () => ({ listGrantableWorkspaces: vi.fn() }))
+vi.mock('@/services/adminWorkspaces', () => ({ listGrantableWorkspaces: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
 vi.mock('@/services/workspaceStaff', () => ({
   listBillingPlans: vi.fn(),
   updateBillingPlanPrice: vi.fn(),
