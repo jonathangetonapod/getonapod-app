@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+import { sendAppEmail } from "../_shared/appEmail.ts";
 import { CREDIT_PACKS } from "../_shared/creditPacks.ts";
 
 import {
@@ -986,12 +987,6 @@ async function stripeRequest(
   return payload;
 }
 
-function escapeEmailHtml(value: string): string {
-  return value.replace(/[&<>"']/gu, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[character] ?? character));
-}
-
 /**
  * The checkout link an admin sends a workspace owner. Best-effort: the link
  * is returned to the admin either way, so a failed send loses the email, not
@@ -1004,38 +999,17 @@ async function emailCheckoutLink(input: {
   priceLabel: string;
   url: string;
 }): Promise<"sent" | "failed" | "skipped"> {
-  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
-  const from = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
-  if (!apiKey || !from) return "skipped";
-  const lines = [
-    `Here is the link to start the ${input.planName} plan for ${input.workspaceName} at ${input.priceLabel}.`,
-    "It opens a secure Stripe checkout. The link expires in 24 hours; reply to this email if you need a new one.",
-  ];
-  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#19172d">${lines
-    .map((line) => `<p style="line-height:1.6;margin:0 0 12px">${escapeEmailHtml(line)}</p>`)
-    .join("")}<p><a href="${escapeEmailHtml(input.url)}" style="display:inline-block;background:#171827;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Start your plan</a></p></body></html>`;
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: [input.to],
-        subject: `Start your ${input.planName} plan for ${input.workspaceName}`,
-        html,
-        text: `${lines.join("\n\n")}\n\n${input.url}`,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) {
-      console.error("[manage-workspace-staff] Checkout link email was rejected by the provider");
-      return "failed";
-    }
-    return "sent";
-  } catch (_error) {
-    console.error("[manage-workspace-staff] Checkout link email provider was unavailable");
-    return "failed";
-  }
+  const delivery = await sendAppEmail({
+    event: "billing.checkout_link",
+    to: [input.to],
+    data: {
+      workspace_name: input.workspaceName,
+      plan_name: input.planName,
+      price_label: input.priceLabel,
+      checkout_url: input.url,
+    },
+  });
+  return delivery.status;
 }
 
 const SUBSCRIPTION_OPERATIONS = ["extend_trial", "change_plan", "make_comped", "cancel", "checkout_link"] as const;

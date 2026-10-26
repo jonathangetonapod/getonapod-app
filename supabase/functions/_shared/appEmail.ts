@@ -31,6 +31,7 @@ export type AppEmailEvent =
   | 'client.episode_published'
   | 'workspace.client_approved'
   | 'billing.auto_refill_paused'
+  | 'billing.checkout_link'
   | 'clips.lead_alert'
   | 'clips.lead_confirmation'
 
