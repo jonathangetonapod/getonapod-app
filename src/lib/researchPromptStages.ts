@@ -32,12 +32,11 @@ const PHASE_COPY: Record<'run' | 'pitch', { label: string; hint: string; ordered
 /**
  * Prompts this screen deliberately leaves out.
  *
- * The inbox prompts are edited on the client's AI SDR profile, beside the
- * profile fields they are written from. They fire when a host replies, which is
- * not part of the run this screen prepares. Named here rather than simply
+ * The inbox prompts belonged to the host-reply inbox, which is retired, so no
+ * screen edits them. Named here rather than simply
  * omitted from PHASE_MEMBERS, because an ungrouped prompt deliberately falls
  * through to the catch-all phase below — that fallback exists to surface a
- * prompt somebody forgot, and a prompt shown on another screen is not one.
+ * prompt somebody forgot, and a retired prompt is not one.
  */
 const EDITED_ELSEWHERE = new Set<ResearchPromptId>(['inbox_reply', 'inbox_nudges'])
 

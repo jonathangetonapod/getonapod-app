@@ -2,16 +2,13 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
-  Inbox,
   Loader2,
   Mailbox,
   Megaphone,
-  PlugZap,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
-import MasterInboxPreview from '@/components/workspace/MasterInboxPreview'
 import { MailboxesTable } from '@/components/workspace/MailboxesTable'
 import WorkspaceCampaigns from '@/pages/app/WorkspaceCampaigns'
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +26,6 @@ import {
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { getWorkspaceClients } from '@/services/clients'
 import {
-  getWorkspaceInboxThreads,
   getWorkspaceMailboxes,
   type WorkspaceMailboxAccount,
   type WorkspaceMailboxesResponse,
@@ -39,7 +35,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 export type OutreachWorkspaceModule = Extract<
   WorkspaceModule,
-  'client-campaigns' | 'master-inbox' | 'mailboxes'
+  'client-campaigns' | 'mailboxes'
 >
 
 interface WorkspaceOutreachSuiteProps {
@@ -65,11 +61,6 @@ const suiteItems = [
     icon: Megaphone,
   },
   {
-    module: 'master-inbox',
-    name: 'Inbox',
-    icon: Inbox,
-  },
-  {
     module: 'mailboxes',
     name: 'Mailboxes',
     icon: Mailbox,
@@ -81,12 +72,8 @@ const moduleConfigs: Record<OutreachWorkspaceModule, ModuleConfig> = {
     ...suiteItems[0],
     description: 'Plan, launch, and monitor Instantly-powered outreach without losing the client context behind each campaign.',
   },
-  'master-inbox': {
-    ...suiteItems[1],
-    description: 'See every reply in one place, match it to the right client and campaign, and answer it with that client’s reply brief.',
-  },
   mailboxes: {
-    ...suiteItems[2],
+    ...suiteItems[1],
     eyebrow: 'Sending infrastructure',
     description: 'Monitor daily sending volume, warmup activity, and account health across every connected mailbox.',
   },
@@ -125,7 +112,7 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
     queryFn: () => getWorkspaceClients(workspace?.id || ''),
     // Mailboxes needs the client list too: a mailbox is connected to a client
     // by being on that client's campaign.
-    enabled: ['client-campaigns', 'master-inbox', 'mailboxes'].includes(module)
+    enabled: ['client-campaigns', 'mailboxes'].includes(module)
       && !isSelectedWorkspace
       && Boolean(workspace?.id),
     retry: false,
@@ -172,17 +159,6 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
       }
     : undefined
 
-  // Same key the inbox itself uses, so the badge and the panel below it
-  // can never disagree. It used to be a static element that said "not
-  // connected" whenever this module was open — including above a list of
-  // replies it had just loaded from Instantly.
-  const inboxConnectionQuery = useQuery({
-    queryKey: ['workspace-inbox', effectiveWorkspace?.id ?? ''],
-    queryFn: () => getWorkspaceInboxThreads(effectiveWorkspace?.id ?? ''),
-    enabled: module === 'master-inbox' && Boolean(effectiveWorkspace?.id),
-    retry: false,
-    staleTime: 30_000,
-  })
   if (isSelectedWorkspace && selectedWorkspaceQuery.isLoading && validSelectedWorkspaceId) {
     return (
       <WorkspaceLayout platformWorkspace={platformWorkspace}>
@@ -236,28 +212,6 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
               <p className="truncate text-xs text-muted-foreground" title={config.description}>{workspaceLabel}</p>
             </div>
           </div>
-          {/* A failed read says nothing about the connection. Without this
-              branch the badge asserted "not connected" over a panel that was
-              simultaneously saying replies could not be loaded — one of the two
-              was fabricated, and it was this one. */}
-          {module === 'master-inbox' && !inboxConnectionQuery.isLoading && !inboxConnectionQuery.isError && (
-            inboxConnectionQuery.data?.connected
-              ? (
-                <div data-testid="instantly-connection-state" className="flex w-fit shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
-                  <PlugZap className="h-3.5 w-3.5" />Instantly connected
-                </div>
-              )
-              : (
-                <div data-testid="instantly-connection-state" className="flex w-fit shrink-0 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                  <PlugZap className="h-3.5 w-3.5" />
-                  {inboxConnectionQuery.data?.reason === 'key_rejected'
-                    ? 'Instantly key rejected'
-                    : inboxConnectionQuery.data?.reason === 'scope_missing'
-                      ? 'Instantly key missing scopes'
-                      : 'Instantly not connected'}
-                </div>
-              )
-          )}
         </header>
 
         {module === 'client-campaigns' && (
@@ -271,16 +225,6 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
               if (isSelectedWorkspace) void selectedWorkspaceQuery.refetch()
               else void tenantClientsQuery.refetch()
             }}
-          />
-        )}
-        {module === 'master-inbox' && (
-          <MasterInboxPreview
-            workspaceId={effectiveWorkspace.id}
-            clients={campaignClients}
-            clientsLoading={campaignClientsLoading}
-            clientsError={campaignClientsError}
-            baseHref={baseHref}
-            canManage={canManage}
           />
         )}
         {module === 'mailboxes' && (

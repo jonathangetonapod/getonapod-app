@@ -87,8 +87,17 @@ const serviceCategories = extractSet(service, /export type UniversityCategory =(
 assert.ok(migrationCategories && edgeCategories && serviceCategories, 'category sets must be extractable')
 assert.deepEqual(edgeCategories, migrationCategories, 'edge CATEGORIES must equal the migration CHECK set')
 assert.deepEqual(serviceCategories, migrationCategories, 'service UniversityCategory must equal the migration CHECK set')
+// master_inbox is retired with the inbox. The server still accepts it so old
+// rows stay valid, and the page files any such lesson under More (the unknown-
+// category fallback below), so it is never invisible.
+const RETIRED_PAGE_CATEGORIES = ['master_inbox']
 const pageIds = [...page.matchAll(/\{ id: '([a-z_]+)', label:/gu)].map((entry) => entry[1]).sort()
-assert.deepEqual(pageIds, migrationCategories, 'page CATEGORY_META ids must equal the migration CHECK set')
+assert.deepEqual(
+  pageIds,
+  migrationCategories.filter((id) => !RETIRED_PAGE_CATEGORIES.includes(id)),
+  'page CATEGORY_META ids must equal the migration CHECK set, less retired categories',
+)
+assert.match(page, /knownCategories\.has\(lesson\.category\) \? lesson\.category : 'other'/u)
 
 // Deleting a lesson must take its watch rows with it.
 const watchesCascade = readFileSync('supabase/migrations/20260807000400_university_watches.sql', 'utf8')

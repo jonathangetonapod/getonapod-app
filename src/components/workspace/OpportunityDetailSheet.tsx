@@ -71,17 +71,6 @@ function contactLabel(item: ClientPodcastSystemItem): string {
   return 'No email'
 }
 
-/**
- * The inbox, opened on the thread that belongs to this host where one is
- * known. The client-scoped link was the only route, which meant landing in a
- * hundred conversations and searching for the show already on screen.
- */
-function inboxHref(baseHref: string, item: ClientPodcastSystemItem): string {
-  const params = new URLSearchParams({ client: item.client.id })
-  if (item.conversation?.thread_key) params.set('thread', item.conversation.thread_key)
-  return `${baseHref}/master-inbox?${params.toString()}`
-}
-
 export function StageBadge({ stage }: { stage: ClientPodcastLifecycleStage }) {
   const meta = stageMeta[stage]
   return <Badge variant="outline" className={meta.className}>{meta.shortLabel}</Badge>
@@ -98,9 +87,7 @@ export function ConversationBadge({ item }: { item: ClientPodcastSystemItem }) {
   return (
     <Badge variant="outline" className="border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800">
       <Inbox className="mr-1 h-3 w-3" />
-      {/* A reply can be known from a campaign sync before the inbox has read
-          the thread, and only one of those can be opened. */}
-      {item.conversation.thread_key ? 'Host replied' : 'Reply not read in yet'}
+      Host replied
     </Badge>
   )
 }
@@ -153,7 +140,6 @@ export const OpportunityDetailSheet = ({
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline"><Link to={`${baseHref}/clients/${encodeURIComponent(item.client.id)}?tab=shortlist`}><UserRound className="mr-2 h-4 w-4" />Client shortlist</Link></Button>
                 <Button asChild variant="outline"><Link to={`${baseHref}/client-campaigns/${encodeURIComponent(item.client.id)}`}><Megaphone className="mr-2 h-4 w-4" />Client campaign</Link></Button>
-                <Button asChild variant={item.conversation?.thread_key ? 'default' : 'outline'}><Link to={inboxHref(baseHref, item)}><Inbox className="mr-2 h-4 w-4" />{item.conversation?.thread_key ? 'Open conversation' : 'Inbox'}</Link></Button>
                 {canManage && onLogPlacement && <Button type="button" onClick={() => onLogPlacement(item)}><CalendarPlus className="mr-2 h-4 w-4" />{item.booking ? 'Update placement' : 'Log a placement'}</Button>}
                 {podcastUrl && <Button asChild variant="ghost"><a href={podcastUrl} target="_blank" rel="noreferrer">Podcast page<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}
                 {episodeUrl && <Button asChild><a href={episodeUrl} target="_blank" rel="noreferrer">Listen to episode<ExternalLink className="ml-2 h-4 w-4" /></a></Button>}

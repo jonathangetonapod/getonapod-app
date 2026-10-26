@@ -163,7 +163,7 @@ function formatDate(value: string | null): string {
  */
 const roleDescriptions: Record<WorkspaceStaffRole, string> = {
   admin: 'manages clients, campaigns, onboarding and the team. Cannot change the owner or other admins, and cannot close the workspace.',
-  member: 'works on clients, campaigns and the inbox. Cannot see Settings, Billing or the team list.',
+  member: 'works on clients and campaigns. Cannot see Settings, Billing or the team list.',
   owner: 'everything above, plus billing, AI keys and closing the workspace. There is one owner; transfer it from the team list.',
 }
 

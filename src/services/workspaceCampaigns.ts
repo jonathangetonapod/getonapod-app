@@ -1130,46 +1130,6 @@ export async function getWorkspaceInboxThreads(
   }
 }
 
-export interface WorkspaceInboxDraft {
-  subject: string
-  body: string
-  classification: WorkspaceInboxReplyClassification | null
-  nudges: WorkspaceInboxNudge[]
-  /**
-   * The reply asked not to be contacted. No model ran, nothing was charged,
-   * and the address is now on the workspace do-not-contact list.
-   */
-  suppressed: boolean
-}
-
-export async function draftWorkspaceInboxReply(
-  workspaceId: string,
-  clientId: string,
-  subject: string,
-  message: string,
-  threadContext?: { thread_key: string; email_id: string; force?: boolean; lead_email?: string },
-): Promise<WorkspaceInboxDraft> {
-  const data = await invokeWorkspaceCampaigns<{
-    draft: { subject: string; body: string }
-    classification?: WorkspaceInboxReplyClassification | null
-    nudges?: WorkspaceInboxNudge[]
-    suppressed?: boolean
-  }>({
-    action: 'inbox-draft',
-    workspace_id: workspaceId,
-    client_id: clientId,
-    subject,
-    message,
-    ...(threadContext ? { thread_key: threadContext.thread_key, email_id: threadContext.email_id, ...(threadContext.force ? { force: true } : {}), ...(threadContext.lead_email ? { lead_email: threadContext.lead_email } : {}) } : {}),
-  }, 'The reply draft could not be generated.')
-  return {
-    ...data.draft,
-    classification: data.classification ?? null,
-    nudges: data.nudges ?? [],
-    suppressed: data.suppressed === true,
-  }
-}
-
 export interface WorkspaceInboxLeadDetail {
   first_name: string | null
   last_name: string | null
@@ -1287,15 +1247,4 @@ export async function setWorkspaceInboxThreadStatus(
     workspace_id: workspaceId,
     ...input,
   }, 'The conversation state could not be saved.')
-}
-
-export async function sendWorkspaceInboxReply(
-  workspaceId: string,
-  input: { reply_to_id: string; eaccount: string; subject: string; message: string; thread_key?: string; client_id?: string; lead_email?: string },
-): Promise<void> {
-  await invokeWorkspaceCampaigns<{ success: boolean }>({
-    action: 'inbox-reply',
-    workspace_id: workspaceId,
-    ...input,
-  }, 'The reply could not be sent.')
 }

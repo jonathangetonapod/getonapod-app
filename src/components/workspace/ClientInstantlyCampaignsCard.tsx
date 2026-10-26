@@ -160,8 +160,7 @@ export const ClientInstantlyCampaignsCard = ({
             <Link2 className="h-4 w-4 text-muted-foreground" />Instantly campaigns
           </CardTitle>
           <CardDescription>
-            Link the Instantly campaigns that belong to {clientName}. The inbox
-            attributes every reply from a linked campaign to this client. Pitches can
+            Link the Instantly campaigns that belong to {clientName}. Pitches can
             only be sent into campaigns created here, because a campaign built in
             Instantly carries copy of its own.
           </CardDescription>

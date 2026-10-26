@@ -30,6 +30,12 @@ import {
   generateReplyPackage,
 } from '../_shared/inboxSdr.ts'
 
+// Reply drafting is retired with the inbox (operator decision, 2026-10-26):
+// the app no longer writes or sends answers to hosts. The tick acknowledges
+// the cron and exits before reading a client, a reply or a credit. Set to
+// false to restore auto-drafting.
+const AUTO_DRAFT_DISABLED: boolean = true
+
 const MAX_DRAFTS_PER_TICK = 8
 const MAX_DRAFTS_PER_WORKSPACE = 3
 const MAX_WORKSPACES_PER_TICK = 3
@@ -77,6 +83,9 @@ serve(async (req) => {
   const presentedSecret = req.headers.get('x-enroll-secret') ?? ''
   if (!secret || !presentedSecret || !(await secretsMatch(presentedSecret, secret))) {
     return json(401, { error: 'unauthorized' })
+  }
+  if (AUTO_DRAFT_DISABLED) {
+    return json(200, { drafted: 0, drafting_disabled: true })
   }
 
   const admin = createAdminClient()

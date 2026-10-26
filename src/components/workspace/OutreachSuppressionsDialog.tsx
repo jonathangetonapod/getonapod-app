@@ -142,7 +142,7 @@ export const OutreachSuppressionsDialog = ({
           </DialogTitle>
           <DialogDescription>
             An opt-out is directed at your agency, not at one campaign, so every address here is
-            silenced for every client. Replies asking to stop are added automatically.
+            silenced for every client.
           </DialogDescription>
         </DialogHeader>
 
@@ -244,7 +244,7 @@ export const OutreachSuppressionsDialog = ({
               </p>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                 {suppressions.length === 0
-                  ? 'Add one here or from any conversation. A reply asking to stop is added automatically, and outreach to that address stops for every client.'
+                  ? 'Add one here or from Relationships, and outreach to that address stops for every client.'
                   : 'Try a different address, host, or show.'}
               </p>
             </div>

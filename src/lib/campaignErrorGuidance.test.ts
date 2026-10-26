@@ -7,11 +7,11 @@ import {
 } from '@/lib/campaignErrorGuidance'
 
 describe('campaignErrorGuidance', () => {
-  it('sends a locked pitch to the conversation that locked it', () => {
+  it('sends a locked pitch to its campaign', () => {
     const guidance = campaignErrorGuidance('CAMPAIGN_PITCH_LOCKED')
 
     expect(guidance?.title).toBe('This pitch can no longer be edited')
-    expect(guidance?.remedy).toEqual({ kind: 'link', label: 'Open Master Inbox', module: 'master-inbox' })
+    expect(guidance?.remedy).toEqual({ kind: 'link', label: 'Open the campaign', module: 'client-campaigns' })
   })
 
   it('sends a suppression to the page where it can be lifted', () => {

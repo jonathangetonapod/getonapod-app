@@ -50,7 +50,6 @@ describe('working client', () => {
     expect(clientScopedHref('/app', 'podcast-finder', clientId)).toBe(`/app/podcast-finder?client=${clientId}`)
     expect(clientScopedHref('/app', 'podcast-database', clientId)).toBe(`/app/podcast-database?client=${clientId}`)
     expect(clientScopedHref('/app', 'client-podcast-system', clientId)).toBe(`/app/client-podcast-system?client=${clientId}`)
-    expect(clientScopedHref('/app', 'master-inbox', clientId)).toBe(`/app/master-inbox?client=${clientId}`)
     // The campaign list filtered to the client, so one with no campaign yet
     // still lands somewhere to assign one.
     expect(clientScopedHref('/app', 'client-campaigns', clientId)).toBe(`/app/client-campaigns?client=${clientId}`)

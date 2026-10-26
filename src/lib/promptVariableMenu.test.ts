@@ -120,18 +120,20 @@ describe('unavailableVariableIds', () => {
 
   it('leaves producers that are not stages in this order alone', () => {
     const hidden = unavailableVariableIds('write_email', STAGES)
-    // The inbox, the email unlock and the relationship layer are not stages of
-    // this run; their values are there before it starts.
+    // The email unlock and the relationship layer are not stages of this
+    // run; their values are there before it starts.
     expect(hidden).not.toContain('verified_email')
-    expect(hidden).not.toContain('reply_body')
     expect(hidden).not.toContain('agency_relationship')
   })
 
-  it('hides its own answer from a prompt outside the run order', () => {
-    // The inbox prompts fire on their own trigger and are absent from the
-    // ordered run, so nothing later is hidden from them — but a prompt can
-    // never read the answer it is in the middle of writing.
-    expect(unavailableVariableIds('inbox_reply', STAGES)).toEqual(['inbox_reply_response'])
+  it('never offers a field only the retired inbox filled', () => {
+    const hidden = unavailableVariableIds('write_email', STAGES)
+    expect(hidden).toEqual(expect.arrayContaining([
+      'reply_subject',
+      'reply_body',
+      'inbox_reply_response',
+      'inbox_nudges_response',
+    ]))
   })
 })
 

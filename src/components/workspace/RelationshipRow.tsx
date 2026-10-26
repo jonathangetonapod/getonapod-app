@@ -22,7 +22,7 @@ import {
 import type { HostRelationshipSummary } from '@/services/hostRelationships'
 
 const NEXT_STEP_LABEL: Record<RelationshipNextStep, string> = {
-  reply: 'Reply',
+  reply: 'View conversation',
   follow_up: 'Follow up',
   pitch: 'Pitch',
   open: 'Open',
@@ -129,8 +129,6 @@ interface RelationshipRowProps {
   row: HostRelationshipSummary
   open: boolean
   canManage: boolean
-  /** The inbox thread a Reply or Follow up opens, when the book knows one. */
-  replyHref: string | null
   now?: Date
   onToggle: () => void
   /** A next step with nowhere to link to opens the panel at the right place. */
@@ -147,7 +145,6 @@ export const RelationshipRow = ({
   row,
   open,
   canManage,
-  replyHref,
   now = new Date(),
   onToggle,
   onNextStep,
@@ -165,7 +162,6 @@ export const RelationshipRow = ({
   const speaker = row.last_message_direction === 'inbound'
     ? 'Them'
     : row.last_message_direction === 'outbound' ? 'Us' : null
-  const linksToInbox = (nextStep === 'reply' || nextStep === 'follow_up') && replyHref
 
   // The whole row opens the panel; its own controls keep their own meaning.
   const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -216,22 +212,14 @@ export const RelationshipRow = ({
           )
           : (
             <>
-              {linksToInbox
-                ? (
-                  <Button asChild size="sm" variant={nextStep === 'reply' ? 'default' : 'outline'}>
-                    <Link to={replyHref}>{NEXT_STEP_LABEL[nextStep]}</Link>
-                  </Button>
-                )
-                : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={nextStep === 'reply' ? 'default' : 'outline'}
-                    onClick={() => onNextStep(nextStep)}
-                  >
-                    {NEXT_STEP_LABEL[nextStep]}
-                  </Button>
-                )}
+              <Button
+                type="button"
+                size="sm"
+                variant={nextStep === 'reply' ? 'default' : 'outline'}
+                onClick={() => onNextStep(nextStep)}
+              >
+                {NEXT_STEP_LABEL[nextStep]}
+              </Button>
               <Button
                 type="button"
                 size="icon"

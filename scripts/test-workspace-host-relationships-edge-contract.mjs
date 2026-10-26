@@ -45,17 +45,6 @@ const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/hostRelationships.ts', 'utf8')
 const page = readFileSync('src/pages/app/WorkspaceRelationships.tsx', 'utf8')
 const pitchSignals = readFileSync('src/components/workspace/PitchQualitySignals.tsx', 'utf8')
-// The Master Inbox is a shell plus its panes, a draft-autosave hook and shared
-// thread helpers; the guarantees below may live in any of them.
-const masterInbox = [
-  'src/components/workspace/MasterInboxPreview.tsx',
-  ...readdirSync('src/components/workspace/inbox')
-    .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
-    .sort()
-    .map((name) => `src/components/workspace/inbox/${name}`),
-  'src/hooks/useInboxDraftAutosave.ts',
-  'src/lib/inboxThreads.ts',
-].map((path) => readFileSync(path, 'utf8')).join('\n')
 const workspaceNavigation = readFileSync('src/components/workspace/WorkspaceLayout.tsx', 'utf8')
 const adminNavigation = readFileSync('src/components/admin/DashboardLayout.tsx', 'utf8')
 const routes = readFileSync('src/App.tsx', 'utf8')
@@ -155,10 +144,6 @@ assert.match(edge, /showId \?\?= resolved\?\.podcastId \?\? newManualPodcastId\(
 // this host's identity and fork the book once the real name appears.
 assert.match(edge, /podcast_name: resolvedName,\s+host_name: resolvedHost,/u)
 assert.doesNotMatch(edge, /podcast_name is required when the conversation is not mapped to a show/u)
-assert.doesNotMatch(masterInbox, /Conversation with \$\{/u)
-assert.match(masterInbox, /podcastName: thread\.lead_context\?\.podcast_name \|\| null/u)
-assert.match(masterInbox, /const isSelected = thread\.id === selectedThread\?\.id/u)
-assert.match(masterInbox, /result\.show_identified === false/u)
 assert.match(edge, /show_identified: Boolean\(/u)
 assert.match(edge, /show_resolved_from_email: Boolean\(resolved\)/u)
 // An unresolved show is titled by its host or address, never by a placeholder.
@@ -322,8 +307,6 @@ assert.match(pitchSignals, /Inside the \{relationship\.cooldown\.window_days\}-d
 assert.match(pitchSignals, /You can still send, but only if this angle is genuinely different/u)
 assert.match(pitchSignals, /declined: \{[\s\S]*?This host passed on an earlier idea/u)
 assert.match(pitchSignals, /Relationship note:/u)
-assert.match(masterInbox, /captureHostRelationshipThread/u)
-assert.match(masterInbox, /Save to relationships/u)
 assert.match(page, /Search shows, hosts, emails, or clients/u)
 assert.match(page, /RELATIONSHIPS_PER_PAGE = 25/u)
 assert.match(page, /aria-label="Relationship pagination"/u)

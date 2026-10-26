@@ -240,7 +240,7 @@ describe('WorkspaceRelationships', () => {
     expect(snippet).toMatch(/^Hi there, a long pitch.*…$/)
     expect(screen.getByText('No messages yet')).toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: 'Reply' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View conversation' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Follow up' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pitch' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument()
@@ -353,22 +353,16 @@ describe('WorkspaceRelationships', () => {
     expect(screen.getByText(/Titan \| \(Sunnova, Mosaic\)/)).toBeInTheDocument()
   })
 
-  // The reply happens in the inbox; this page only knows about it. Every
-  // Reply goes to the exact thread, carrying the client.
-  it('sends Reply straight to the inbox thread', async () => {
+  // The inbox is retired: a live conversation opens its saved threads here
+  // rather than linking anywhere else.
+  it('opens a live conversation on its saved threads, with no inbox link', async () => {
     mockedList.mockResolvedValue([{ ...relationship, last_thread_key: 'thread-one', last_thread_client_id: clientId }])
     renderPage()
 
-    expect(await screen.findByRole('link', { name: 'Reply' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}&thread=thread-one`,
-    )
-    await openDetails('Founder & Operator')
-    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Threads 1' }), { button: 0, ctrlKey: false })
-    expect(screen.getByRole('link', { name: 'Open in the inbox' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}&thread=thread-one`,
-    )
+    fireEvent.click(await screen.findByRole('button', { name: 'View conversation' }))
+    expect(await screen.findByRole('tab', { name: 'Threads 1' })).toHaveAttribute('data-state', 'active')
+    expect(screen.queryByRole('link', { name: 'Open in the inbox' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /reply/i })).not.toBeInTheDocument()
   })
 
   it('turns the header chips into filters with whole-book counts', async () => {
@@ -426,41 +420,20 @@ describe('WorkspaceRelationships', () => {
     }))
   })
 
-  // "No touch in five days" next to "quiet 88d" was true of both and useful
-  // for neither. Between five and thirty days a conversation is going quiet;
-  // past thirty it went cold and waits under Needs attention.
-  it('lists only conversations going quiet, and moves the cold ones to Needs attention', async () => {
+  // Past thirty days a conversation went cold and waits under Needs attention.
+  it('moves cold conversations to Needs attention', async () => {
     mockedList.mockResolvedValue([
-      { ...relationship, podcast_id: 'show-quiet', podcast_name: 'Gone Quiet FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(8), last_thread_key: 'thread-quiet', last_thread_client_id: clientId },
       { ...relationship, podcast_id: 'show-cold', podcast_name: 'Long Gone FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(88) },
       { ...relationship, podcast_id: 'show-fresh', podcast_name: 'Fresh Talk', derived_state: 'in_conversation', last_contacted_at: daysAgo(0) },
     ])
     renderPage()
 
-    const banner = await screen.findByRole('region', { name: '1 conversation going quiet' })
-    expect(within(banner).getByText('quiet 8d')).toBeInTheDocument()
-    expect(within(banner).queryByText('Long Gone FM')).not.toBeInTheDocument()
-    expect(within(banner).queryByText('Fresh Talk')).not.toBeInTheDocument()
-    expect(within(banner).getByRole('link', { name: 'Reply to Gone Quiet FM' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}&thread=thread-quiet`,
-    )
-    expect(screen.queryByText(/Silence here/)).not.toBeInTheDocument()
-    expect(screen.getByText('Went cold')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '2 needs attention' }))
-    expect(screen.getByText('Long Gone FM')).toBeInTheDocument()
-    expect(screen.queryByText('Fresh Talk')).not.toBeInTheDocument()
-  })
-
-  it('renders no banner when nothing is going quiet', async () => {
-    mockedList.mockResolvedValue([
-      { ...relationship, derived_state: 'in_conversation', last_contacted_at: daysAgo(88) },
-    ])
-    renderPage()
-
     expect(await screen.findByText('Went cold')).toBeInTheDocument()
     expect(screen.queryByText(/going quiet/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '1 needs attention' }))
+    expect(screen.getByText('Long Gone FM')).toBeInTheDocument()
+    expect(screen.queryByText('Fresh Talk')).not.toBeInTheDocument()
   })
 
   it('names an unresolved row after its host, never a placeholder', async () => {

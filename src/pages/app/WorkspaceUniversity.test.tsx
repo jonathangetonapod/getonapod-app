@@ -83,7 +83,7 @@ describe('WorkspaceUniversity', () => {
     mockedLessons.mockResolvedValue({
       lessons: [
         lesson(),
-        lesson({ id: '44444444-4444-4444-8444-444444444444', category: 'master_inbox', title: 'Review AI drafts', provider: 'youtube', video_id: 'dQw4w9WgXcQ', video_url: 'https://youtu.be/dQw4w9WgXcQ' }),
+        lesson({ id: '44444444-4444-4444-8444-444444444444', category: 'mailboxes', title: 'Check mailbox health', provider: 'youtube', video_id: 'dQw4w9WgXcQ', video_url: 'https://youtu.be/dQw4w9WgXcQ' }),
       ],
       watched_lesson_ids: [],
       can_manage: false,
@@ -91,7 +91,7 @@ describe('WorkspaceUniversity', () => {
     renderPage()
 
     expect(await screen.findByText('Getting started')).toBeInTheDocument()
-    expect(screen.getByText('Master Inbox')).toBeInTheDocument()
+    expect(screen.getByText('Mailboxes')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Play Add your first client' }))
     const frame = await screen.findByTitle('Add your first client')
@@ -141,7 +141,7 @@ describe('WorkspaceUniversity', () => {
 
   it('shows drafts with a badge to the author, and jumps to the module a lesson teaches', async () => {
     mockedLessons.mockResolvedValue({
-      lessons: [lesson({ category: 'master_inbox', published: false, title: 'Review AI drafts' })],
+      lessons: [lesson({ category: 'mailboxes', published: false, title: 'Check mailbox health' })],
       watched_lesson_ids: [],
       can_manage: true,
     })
@@ -153,7 +153,7 @@ describe('WorkspaceUniversity', () => {
     const moduleLink = screen.getByRole('link', { name: 'Open the module' })
     expect(moduleLink).toHaveAttribute(
       'href',
-      `/app/workspaces/${platformWorkspaceId}/master-inbox`,
+      `/app/workspaces/${platformWorkspaceId}/mailboxes`,
     )
   })
 

@@ -26,7 +26,6 @@ import {
   Database,
   GraduationCap,
   GripVertical,
-  Inbox,
   BookUser,
   LayoutDashboard,
   LogOut,
@@ -91,7 +90,6 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
   { id: 'prospects', name: 'Prospect Studio', segment: 'prospects', icon: Share2, enabled: true },
-  { id: 'unibox', name: 'Inbox', segment: 'master-inbox', icon: Inbox, enabled: true },
   { id: 'mailboxes', name: 'Mailboxes', segment: 'mailboxes', icon: Mailbox, enabled: true },
   { id: 'relationships', name: 'Relationships', segment: 'relationships', icon: BookUser, enabled: true },
   { id: 'university', name: 'University', segment: 'university', icon: GraduationCap, enabled: true },
@@ -111,7 +109,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
 const workspaceNavGroups: Array<{ label: string; ids: string[] }> = [
   { label: 'Clients', ids: ['clients', 'client-podcast-system', 'onboarding', 'outreach-platform'] },
   { label: 'Find', ids: ['podcast-finder', 'podcast-database', 'prospects'] },
-  { label: 'Outreach', ids: ['unibox', 'mailboxes', 'relationships'] },
+  { label: 'Outreach', ids: ['mailboxes', 'relationships'] },
 ]
 
 function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: string; items: WorkspaceNavItem[] }> {

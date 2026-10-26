@@ -176,7 +176,8 @@ for (const [file, prefix] of [['src/styles/agencyLanding.css', 'gp'], ['src/styl
 const landing = readFileSync('src/pages/AgencyLanding.tsx', 'utf8')
 const shot = readFileSync('src/components/landing/Shot.tsx', 'utf8')
 const shotSources = [...landing.matchAll(/src: '(\/shots\/[a-z]+\.png)'/gu)].map((match) => match[1])
-assert.ok(shotSources.length >= 5, 'the tour should name every screenshot it shows')
+// Four since the replies screenshot left with the retired inbox (2026-10-26).
+assert.ok(shotSources.length >= 4, 'the tour should name every screenshot it shows')
 assert.match(shot, /onError=\{\(\) => setMissing\(true\)\}/u)
 assert.match(css, /\.gp-shot-empty \{/u)
 

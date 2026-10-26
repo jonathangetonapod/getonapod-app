@@ -198,8 +198,14 @@ export function splitPromptTokens(
 }
 
 /**
- * Fields a given stage must not be offered: the ones it writes itself, and the
- * ones written after it.
+ * Producers the app no longer runs. The host-reply inbox is retired, so the
+ * fields it filled are never available to a prompt and are not offered.
+ */
+const RETIRED_PRODUCERS = new Set(['inbox', 'inbox_reply', 'inbox_nudges'])
+
+/**
+ * Fields a given stage must not be offered: the ones it writes itself, the
+ * ones written after it, and the ones only a retired producer filled.
  *
  * A stage cannot read its own output — the podcast_research editor offering
  * {{research_report}} invites a prompt to reference the thing it is in the
@@ -219,7 +225,8 @@ export function unavailableVariableIds(
   // be offered to the very prompt in the middle of writing it.
   const selfOrLater = new Set(index === -1 ? [promptId] : stageOrder.slice(index))
   return PROMPT_VARIABLES
-    .filter((variable) => variable.producedBy && selfOrLater.has(variable.producedBy))
+    .filter((variable) => variable.producedBy
+      && (selfOrLater.has(variable.producedBy) || RETIRED_PRODUCERS.has(variable.producedBy)))
     .map((variable) => variable.id)
 }
 

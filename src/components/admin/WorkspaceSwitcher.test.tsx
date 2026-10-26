@@ -139,13 +139,13 @@ describe('WorkspaceSwitcher', () => {
 
   it('preserves the outreach suite module when changing workspaces', async () => {
     renderSwitcher({
-      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/master-inbox',
+      initialPath: '/app/workspaces/22222222-2222-4222-8222-222222222222/mailboxes',
     })
 
     fireEvent.click(await screen.findByRole('combobox', { name: 'Select a workspace' }))
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
-      '/app/workspaces/11111111-1111-4111-8111-111111111111/master-inbox',
+      '/app/workspaces/11111111-1111-4111-8111-111111111111/mailboxes',
     ))
   })
 

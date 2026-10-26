@@ -56,20 +56,19 @@ describe('actionQueue', () => {
     item('Dallas', 'ready', { stage: 'ready' }),
   ]
 
-  it('orders issues, recorded, booked, replies, then one review batch per client', () => {
+  it('orders issues, recorded, booked, then one review batch per client, and asks no one to reply', () => {
     const queue = actionQueue([rollupFor(dallas, items)])
     expect(queue.map((action) => [action.kind, action.verb])).toEqual([
       ['issue', 'Review 1 record'],
       ['recorded', 'Confirm publish date'],
       ['booked', 'Prep the client'],
-      ['conversation', 'Reply to 3 hosts'],
       ['review', 'Open review batch'],
     ])
-    expect(queue[4].title).toBe("352 podcasts waiting on Dallas's review")
+    expect(queue[3].title).toBe("352 podcasts waiting on Dallas's review")
     // A review batch goes to the client's list, never to one podcast.
-    expect(queue[4].target).toEqual({ kind: 'record', tab: 'shortlist', filter: 'not_reviewed' })
-    // Several replies are read in the inbox; only the blocker is red.
-    expect(queue[3].target).toEqual({ kind: 'href', href: '/app/master-inbox?client=dallas' })
+    expect(queue[3].target).toEqual({ kind: 'record', tab: 'shortlist', filter: 'not_reviewed' })
+    // Host replies are not managed here, so they put nothing in the queue.
+    expect(queue.some((action) => /repl/i.test(action.verb))).toBe(false)
     expect(queue.filter((action) => action.blocking).map((action) => action.kind)).toEqual(['issue'])
   })
 
@@ -95,7 +94,6 @@ describe('funnelStages', () => {
       '/app/clients/dallas?tab=shortlist&filter=not_reviewed',
       '/app/clients/dallas?tab=shortlist&filter=approved',
       '/app/client-campaigns/dallas',
-      '/app/master-inbox?client=dallas',
       '/app/clients/dallas?tab=placements',
     ])
   })

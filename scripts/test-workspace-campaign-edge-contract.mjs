@@ -20,17 +20,6 @@ const leadInterestMigration = readFileSync(
   'supabase/migrations/20260728001500_inbox_lead_interest.sql',
   'utf8',
 )
-// The Master Inbox is a shell plus its panes, a draft-autosave hook and shared
-// thread helpers; the guarantees below may live in any of them.
-const masterInbox = [
-  'src/components/workspace/MasterInboxPreview.tsx',
-  ...readdirSync('src/components/workspace/inbox')
-    .filter((name) => name.endsWith('.tsx') && !name.endsWith('.test.tsx'))
-    .sort()
-    .map((name) => `src/components/workspace/inbox/${name}`),
-  'src/hooks/useInboxDraftAutosave.ts',
-  'src/lib/inboxThreads.ts',
-].map((path) => readFileSync(path, 'utf8')).join('\n')
 const campaignDetail = readFileSync('src/pages/app/WorkspaceCampaignDetail.tsx', 'utf8')
 const outreachSuite = readFileSync('src/pages/app/WorkspaceOutreachSuite.tsx', 'utf8')
 const scheduleMigration = readFileSync(
@@ -83,13 +72,24 @@ assert.match(edge, /const mapped = providerCampaignId \? campaignByProviderId\.g
 // generic parse: the parse line itself also appears inside earlier handlers.
 const genericParseIndex = edge.indexOf('Unassigning a mailbox is the one client-scoped action')
 assert.ok(genericParseIndex > 0, 'generic client_id parse must exist')
-for (const handler of ['if (action === "inbox-list")', 'if (action === "inbox-reply")', 'if (action === "inbox-draft")', 'if (action === "inbox-thread-state")']) {
+for (const handler of ['if (action === "inbox-list")', 'if (action === "inbox-draft" || action === "inbox-reply")', 'if (action === "inbox-thread-state")']) {
   const handlerIndex = edge.indexOf(handler)
   assert.ok(
     handlerIndex > 0 && handlerIndex < genericParseIndex,
     `${handler} must exist and be handled before the generic client_id requirement`,
   )
 }
+// Drafting and sending answers to hosts is retired (2026-10-26): both actions
+// refuse outright, and the auto-draft tick exits before any work or charge.
+assert.match(edge, /if \(action === "inbox-draft" \|\| action === "inbox-reply"\) \{\s*throw new HttpError\(410, "INBOX_REPLIES_RETIRED"/u)
+assert.doesNotMatch(edge, /generateReplyPackage\(/u)
+assert.doesNotMatch(edge, /\/emails\/reply/u)
+assert.match(enrollTick, /const AUTO_DRAFT_DISABLED: boolean = true/u)
+assert.ok(
+  enrollTick.indexOf('if (AUTO_DRAFT_DISABLED)') > 0
+    && enrollTick.indexOf('if (AUTO_DRAFT_DISABLED)') < enrollTick.indexOf('createAdminClient()\n'),
+  'the auto-draft tick must exit before it reads anything',
+)
 // The persisted review package survives navigation and marks replies.
 assert.match(edge, /from\("workspace_inbox_thread_state"\)[\s\S]*?onConflict: "workspace_id,thread_key"/u)
 assert.match(edge, /action === "inbox-thread-state"[\s\S]*?\["needs_reply", "booked", "archived"\]/u)
@@ -596,7 +596,6 @@ assert.match(nudgeTick, /latestHuman\.ue_type === 2[\s\S]*?status: 'needs_reply'
 assert.match(nudgeTick, /\.eq\('nudges_sent', raw\.nudges_sent\)/u)
 assert.match(config, /\[functions\.inbox-nudge-tick\]\nverify_jwt = false/u)
 
-
 // Nudge tick claim-before-send: the step is consumed under a guard that
 // re-checks status and pause, sends only on a confirmed claim, refunds only
 // definite pre-dispatch rejections, and keeps ambiguous outcomes consumed.
@@ -642,9 +641,6 @@ assert.ok(
 // Shared generator: deterministic filters exist and the profile gate holds.
 assert.match(sdrShared, /SDR_PROFILE_NOT_READY/u)
 assert.match(sdrShared, /OPT_OUT_PATTERNS/u)
-// inbox-reply server gates: thread-advanced refusal and the status contract.
-assert.match(edge, /THREAD_ADVANCED/u)
-assert.match(edge, /\.in\("status", \["needs_reply", "review", "replied"\]\)/u)
 assert.match(config, /\[functions\.inbox-enroll-tick\]\nverify_jwt = false/u)
 
 // Per-client AI SDR prompts: owner-gated writes, inbox ids only, and the
@@ -824,13 +820,6 @@ assert.match(interestAction[0], /from\("client_instantly_campaign_links"\)[\s\S]
 assert.match(interestAction[0], /CAMPAIGN_NOT_FOUND/u)
 assert.match(interestAction[0], /campaign_id: providerInterestCampaignId/u)
 assert.doesNotMatch(interestAction[0], /\{ campaign_id: interestCampaignId \}/u)
-// Send-once covers a thread with no state row too: the row is created holding
-// the claim, so the primary key makes a second sender lose.
-assert.match(
-  edge,
-  /if \(replyThreadKey && !threadStateRow && replyClientId\) \{[\s\S]*?\.insert\(\{[\s\S]*?reply_sent_email_id: replyToId,[\s\S]*?claimInsertError\.code === "23505"/u,
-)
-assert.match(edge, /if \(replyThreadKey && threadStateRow && !replyClaimed\) \{/u)
 assert.match(edge, /action === "inbox-interest-set"[\s\S]*?from\("workspace_inbox_lead_interest"\)[\s\S]*?\.upsert\(\{[\s\S]*?contact_email: leadEmail\.trim\(\)\.toLowerCase\(\)/u)
 assert.match(edge, /interested: interestByLeadEmail\.has\(leadEmail\)\s+\? interestByLeadEmail\.get\(leadEmail\) === 1\s+: interestValue === 1/u)
 assert.match(edge, /interest_status: interestByLeadEmail\.has\(leadEmail\)/u)
@@ -842,26 +831,7 @@ assert.match(
 )
 assert.match(leadInterestMigration, /CREATE POLICY workspace_inbox_lead_interest_isolation/u)
 assert.match(leadInterestMigration, /FORCE ROW LEVEL SECURITY/u)
-// The conversation is followed into its new bucket rather than vanishing, and
-// every positive outcome — a booked meeting included — stays under Interested.
-assert.match(masterInbox, /const movedTo: InboxScope = isPositiveInterest\(input\.value\) \? 'interested' : 'other'[\s\S]*?setScope\(movedTo\)/u)
-assert.match(masterInbox, /export const isPositiveInterest = \(value: number \| null \| undefined\): boolean =>\s+typeof value === 'number' && value > 0/u)
-assert.match(masterInbox, /if \(inboxScopeOf\(thread\) !== scope\) return false/u)
-assert.match(masterInbox, /selectedThread\.interest_status \?\? leadDetail\?\.interest_status \?\? null/u)
 
-// An opt-out is usually only ever seen in the reply itself. The automatic
-// prefilter suppresses threads it processes; a request to stop on any other
-// thread had nowhere to go, so the inbox offers the action directly.
-assert.match(masterInbox, /const suppressMutation = useMutation\(\{[\s\S]*?addOutreachSuppression\(workspaceId, \{[\s\S]*?reason: 'opted_out'/u)
-// Archiving is best-effort — the suppression must not be lost to an archive
-// failure — but not silent: the dialog promises the archive, so a failed one is
-// reported as a warning rather than folded into the success toast. Skipped
-// entirely for unmapped threads, which have no per-client state to archive.
-assert.match(masterInbox, /const archived = clientId\s*\?[\s\S]*?status: 'archived',\s+\}\)\.then\(\(\) => true, \(\) => false\)\s*: true/u)
-assert.match(masterInbox, /toast\.warning\('Added to do not contact, but the conversation could not be archived/u)
-assert.match(masterInbox, /excluded from outreach for every client in this workspace/u)
-// An address already on the list is stated, not offered for suppressing again.
-assert.match(masterInbox, /if \(selectedThread\.suppressed\) \{[\s\S]{0,240}This address is on the do-not-contact list/u)
 assert.match(edge, /suppressed: suppressedEmails\.has\(leadEmail\)/u)
 assert.match(edge, /from\("workspace_outreach_suppressions"\)\s+\.select\("contact_email"\)/u)
 
@@ -870,8 +840,6 @@ assert.match(edge, /from\("workspace_outreach_suppressions"\)\s+\.select\("conta
 // profile is incomplete, which is how a plain opt-out stayed contactable.
 assert.match(edge, /opt_out_detected: detectDeterministicReply\(bodyText \|\| ""\) === "opt_out"/u)
 assert.match(sdrShared, /do\\s\+not\\s\+\(\?:send\|reply\|respond\|write\)/u)
-assert.match(masterInbox, /They asked to stop — add to do not contact/u)
-assert.match(masterInbox, /optOutsAwaitingAction: threads\.filter\(\(thread\) => \(\s+thread\.opt_out_detected && !thread\.suppressed/u)
 // Activating a campaign changes what a button on another page does. That is
 // stated at the moment of the decision rather than discovered afterwards.
 assert.match(campaignDetail, /This also changes Send to Client Campaign/u)
@@ -917,28 +885,8 @@ assert.match(campaignDetail, /established by observation[\s\S]*?Instantly showed
 assert.match(campaignDetail, /does not state the mapping anywhere; this was confirmed against a real campaign/u)
 assert.match(campaignDetail, /providerTimezoneMismatch/u)
 
-// The Master Inbox connection badge was a static element reading "not
-// connected" whenever the module was open, including above replies it had just
-// loaded. It now shares the inbox query so the two cannot disagree.
-assert.match(outreachSuite, /queryKey: \['workspace-inbox', effectiveWorkspace\?\.id \?\? ''\]/u)
-assert.match(outreachSuite, /inboxConnectionQuery\.data\?\.connected\s*\?/u)
-assert.match(outreachSuite, /Instantly key rejected/u)
-
-// Do-not-contact is enforced on the way out. The inbox is the one place a
-// suppressed address can be emailed by hand, often on the reply that asked.
-assert.match(
-  edge,
-  /action === "inbox-reply"[\s\S]*?from\("workspace_outreach_suppressions"\)[\s\S]*?INBOX_CONTACT_SUPPRESSED/u,
-)
-// The gate precedes the provider send, not merely the status write.
-const replyAction = edge.match(/action === "inbox-reply"[\s\S]*?action === "inbox-lead-detail"/u)
-assert.ok(replyAction, 'inbox-reply action must exist')
-assert.ok(
-  replyAction[0].indexOf('INBOX_CONTACT_SUPPRESSED')
-    < replyAction[0].indexOf('"/emails/reply"'),
-  'a suppressed address must be refused before anything is sent',
-)
-assert.match(masterInbox, /This address is on the do-not-contact list/u)
+// The Master Inbox is retired: the outreach suite no longer carries it.
+assert.doesNotMatch(outreachSuite, /master-inbox|MasterInboxPreview/u)
 
 // A paged provider inbox shared by every campaign can push a client's reply
 // past the end. Silence would make a short window look like the whole inbox.
@@ -950,35 +898,6 @@ assert.match(edge, /if \(requestsMade > 0 && error\.status === 429\) \{\s+trunca
 assert.match(edge, /const MAX_INBOX_REQUESTS = 3;/u)
 assert.match(edge, /claimedProviderCampaignIds\.length <= MAX_INBOX_REQUESTS\s+\? claimedProviderCampaignIds\s+: \[null\]/u)
 assert.match(edge, /if \(scopeCampaignId\) query\.set\("campaign_id", scopeCampaignId\);/u)
-assert.match(masterInbox, /Showing the most recent replies only/u)
-
-// Inbox replies: both provider-facing inputs arrive from the browser, so both
-// are bounded before anything is sent.
-assert.match(edge, /INBOX_SENDER_NOT_CONNECTED/u)
-// Fails closed: an empty mailbox snapshot refuses rather than skipping the
-// allowlist, and a reply_to_id Instantly cannot find is not attributable.
-assert.match(edge, /if \(connectedAccounts\.size === 0\) \{\s+throw new HttpError\(\s+409,\s+"INBOX_SENDERS_UNKNOWN"/u)
-assert.match(edge, /if \(!connectedAccounts\.has\(eaccount\.toLowerCase\(\)\)\)/u)
-assert.doesNotMatch(edge, /connectedAccounts\.size > 0 &&/u)
-assert.match(replyAction[0], /if \(error\.status === 404\) \{\s+throw new HttpError\(\s+403,\s+"INBOX_MESSAGE_NOT_ATTRIBUTED"/u)
-// inbox-draft refuses suppressed threads before any charge, and never reopens
-// a booked or archived conversation.
-const draftAction = edge.match(/action === "inbox-draft"[\s\S]*?action === "inbox-reply"/u)
-assert.ok(draftAction, 'inbox-draft action must exist')
-assert.ok(
-  draftAction[0].indexOf('INBOX_CONTACT_SUPPRESSED') > 0
-    && draftAction[0].indexOf('INBOX_CONTACT_SUPPRESSED') < draftAction[0].indexOf('generateReplyPackage('),
-  'inbox-draft must refuse suppressed contacts before generating (and charging)',
-)
-assert.match(draftAction[0], /from\("workspace_outreach_suppressions"\)/u)
-assert.match(draftAction[0], /status: preservedStatus \?\? "review"/u)
-assert.match(draftAction[0], /\["booked", "archived"\]\.includes/u)
-assert.match(edge, /INBOX_MESSAGE_NOT_ATTRIBUTED/u)
-assert.ok(
-  replyAction[0].indexOf('INBOX_SENDER_NOT_CONNECTED') < replyAction[0].indexOf('"/emails/reply"')
-    && replyAction[0].indexOf('INBOX_MESSAGE_NOT_ATTRIBUTED') < replyAction[0].indexOf('"/emails/reply"'),
-  'both gates must precede the provider send',
-)
 
 // Nudges follow the campaign's real window, not a fixed weekday assumption
 // that could disagree with it in either direction.
@@ -995,43 +914,7 @@ const threadMessagesAction = edge.match(/action === "inbox-thread-messages"[\s\S
 assert.ok(threadMessagesAction, 'inbox-thread-messages action must exist')
 assert.match(threadMessagesAction[0], /if \(!campaignId \|\| !claimed\.has\(campaignId\)\) return \[\]/u)
 assert.match(threadMessagesAction[0], /direction: email\.ue_type === 2 \? "inbound" : "outbound"/u)
-assert.match(masterInbox, /Show what we sent/u)
-// One provider call per thread, so it loads on request rather than with the list
-// — except for a reply that aged out of the window, whose mailbox and text only
-// the thread still has.
-assert.match(masterInbox, /enabled: \(showFullThread \|\| needsThreadRecovery\) && Boolean\(workspaceId\) && Boolean\(selectedThread\?\.thread_key\)/u)
 assert.match(threadMessagesAction[0], /eaccount: typeof email\.eaccount === "string"/u)
-assert.match(masterInbox, /export const recoverAgedOutThread = \(/u)
-assert.match(masterInbox, /eaccount: thread\.eaccount \|\| eaccount,/u)
-// History is per-conversation and must not carry across threads.
-assert.match(masterInbox, /setSelectedThreadId\(threadId\)[\s\S]{0,220}setShowFullThread\(false\)/u)
-
-// Draft edits are debounced, and every way that debounce could eat an edit is
-// a silent one — the operator sees typed text either way.
-const persistDraft = masterInbox.match(/const persistDraftEdit = useMemo\(\(\) => \{[\s\S]*?\}, \[workspaceId, queryClient, canManage\]\)/u)
-assert.ok(persistDraft, 'persistDraftEdit must stay a canManage-aware memo')
-// A member's save 403s, and the cache patch runs before the call — so their
-// edits looked persisted in-session and reverted on the next refetch.
-assert.match(persistDraft[0], /if \(!canManage\) return/u)
-// Switching threads inside the debounce window is a pending save for another
-// thread: flush it, never cancel it.
-assert.match(persistDraft[0], /if \(pending && pendingThreadKey !== threadKey\) pending\(\)/u)
-// A thread with no state row at all still has to accept a hand-written draft:
-// gating the patch on item.state dropped exactly the reply that just arrived,
-// so switching threads and back emptied the textarea. The patch synthesizes a
-// fresh-row state instead, matching the server-side upsert.
-assert.match(persistDraft[0], /item\.thread_key === threadKey\s*\?/u)
-assert.match(persistDraft[0], /status: 'needs_reply' as const,[\s\S]{0,240}\.\.\.item\.state,/u)
-assert.match(persistDraft[0], /draft: item\.state\?\.draft[\s\S]{0,160}based_on_email_id: null/u)
-
-// A deep link resolves through the fallback rather than openThread, which is
-// where a saved draft is restored — so the one path built for returning to a
-// conversation was the one that rendered it empty.
-assert.match(masterInbox, /hydratedLinkRef\.current = linkedThread\.id\s*\n\s*openThread\(linkedThread\.id\)/u)
-
-// "Not ready" now names the fields, instead of sending the operator to hunt.
-assert.match(masterInbox, /missingSdrFields/u)
-assert.match(masterInbox, /threadClient\?\.ai_sdr_profile_ready === false/u)
 
 // Campaign totals refresh: one provider call for the whole workspace, using
 // the list analytics endpoint rather than one overview call per client.
@@ -1725,17 +1608,12 @@ assert.ok(
   && !/inbox_nudges'\s*\)?\s*\?\?/.test(sdrShared),
   'inbox_nudges must not resolve a model of its own — it rides inside the reply call',
 )
-// The card that edits the inbox prompts is where the model is chosen, and it
-// must name inbox_reply as the owner rather than offering both a picker.
+// The inbox is retired, so the client prompts card no longer edits the inbox
+// prompts or offers their model.
 const sdrCard = readFileSync('src/components/workspace/ClientSdrPromptsCard.tsx', 'utf8')
 assert.ok(
-  sdrCard.includes("const INBOX_MODEL_OWNER: ResearchPromptId = 'inbox_reply'")
-  && sdrCard.includes("const INBOX_MODEL_FOLLOWER: ResearchPromptId = 'inbox_nudges'"),
-  'the SDR prompts card must name which inbox stage owns the model call',
-)
-assert.ok(
-  sdrCard.includes('setWorkspacePromptModel(workspaceId, INBOX_MODEL_OWNER, model)'),
-  'the inbox model picker must write against the stage that owns the call',
+  !sdrCard.includes("'inbox_reply'") && !sdrCard.includes('setWorkspacePromptModel'),
+  'the client prompts card must not offer the retired inbox prompts',
 )
 // Each stage is saved the moment it exists, or there would be nothing to
 // resume from and a killed run would start over and die in the same place.

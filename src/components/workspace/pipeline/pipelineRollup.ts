@@ -12,13 +12,12 @@ export type ActionTarget =
  * one fact, a booked recording has a date coming, a host reply has a person
  * waiting, and a review batch waits on the client. Client-level work comes last.
  */
-export type ActionKind = 'issue' | 'recorded' | 'booked' | 'conversation' | 'review' | 'client'
+export type ActionKind = 'issue' | 'recorded' | 'booked' | 'review' | 'client'
 
 const KIND_RANK: Record<ActionKind, number> = {
   issue: 0,
   recorded: 1,
   booked: 2,
-  conversation: 3,
   review: 4,
   client: 5,
 }
@@ -69,7 +68,7 @@ export function possessive(name: string): string {
  * The work on one active client that needs a person today. Prep work that
  * moves at the operator's own pace (finding an email, finishing a pitch,
  * launching outreach) is not here: it lives behind the Approved count on the
- * card. Reply brief and onboarding gaps live on the Setup chip. Listing them
+ * card. Host brief and onboarding gaps live on the Setup chip. Listing them
  * again here was how the page came to say the same thing four times.
  */
 export function clientActions(
@@ -121,24 +120,6 @@ export function clientActions(
       verb: 'Prep the client',
       blocking: false,
       target: { kind: 'item', itemId: item.id },
-    })
-  }
-  const conversations = open.filter((item) => !flagged.has(item.id) && item.stage === 'conversation')
-  if (conversations.length > 0) {
-    actions.push({
-      id: `${client.id}:conversation`,
-      kind: 'conversation',
-      client,
-      title: conversations.length === 1 ? conversations[0].podcast.name : 'Hosts waiting on a reply',
-      detail: conversations.length === 1
-        ? 'The host replied.'
-        : `${plural(conversations.length, 'host has', 'hosts have')} replied.`,
-      verb: `Reply to ${plural(conversations.length, 'host', 'hosts')}`,
-      blocking: false,
-      // One reply opens where it is answered; several are read in the inbox.
-      target: conversations.length === 1
-        ? { kind: 'item', itemId: conversations[0].id }
-        : { kind: 'href', href: `${baseHref}/master-inbox?client=${encodeURIComponent(client.id)}` },
     })
   }
   const awaitingReview = open.filter((item) => !flagged.has(item.id) && item.stage === 'awaiting_review')
@@ -246,7 +227,7 @@ export function kpiCounts(rollups: ClientRollup[], queue: PipelineAction[]): Rec
   }
 }
 
-/** Every action across clients: issues, recorded, booked, replies, review batches, then client work. */
+/** Every action across clients: issues, recorded, booked, review batches, then client work. */
 export function actionQueue(rollups: ClientRollup[]): PipelineAction[] {
   const lastActivity = new Map(rollups.map((rollup) => [rollup.client.id, rollup.lastActivityAt || '']))
   return rollups
@@ -277,7 +258,7 @@ export function actionHref(action: PipelineAction, baseHref: string): string | n
 }
 
 export interface FunnelStage {
-  key: 'podcasts' | 'review' | 'approved' | 'outreach' | 'replies' | 'placements'
+  key: 'podcasts' | 'review' | 'approved' | 'outreach' | 'placements'
   label: string
   count: number
   /** That client's list, filtered to this stage. */
@@ -292,7 +273,6 @@ export function funnelStages(rollup: ClientRollup, baseHref: string): FunnelStag
     { key: 'review', label: 'To review', count: rollup.awaitingReview, href: `${record}?tab=shortlist&filter=not_reviewed` },
     { key: 'approved', label: 'Approved', count: rollup.preparation, href: `${record}?tab=shortlist&filter=approved` },
     { key: 'outreach', label: 'Outreach', count: rollup.activeOutreach, href: `${baseHref}/client-campaigns/${id}` },
-    { key: 'replies', label: 'Replies', count: rollup.conversations, href: `${baseHref}/master-inbox?client=${id}` },
     { key: 'placements', label: 'Placements', count: rollup.placements, href: `${record}?tab=placements` },
   ]
 }
@@ -363,8 +343,8 @@ export function setupItems(client: ClientPodcastSystemClient, canManage: boolean
   return [
     {
       key: 'profile',
-      label: 'Reply brief',
-      detail: client.profile.ready ? 'Reply brief ready' : `${client.profile.completed_fields}/${client.profile.total_fields} sections complete`,
+      label: 'Host brief',
+      detail: client.profile.ready ? 'Host brief ready' : `${client.profile.completed_fields}/${client.profile.total_fields} sections complete`,
       done: client.profile.ready,
       tab: 'profile',
     },

@@ -18,7 +18,6 @@ import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
-  setWorkspaceClientSdrMode: vi.fn(),
   saveWorkspaceClientBooking: vi.fn(),
   deleteWorkspaceClientBooking: vi.fn(),
   generatePassword: vi.fn(() => 'Generated-Portal-42!'),
@@ -429,11 +428,11 @@ describe('WorkspaceClientDetail', () => {
     expect(within(placements).getByText('Operator Weekly')).toBeInTheDocument()
     expect(screen.getByRole('grid', { name: 'Client activity calendar' })).toBeInTheDocument()
 
-    // The profile tab holds both what the client approved and the reply brief drafted from it.
+    // The profile tab holds both what the client approved and the host brief drafted from it.
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
     expect(screen.getByText('Taylor helps founders build durable operations.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View full profile' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Intake & files' }), { button: 0 })
     expect(screen.getByRole('link', { name: 'Review onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
@@ -516,7 +515,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByText('Booking dialog')).toBeInTheDocument()
   })
 
-  it('prices the reply brief draft as included for a workspace on its own key', async () => {
+  it('prices the host brief draft as included for a workspace on its own key', async () => {
     const unready: WorkspaceClientDetailData = {
       ...detail,
       client: {
@@ -550,18 +549,17 @@ describe('WorkspaceClientDetail', () => {
     expect(mockedDetail).toHaveBeenCalledTimes(1)
   })
 
-  it('edits each client-scoped reply brief section in a focused modal for the inbox', async () => {
+  it('edits each client-scoped host brief section in a focused modal', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Profile' }), { button: 0 })
 
-    expect(screen.getByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
     expect(screen.getByText('Context ready')).toBeInTheDocument()
     expect(screen.getByText('A practical framework for diagnosing and fixing the bottleneck behind stalled growth.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open inbox' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}`,
-    )
+    expect(screen.queryByRole('link', { name: 'Open inbox' })).not.toBeInTheDocument()
+    // Reply drafting is retired with the inbox; the brief stays for research and pitching.
+    expect(screen.queryByText('Reply drafting')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Listener value & takeaways' }))
     const editor = screen.getByRole('dialog', { name: 'Edit Listener value & takeaways' })
@@ -579,15 +577,15 @@ describe('WorkspaceClientDetail', () => {
     ))
   })
 
-  it('opens directly to the reply brief from its stable client deep link', async () => {
+  it('opens directly to the host brief from its stable client deep link', async () => {
     renderPage(`/app/clients/${clientId}?tab=ai-sdr`)
 
-    expect(await screen.findByRole('heading', { name: 'Taylor Client reply brief' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
     expect(screen.queryByRole('heading', { name: 'Campaign snapshot' })).not.toBeInTheDocument()
   })
 
-  it('keeps reply brief editing manager-only', async () => {
+  it('keeps host brief editing manager-only', async () => {
     mockedDetail.mockResolvedValueOnce({ ...detail, viewer_role: 'member', can_manage: false })
     renderPage()
     await screen.findByRole('heading', { name: 'Taylor Client' })

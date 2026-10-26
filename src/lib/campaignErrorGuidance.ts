@@ -44,7 +44,7 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
   CAMPAIGN_CONTACT_IN_CONVERSATION: {
     title: 'A conversation with this host is already open',
     explanation: 'Cold outreach on top of a live thread reads as a different agency writing twice. Continue the existing conversation instead.',
-    remedy: { kind: 'link', label: 'Open Master Inbox', module: 'master-inbox' },
+    remedy: { kind: 'link', label: 'Open Relationships', module: 'relationships' },
   },
   CAMPAIGN_CONTACT_ALREADY_IN_OUTREACH: {
     title: 'This address is already in the campaign',
@@ -54,7 +54,7 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
   CAMPAIGN_PITCH_LOCKED: {
     title: 'This pitch can no longer be edited',
     explanation: 'The host has already been sent a step of the sequence, or has replied. What they read cannot be unsent, so the copy is frozen to keep our record matching their inbox.',
-    remedy: { kind: 'link', label: 'Open Master Inbox', module: 'master-inbox' },
+    remedy: { kind: 'link', label: 'Open the campaign', module: 'client-campaigns' },
   },
   CAMPAIGN_SETUP_IN_PROGRESS: {
     title: 'The campaign is still being created',

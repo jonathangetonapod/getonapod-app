@@ -319,14 +319,8 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/app/master-inbox"
-              element={
-                <ProtectedRoute>
-                  <WorkspaceOutreachSuite module="master-inbox" />
-                </ProtectedRoute>
-              }
-            />
+            {/* The inbox is retired; old links land on the campaigns. */}
+            <Route path="/app/master-inbox" element={<Navigate to="/app/client-campaigns" replace />} />
             <Route
               path="/app/mailboxes"
               element={
@@ -336,7 +330,7 @@ const App = () => (
               }
             />
             <Route path="/app/outreach-platform" element={<Navigate to="/app/client-campaigns" replace />} />
-            <Route path="/app/unibox" element={<Navigate to="/app/master-inbox" replace />} />
+            <Route path="/app/unibox" element={<Navigate to="/app/client-campaigns" replace />} />
 
             {/* The platform owner uses the same workspace shell and tools for selected workspaces. */}
             <Route
@@ -489,11 +483,7 @@ const App = () => (
             />
             <Route
               path="/app/workspaces/:workspaceId/master-inbox"
-              element={
-                <PlatformAdminRoute>
-                  <AdminWorkspaceOutreachSuite module="master-inbox" />
-                </PlatformAdminRoute>
-              }
+              element={<LegacyAdminWorkspaceRedirect module="client-campaigns" />}
             />
             <Route
               path="/app/workspaces/:workspaceId/mailboxes"
@@ -509,7 +499,7 @@ const App = () => (
             />
             <Route
               path="/app/workspaces/:workspaceId/unibox"
-              element={<LegacyAdminWorkspaceRedirect module="master-inbox" />}
+              element={<LegacyAdminWorkspaceRedirect module="client-campaigns" />}
             />
 
             {/* Billing is intentionally out of scope for the invite-only MVP. */}
@@ -681,7 +671,7 @@ const App = () => (
               element={<LegacyAdminWorkspaceRedirect module="clients" />}
             />
             <Route path="/admin/outreach-platform" element={<Navigate to="/app/client-campaigns" replace />} />
-            <Route path="/admin/leads" element={<Navigate to="/app/master-inbox" replace />} />
+            <Route path="/admin/leads" element={<Navigate to="/app/client-campaigns" replace />} />
             <Route path="/admin/mailboxes" element={<Navigate to="/app/mailboxes" replace />} />
             <Route
               path="/admin/guest-resources"

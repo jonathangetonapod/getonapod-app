@@ -48,7 +48,6 @@ const expectedNavigation = [
   'Podcast Finder',
   'Podcast Database',
   'Prospect Studio',
-  'Inbox',
   'Mailboxes',
   'Relationships',
   'University',
@@ -170,8 +169,8 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    // 13 with University, the platform training library added 2026-08-07.
-    expect(links).toHaveLength(13)
+    // 12: University was added 2026-08-07 and the Inbox retired 2026-10-26.
+    expect(links).toHaveLength(12)
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/app/settings',
@@ -183,7 +182,6 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', '/app/client-podcast-system')
     expect(within(navigation).getByRole('link', { name: 'Prospect Studio' })).toHaveAttribute('href', '/app/prospects')
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
-    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/app/master-inbox')
     expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute('href', '/app/mailboxes')
 
     const disabledModules = within(navigation).queryAllByRole('button').filter((button) => button.hasAttribute('disabled'))
@@ -201,15 +199,15 @@ describe('WorkspaceLayout', () => {
   // the person is actually on is worth the space; nothing is, when no module
   // matches.
   it('names the active module in the header', () => {
-    const { unmount } = renderLayout(undefined, '/app/master-inbox')
+    const { unmount } = renderLayout(undefined, '/app/mailboxes')
 
     const header = screen.getByRole('banner')
-    expect(within(header).getAllByText('Inbox')).toHaveLength(2)
+    expect(within(header).getAllByText('Mailboxes')).toHaveLength(2)
     expect(screen.queryByText('Workspace dashboard')).not.toBeInTheDocument()
     unmount()
 
     renderLayout(undefined, '/app/manage-workspaces')
-    expect(within(screen.getByRole('banner')).queryByText('Inbox')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('banner')).queryByText('Mailboxes')).not.toBeInTheDocument()
     expect(screen.queryByText('Workspace dashboard')).not.toBeInTheDocument()
   })
 
@@ -281,7 +279,7 @@ describe('WorkspaceLayout', () => {
       item.querySelector('span')?.textContent
     ))).toEqual([
       'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Pipeline',
-      'Clients', 'Client Campaigns', 'Relationships', 'Inbox', 'Mailboxes', 'University',
+      'Clients', 'Client Campaigns', 'Relationships', 'Mailboxes', 'University',
       'Billing & credits', 'Settings',
     ])
   })
@@ -306,7 +304,6 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Podcast Database' })).toHaveAttribute('href', `/app/podcast-database?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Pipeline' })).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
-    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns?client=${clientId}`)
     expect(within(navigation).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/app/clients')
     expect(within(navigation).getByRole('link', { name: 'Relationships' })).toHaveAttribute('href', '/app/relationships')
@@ -319,7 +316,6 @@ describe('WorkspaceLayout', () => {
     expect(readWorkingClient(workspaceId)).toBeNull()
     expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', '/app/podcast-finder')
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
-    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/app/master-inbox')
   })
 
   it('offers only active clients and remembers the choice for the tab', async () => {
@@ -329,7 +325,7 @@ describe('WorkspaceLayout', () => {
     const combobox = await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(combobox).toHaveTextContent('Priya Natarajan'))
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
-    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', `/app/master-inbox?client=${otherClientId}`)
+    expect(within(navigation).getByRole('link', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${otherClientId}`)
 
     fireEvent.click(combobox)
     expect(screen.getByRole('option', { name: 'Dallas Fontaine' })).toBeInTheDocument()
@@ -664,10 +660,6 @@ describe('WorkspaceLayout', () => {
     expect(within(navigation).getByRole('link', { name: 'Client Campaigns' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/client-campaigns`,
-    )
-    expect(within(navigation).getByRole('link', { name: 'Inbox' })).toHaveAttribute(
-      'href',
-      `/app/workspaces/${workspaceId}/master-inbox`,
     )
     expect(within(navigation).getByRole('link', { name: 'Mailboxes' })).toHaveAttribute(
       'href',

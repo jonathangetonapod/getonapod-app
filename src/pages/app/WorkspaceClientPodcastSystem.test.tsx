@@ -320,7 +320,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     expect(screen.queryByText(`seeded shortlist row ${ready.podcast.id}`)).not.toBeInTheDocument()
   })
 
-  it('puts a host reply in the queue once, as the button that answers it', async () => {
+  it('asks no one to reply to a host, since replies are not managed here', async () => {
     mockedGetSystem.mockResolvedValue({
       ...response,
       items: [{
@@ -332,20 +332,8 @@ describe('WorkspaceClientPodcastSystem', () => {
 
     renderPage()
 
-    const today = await screen.findByRole('region', { name: /Today/ })
-    expect(within(today).getByRole('heading', { name: 'Today · 1 action' })).toBeInTheDocument()
-    // Neutral, not the old amber "due soon".
-    const reply = within(today).getByRole('button', { name: 'Reply to 1 host: Operator Stories for Taylor Client' })
-    expect(reply).not.toHaveClass('bg-amber-400')
-    // The card points at the queue instead of repeating the action.
-    expect(screen.getAllByRole('button', { name: /^Reply to/ })).toHaveLength(1)
-    expect(screen.getByRole('link', { name: '1 action for Taylor Client in Today' })).toBeInTheDocument()
-
-    fireEvent.click(reply)
-    const details = await screen.findByRole('dialog')
-    expect(within(details).getByRole('heading', { name: 'Operator Stories' })).toBeInTheDocument()
-    expect(within(details).getByRole('link', { name: 'Client shortlist' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
-    expect(within(details).getByRole('link', { name: 'Client campaign' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(await screen.findByText(/Nothing to do right now/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Reply to/ })).not.toBeInTheDocument()
   })
 
   it('opens the placement a reply belongs to when the inbox links back', async () => {
@@ -439,7 +427,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     renderPage()
 
     expect(await screen.findByText(/Nothing to do right now/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^Setup 3\/4 for Taylor Client: missing reply brief/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Setup 3\/4 for Taylor Client: missing host brief/ })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=profile`,
     )
@@ -562,7 +550,7 @@ describe('WorkspaceClientPodcastSystem', () => {
    * events. Item timestamps include shortlist edits and backfills, and folding
    * them in had every row showing the day a migration ran.
    */
-  it('shows the reply brief gap, real last activity and onboarding from pipeline history', async () => {
+  it('shows the host brief gap, real last activity and onboarding from pipeline history', async () => {
     mockedGetSystem.mockResolvedValue({
       ...response,
       clients: [
@@ -574,7 +562,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     renderPage()
 
     // The setup chip names the gap and goes straight to it.
-    expect(await screen.findByRole('link', { name: 'Setup 3/4 for Taylor Client: missing reply brief. Go to reply brief' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Setup 3/4 for Taylor Client: missing host brief. Go to host brief' })).toHaveAttribute(
       'href',
       `/app/clients/${clientId}?tab=profile`,
     )
@@ -582,7 +570,7 @@ describe('WorkspaceClientPodcastSystem', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Taylor Client' }))
     expect(screen.getByText('Jul 1, 2026, 12:00 PM')).toBeInTheDocument()
     expect(screen.getByText(/2\/6 sections complete/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Fix reply brief for Taylor Client' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=profile`)
+    expect(screen.getByRole('link', { name: 'Fix host brief for Taylor Client' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=profile`)
 
     // No pipeline history and no intake: genuinely not started.
     const jordan = screen.getByRole('heading', { name: 'Jordan Former' }).closest('article') as HTMLElement
@@ -609,13 +597,13 @@ describe('WorkspaceClientPodcastSystem', () => {
       ...response,
       viewer_role: 'member',
       can_manage: false,
-      items: [awaitingReview, { ...ready, stage: 'conversation' }, published],
+      items: [awaitingReview, { ...ready, stage: 'booked', booking: { ...published.booking, status: 'booked', prep_sent: false } }, published],
     })
 
     renderPage(`/app/client-podcast-system?client=${clientId}`)
     fireEvent.click(await screen.findByRole('button', { name: 'Taylor Client' }))
     expect(screen.getByText(/Owner\/admin only/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^Reply to 1 host: Operator Stories/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Prep the client: Operator Stories/ }))
 
     const details = await screen.findByRole('dialog')
     expect(within(details).queryByText('jamie@operator.example')).not.toBeInTheDocument()

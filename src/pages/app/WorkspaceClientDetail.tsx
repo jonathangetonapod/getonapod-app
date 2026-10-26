@@ -73,8 +73,6 @@ import {
   setWorkspaceClientPassword,
   updateWorkspaceClient,
   updateWorkspaceClientProfile,
-  setWorkspaceClientSdrMode,
-  type WorkspaceClientSdrMode,
   updateWorkspaceClientSdrProfile,
   type WorkspaceClientBooking,
   type WorkspaceClientOnboardingSummary,
@@ -519,7 +517,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const databaseHref = `${baseHref}/podcast-database?client=${encodeURIComponent(client.id)}`
   const podcastSystemHref = `${baseHref}/client-podcast-system?client=${encodeURIComponent(client.id)}`
   const campaignHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
-  const masterInboxHref = `${baseHref}/master-inbox?client=${encodeURIComponent(client.id)}`
   // The CRM is workspace-scoped, so it follows baseHref like every other
   // destination here. Billing is not: a platform admin acts on a tenant's
   // credit from the platform screen, the same split the header chip makes.
@@ -712,21 +709,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     }
   }
 
-  const changeSdrMode = async (mode: WorkspaceClientSdrMode) => {
-    if (!client || client.ai_sdr_mode === mode || sdrModeBusy) return
-    setSdrModeBusy(true)
-    try {
-      await setWorkspaceClientSdrMode(workspaceId, client.id, mode)
-      toast.success(mode === 'auto_draft'
-        ? 'Automatic reply drafting is on. Every new reply gets a draft to review. Nothing sends on its own.'
-        : 'Automatic reply drafting is off. Drafts are written when you ask for them.')
-      await detailQuery.refetch()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'The reply drafting setting could not be saved.')
-    } finally {
-      setSdrModeBusy(false)
-    }
-  }
   const copyPublicLink = async (path: string, label: string) => {
     // Built on the agency's own domain when one is serving, the same origin
     // the client's emails use, so a white-label client never gets a platform
@@ -889,10 +871,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
       setSdrDraftDirty(false)
       setSdrEditorFieldId(null)
       toast.success(updated.ai_sdr_readiness.ready
-        ? 'Reply brief saved and ready for inbox drafts.'
-        : 'Reply brief draft saved.')
+        ? 'Host brief saved and ready.'
+        : 'Host brief draft saved.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'The reply brief could not be updated.'
+      const message = error instanceof Error ? error.message : 'The host brief could not be updated.'
       setSdrError(message)
       if (/changed since you opened/i.test(message)) await detailQuery.refetch()
     } finally {
@@ -1074,7 +1056,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 <CardHeader><CardTitle>Client readiness</CardTitle><CardDescription>The systems needed to run this account.</CardDescription></CardHeader>
                 <CardContent>
                   <DetailRow label="Approval dashboard" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
-                  <DetailRow label="Reply brief" value={<Badge variant="outline" className={sdrReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{sdrReadiness.ready ? 'Context ready' : `${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}</Badge>} />
+                  <DetailRow label="Host brief" value={<Badge variant="outline" className={sdrReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{sdrReadiness.ready ? 'Context ready' : `${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}</Badge>} />
                   <DetailRow label="Client portal" value={<Badge variant="outline" className={client.portal_access_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{client.portal_access_enabled ? 'Enabled' : 'Disabled'}</Badge>} />
                   <DetailRow label="Onboarding" value={onboarding ? labelForStatus(onboarding.status) : 'Not started'} />
                   <DetailRow label="Podcast review" value={dashboard.podcast_count > 0 ? `${dashboard.reviewed_count} of ${dashboard.podcast_count}` : 'No shortlist yet'} />
@@ -1088,7 +1070,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle>Approved client profile</CardTitle>
-                  <CardDescription>Positioning used across discovery and outreach, and the source the reply brief is drafted from.</CardDescription>
+                  <CardDescription>Positioning used across discovery and outreach, and the source the host brief is drafted from.</CardDescription>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {client.bio && <Button type="button" variant="outline" size="sm" onClick={() => setProfileOpen(true)}><BookOpenCheck className="mr-2 h-4 w-4" />View full profile</Button>}
@@ -1127,13 +1109,12 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                       </Badge>
                       {client.ai_sdr_profile_updated_at && <Badge variant="secondary">Updated {formatDate(client.ai_sdr_profile_updated_at)}</Badge>}
                     </div>
-                    <h2 className="text-2xl font-bold tracking-tight">{client.name} reply brief</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{client.name} host brief</h2>
                     <p className="mt-2 max-w-2xl leading-6 text-muted-foreground">
-                      What the inbox knows about this client when it drafts a reply to a host. It explains why they are a compelling guest, what they can discuss, what listeners gain, and how to book them.
+                      What the AI knows about this client when it researches shows and writes pitches. It explains why they are a compelling guest, what they can discuss, what listeners gain, and how to book them.
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <Button asChild variant="outline"><Link to={masterInboxHref}><Mail className="mr-2 h-4 w-4" />Open inbox</Link></Button>
                     {canManage && !sdrReadiness.ready && (
                       <Button type="button" variant="outline" disabled={sdrDrafting || (client.bio ?? '').trim().length < 40} title={(client.bio ?? '').trim().length < 40 ? 'Add an approved client profile of at least 40 characters first. The draft is built from it.' : undefined} onClick={() => void draftSdrProfileWithAi()}>
                         {sdrDrafting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
@@ -1163,64 +1144,19 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     </div>
                     {!sdrReadiness.ready && (
                       <p className="mt-3 text-xs leading-5 text-amber-800">
-                        Add the core {missingSdrCoreLabels.join(', ')} context before inbox drafting is considered ready.
+                        Add the core {missingSdrCoreLabels.join(', ')} context before the brief is considered ready.
                       </p>
                     )}
                     {sdrReadiness.ready && (
-                      <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />Core context is ready for review drafts.</p>
+                      <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" />Core context is ready.</p>
                     )}
                   </div>
                   <div className="flex items-start gap-2.5 rounded-xl border border-dashed bg-background/80 p-4">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Draft context only.</span> Saving this brief never sends a message or enables automation. Inbox delivery remains a separate, explicit action.</p>
+                    <p className="text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">Draft context only.</span> Saving this brief never sends a message or enables automation.</p>
                   </div>
                 </div>
               </div>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Reply drafting</CardTitle>
-                <CardDescription>
-                  Choose how replies for {client.name} are handled. Every reply is sent by a
-                  person. The AI only classifies and drafts.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
-                {([
-                  {
-                    id: 'manual' as const,
-                    title: 'Manual',
-                    detail: 'Drafts are written only when you press Draft reply in the inbox.',
-                  },
-                  {
-                    id: 'auto_draft' as const,
-                    title: 'Automatic',
-                    detail: 'Replies marked Interested in Instantly are classified and a reply is drafted for review automatically. Nothing sends on its own.',
-                  },
-                ]).map((option) => {
-                  const selected = (client.ai_sdr_mode ?? 'manual') === option.id
-                  const autoBlocked = option.id !== 'manual' && !sdrReadiness.ready
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      aria-pressed={selected}
-                      disabled={!canManage || sdrModeBusy || autoBlocked}
-                      title={autoBlocked ? 'Complete the core reply brief first' : undefined}
-                      onClick={() => void changeSdrMode(option.id)}
-                      className={`rounded-xl border p-4 text-left transition-colors ${selected ? 'border-primary ring-1 ring-primary' : 'hover:bg-muted/20'} ${autoBlocked ? 'opacity-60' : ''}`}
-                    >
-                      <p className="flex items-center gap-2 text-sm font-semibold">
-                        {option.title}
-                        {selected && <CheckCircle2 className="h-4 w-4 text-primary" />}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.detail}</p>
-                      {autoBlocked && <p className="mt-1.5 text-[11px] font-medium text-amber-700">Requires a complete core reply brief.</p>}
-                    </button>
-                  )
-                })}
-              </CardContent>
             </Card>
 
             <ClientSdrPromptsCard
@@ -1636,8 +1572,8 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </div>
                 <div className={`rounded-xl border px-4 py-3 text-xs leading-5 ${sdrDraftReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                   {sdrDraftReadiness.ready
-                    ? 'Saving this section keeps all four core sections ready for inbox review drafts.'
-                    : `This profile can still be saved as a draft. ${sdrDraftReadiness.missing_core_fields.length} core section${sdrDraftReadiness.missing_core_fields.length === 1 ? '' : 's'} will remain before drafting is ready.`}
+                    ? 'Saving this section keeps all four core sections ready.'
+                    : `This profile can still be saved as a draft. ${sdrDraftReadiness.missing_core_fields.length} core section${sdrDraftReadiness.missing_core_fields.length === 1 ? '' : 's'} will remain before the brief is ready.`}
                 </div>
                 {sdrError && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{sdrError}</p>}
               </div>

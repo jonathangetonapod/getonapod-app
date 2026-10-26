@@ -97,10 +97,7 @@ describe('OpportunityDetailSheet', () => {
       'href',
       `/app/client-campaigns/${clientId}`,
     )
-    expect(within(sheet).getByRole('link', { name: 'Inbox' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}`,
-    )
+    expect(within(sheet).queryByRole('link', { name: /inbox/i })).not.toBeInTheDocument()
     expect(within(sheet).getByRole('link', { name: /podcast page/i })).toHaveAttribute(
       'href',
       'https://podcasts.example.com/operator-stories',
@@ -110,7 +107,7 @@ describe('OpportunityDetailSheet', () => {
     expect(onLogPlacement).toHaveBeenCalledWith(item)
   })
 
-  it('opens the host conversation directly when the inbox has read the thread', () => {
+  it('marks a host who replied, without linking to a retired inbox', () => {
     renderSheet({
       item: {
         ...item,
@@ -120,10 +117,7 @@ describe('OpportunityDetailSheet', () => {
 
     const sheet = screen.getByRole('dialog')
     expect(within(sheet).getByText('Host replied')).toBeInTheDocument()
-    expect(within(sheet).getByRole('link', { name: 'Open conversation' })).toHaveAttribute(
-      'href',
-      `/app/master-inbox?client=${clientId}&thread=thread-42`,
-    )
+    expect(within(sheet).queryByRole('link', { name: 'Open conversation' })).not.toBeInTheDocument()
   })
 
   it('keeps contact emails and the placement action from members', () => {

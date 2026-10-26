@@ -5,7 +5,6 @@ import {
   addWorkspaceCampaignPodcasts,
   connectWorkspaceInstantly,
   createClientInstantlyCampaign,
-  draftWorkspaceInboxReply,
   getClientInstantlyCampaignLinks,
   setClientInstantlyCampaignLinks,
   getWorkspaceCampaignOverview,
@@ -69,7 +68,6 @@ describe('workspaceCampaigns service', () => {
     invoke.mockResolvedValue({ data: null, error: null } as never)
     await expect(getWorkspaceCampaignOverview(workspaceId)).rejects.toThrow('could not be read')
   })
-
 
   it('loads mailboxes through the workspace-scoped function', async () => {
     invoke.mockResolvedValueOnce({
@@ -456,71 +454,3 @@ describe('client instantly campaign links', () => {
   })
 })
 
-describe('inbox draft package', () => {
-  const workspaceId = '11111111-1111-4111-8111-111111111111'
-  const clientId = '22222222-2222-4222-8222-222222222222'
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('carries the classification and nudges through with the draft', async () => {
-    invoke.mockResolvedValueOnce({
-      data: {
-        draft: { subject: 'Re: Loved this', body: 'Thanks for the note.' },
-        classification: { label: 'interested', confidence: 92, reasoning: 'Asks for available dates.' },
-        nudges: [{ send_after_days: 3, body: 'Just floating this back up.' }],
-      },
-      error: null,
-    } as never)
-
-    const result = await draftWorkspaceInboxReply(workspaceId, clientId, 'Loved this', 'Great pitch, when is he free?', {
-      thread_key: 'thread-1',
-      email_id: 'email-1',
-    })
-
-    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
-      body: {
-        action: 'inbox-draft',
-        workspace_id: workspaceId,
-        client_id: clientId,
-        subject: 'Loved this',
-        message: 'Great pitch, when is he free?',
-        thread_key: 'thread-1',
-        email_id: 'email-1',
-      },
-    })
-    expect(result.classification?.label).toBe('interested')
-    expect(result.nudges).toHaveLength(1)
-  })
-
-  it('defaults classification to null and nudges to empty when absent', async () => {
-    invoke.mockResolvedValueOnce({
-      data: { draft: { subject: 'Re: hi', body: 'Hello.' } },
-      error: null,
-    } as never)
-
-    const result = await draftWorkspaceInboxReply(workspaceId, clientId, 'hi', 'hello there')
-
-    expect(result.classification).toBeNull()
-    expect(result.nudges).toEqual([])
-    expect(result.suppressed).toBe(false)
-  })
-
-  it('reports an opt-out caught while drafting', async () => {
-    invoke.mockResolvedValueOnce({
-      data: {
-        draft: { subject: '', body: '' },
-        classification: { label: 'not_interested', confidence: 100, reasoning: 'Opt-out language.' },
-        nudges: [],
-        suppressed: true,
-      },
-      error: null,
-    } as never)
-
-    const result = await draftWorkspaceInboxReply(workspaceId, clientId, 'hi', 'Please remove me from your list')
-
-    expect(result.suppressed).toBe(true)
-    expect(result.body).toBe('')
-  })
-})

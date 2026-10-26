@@ -15,7 +15,6 @@ export const CLIENT_SCOPED_SEGMENTS = new Set([
   'podcast-finder',
   'podcast-database',
   'client-podcast-system',
-  'master-inbox',
   'onboarding',
   'client-campaigns',
 ])

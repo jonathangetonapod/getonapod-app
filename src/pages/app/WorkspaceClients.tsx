@@ -316,7 +316,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
             ) : (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Reply brief</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Host brief</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {clients.map((client) => {
                       const clientDetailHref = `${clientBaseHref}/clients/${encodeURIComponent(client.id)}`

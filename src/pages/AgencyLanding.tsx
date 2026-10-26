@@ -45,23 +45,15 @@ const SHOTS: TourShot[] = [
     src: '/shots/pitch.png',
     alt: 'A drafted pitch sequence of three emails for one show, open for editing.',
     placeholder: 'shots/pitch.png — pitch drafts',
-    ratio: '4 / 3', span: 'gp-span-2',
+    ratio: '16 / 10', span: 'gp-span-3',
     title: 'Pitches, already written',
     body: 'Three emails for that one show. You edit and send.',
-  },
-  {
-    src: '/shots/replies.png',
-    alt: 'The replies inbox, with interested replies sorted to the top and a suggested answer.',
-    placeholder: 'shots/replies.png — replies inbox',
-    ratio: '4 / 3', span: 'gp-span-2',
-    title: 'Replies, already sorted',
-    body: 'The interested ones come first, with an answer ready.',
   },
   {
     src: '/shots/calendar.png',
     alt: 'A booking calendar showing recording days and release days across clients.',
     placeholder: 'shots/calendar.png — bookings calendar',
-    ratio: '4 / 3', span: 'gp-span-2',
+    ratio: '16 / 10', span: 'gp-span-3',
     title: 'Bookings on a calendar',
     body: 'Recording days and release days, every client.',
   },
@@ -115,7 +107,7 @@ const PLANS: Plan[] = [
     includes: [
       'One active client included',
       'Podcast discovery and shortlists',
-      'Drafted pitches and sorted replies',
+      'Drafted three-email pitches',
       'Client portal on your own domain',
     ],
     featured: true,
@@ -137,7 +129,7 @@ const PLANS: Plan[] = [
 const FAQ = [
   {
     q: 'Does it send emails on its own?',
-    a: 'No. It writes the drafts and sorts the replies. A person always presses send.',
+    a: 'No. It writes the pitches. A person always presses send.',
   },
   {
     q: 'Do I need my own sending tool?',
@@ -153,7 +145,7 @@ const FAQ = [
   },
   {
     q: 'I am just starting out. Too early?',
-    a: 'No. Founding member is $39 a month with one client included, and the finder, pitches, replies and portal are all there from your first day.',
+    a: 'No. Founding member is $39 a month with one client included, and the finder, pitches and portal are all there from your first day.',
   },
 ]
 
@@ -215,7 +207,7 @@ const AgencyLanding = () => {
             <div>
               <h1>Book your clients on more podcasts, in less time.</h1>
               <p className="gp-deck">
-                Get On A Pod finds the shows, drafts a three-email pitch for each one, sorts the replies
+                Get On A Pod finds the shows, drafts a three-email pitch for each one
                 and puts every booking on a calendar — with a client portal on your own domain.
               </p>
               <div className="gp-cta-row">
@@ -249,11 +241,11 @@ const AgencyLanding = () => {
             <h2 className="sr-only">What it changes</h2>
             <div className="gp-card">
               <h3>More bookings</h3>
-              <p>A pitch for every show, written from what that show actually covers, and the interested replies sorted to the top.</p>
+              <p>A pitch for every show, written from what that show actually covers.</p>
             </div>
             <div className="gp-card">
               <h3>More clients, same team</h3>
-              <p>Finding shows, drafting pitches and sorting replies is done for you, so the next client does not need the next hire.</p>
+              <p>Finding shows and drafting pitches is done for you, so the next client does not need the next hire.</p>
             </div>
             <div className="gp-card">
               <h3>Clients who stay</h3>

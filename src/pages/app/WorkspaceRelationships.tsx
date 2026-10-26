@@ -20,7 +20,6 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { OutreachSuppressionsDialog } from '@/components/workspace/OutreachSuppressionsDialog'
-import { RelationshipQuietBanner } from '@/components/workspace/RelationshipQuietBanner'
 import { RelationshipRow } from '@/components/workspace/RelationshipRow'
 import {
   WorkspaceLayout,
@@ -65,7 +64,7 @@ import {
   type RelationshipNextStep,
   type RelationshipStage,
 } from '@/lib/relationshipLabels'
-import { needsAttention, quietConversations } from '@/lib/relationshipAttention'
+import { needsAttention } from '@/lib/relationshipAttention'
 import { sortRelationships, type RelationshipSort } from '@/lib/relationshipSort'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -354,7 +353,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
 
   // The count of live conversations is not the actionable fact; which of
   // them has gone silent is. Recency sort puts exactly those at the bottom.
-  const quiet = useMemo(() => quietConversations(relationships), [relationships])
   const attentionCount = useMemo(
     () => relationships.filter((row) => needsAttention(row)).length,
     [relationships],
@@ -520,22 +518,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   const baseHref = isPlatformWorkspace
     ? selectedWorkspaceBaseHref(selectedWorkspaceId)
     : MY_WORKSPACE_BASE_HREF
-  /*
-   * The reply happens in the inbox; this page only knows about it. The
-   * banner, the rows and the saved threads all link to the exact thread, one
-   * click from the place a follow-up is actually written.
-   */
-  const inboxThreadHref = (thread: { thread_key: string; client_id: string | null }): string => {
-    const params = new URLSearchParams()
-    if (thread.client_id) params.set('client', thread.client_id)
-    params.set('thread', thread.thread_key)
-    return `${baseHref}/master-inbox?${params.toString()}`
-  }
-  const rowReplyHref = (row: HostRelationshipSummary): string | null => (
-    row.last_thread_key
-      ? inboxThreadHref({ thread_key: row.last_thread_key, client_id: row.last_thread_client_id ?? null })
-      : null
-  )
   const selectedWorkspace = selectedWorkspaceQuery.data?.workspace
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
     ? {
@@ -571,7 +553,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       }
       return
     }
-    // A reply or follow-up with no known inbox thread opens what we have saved.
+    // A conversation or follow-up opens what we have saved.
     openRelationship(row.podcast_id, step === 'open' ? 'overview' : 'threads')
   }
   const saveSummary = (podcastId: string) => {
@@ -649,12 +631,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             )}
           </div>
         </div>
-
-        <RelationshipQuietBanner
-          rows={quiet}
-          replyHref={rowReplyHref}
-          onOpen={(podcastId) => openRelationship(podcastId)}
-        />
 
         {!canManage && (
           <div className="flex gap-3 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
@@ -775,7 +751,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     row={row}
                     open={open}
                     canManage={canManage}
-                    replyHref={rowReplyHref(row)}
                     onToggle={() => openRelationship(open ? null : row.podcast_id)}
                     onNextStep={(step) => handleNextStep(row, step)}
                     onRename={async (podcastName) => {
@@ -1045,7 +1020,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div>
                               <p className="text-sm font-medium">Saved inbox threads</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">Conversations deliberately saved from the inbox.</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">Conversations saved to this relationship.</p>
                             </div>
                             {detail.threads.length > 1 && (
                               <div className="relative w-full sm:w-64">
@@ -1061,7 +1036,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                             )}
                           </div>
                           {detail.threads.length === 0
-                            ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No inbox conversation has been saved yet.</p>
+                            ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No conversation has been saved yet.</p>
                             : visibleThreads.length === 0
                               ? <p className="mt-3 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No saved threads match that search.</p>
                             : (
@@ -1079,9 +1054,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                                       </div>
                                       <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                                         {formatDate(thread.latest_message_at)}
-                                        <Link to={inboxThreadHref(thread)} className="font-medium text-primary hover:underline">
-                                          Open in the inbox
-                                        </Link>
                                       </span>
                                     </div>
                                     {thread.latest_message_body && (

@@ -19,7 +19,6 @@ import {
   Database,
   Share2,
   ClipboardList,
-  Inbox,
   Mailbox,
   Megaphone,
 } from 'lucide-react'
@@ -65,7 +64,6 @@ const defaultNavItems: NavItem[] = [
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
   { id: 'outreach-platform', name: 'Client Campaigns', href: '/app/client-campaigns', icon: Megaphone },
   { id: 'relationships', name: 'Relationships', href: '/app/relationships', icon: BookUser },
-  { id: 'leads', name: 'Master Inbox', href: '/app/master-inbox', icon: Inbox },
   { id: 'mailboxes', name: 'Mailboxes', href: '/app/mailboxes', icon: Mailbox },
   { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },
 ]

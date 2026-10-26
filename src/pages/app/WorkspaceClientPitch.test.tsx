@@ -1128,7 +1128,7 @@ describe('WorkspaceClientPitch', () => {
 
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('This pitch can no longer be edited')).toBeInTheDocument()
-    expect(within(alert).getByRole('link', { name: /Open Master Inbox/ })).toHaveAttribute('href', '/app/master-inbox')
+    expect(within(alert).getByRole('link', { name: /Open the campaign/ })).toHaveAttribute('href', '/app/client-campaigns')
     // The server's own words stay on screen, and the code repeats on its own
     // line where it can be read off without picking it out of a sentence.
     expect(within(alert).getByText('This host has already replied. (CAMPAIGN_PITCH_LOCKED)')).toBeInTheDocument()
