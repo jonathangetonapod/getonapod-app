@@ -989,12 +989,16 @@ async function loadWorkspaceBranding(
     );
   }
   if (!brandEvent) {
+    // The save compares against client_brand_updated_at, not the workspace's
+    // updated_at, which moves with every logo or name change. Handing out the
+    // wrong one made the first brand save fail as "changed" every time.
     return {
       ...base,
       client_brand_name: base.name,
       client_brand_primary_color: "#0D1B2A",
       client_brand_accent_color: "#C7794F",
-      client_brand_updated_at: base.updated_at,
+      client_brand_updated_at:
+        responseTimestamp(canonicalBrand?.client_brand_updated_at ?? null, true) ?? base.updated_at,
       booking_embed_url: responseText(canonicalBrand?.booking_embed_url ?? null, 500, true),
       client_contact_email: responseText(canonicalBrand?.client_contact_email ?? null, 254, true),
     };
