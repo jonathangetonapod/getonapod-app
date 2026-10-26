@@ -196,6 +196,11 @@ verify_jwt = false
 [functions.workspace-domain-tick]
 verify_jwt = false
 
+# Refreshes stale shared-catalogue rows from Podscan. Driven by pg_cron with a
+# shared secret (CATALOG_REFRESH_SECRET), so there is no user JWT.
+[functions.podcast-catalog-refresh-tick]
+verify_jwt = false
+
 [functions.workspace-credit-refill-tick]
 verify_jwt = false
 

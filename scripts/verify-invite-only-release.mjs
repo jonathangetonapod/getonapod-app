@@ -20,8 +20,8 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 120,
-  deployedFunctions: 118,
+  changedFunctions: 121,
+  deployedFunctions: 119,
   excludedFunctions: 2,
   // 45 after the legacy Email Bison inbox, matching experiments, and other
   // admin-era functions with no caller in the app, the other functions, the
@@ -72,7 +72,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // every function now shares (2026-10-26).
   // 187 with _shared/autopilotSearch.ts and its test: autopilot's rules for
   // when a failed Podscan search ends the run (2026-10-27).
-  edgeTypeScriptFiles: 187,
+  // 190 with the scheduled catalogue refresh: podcast-catalog-refresh-tick,
+  // plus _shared/podcastRefresh.ts and its test (2026-10-27).
+  edgeTypeScriptFiles: 190,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -156,6 +158,9 @@ const EXPECTED_PUBLIC_NON_JWT_FUNCTIONS = Object.freeze([
   // A serving domain was checked by nothing once its setup page was closed.
   // Driven by pg_cron with a shared secret, so there is no user JWT.
   'workspace-domain-tick',
+  // Refreshes stale shared-catalogue rows from Podscan, hourly. Driven by
+  // pg_cron with a shared secret (CATALOG_REFRESH_SECRET), so no user JWT.
+  'podcast-catalog-refresh-tick',
   // Charges a saved card off-session when a balance falls under the threshold
   // an agency set. Driven by pg_cron with a shared secret, so no user JWT.
   'workspace-credit-refill-tick',
