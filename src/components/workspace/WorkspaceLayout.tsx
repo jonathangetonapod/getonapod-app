@@ -39,7 +39,7 @@ import {
   User,
   Users,
   X,
-  type LucideIcon, ShieldCheck,
+  type LucideIcon, ShieldAlert, ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
@@ -518,6 +518,11 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
   const viewerName = membership?.full_name
     || user?.user_metadata?.full_name
     || 'Workspace user'
+  // The footer shares its row with the role badge and the reorder button, so
+  // it shows the first name, whole, rather than a full name cut to "Jo…".
+  const viewerFirstName = viewerName === 'Workspace user'
+    ? viewerName
+    : viewerName.split(/\s+/u).filter(Boolean)[0] || viewerName
   // Initials read better than a generic silhouette while no picture is set.
   const viewerInitials = viewerName
     .split(/\s+/u)
@@ -957,10 +962,10 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
                     />
                   </Avatar>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{viewerName}</span>
+                    <span className="block whitespace-nowrap text-sm font-medium">{viewerFirstName}</span>
                     <span className="block truncate text-xs text-muted-foreground">{viewerEmail}</span>
+                    {viewerRole && <Badge variant="outline" className="mt-1 px-1.5 py-0 text-[10px] capitalize">{viewerRole}</Badge>}
                   </span>
-                  {viewerRole && <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] capitalize">{viewerRole}</Badge>}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
@@ -1133,13 +1138,16 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
           <div
             role="status"
             data-testid="platform-tenant-strip"
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:px-6"
+            className="sticky top-20 z-20 flex flex-wrap items-center gap-x-3 gap-y-1 border-b-2 border-amber-500 bg-amber-200 px-4 py-2.5 text-sm text-amber-950 shadow-sm sm:px-6"
           >
-            <span>
-              You are viewing <strong className="font-semibold">{platformWorkspace.workspaceName}</strong> as platform admin.
-              Changes here are live for their team.
+            <span className="inline-flex items-start gap-2">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                You are viewing <strong className="font-semibold">{platformWorkspace.workspaceName}</strong> as platform admin.
+                {' '}<strong className="font-bold">Changes are live</strong> for their team.
+              </span>
             </span>
-            <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-4 hover:text-amber-950">
+            <Link to="/app/manage-workspaces" className="font-semibold underline underline-offset-4 hover:text-black">
               Back to Manage workspaces
             </Link>
           </div>

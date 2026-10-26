@@ -703,7 +703,7 @@ describe('WorkspaceLayout', () => {
     })
 
     const strip = screen.getByTestId('platform-tenant-strip')
-    expect(strip).toHaveTextContent('You are viewing Northwind Agency as platform admin. Changes here are live for their team.')
+    expect(strip).toHaveTextContent('You are viewing Northwind Agency as platform admin. Changes are live for their team.')
     expect(within(strip).getByRole('link', { name: 'Back to Manage workspaces' })).toHaveAttribute('href', '/app/manage-workspaces')
     expect(strip.className).toMatch(/amber/)
     // The working client is the tenant's, not the admin's own.

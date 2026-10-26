@@ -22,7 +22,6 @@ import {
   Loader2,
   Sparkles,
   Mail,
-  Megaphone,
   Mic2,
   Pencil,
   Plus,
@@ -45,6 +44,10 @@ import { ClientMailboxesCard } from '@/components/workspace/ClientMailboxesCard'
 import { ClientSdrPromptsCard } from '@/components/workspace/ClientSdrPromptsCard'
 import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
 import { OpportunityDetailSheet } from '@/components/workspace/OpportunityDetailSheet'
+import { ClientFunnel } from '@/components/workspace/client/ClientFunnel'
+import { ClientHeaderActions } from '@/components/workspace/client/ClientHeaderActions'
+import { ClientSetupCard } from '@/components/workspace/client/ClientSetupCard'
+import { ClientUpcomingCard } from '@/components/workspace/client/ClientUpcomingCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -58,6 +61,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
 import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 import { useAuth } from '@/contexts/AuthContext'
+import {
+  getClientFunnel,
+  getClientNextStep,
+  getClientSetupItems,
+  getClientUpcoming,
+  hasOutreachStarted,
+  type SetupItemTarget,
+} from '@/lib/clientNextStep'
 import { creditCostSuffix } from '@/lib/creditCosts'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -195,21 +206,6 @@ function scheduledDate(booking: WorkspaceClientBooking): string | null {
   return booking.recording_date || booking.scheduled_date
 }
 
-function isFutureDate(value: string | null | undefined): boolean {
-  if (!value) return false
-  const date = new Date(`${value.slice(0, 10)}T23:59:59`)
-  return !Number.isNaN(date.getTime()) && date.getTime() >= Date.now()
-}
-
-function isUpcomingRecording(booking: WorkspaceClientBooking): boolean {
-  if (!['conversation_started', 'in_progress', 'booked'].includes(booking.status)) return false
-  return isFutureDate(scheduledDate(booking))
-}
-
-function isUpcomingRelease(booking: WorkspaceClientBooking): boolean {
-  return !['cancelled', 'published'].includes(booking.status) && isFutureDate(booking.publish_date)
-}
-
 function ConnectedResource({
   icon: Icon,
   title,
@@ -299,44 +295,6 @@ function DetailRow({
     <div className="flex items-start justify-between gap-4 border-b py-3 last:border-b-0">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="max-w-[65%] break-words text-right text-sm font-medium">{value}</span>
-    </div>
-  )
-}
-
-function MilestoneList({
-  bookings,
-  icon: Icon,
-  emptyTitle,
-  emptyDescription,
-  detail,
-}: {
-  bookings: WorkspaceClientBooking[]
-  icon: typeof CalendarDays
-  emptyTitle: string
-  emptyDescription: string
-  detail: (booking: WorkspaceClientBooking) => string
-}) {
-  if (bookings.length === 0) {
-    return (
-      <div className="flex min-h-40 flex-col items-center justify-center text-center">
-        <Icon className="mb-3 h-9 w-9 text-muted-foreground/50" />
-        <p className="font-medium">{emptyTitle}</p>
-        <p className="text-sm text-muted-foreground">{emptyDescription}</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      {bookings.map((booking) => (
-        <div key={booking.id} className="flex items-center justify-between gap-4 rounded-xl border bg-muted/20 p-4">
-          <div className="min-w-0">
-            <p className="truncate font-medium">{booking.podcast_name}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{detail(booking)}</p>
-          </div>
-          <Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge>
-        </div>
-      ))}
     </div>
   )
 }
@@ -431,18 +389,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const client = detail?.client
   const bookings = useMemo(() => detail?.bookings || [], [detail?.bookings])
   const onboarding = detail?.onboarding || null
-  const upcomingRecordings = useMemo(
-    () => bookings.filter(isUpcomingRecording).sort((left, right) => (
-      new Date(scheduledDate(left) || '').getTime() - new Date(scheduledDate(right) || '').getTime()
-    )).slice(0, 4),
-    [bookings],
-  )
-  const upcomingReleases = useMemo(
-    () => bookings.filter(isUpcomingRelease).sort((left, right) => (
-      new Date(left.publish_date || '').getTime() - new Date(right.publish_date || '').getTime()
-    )).slice(0, 4),
-    [bookings],
-  )
+  const upcomingItems = useMemo(() => getClientUpcoming(bookings), [bookings])
   // Built from the bookings this page already holds, so the calendar costs no
   // request of its own.
   const clientActivities = useMemo(
@@ -497,6 +444,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   }
 
   const canManage = detail.can_manage
+  const nextStep = getClientNextStep(detail)
+  const setupItems = getClientSetupItems(detail)
+  const setupComplete = setupItems.every((item) => item.status === 'done')
+  const outreachStarted = hasOutreachStarted(detail)
+  const funnelSteps = getClientFunnel(detail)
   const dashboard = detail.dashboard
   const mediaKitUrl = client.media_kit_url ? safeExternalUrl(client.media_kit_url) : null
   const websiteUrl = client.website ? safeExternalUrl(client.website) : null
@@ -517,6 +469,18 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const databaseHref = `${baseHref}/podcast-database?client=${encodeURIComponent(client.id)}`
   const podcastSystemHref = `${baseHref}/client-podcast-system?client=${encodeURIComponent(client.id)}`
   const campaignHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
+  const nextStepHref = {
+    start_onboarding: onboardingHref,
+    continue_onboarding: onboardingHref,
+    review_onboarding: onboardingHref,
+    build_shortlist: finderHref,
+    launch_campaign: campaignHref,
+    view_pipeline: podcastSystemHref,
+  }[nextStep.action]
+  // Tab rows link to this same record, so they land on the tab with the
+  // history entry Back expects.
+  const setupHrefFor = (target: SetupItemTarget) => (target === 'onboarding' ? onboardingHref : `?tab=${target}`)
+  const setupCard = <ClientSetupCard items={setupItems} hrefFor={setupHrefFor} />
   // The CRM is workspace-scoped, so it follows baseHref like every other
   // destination here. Billing is not: a platform admin acts on a tenant's
   // credit from the platform screen, the same split the header chip makes.
@@ -937,7 +901,6 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                   <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{client.name}</h1>
                   <Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="capitalize">{client.status}</Badge>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">Client record · {detail.workspace.name}</p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   {client.contact_person && <span className="inline-flex items-center gap-1.5"><UserRound className="h-3.5 w-3.5" />{client.contact_person}</span>}
                   {client.email && <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{client.email}</span>}
@@ -945,12 +908,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline"><Link to={onboardingHref}><BookOpenCheck className="mr-2 h-4 w-4" />Onboarding</Link></Button>
-              <Button asChild variant="outline"><Link to={podcastSystemHref}><Activity className="mr-2 h-4 w-4" />Pipeline</Link></Button>
-              <Button asChild variant="outline"><Link to={campaignHref}><Megaphone className="mr-2 h-4 w-4" />Client Campaign</Link></Button>
-              <Button asChild><Link to={finderHref}><Search className="mr-2 h-4 w-4" />Podcast Finder</Link></Button>
-            </div>
+            <ClientHeaderActions
+              nextStep={nextStep}
+              nextStepHref={nextStepHref}
+              onboardingHref={onboardingHref}
+              pipelineHref={podcastSystemHref}
+              campaignHref={campaignHref}
+              finderHref={finderHref}
+            />
           </div>
         </section>
 
@@ -960,7 +925,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               {/* Tab ids are stable: ?tab= links elsewhere depend on them, and
                   LEGACY_TAB_ALIASES keeps the previous ids landing here. */}
               <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="profile"><UserRound className="mr-1.5 h-4 w-4" />Profile</TabsTrigger>
+              <TabsTrigger value="profile">Profile</TabsTrigger>
               <TabsTrigger value="shortlist">Shortlist</TabsTrigger>
               <TabsTrigger value="placements">Placements</TabsTrigger>
               <TabsTrigger value="sharing">Sharing</TabsTrigger>
@@ -969,100 +934,33 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
           </div>
 
           <TabsContent value="overview" className="mt-0 space-y-6">
-            <section aria-labelledby="podcast-progress-heading">
-              <div className="mb-3 flex items-end justify-between gap-3">
-                <div>
-                  <h2 id="podcast-progress-heading" className="text-xl font-semibold">Campaign snapshot</h2>
-                  <p className="text-sm text-muted-foreground">Confirmed booking, recording, and publication stages for this client.</p>
-                </div>
-                <Badge variant="outline">{bookings.length} total</Badge>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={CalendarDays} label="Booked" value={progress.booked} iconClassName="bg-emerald-50 text-emerald-600" />
-                <MetricCard icon={Clock3} label="In progress" value={progress.inProgress} iconClassName="bg-amber-50 text-amber-600" />
-                <MetricCard icon={Video} label="Recorded" value={progress.recorded} iconClassName="bg-blue-50 text-blue-600" />
-                <MetricCard icon={Radio} label="Published" value={progress.published} iconClassName="bg-violet-50 text-violet-600" />
-              </div>
-            </section>
+            {!setupComplete && setupCard}
 
-            <section aria-labelledby="outreach-activity-heading">
-              <div className="mb-3 flex items-end justify-between gap-3">
-                <div>
-                  <h2 id="outreach-activity-heading" className="text-xl font-semibold">Outreach activity</h2>
-                  <p className="text-sm text-muted-foreground">Verified campaign work completed for this client.</p>
-                </div>
-                <Badge variant="outline">{detail.outreach.initial_emails_sent} sent</Badge>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard
-                  icon={Mail}
-                  label="Initial emails sent"
-                  value={detail.outreach.initial_emails_sent}
-                  detail="Does not include automated follow-ups yet"
-                  iconClassName="bg-sky-50 text-sky-600"
-                />
-                <MetricCard
-                  icon={Mic2}
-                  label="Podcasts contacted"
-                  value={detail.outreach.podcasts_contacted}
-                  detail="Unique shows with sent outreach"
-                  iconClassName="bg-indigo-50 text-indigo-600"
-                />
-                <MetricCard
-                  icon={Clock3}
-                  label="Awaiting review"
-                  value={detail.outreach.pending_review_count}
-                  detail={`${detail.outreach.approved_count} approved and ready`}
-                  iconClassName="bg-amber-50 text-amber-600"
-                />
-                <MetricCard
-                  icon={Activity}
-                  label="Last outreach"
-                  value={detail.outreach.last_sent_at ? formatDate(detail.outreach.last_sent_at) : 'Not yet'}
-                  detail={detail.outreach.failed_count > 0 ? `${detail.outreach.failed_count} delivery issue${detail.outreach.failed_count === 1 ? '' : 's'}` : 'No delivery issues'}
-                  iconClassName="bg-emerald-50 text-emerald-600"
-                />
-              </div>
-            </section>
+            {outreachStarted ? (
+              <ClientFunnel
+                steps={funnelSteps}
+                pipelineHref={podcastSystemHref}
+                lastSentAt={detail.outreach.last_sent_at}
+                emailsSent={detail.outreach.initial_emails_sent}
+                failedCount={detail.outreach.failed_count}
+                pendingReviewCount={detail.outreach.pending_review_count}
+                campaignHref={campaignHref}
+              />
+            ) : (
+              <p
+                data-testid="client-outreach-pending"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
+              >
+                <span>Outreach starts once the shortlist is approved.</span>
+                <Link to={nextStepHref} className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline">
+                  {nextStep.label}<ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </p>
+            )}
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card>
-                <CardHeader><CardTitle>Upcoming recordings</CardTitle><CardDescription>Podcast conversations scheduled to be recorded next.</CardDescription></CardHeader>
-                <CardContent>
-                  <MilestoneList
-                    bookings={upcomingRecordings}
-                    icon={Mic2}
-                    emptyTitle="No upcoming recordings"
-                    emptyDescription="Scheduled recording dates will appear here automatically."
-                    detail={(booking) => `${booking.host_name ? `Hosted by ${booking.host_name} · ` : ''}${formatDate(scheduledDate(booking))}`}
-                  />
-                </CardContent>
-              </Card>
+            {setupComplete && setupCard}
 
-              <Card>
-                <CardHeader><CardTitle>Upcoming episode releases</CardTitle><CardDescription>Recorded episodes scheduled to go live next.</CardDescription></CardHeader>
-                <CardContent>
-                  <MilestoneList
-                    bookings={upcomingReleases}
-                    icon={Radio}
-                    emptyTitle="No upcoming releases"
-                    emptyDescription="Episodes with a scheduled publish date will appear here."
-                    detail={(booking) => `Goes live ${formatDate(booking.publish_date)}`}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader><CardTitle>Client readiness</CardTitle><CardDescription>The systems needed to run this account.</CardDescription></CardHeader>
-                <CardContent>
-                  <DetailRow label="Approval dashboard" value={<Badge variant="outline" className={dashboardStatusClassName}>{dashboardStatus}</Badge>} />
-                  <DetailRow label="Host brief" value={<Badge variant="outline" className={sdrReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{sdrReadiness.ready ? 'Context ready' : `${sdrReadiness.completed_fields} of ${sdrReadiness.total_fields}`}</Badge>} />
-                  <DetailRow label="Client portal" value={<Badge variant="outline" className={client.portal_access_enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>{client.portal_access_enabled ? 'Enabled' : 'Disabled'}</Badge>} />
-                  <DetailRow label="Onboarding" value={onboarding ? labelForStatus(onboarding.status) : 'Not started'} />
-                  <DetailRow label="Podcast review" value={dashboard.podcast_count > 0 ? `${dashboard.reviewed_count} of ${dashboard.podcast_count}` : 'No shortlist yet'} />
-                </CardContent>
-              </Card>
-            </div>
+            <ClientUpcomingCard items={upcomingItems} pipelineHref={podcastSystemHref} formatDate={formatDate} />
           </TabsContent>
 
           <TabsContent value="profile" className="mt-0 space-y-5">

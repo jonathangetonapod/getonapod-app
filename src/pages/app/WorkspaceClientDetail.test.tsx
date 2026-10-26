@@ -361,36 +361,48 @@ describe('WorkspaceClientDetail', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'Taylor Client' })).toBeInTheDocument()
-    expect(screen.getByText('Client record · Acme Workspace')).toBeInTheDocument()
+    // The subtitle carries only the date the client was added.
+    expect(screen.queryByText(/Client record/)).not.toBeInTheDocument()
+    expect(screen.getByText('Added Jul 1, 2026')).toBeInTheDocument()
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'Overview', 'Profile', 'Shortlist', 'Placements', 'Sharing', 'Intake & files',
     ])
-    expect(screen.getAllByRole('link', { name: 'Podcast Finder' }).find((link) => (
-      link.getAttribute('href')?.includes(`client=${clientId}`)
-    ))).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
-    expect(screen.getAllByRole('link', { name: 'Onboarding' }).find((link) => (
-      link.getAttribute('href')?.includes(`client=${clientId}`)
-    ))).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
-    expect(screen.getByRole('link', { name: 'Client Campaign' })).toHaveAttribute(
+    // Outreach is live, so the one primary action is the pipeline.
+    expect(screen.getByRole('link', { name: 'View pipeline' })).toHaveAttribute(
       'href',
-      `/app/client-campaigns/${clientId}`,
+      `/app/client-podcast-system?client=${clientId}`,
     )
-    // The shell's nav carries the same label; this is the record's own button.
-    expect(screen.getAllByRole('link', { name: 'Pipeline' }).find((link) => (
-      link.getAttribute('href')?.includes(`client=${clientId}`)
-    ))).toHaveAttribute('href', `/app/client-podcast-system?client=${clientId}`)
-    const progress = screen.getByRole('heading', { name: 'Campaign snapshot' }).closest('section')
-    expect(progress).not.toBeNull()
-    expect(within(progress as HTMLElement).getByText('Booked').nextElementSibling).toHaveTextContent('1')
-    expect(within(progress as HTMLElement).getByText('Recorded').nextElementSibling).toHaveTextContent('1')
-    const outreach = screen.getByRole('heading', { name: 'Outreach activity' }).closest('section')
-    expect(outreach).not.toBeNull()
-    expect(within(outreach as HTMLElement).getByText('Initial emails sent').nextElementSibling).toHaveTextContent('43')
-    expect(within(outreach as HTMLElement).getByText('Podcasts contacted').nextElementSibling).toHaveTextContent('31')
-    expect(within(outreach as HTMLElement).getByText('Awaiting review').nextElementSibling).toHaveTextContent('7')
-    expect(screen.getByRole('heading', { name: 'Upcoming recordings' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Upcoming episode releases' })).toBeInTheDocument()
-    expect(screen.getByText('Goes live Oct 1, 2099')).toBeInTheDocument()
+    // Everything else sits in the overflow menu, without repeating the pipeline.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More client actions' }), { key: 'Enter', code: 'Enter' })
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Onboarding', 'Client Campaigns', 'Podcast Finder',
+    ])
+    expect(within(menu).getByRole('menuitem', { name: 'Podcast Finder' })).toHaveAttribute('href', `/app/podcast-finder?client=${clientId}`)
+    expect(within(menu).getByRole('menuitem', { name: 'Onboarding' })).toHaveAttribute('href', `/app/onboarding?client=${clientId}&instance=${onboardingId}`)
+    expect(within(menu).getByRole('menuitem', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    fireEvent.keyDown(menu, { key: 'Escape', code: 'Escape' })
+
+    // Setup stays on top while the shortlist is still being reviewed.
+    const setup = screen.getByTestId('client-setup')
+    expect(within(setup).getByText('4 of 5 complete')).toBeInTheDocument()
+    expect(within(setup).getByRole('link', { name: /Shortlist.*In progress.*8 of 12 reviewed.*Review shortlist/ })).toHaveAttribute('href', '/app/clients/' + clientId + '?tab=shortlist')
+
+    // One funnel, each step counting every show that reached it.
+    const funnel = screen.getByRole('heading', { name: 'Funnel' }).closest('section') as HTMLElement
+    expect(within(funnel).getByRole('link', { name: /^Contacted: 31\./ })).toBeInTheDocument()
+    expect(within(funnel).getByRole('link', { name: /^Booked: 2, 100% of In conversation/ })).toBeInTheDocument()
+    expect(within(funnel).getByRole('link', { name: /^Recorded: 1, 50% of Booked/ })).toBeInTheDocument()
+    expect(within(funnel).getByText('1 delivery issue')).toBeInTheDocument()
+    expect(within(funnel).getByRole('link', { name: '7 pitches awaiting your review' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
+    expect(screen.queryByText(/total$/)).not.toBeInTheDocument()
+
+    // Recordings and releases share one list, each tagged.
+    expect(screen.getByRole('heading', { name: 'Upcoming' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Upcoming recordings' })).not.toBeInTheDocument()
+    expect(screen.getByText('Recording')).toBeInTheDocument()
+    expect(screen.getByText('Release')).toBeInTheDocument()
+    expect(screen.getByText('Oct 1, 2099')).toBeInTheDocument()
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Shortlist' }), { button: 0 })
     expect(screen.getByRole('heading', { name: 'Podcast approval dashboard' })).toBeInTheDocument()
@@ -418,7 +430,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('button', { name: 'New link' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Link a prospect page/i })).toBeInTheDocument()
     // The upcoming milestones are on the overview, not repeated here.
-    expect(screen.queryByRole('heading', { name: 'Upcoming recordings' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Upcoming' })).not.toBeInTheDocument()
 
     // Placements carry the calendar with them.
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Placements' }), { button: 0 })
@@ -577,12 +589,59 @@ describe('WorkspaceClientDetail', () => {
     ))
   })
 
+  it('tells a brand-new client what to do first instead of showing zeros', async () => {
+    mockedDetail.mockResolvedValueOnce({
+      ...detail,
+      client: { ...detail.client, ai_sdr_profile: {}, portal_access_enabled: false },
+      dashboard: { ...detail.dashboard, configured: false, podcast_count: 0, reviewed_count: 0, approved_count: 0, rejected_count: 0, to_review_count: 0 },
+      outreach: { initial_emails_sent: 0, podcasts_contacted: 0, pending_review_count: 0, approved_count: 0, failed_count: 0, last_sent_at: null },
+      bookings: [],
+      onboarding: null,
+    })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+
+    // The header's primary action, repeated beside the outreach line.
+    const startLinks = screen.getAllByRole('link', { name: 'Start onboarding' })
+    expect(startLinks).toHaveLength(2)
+    startLinks.forEach((link) => expect(link).toHaveAttribute('href', `/app/onboarding?client=${clientId}`))
+    const setup = screen.getByTestId('client-setup')
+    expect(within(setup).getByText('0 of 5 complete')).toBeInTheDocument()
+    expect(within(setup).getAllByText('Not started')).toHaveLength(5)
+    expect(within(setup).getByRole('link', { name: /Complete host brief \(0\/6\)/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=profile`)
+    expect(within(setup).getByRole('link', { name: /Enable portal/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=sharing`)
+    expect(within(setup).getByRole('link', { name: /Build shortlist/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
+
+    expect(screen.queryByRole('heading', { name: 'Funnel' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('client-outreach-pending')).toHaveTextContent('Outreach starts once the shortlist is approved.')
+    expect(screen.queryByText('No delivery issues')).not.toBeInTheDocument()
+    expect(screen.getByText('Nothing scheduled yet. Recordings appear here after a podcast is booked.')).toBeInTheDocument()
+  })
+
+  it('folds a finished setup to one line below the funnel', async () => {
+    mockedDetail.mockResolvedValueOnce({
+      ...detail,
+      dashboard: { ...detail.dashboard, reviewed_count: 12, approved_count: 9, rejected_count: 3, to_review_count: 0 },
+    })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+
+    const collapsed = screen.getByRole('button', { name: /Setup complete/ })
+    expect(collapsed).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('client-setup')).not.toBeInTheDocument()
+    // Below the metrics, not above them.
+    expect(screen.getByRole('heading', { name: 'Funnel' }).compareDocumentPosition(collapsed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(collapsed)
+    expect(within(screen.getByTestId('client-setup')).getByText('5 of 5 complete')).toBeInTheDocument()
+  })
+
   it('opens directly to the host brief from its stable client deep link', async () => {
     renderPage(`/app/clients/${clientId}?tab=ai-sdr`)
 
     expect(await screen.findByRole('heading', { name: 'Taylor Client host brief' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('data-state', 'active')
-    expect(screen.queryByRole('heading', { name: 'Campaign snapshot' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Funnel' })).not.toBeInTheDocument()
   })
 
   it('keeps host brief editing manager-only', async () => {
