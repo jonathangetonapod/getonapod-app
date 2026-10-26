@@ -843,6 +843,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                 >
                   <span className={cn('h-2 w-2 rounded-full', setupProgress.complete ? 'bg-emerald-500' : 'bg-amber-500')} />
                   Setup: {setupProgress.requiredDone} of {setupProgress.requiredTotal} required steps done
+                  {setupProgress.requiredDismissed > 0 && `, ${setupProgress.requiredDismissed} dismissed`}
                 </Link>
               </header>
 

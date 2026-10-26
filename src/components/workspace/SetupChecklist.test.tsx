@@ -157,6 +157,40 @@ describe('SetupChecklist', () => {
     expect(await screen.findByText('Setup complete')).toBeInTheDocument()
   })
 
+  it('dismisses a single step, counts a dismissed required step as handled, and can bring it back', async () => {
+    vi.mocked(getWorkspaceMailboxes).mockResolvedValue({
+      connected: true,
+      provider_workspace_name: 'Acme Sending',
+      accounts: [{ ...linkedMailbox, campaigns: [] }],
+      last_synced_at: null,
+      analytics_errors: [],
+    })
+    renderChecklist()
+
+    expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss Connect a sending mailbox to a client' }))
+
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
+    expect(screen.getByText('3 of 4 required steps done, 1 dismissed')).toBeInTheDocument()
+    expect(screen.queryByText('Connect a sending mailbox to a client')).not.toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`))).toEqual(['mailbox'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 dismissed step' }))
+    expect(await screen.findByText('Connect a sending mailbox to a client')).toBeInTheDocument()
+    expect(screen.getByText('3 of 4 required steps done')).toBeInTheDocument()
+    expect(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`)).toBeNull()
+  })
+
+  it('remembers dismissed steps for the workspace', async () => {
+    window.localStorage.setItem(`setup-checklist-dismissed-steps:${workspaceId}`, JSON.stringify(['team', 'client-brand']))
+    renderChecklist()
+
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
+    expect(screen.queryByText('Invite your team')).not.toBeInTheDocument()
+    expect(screen.queryByText('Name what your clients see')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Show 2 dismissed steps' })).toBeInTheDocument()
+  })
+
   it('renders nothing once dismissed for this workspace', () => {
     window.localStorage.setItem(`setup-checklist-dismissed:${workspaceId}`, '1')
     renderChecklist()

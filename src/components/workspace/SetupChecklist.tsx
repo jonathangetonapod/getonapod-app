@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Circle, CircleHelp, ListChecks } from 'lucide-react'
+import { CheckCircle2, Circle, CircleHelp, ListChecks, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { plural } from '@/lib/plural'
 import { getWorkspaceClients } from '@/services/clients'
 import {
   getWorkspaceCampaignOverview,
@@ -26,20 +27,26 @@ export interface SetupStep {
   done: boolean
   /** Its source could not be read, so whether it is done is not known. */
   unknown: boolean
+  /** Set aside by the agency; it no longer lists or holds setup open. */
+  dismissed: boolean
 }
 
 export interface SetupProgress {
   steps: SetupStep[]
   requiredDone: number
   requiredTotal: number
-  /** Every required step is done. */
+  /** Every required step is done or dismissed. */
   complete: boolean
   /** Required steps whose source could not be read. */
   requiredUnknown: number
+  /** Required steps dismissed before they were done. */
+  requiredDismissed: number
   /** Nothing has answered yet, so the steps are not known either way. */
   loading: boolean
   /** The Instantly connection, for pages that show its status beside the steps. */
   integration: WorkspaceInstantlyIntegration | null
+  dismissStep: (key: string) => void
+  restoreDismissedSteps: () => void
 }
 
 interface UseSetupProgressOptions {
@@ -60,6 +67,26 @@ interface UseSetupProgressOptions {
  * on), and without a red banner: the checklist is a nudge, and an error on a
  * page that otherwise works would be louder than the thing it reports.
  */
+const dismissedStepsKey = (workspaceId: string) => `setup-checklist-dismissed-steps:${workspaceId}`
+
+function readDismissedSteps(workspaceId: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(dismissedStepsKey(workspaceId)) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writeDismissedSteps(workspaceId: string, keys: string[]) {
+  try {
+    if (keys.length) window.localStorage.setItem(dismissedStepsKey(workspaceId), JSON.stringify(keys))
+    else window.localStorage.removeItem(dismissedStepsKey(workspaceId))
+  } catch {
+    // Private browsing or blocked storage: the steps come back next visit.
+  }
+}
+
 const quietly = <T,>(read: () => Promise<T>) => async (): Promise<T | null> => {
   try {
     return await read()
@@ -78,6 +105,22 @@ export function useSetupProgress({
   staffView,
 }: UseSetupProgressOptions): SetupProgress {
   const active = enabled && Boolean(workspaceId)
+  const [dismissedKeys, setDismissedKeys] = useState(() => readDismissedSteps(workspaceId))
+  useEffect(() => {
+    setDismissedKeys(readDismissedSteps(workspaceId))
+  }, [workspaceId])
+  const dismissStep = useCallback((key: string) => {
+    setDismissedKeys((current) => {
+      const next = current.includes(key) ? current : [...current, key]
+      writeDismissedSteps(workspaceId, next)
+      return next
+    })
+  }, [workspaceId])
+  const restoreDismissedSteps = useCallback(() => {
+    writeDismissedSteps(workspaceId, [])
+    setDismissedKeys([])
+  }, [workspaceId])
+
   // Short-lived and refreshed on focus: most steps are finished on another
   // page, and a checklist that still says "not done" on the way back reads as
   // if the work did not take. Mutations that finish a step also invalidate
@@ -122,7 +165,7 @@ export function useSetupProgress({
   // null is a failed read (see quietly); undefined is one still pending.
   const staffUnknown = staff === null
 
-  const steps: SetupStep[] = [
+  const steps: SetupStep[] = ([
     {
       key: 'client-brand',
       label: 'Name what your clients see',
@@ -179,11 +222,15 @@ export function useSetupProgress({
       done: members.length > 1,
       unknown: staffUnknown,
     },
-  ]
+  ] satisfies Omit<SetupStep, 'dismissed'>[]).map((step) => ({ ...step, dismissed: dismissedKeys.includes(step.key) }))
 
   const required = steps.filter((step) => step.required)
-  const requiredDone = required.filter((step) => step.done && !step.unknown).length
-  const requiredUnknown = required.filter((step) => step.unknown).length
+  const isDone = (step: SetupStep) => step.done && !step.unknown
+  const requiredDone = required.filter(isDone).length
+  const requiredDismissed = required.filter((step) => step.dismissed && !isDone(step)).length
+  // A dismissed step is not reported as unchecked: the agency has said it does
+  // not need the reminder.
+  const requiredUnknown = required.filter((step) => step.unknown && !step.dismissed).length
   // Waits for every read, so the card does not appear half-filled and then
   // reshuffle as the rest arrive.
   const loading = active && [
@@ -199,10 +246,13 @@ export function useSetupProgress({
     steps,
     requiredDone,
     requiredTotal: required.length,
-    complete: requiredDone === required.length,
+    complete: requiredDone + requiredDismissed === required.length,
     requiredUnknown,
+    requiredDismissed,
     loading,
     integration,
+    dismissStep,
+    restoreDismissedSteps,
   }
 }
 
@@ -238,7 +288,11 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
 
   const progress = useSetupProgress({ workspaceId, baseHref, enabled: canManage && !dismissed })
 
-  if (!canManage || dismissed || progress.loading) return null
+  const visibleSteps = progress.steps.filter((step) => !step.dismissed)
+  const dismissedCount = progress.steps.length - visibleSteps.length
+
+  // Every step set aside one by one is the same as dismissing the card.
+  if (!canManage || dismissed || progress.loading || visibleSteps.length === 0) return null
 
   const dismiss = () => {
     writeDismissed(workspaceId)
@@ -257,13 +311,14 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
           </CardTitle>
           <CardDescription>
             {progress.complete
-              ? 'Every required step is done. The optional ones stay here until you dismiss this.'
+              ? `Every required step is ${progress.requiredDismissed > 0 ? 'done or dismissed' : 'done'}. The optional ones stay here until you dismiss this.`
               : 'Required steps are marked. Optional ones can wait.'}
           </CardDescription>
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <p className="text-sm text-muted-foreground">
             {progress.requiredDone} of {progress.requiredTotal} required steps done
+            {progress.requiredDismissed > 0 && `, ${progress.requiredDismissed} dismissed`}
             {progress.requiredUnknown > 0 && ` (${progress.requiredUnknown} could not be checked)`}
           </p>
           {progress.complete && (
@@ -273,7 +328,7 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
       </CardHeader>
       <CardContent>
         <ul className="divide-y divide-border/70">
-          {progress.steps.map((step) => (
+          {visibleSteps.map((step) => (
             <li
               key={step.key}
               data-step={step.key}
@@ -300,9 +355,31 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
               >
                 Open
               </Link>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 shrink-0 text-muted-foreground"
+                onClick={() => progress.dismissStep(step.key)}
+                aria-label={`Dismiss ${step.label}`}
+                title="Dismiss this step"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
             </li>
           ))}
         </ul>
+        {dismissedCount > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="link"
+            className="mt-2 h-auto px-0 text-muted-foreground"
+            onClick={progress.restoreDismissedSteps}
+          >
+            Show {plural(dismissedCount, 'dismissed step')}
+          </Button>
+        )}
       </CardContent>
     </Card>
   )
