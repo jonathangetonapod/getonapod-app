@@ -626,7 +626,7 @@ function withStagedLead() {
     renderPage()
 
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
-    const limit = await screen.findByLabelText('Daily lead limit')
+    const limit = await screen.findByLabelText('New hosts per day')
     expect(limit).toHaveValue(30)
     fireEvent.change(limit, { target: { value: '45' } })
 
@@ -634,7 +634,7 @@ function withStagedLead() {
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Options' }), { button: 0 })
     await waitFor(() => expect(screen.getByLabelText('Campaign name')).toHaveValue('Renamed in Instantly'))
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Schedule' }), { button: 0 })
-    expect(await screen.findByLabelText('Daily lead limit')).toHaveValue(45)
+    expect(await screen.findByLabelText('New hosts per day')).toHaveValue(45)
   })
 
   // An emptied number field used to snap straight back to 1, so typing 25
@@ -645,7 +645,7 @@ function withStagedLead() {
     renderPage()
 
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
-    const limit = await screen.findByLabelText('Daily lead limit')
+    const limit = await screen.findByLabelText('New hosts per day')
     fireEvent.change(limit, { target: { value: '' } })
     expect(limit).toHaveValue(null)
     fireEvent.change(limit, { target: { value: '25' } })
@@ -684,7 +684,7 @@ function withStagedLead() {
     renderPage()
 
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
-    const limit = await screen.findByLabelText('Daily lead limit')
+    const limit = await screen.findByLabelText('New hosts per day')
     for (const value of ['0', '2.5', '1001', '']) {
       fireEvent.change(limit, { target: { value } })
       expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled()

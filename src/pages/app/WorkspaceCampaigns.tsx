@@ -63,6 +63,14 @@ import {
 } from '@/services/workspaceCampaigns'
 import { type WorkspaceClient } from '@/services/clients'
 import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
+import {
+  DEFAULT_NEW_HOSTS_PER_DAY,
+  NEW_HOSTS_PER_DAY_RANGE,
+  mailboxCapacity,
+  newHostsPerDayNote,
+  suggestedNewHostsPerDay,
+  wholeNumberOrNull,
+} from '@/lib/campaignDailyLimit'
 import { describeSyncFreshness, relativeAge } from '@/lib/syncFreshness'
 
 type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed'
@@ -380,7 +388,9 @@ const WorkspaceCampaigns = ({
   ))
   // Held as typed: coercing on every keystroke snapped an emptied field back
   // to 1, so typing 25 produced 125. Parsed and checked on save.
-  const [campaignDailyLimit, setCampaignDailyLimit] = useState('30')
+  const [campaignDailyLimit, setCampaignDailyLimit] = useState(String(DEFAULT_NEW_HOSTS_PER_DAY))
+  // Follows the chosen mailboxes until somebody types a number of their own.
+  const [campaignDailyLimitEdited, setCampaignDailyLimitEdited] = useState(false)
   const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
   const [connectionOpen, setConnectionOpen] = useState(false)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
@@ -495,6 +505,10 @@ const WorkspaceCampaigns = ({
   }
 
   const selectedClient = activeClients.find((client) => client.id === selectedClientId) || null
+  const newHostsNote = newHostsPerDayNote(
+    wholeNumberOrNull(campaignDailyLimit),
+    mailboxCapacity(sendingAccounts, selectedSenderAccounts),
+  )
   const normalizedSearch = search.trim().toLowerCase()
   const statusMatches = (summary: CampaignSummary, value: CampaignFilter) => value === 'all'
     || (value === 'attention' && summary.status === 'Needs attention')
@@ -596,7 +610,8 @@ const WorkspaceCampaigns = ({
     setSelectedProviderCampaignId('new')
     setCampaignName('')
     setCampaignTimezoneDraft(defaultInstantlyTimezone())
-    setCampaignDailyLimit('30')
+    setCampaignDailyLimit(String(DEFAULT_NEW_HOSTS_PER_DAY))
+    setCampaignDailyLimitEdited(false)
     setSelectedSenderAccounts(new Set())
   }
 
@@ -610,7 +625,8 @@ const WorkspaceCampaigns = ({
     // and daily limit, and a new campaign inherited a sending window from a
     // completely unrelated client.
     setCampaignTimezoneDraft(defaultInstantlyTimezone())
-    setCampaignDailyLimit('30')
+    setCampaignDailyLimit(String(DEFAULT_NEW_HOSTS_PER_DAY))
+    setCampaignDailyLimitEdited(false)
     setSelectedSenderAccounts(new Set())
   }
 
@@ -619,7 +635,8 @@ const WorkspaceCampaigns = ({
     if (providerCampaignId === 'new') {
       setCampaignName(selectedClient ? `${selectedClient.name} Podcast Outreach` : '')
       setCampaignTimezoneDraft(defaultInstantlyTimezone())
-      setCampaignDailyLimit('30')
+      setCampaignDailyLimit(String(DEFAULT_NEW_HOSTS_PER_DAY))
+      setCampaignDailyLimitEdited(false)
       setSelectedSenderAccounts(new Set())
       return
     }
@@ -629,6 +646,13 @@ const WorkspaceCampaigns = ({
     setCampaignTimezoneDraft(toInstantlyTimezone(providerCampaign.timezone))
     setCampaignDailyLimit(String(providerCampaign.daily_limit))
     setSelectedSenderAccounts(new Set(providerCampaign.sender_accounts))
+  }
+
+  const selectSenderAccounts = (next: Set<string>) => {
+    setSelectedSenderAccounts(next)
+    if (!campaignDailyLimitEdited) {
+      setCampaignDailyLimit(String(suggestedNewHostsPerDay(mailboxCapacity(sendingAccounts, next))))
+    }
   }
 
   const openDraftWorkspace = () => {
@@ -645,8 +669,8 @@ const WorkspaceCampaigns = ({
       return
     }
     const dailyLimit = campaignDailyLimit.trim() === '' ? Number.NaN : Number(campaignDailyLimit)
-    if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 1000) {
-      toast.error('Daily limit must be a whole number between 1 and 1000.')
+    if (!Number.isInteger(dailyLimit) || dailyLimit < NEW_HOSTS_PER_DAY_RANGE.min || dailyLimit > NEW_HOSTS_PER_DAY_RANGE.max) {
+      toast.error(`New hosts per day must be a whole number between ${NEW_HOSTS_PER_DAY_RANGE.min} and ${NEW_HOSTS_PER_DAY_RANGE.max}.`)
       return
     }
     if (!campaignName.trim() || campaignName.trim().length > 180) {
@@ -1202,23 +1226,30 @@ const WorkspaceCampaigns = ({
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="campaign-daily-limit">Daily lead limit</Label>
+                  <Label htmlFor="campaign-daily-limit">New hosts per day</Label>
                   <Input
                     id="campaign-daily-limit"
                     type="number"
-                    min={1}
-                    max={1000}
+                    min={NEW_HOSTS_PER_DAY_RANGE.min}
+                    max={NEW_HOSTS_PER_DAY_RANGE.max}
                     value={campaignDailyLimit}
-                    onChange={(event) => setCampaignDailyLimit(event.target.value)}
+                    onChange={(event) => {
+                      setCampaignDailyLimit(event.target.value)
+                      setCampaignDailyLimitEdited(true)
+                    }}
                     disabled={!selectedClient}
+                    aria-describedby="campaign-daily-limit-note"
                   />
+                  <p id="campaign-daily-limit-note" className={newHostsNote?.overCapacity ? 'text-xs font-medium text-amber-700' : 'text-xs text-muted-foreground'}>
+                    {newHostsNote?.text ?? 'How many hosts this campaign may start emailing each day. Follow-ups are on top.'}
+                  </p>
                 </div>
               </div>
               <InstantlyAccountPicker
                 accounts={sendingAccounts}
                 connected={Boolean(integration?.connected)}
                 selected={selectedSenderAccounts}
-                onChange={setSelectedSenderAccounts}
+                onChange={selectSenderAccounts}
                 assignments={mailboxAssignments}
                 defaultClientId={selectedClientId || null}
                 className="max-h-52"

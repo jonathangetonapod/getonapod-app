@@ -224,6 +224,20 @@ assert.match(
   'the fallback zone must be a supported one',
 )
 
+// The campaign's daily limit is new hosts per day. Instantly's daily_limit is
+// every email, follow-ups included, so it gets room for the whole sequence;
+// sending one number as both let new hosts crowd follow-ups out of the day.
+assert.match(
+  edge,
+  /daily_limit: campaign\.daily_limit \* EMAILS_PER_HOST,\s*daily_max_leads: campaign\.daily_limit,/u,
+  'the total email cap must leave room for follow-ups',
+)
+assert.match(
+  edge,
+  /const maxLeads = wholeLimit\(item\.daily_max_leads\);/u,
+  'a provider campaign must be read by its new-leads cap, not its total',
+)
+
 // A settings save must not rewrite copy it did not write. Changing a daily
 // limit or assigning a mailbox used to PATCH the whole configuration, sequence
 // included, which silently replaced the three emails on any campaign built by

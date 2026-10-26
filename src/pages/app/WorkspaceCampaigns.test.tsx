@@ -520,6 +520,28 @@ describe('WorkspaceCampaigns', () => {
     ))
   })
 
+  // The number used to default to 30 whatever the mailboxes could send, and
+  // nothing said that Instantly would quietly send less.
+  it('sizes new hosts per day to the chosen mailboxes until the operator types one', async () => {
+    mockedOverview.mockResolvedValueOnce({ ...campaignOverview, integration: connectedIntegration })
+    renderCampaigns()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'New campaign' }))[0])
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client' }))
+    fireEvent.click(await screen.findByRole('option', { name: client.name }))
+    const limit = screen.getByLabelText('New hosts per day')
+    expect(limit).toHaveValue(30)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Use active@example.com' }))
+    expect(limit).toHaveValue(13)
+    expect(screen.getByText('Up to 13 new hosts a day, about 39 emails with follow-ups. The selected mailbox can send 40 a day.')).toBeInTheDocument()
+
+    fireEvent.change(limit, { target: { value: '500' } })
+    expect(screen.getByText(/so Instantly will send less than this\. Lower it to 13 or add mailboxes\./)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Use active@example.com' }))
+    expect(limit).toHaveValue(500)
+  })
+
   it('assigns an existing unassigned Instantly campaign to a client', async () => {
     const providerCampaign = {
       id: '77777777-7777-4777-8777-777777777777',

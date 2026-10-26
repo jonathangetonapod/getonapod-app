@@ -965,11 +965,21 @@ function providerCampaign(value: unknown): ProviderCampaign {
     // not in its enum, so falling back to that produced a value we could read
     // but never send back.
     : DEFAULT_CAMPAIGN_TIMEZONE;
-  const dailyLimit = typeof item.daily_limit === "number" &&
-      Number.isInteger(item.daily_limit) && item.daily_limit >= 1 &&
-      item.daily_limit <= 1_000
-    ? item.daily_limit
-    : 30;
+  // The local daily_limit is new hosts per day, which Instantly calls
+  // daily_max_leads. A hand-built campaign may only carry the total email cap,
+  // so that is read as hosts by dividing out the sequence; taking it as-is
+  // would triple the campaign's volume on its first settings save.
+  const wholeLimit = (candidate: unknown): number | null =>
+    typeof candidate === "number" && Number.isInteger(candidate) &&
+      candidate >= 1
+      ? candidate
+      : null;
+  const maxLeads = wholeLimit(item.daily_max_leads);
+  const totalLimit = wholeLimit(item.daily_limit);
+  const dailyLimit = Math.min(
+    1_000,
+    maxLeads ?? (totalLimit ? Math.ceil(totalLimit / EMAILS_PER_HOST) : 30),
+  );
   const emailGap = typeof item.email_gap === "number" &&
       Number.isFinite(item.email_gap) && item.email_gap >= 0 &&
       item.email_gap <= 1_440
@@ -1639,6 +1649,9 @@ function campaignConfiguration(
   return configuration;
 }
 
+/** The pitch and its two follow-ups: what one new host costs in sends. */
+const EMAILS_PER_HOST = 3;
+
 /** Instantly's schedule is keyed "0".."6" starting at Sunday. */
 const SEND_DAY_KEYS = ["0", "1", "2", "3", "4", "5", "6"] as const;
 
@@ -1794,7 +1807,11 @@ function provisionedCampaignConfiguration(input: {
       ],
     }],
     email_list: campaign.sender_accounts,
-    daily_limit: campaign.daily_limit,
+    // Two different caps. daily_max_leads is how many new hosts start the
+    // sequence each day; daily_limit is every email, follow-ups included.
+    // Setting both to the same number let new hosts use up the day and push
+    // follow-ups back, since new leads go first.
+    daily_limit: campaign.daily_limit * EMAILS_PER_HOST,
     daily_max_leads: campaign.daily_limit,
     email_gap: 15,
     random_wait_max: 10,

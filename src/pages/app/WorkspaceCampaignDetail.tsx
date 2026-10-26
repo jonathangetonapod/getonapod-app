@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
+import { DEFAULT_NEW_HOSTS_PER_DAY, NEW_HOSTS_PER_DAY_RANGE, mailboxCapacity, newHostsPerDayNote } from '@/lib/campaignDailyLimit'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -342,7 +343,7 @@ function countOrOne(value: string): number {
 }
 
 // The same bounds the create dialog and the edge function enforce.
-const DAILY_LIMIT_RANGE = { min: 1, max: 1000 } as const
+const DAILY_LIMIT_RANGE = NEW_HOSTS_PER_DAY_RANGE
 const FOLLOW_UP_DELAY_RANGE = { min: 1, max: 60 } as const
 
 /** A whole number within the range, or null so the field can say what is wrong instead of saving a guess. */
@@ -448,7 +449,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [settingsTimezone, setSettingsTimezone] = useState(defaultInstantlyTimezone())
   // The three counts are held as typed: coercing on every keystroke snapped
   // an emptied field back to 1, so typing 25 produced 125. Parsed on save.
-  const [settingsDailyLimit, setSettingsDailyLimit] = useState('30')
+  const [settingsDailyLimit, setSettingsDailyLimit] = useState(String(DEFAULT_NEW_HOSTS_PER_DAY))
   const [settingsSenders, setSettingsSenders] = useState<Set<string>>(new Set())
   // Instantly indexes days from Sunday, and this app used to write 0-4 under
   // the name "Weekdays" — which sent on Sunday and never on Friday. The picker
@@ -642,7 +643,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const settingsSeed = useMemo(() => ({
     name: campaign?.name || (client ? `${client.name} Podcast Outreach` : ''),
     timezone: toInstantlyTimezone(campaign?.timezone),
-    dailyLimit: String(campaign?.daily_limit || 30),
+    dailyLimit: String(campaign?.daily_limit || DEFAULT_NEW_HOSTS_PER_DAY),
     senders: campaign?.sender_accounts || [],
     sendDays: campaign?.send_days?.length ? campaign.send_days : [1, 2, 3, 4, 5],
     windowStart: campaign?.send_window_start || '09:00',
@@ -829,6 +830,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const repliedPodcastCount = campaignTargets.filter((target) => target.email_reply_count > 0 || target.status === 'replied').length
   const podcastReplyRate = emailedPodcastCount > 0 ? Math.round((repliedPodcastCount / emailedPodcastCount) * 100) : 0
   const providerAccounts = integration?.accounts || []
+  const dailyLimitNote = newHostsPerDayNote(dailyLimitValue, mailboxCapacity(providerAccounts, settingsSenders))
   const canManageCampaign = Boolean(campaignState?.can_manage_campaigns)
   // All four save buttons post the same payload, so an invalid schedule has
   // to stop every one of them, not only the button on the Schedule tab.
@@ -1143,7 +1145,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                     {settingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save cadence
                   </Button>
                   {dailyLimitError && (
-                    <p className="text-xs font-medium text-destructive">The daily lead limit is not valid. Fix it on Schedule before saving.</p>
+                    <p className="text-xs font-medium text-destructive">New hosts per day is not valid. Fix it on Schedule before saving.</p>
                   )}
                   {scheduleInvalid ? (
                     <p className="text-xs font-medium text-destructive">The sending schedule is not valid. Fix it on Schedule before saving.</p>
@@ -1290,7 +1292,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       <p className="text-xs text-muted-foreground">Only the zones Instantly offers. It has no New York or Los Angeles; America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry. The window below is read in this zone.</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="campaign-detail-limit">Daily lead limit</Label>
+                      <Label htmlFor="campaign-detail-limit">New hosts per day</Label>
                       <Input
                         id="campaign-detail-limit"
                         type="number"
@@ -1300,10 +1302,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                         onChange={(event) => setSettingsDailyLimit(event.target.value)}
                         disabled={!canManageCampaign}
                         aria-invalid={Boolean(dailyLimitError)}
-                        aria-describedby={dailyLimitError ? 'campaign-detail-limit-error' : undefined}
+                        aria-describedby={dailyLimitError ? 'campaign-detail-limit-error' : 'campaign-detail-limit-note'}
                       />
                       {dailyLimitError && <p id="campaign-detail-limit-error" className="text-xs text-destructive">{dailyLimitError}</p>}
-                      <p className="text-xs text-muted-foreground">The most new podcast hosts this campaign may email in a day, across every sending account.</p>
+                      {dailyLimitNote && (
+                        <p id="campaign-detail-limit-note" className={dailyLimitNote.overCapacity ? 'text-xs font-medium text-amber-700' : 'text-xs text-muted-foreground'}>
+                          {dailyLimitNote.text}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -1486,7 +1492,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <p className="text-xs leading-5 text-muted-foreground">Save name and mailbox changes before changing campaign status. Pausing stops new sends; resuming continues the existing campaign.</p>
                   {countsInvalid && (
                     <p className="text-xs font-medium text-destructive">
-                      {dailyLimitError ? 'The daily lead limit on Schedule is not valid.' : 'A follow-up wait on Sequences is not valid.'} Fix it before saving.
+                      {dailyLimitError ? 'New hosts per day on Schedule is not valid.' : 'A follow-up wait on Sequences is not valid.'} Fix it before saving.
                     </p>
                   )}
                 </div>
