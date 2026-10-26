@@ -373,29 +373,24 @@ assert.match(
 )
 assert.match(clientsEdge, /action: prospectSlug \? 'client\.prospect_page\.linked' : 'client\.prospect_page\.unlinked'/u)
 
-// The plan's client allowance is enforced on the server, inside
-// workspace_client_operation_v2 (20261011000800), so the count and the write
-// share one transaction under a workspace row lock. A read in the edge
-// function first let two concurrent creates both take the last seat, and only
-// gated creation, so a paused client could be moved to active past the cap.
-const clientCapMigration = readFileSync('supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql', 'utf8')
+// Active clients are unlimited (20261026000100). The cap that 20261011000800
+// enforced inside workspace_client_operation_v2 is gone, and nothing may put
+// it back in the edge function either.
+const unlimitedClientsMigration = readFileSync('supabase/migrations/20261026000100_unlimited_active_clients.sql', 'utf8')
 assert.ok(
   !/workspace_client_allowance_v1/u.test(clientsEdge),
-  'the edge function must not pre-check the allowance; the RPC enforces it atomically',
+  'the edge function must not check a client allowance; active clients are unlimited',
 )
-assert.match(clientsEdge, /workspace client limit reached[\s\S]*?CLIENT_LIMIT_REACHED/u)
-assert.match(clientCapMigration, /CREATE OR REPLACE FUNCTION public\.workspace_client_operation_v2\(/u)
-// Locked before the role check's FOR SHARE, so no share-to-update upgrade.
-assert.match(
-  clientCapMigration,
-  /IF normalized_action IN \('create', 'update'\) THEN\s*PERFORM 1\s*FROM public\.workspaces AS locked_workspace[\s\S]*?FOR NO KEY UPDATE;[\s\S]*?FOR SHARE OF membership, workspace;/u,
+assert.match(unlimitedClientsMigration, /CREATE OR REPLACE FUNCTION public\.workspace_client_operation_v2\(/u)
+assert.ok(
+  !/included_active_clients|workspace client limit reached|FOR NO KEY UPDATE/u.test(
+    unlimitedClientsMigration.slice(unlimitedClientsMigration.indexOf('CREATE OR REPLACE FUNCTION')),
+  ),
+  'workspace_client_operation_v2 must not count or cap active clients',
 )
-// Only a client becoming active takes a seat; paused and churned creates and
-// edits of an already-active client are never blocked.
-assert.match(clientCapMigration, /requested_status = 'active'[\s\S]*?current_status IS DISTINCT FROM 'active'/u)
-assert.match(clientCapMigration, /COALESCE\(profile\.included_active_clients, 3\)/u)
-assert.match(clientCapMigration, /RAISE EXCEPTION 'workspace client limit reached'[\s\S]*?RETURN public\.workspace_client_operation\(/u)
-assert.match(clientCapMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;/u)
+assert.match(unlimitedClientsMigration, /RETURN public\.workspace_client_operation\(/u)
+assert.match(unlimitedClientsMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;/u)
+assert.match(unlimitedClientsMigration, /GRANT EXECUTE ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?TO service_role;/u)
 
 // The default platform workspace manages its own clients (20261020000100).
 // Listing always admitted it; every mutation went through the staff gate,

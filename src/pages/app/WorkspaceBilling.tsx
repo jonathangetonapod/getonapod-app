@@ -340,10 +340,9 @@ const WorkspaceBilling = () => {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {formatPrice(overview.base_price_cents)}/month
-                      {overview.per_client_price_cents > 0 && <> · {formatPrice(overview.per_client_price_cents)}/month per active client beyond the first {overview.included_active_clients ?? 1}</>}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Includes {allowance.toLocaleString()} credits each month.
+                      Includes unlimited clients and {allowance.toLocaleString()} credits each month.
                     </p>
                     {/* Cancelled from the portal, but still running. The status
                         stays active through this window, so without saying so
