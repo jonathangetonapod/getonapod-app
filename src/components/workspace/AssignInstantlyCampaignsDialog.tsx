@@ -151,6 +151,9 @@ export const AssignInstantlyCampaignsDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!assigning) onOpenChange(next) }}>
+      {/* The content is a grid, whose items size to their widest row unless
+          told otherwise; min-w-0 below lets long campaign names truncate
+          instead of pushing the list past the dialog's edge. */}
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{reviewing ? 'Confirm assignments' : 'Assign Instantly campaigns'}</DialogTitle>
@@ -162,7 +165,7 @@ export const AssignInstantlyCampaignsDialog = ({
         </DialogHeader>
 
         {failures.length > 0 && !reviewing && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <div role="alert" className="min-w-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             <p className="font-medium">{failures.length === 1 ? '1 campaign was not assigned' : `${failures.length} campaigns were not assigned`}</p>
             <ul className="mt-1 space-y-0.5 text-red-800">
               {failures.slice(0, 3).map((failure) => (
@@ -176,7 +179,7 @@ export const AssignInstantlyCampaignsDialog = ({
         )}
 
         {reviewing ? (
-          <ul className="divide-y rounded-xl border">
+          <ul className="min-w-0 divide-y rounded-xl border">
             {pageRows.map((campaign) => (
               <li key={campaign.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
                 <span className="min-w-0 flex-1 truncate font-medium" title={campaign.name}>{campaign.name}</span>
@@ -190,7 +193,7 @@ export const AssignInstantlyCampaignsDialog = ({
         ) : clients.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every active client already has a campaign. Add or reactivate a client to assign another.</p>
         ) : (
-          <ul className="divide-y rounded-xl border" aria-label="Unassigned Instantly campaigns">
+          <ul className="min-w-0 divide-y rounded-xl border" aria-label="Unassigned Instantly campaigns">
             {pageRows.map((campaign) => {
               const chosen = clientByCampaign[campaign.id] || ''
               return (
