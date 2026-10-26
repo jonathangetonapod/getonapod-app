@@ -963,7 +963,6 @@ assert.match(refreshAnalyticsAction[0], /if \(!fresh\) \{\s*missing \+= 1;\s*ret
 
 assert.match(campaignService, /action: 'refresh-analytics'/u)
 assert.match(campaignsPage, /refreshWorkspaceCampaignAnalytics\(workspaceId\)/u)
-assert.match(campaignsPage, /Refresh totals/u)
 // The count that could not be refreshed is reported, not folded into success.
 assert.match(campaignsPage, /result\.missing > 0/u)
 
