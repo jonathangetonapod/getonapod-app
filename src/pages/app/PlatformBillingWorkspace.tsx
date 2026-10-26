@@ -93,7 +93,7 @@ const PlatformBillingWorkspace = () => {
                 what this workspace is paying in the first place. */}
             <WorkspaceCreditAdjustment workspaceId={workspaceId} workspaceName={workspaceName} />
             <WorkspaceCreditLedger workspaceId={workspaceId} />
-            <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} />
+            <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} ownerEmail={owner?.email ?? null} />
           </div>
         )}
       </div>

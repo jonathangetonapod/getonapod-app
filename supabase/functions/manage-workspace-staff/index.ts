@@ -944,6 +944,104 @@ function effectiveTrialEndsAt(trialEndsAt: unknown, workspaceCreatedAt: unknown)
 }
 
 /**
+ * A Stripe call made on a platform admin's behalf. Every write carries an
+ * idempotency key derived from the admin's action, so a retried action is one
+ * change at Stripe; Stripe refuses a key reused for a different request, which
+ * is why callers suffix it per call.
+ */
+async function stripeRequest(
+  method: "GET" | "POST",
+  path: string,
+  params?: URLSearchParams,
+  idempotencyKey?: string,
+): Promise<Record<string, unknown>> {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")?.trim();
+  if (!stripeKey) throw new HttpError(503, "STRIPE_UNAVAILABLE", "Stripe is not configured");
+  const headers: Record<string, string> = { Authorization: `Bearer ${stripeKey}` };
+  if (method === "POST") headers["Content-Type"] = "application/x-www-form-urlencoded";
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  let response: Response;
+  try {
+    response = await fetch(`https://api.stripe.com/v1/${path}`, {
+      method,
+      headers,
+      body: method === "POST" ? (params ?? new URLSearchParams()).toString() : undefined,
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (_error) {
+    throw new HttpError(502, "STRIPE_UNAVAILABLE", "Stripe did not answer. Try again");
+  }
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok || !payload) {
+    const stripeError = payload?.error as { message?: unknown } | undefined;
+    console.error(`[manage-workspace-staff] Stripe ${method} ${path.split(/[/?]/u)[0]} failed: ${response.status}`);
+    throw new HttpError(
+      502,
+      "STRIPE_REJECTED",
+      typeof stripeError?.message === "string"
+        ? `Stripe refused the change: ${stripeError.message}`.slice(0, 300)
+        : "Stripe refused the change",
+    );
+  }
+  return payload;
+}
+
+function escapeEmailHtml(value: string): string {
+  return value.replace(/[&<>"']/gu, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character] ?? character));
+}
+
+/**
+ * The checkout link an admin sends a workspace owner. Best-effort: the link
+ * is returned to the admin either way, so a failed send loses the email, not
+ * the link.
+ */
+async function emailCheckoutLink(input: {
+  to: string;
+  workspaceName: string;
+  planName: string;
+  priceLabel: string;
+  url: string;
+}): Promise<"sent" | "failed" | "skipped"> {
+  const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const from = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
+  if (!apiKey || !from) return "skipped";
+  const lines = [
+    `Here is the link to start the ${input.planName} plan for ${input.workspaceName} at ${input.priceLabel}.`,
+    "It opens a secure Stripe checkout. The link expires in 24 hours; reply to this email if you need a new one.",
+  ];
+  const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#19172d">${lines
+    .map((line) => `<p style="line-height:1.6;margin:0 0 12px">${escapeEmailHtml(line)}</p>`)
+    .join("")}<p><a href="${escapeEmailHtml(input.url)}" style="display:inline-block;background:#171827;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Start your plan</a></p></body></html>`;
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [input.to],
+        subject: `Start your ${input.planName} plan for ${input.workspaceName}`,
+        html,
+        text: `${lines.join("\n\n")}\n\n${input.url}`,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      console.error("[manage-workspace-staff] Checkout link email was rejected by the provider");
+      return "failed";
+    }
+    return "sent";
+  } catch (_error) {
+    console.error("[manage-workspace-staff] Checkout link email provider was unavailable");
+    return "failed";
+  }
+}
+
+const SUBSCRIPTION_OPERATIONS = ["extend_trial", "change_plan", "make_comped", "cancel", "checkout_link"] as const;
+type SubscriptionOperation = typeof SUBSCRIPTION_OPERATIONS[number];
+
+/**
  * What a ledger row is, in the words the billing admin page filters by. The
  * ledger's own entry_type is mechanical (a purchase and a support grant are
  * both "grant"), so the reference kind decides.
@@ -3688,6 +3786,251 @@ serve(async (req) => {
         success: true,
         enforcement_enabled: Deno.env.get("CREDIT_ENFORCEMENT_ENABLED")?.trim() === "true",
         workspaces: rows,
+      });
+    }
+
+    if (action === "subscription-admin") {
+      requireOnlyKeys(body, [
+        "action", "workspace_id", "operation", "reason", "note", "action_key", "trial_ends_at", "plan_key", "email_owner",
+      ]);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      if (!platformAdmin) {
+        throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
+      }
+      const operation = body.operation as SubscriptionOperation;
+      if (!SUBSCRIPTION_OPERATIONS.includes(operation)) {
+        throw new HttpError(400, "INVALID_OPERATION", "Choose a subscription action");
+      }
+      // Every change to what a workspace pays or holds says why.
+      const reason = requireString(body.reason, "reason", { min: 1, max: 60 });
+      const note = body.note === undefined ? "" : requireString(body.note, "note", { min: 0, max: 500 });
+      const actionKey = requireUuid(body.action_key, "action_key");
+
+      // The same action twice (a double click, a retry after a timeout) is
+      // one action. Its audit row is the receipt.
+      const { data: done, error: doneError } = await admin
+        .from("workspace_audit_log")
+        .select("id, metadata")
+        .eq("workspace_id", workspaceId)
+        .eq("action", "workspace.subscription.admin_action")
+        .contains("metadata", { action_key: actionKey })
+        .limit(1)
+        .maybeSingle();
+      if (doneError) throw new HttpError(503, "BILLING_UNAVAILABLE", "Billing data could not be read");
+      if (done) {
+        const metadata = (done.metadata ?? {}) as Record<string, unknown>;
+        return jsonResponse(req, METHODS, 200, {
+          success: true,
+          idempotent: true,
+          operation,
+          result: (metadata.result ?? {}) as Record<string, unknown>,
+        });
+      }
+
+      const [profileResult, plansResult] = await Promise.all([
+        admin.from("workspace_billing_profiles")
+          .select("plan_key, billing_status, monthly_credit_allowance, stripe_customer_id, stripe_subscription_id, cancel_at_period_end, trial_ends_at")
+          .eq("workspace_id", workspaceId)
+          .maybeSingle(),
+        admin.from("billing_plans")
+          .select("plan_key, display_name, base_price_cents, monthly_credit_allowance, per_client_price_cents, included_active_clients, stripe_price_id, is_purchasable"),
+      ]);
+      if (profileResult.error || plansResult.error) {
+        throw new HttpError(503, "BILLING_UNAVAILABLE", "Billing data could not be read");
+      }
+      const profile = profileResult.data;
+      const plans = (plansResult.data ?? []) as Array<Record<string, unknown>>;
+      const currentPlanKey = typeof profile?.plan_key === "string" ? profile.plan_key : "founding_member";
+      const subscriptionId = typeof profile?.stripe_subscription_id === "string" && profile.stripe_subscription_id
+        ? profile.stripe_subscription_id
+        : null;
+      // A suspended row still names the subscription that ended.
+      const liveSubscription = subscriptionId !== null && profile?.billing_status !== "suspended";
+      const purchasablePlan = (planKey: string) => {
+        const plan = plans.find((candidate) => candidate.plan_key === planKey);
+        if (!plan || plan.is_purchasable !== true || plan.plan_key === "comped") {
+          throw new HttpError(400, "INVALID_PLAN", "Choose a plan that is on sale");
+        }
+        return plan;
+      };
+      const writeProfile = async (fields: Record<string, unknown>) => {
+        // Upserted: a workspace that has never been billed has no row yet.
+        const { error } = await admin
+          .from("workspace_billing_profiles")
+          .upsert({ workspace_id: workspaceId, ...fields, updated_at: new Date().toISOString() }, { onConflict: "workspace_id" });
+        if (error) throw new HttpError(503, "BILLING_UPDATE_FAILED", "The change could not be saved");
+      };
+
+      let result: Record<string, unknown> = {};
+      let checkoutUrl: string | null = null;
+
+      if (operation === "extend_trial") {
+        // A Stripe subscription has its own billing dates; this trial is the
+        // one before a workspace subscribes.
+        if (liveSubscription) {
+          throw new HttpError(409, "SUBSCRIPTION_EXISTS", "This workspace is subscribed, so there is no trial to extend");
+        }
+        const until = typeof body.trial_ends_at === "string" ? Date.parse(body.trial_ends_at) : Number.NaN;
+        if (Number.isNaN(until) || until <= Date.now() || until > Date.now() + 366 * 86_400_000) {
+          throw new HttpError(400, "INVALID_TRIAL_END", "Choose a trial end within the next year");
+        }
+        const trialEndsAt = new Date(until).toISOString();
+        await writeProfile({ trial_ends_at: trialEndsAt });
+        result = { trial_ends_at: trialEndsAt, from_trial_ends_at: profile?.trial_ends_at ?? null };
+      } else if (operation === "change_plan") {
+        const target = purchasablePlan(requireString(body.plan_key, "plan_key", { max: 40 }));
+        if (target.plan_key === currentPlanKey) {
+          throw new HttpError(409, "PLAN_UNCHANGED", "The workspace is already on that plan");
+        }
+        if (liveSubscription && subscriptionId) {
+          const priceId = typeof target.stripe_price_id === "string" ? target.stripe_price_id : "";
+          if (!priceId) throw new HttpError(409, "PLAN_NOT_CONFIGURED", "That plan has no Stripe price yet");
+          const subscription = await stripeRequest("GET", `subscriptions/${encodeURIComponent(subscriptionId)}`);
+          const items = (subscription.items as { data?: Array<{ id?: unknown }> } | undefined)?.data ?? [];
+          const itemId = typeof items[0]?.id === "string" ? items[0].id : "";
+          if (!itemId) throw new HttpError(409, "SUBSCRIPTION_UNREADABLE", "The Stripe subscription has no plan to change");
+          // Switched now and prorated: Stripe credits the unused part of the
+          // old plan. The webhook records the new plan and its allowance.
+          await stripeRequest("POST", `subscriptions/${encodeURIComponent(subscriptionId)}`, new URLSearchParams({
+            "items[0][id]": itemId,
+            "items[0][price]": priceId,
+            proration_behavior: "create_prorations",
+            "metadata[plan_key]": String(target.plan_key),
+          }), `${actionKey}:plan`);
+          result = { plan_key: target.plan_key, from_plan_key: currentPlanKey, via: "stripe" };
+        } else {
+          // No subscription: the plan is ours to set. An allowance set by hand
+          // stays; one that was the old plan's default follows the new plan.
+          const currentPlan = plans.find((candidate) => candidate.plan_key === currentPlanKey);
+          const overridden = typeof profile?.monthly_credit_allowance === "number"
+            && typeof currentPlan?.monthly_credit_allowance === "number"
+            && profile.monthly_credit_allowance !== currentPlan.monthly_credit_allowance;
+          await writeProfile({
+            plan_key: target.plan_key,
+            base_price_cents: target.base_price_cents,
+            per_client_price_cents: target.per_client_price_cents,
+            included_active_clients: target.included_active_clients,
+            ...(overridden ? {} : { monthly_credit_allowance: target.monthly_credit_allowance }),
+          });
+          result = { plan_key: target.plan_key, from_plan_key: currentPlanKey, via: "profile", kept_allowance_override: overridden };
+        }
+      } else if (operation === "make_comped") {
+        if (profile?.billing_status === "comped") {
+          throw new HttpError(409, "ALREADY_COMPED", "The workspace is already complimentary");
+        }
+        // A paying workspace stops being charged after the period it has
+        // already paid for; the webhook keeps it complimentary meanwhile.
+        const stopsStripe = liveSubscription && subscriptionId !== null && profile?.cancel_at_period_end !== true;
+        if (stopsStripe && subscriptionId) {
+          await stripeRequest("POST", `subscriptions/${encodeURIComponent(subscriptionId)}`, new URLSearchParams({
+            cancel_at_period_end: "true",
+          }), `${actionKey}:comp`);
+        }
+        await writeProfile({
+          billing_status: "comped",
+          plan_key: "comped",
+          ...(liveSubscription ? { cancel_at_period_end: true } : {}),
+        });
+        result = { from_plan_key: currentPlanKey, from_billing_status: profile?.billing_status ?? "trialing", stripe_cancel_at_period_end: stopsStripe };
+      } else if (operation === "cancel") {
+        if (!liveSubscription || !subscriptionId) {
+          throw new HttpError(409, "NO_SUBSCRIPTION", "This workspace has no subscription to cancel");
+        }
+        if (profile?.cancel_at_period_end === true) {
+          throw new HttpError(409, "ALREADY_CANCELLING", "This subscription already ends at the period end");
+        }
+        // At period end: the workspace keeps what it paid for, and the
+        // cancellation can be undone in Stripe until then.
+        await stripeRequest("POST", `subscriptions/${encodeURIComponent(subscriptionId)}`, new URLSearchParams({
+          cancel_at_period_end: "true",
+        }), `${actionKey}:cancel`);
+        await writeProfile({ cancel_at_period_end: true });
+        result = { cancel_at_period_end: true };
+      } else {
+        // checkout_link: a hosted Stripe checkout the owner completes.
+        if (liveSubscription) {
+          throw new HttpError(409, "SUBSCRIPTION_EXISTS", "This workspace already has a subscription");
+        }
+        const target = purchasablePlan(requireString(body.plan_key, "plan_key", { max: 40 }));
+        const priceId = typeof target.stripe_price_id === "string" ? target.stripe_price_id : "";
+        if (!priceId) throw new HttpError(409, "PLAN_NOT_CONFIGURED", "That plan has no Stripe price yet");
+
+        const [{ data: ownerRow }, { data: workspaceRow }] = await Promise.all([
+          admin.from("workspace_memberships")
+            .select("email_normalized")
+            .eq("workspace_id", workspaceId)
+            .eq("role", "owner")
+            .eq("status", "active")
+            .limit(1)
+            .maybeSingle(),
+          admin.from("workspaces").select("name").eq("id", workspaceId).maybeSingle(),
+        ]);
+        const ownerEmail = typeof ownerRow?.email_normalized === "string" ? ownerRow.email_normalized : "";
+        const workspaceName = typeof workspaceRow?.name === "string" && workspaceRow.name ? workspaceRow.name : "your workspace";
+
+        let customerId = typeof profile?.stripe_customer_id === "string" ? profile.stripe_customer_id : "";
+        if (customerId) {
+          // The webhook may not have recorded a subscription made a moment ago.
+          const existing = await stripeRequest("GET", `subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`);
+          const live = ((existing.data as Array<Record<string, unknown>> | undefined) ?? [])
+            .some((candidate) => !["canceled", "incomplete_expired"].includes(String(candidate.status)));
+          if (live) throw new HttpError(409, "SUBSCRIPTION_EXISTS", "This workspace already has a subscription in Stripe");
+        } else {
+          const customerParams = new URLSearchParams({ "metadata[workspace_id]": workspaceId });
+          if (ownerEmail) customerParams.set("email", ownerEmail);
+          const customer = await stripeRequest("POST", "customers", customerParams, `${actionKey}:customer`);
+          customerId = typeof customer.id === "string" ? customer.id : "";
+          if (!customerId) throw new HttpError(502, "STRIPE_REJECTED", "Stripe did not create a customer");
+          await writeProfile({ stripe_customer_id: customerId });
+        }
+
+        const billingBase = `${(Deno.env.get("APP_URL") || "https://getonapod.com").replace(/\/+$/u, "")}/app/settings/billing`;
+        const session = await stripeRequest("POST", "checkout/sessions", new URLSearchParams({
+          mode: "subscription",
+          customer: customerId,
+          allow_promotion_codes: "true",
+          success_url: `${billingBase}?plan=updated`,
+          cancel_url: `${billingBase}?plan=cancelled`,
+          client_reference_id: workspaceId,
+          "line_items[0][price]": priceId,
+          "line_items[0][quantity]": "1",
+          "metadata[workspace_id]": workspaceId,
+          "metadata[plan_key]": String(target.plan_key),
+          "subscription_data[metadata][workspace_id]": workspaceId,
+          "subscription_data[metadata][plan_key]": String(target.plan_key),
+        }), `${actionKey}:checkout`);
+        checkoutUrl = typeof session.url === "string" ? session.url : null;
+        if (!checkoutUrl) throw new HttpError(502, "STRIPE_REJECTED", "Stripe did not return a checkout link");
+        const expiresAt = typeof session.expires_at === "number" ? new Date(session.expires_at * 1000).toISOString() : null;
+
+        let emailed: "sent" | "failed" | "skipped" | "not_requested" = "not_requested";
+        if (body.email_owner === true) {
+          emailed = ownerEmail
+            ? await emailCheckoutLink({
+              to: ownerEmail,
+              workspaceName,
+              planName: String(target.display_name ?? target.plan_key),
+              priceLabel: `$${(Number(target.base_price_cents) / 100).toFixed(Number(target.base_price_cents) % 100 === 0 ? 0 : 2)}/month`,
+              url: checkoutUrl,
+            })
+            : "skipped";
+        }
+        // The link itself is not kept in the audit log: whoever holds it can pay.
+        result = { plan_key: target.plan_key, expires_at: expiresAt, emailed, owner_email: ownerEmail || null };
+      }
+
+      await writeAudit(admin, {
+        workspaceId,
+        actorUserId: user.id,
+        action: "workspace.subscription.admin_action",
+        entityType: "workspace_billing_profile",
+        entityId: workspaceId,
+        metadata: { operation, reason, note, action_key: actionKey, result },
+      });
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        operation,
+        result: checkoutUrl ? { ...result, url: checkoutUrl } : result,
       });
     }
 

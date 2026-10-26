@@ -685,3 +685,28 @@ assert.match(allowanceSet, /const allowanceReason = requireString\(body\.reason,
 assert.match(allowanceSet, /actorUserId: user\.id,/u)
 assert.match(allowanceSet, /reason: allowanceReason,/u)
 assert.match(source, /balance_by_expiry:/u)
+
+// Subscription actions: platform admin only, a reason on every one, one
+// action key that makes a repeat a no-op and keys every Stripe write.
+const subscriptionAdmin = source.slice(source.indexOf('if (action === "subscription-admin")'), source.indexOf('if (action === "credits-ledger")'))
+assert.match(subscriptionAdmin, /if \(!platformAdmin\) \{\s*\n\s*throw new HttpError\(403, "PLATFORM_ADMIN_REQUIRED"/u)
+assert.match(subscriptionAdmin, /const reason = requireString\(body\.reason, "reason", \{ min: 1, max: 60 \}\);/u)
+assert.match(subscriptionAdmin, /\.contains\("metadata", \{ action_key: actionKey \}\)/u)
+assert.match(subscriptionAdmin, /action: "workspace\.subscription\.admin_action",/u)
+assert.match(subscriptionAdmin, /actorUserId: user\.id,/u)
+for (const suffix of ['plan', 'comp', 'cancel', 'customer', 'checkout']) {
+  assert.match(subscriptionAdmin, new RegExp(`\`\\$\\{actionKey\\}:${suffix}\``, 'u'))
+}
+// Cancelling is always at period end, and a plan change is prorated.
+assert.match(subscriptionAdmin, /cancel_at_period_end: "true"/u)
+assert.doesNotMatch(subscriptionAdmin, /stripeRequest\("DELETE"/u)
+assert.match(subscriptionAdmin, /proration_behavior: "create_prorations"/u)
+// The checkout link is a bearer credential: it goes back to the admin, never into the audit log.
+assert.match(subscriptionAdmin, /result = \{ plan_key: target\.plan_key, expires_at: expiresAt, emailed, owner_email: ownerEmail \|\| null \};/u)
+assert.match(source, /headers\["Idempotency-Key"\] = idempotencyKey;/u)
+
+// The webhook keeps an admin-comped workspace comped while its subscription runs out.
+const subscriptionWebhook = readFileSync('supabase/functions/workspace-subscription-webhook/index.ts', 'utf8')
+assert.match(subscriptionWebhook, /const keepComped = storedStatus === 'comped' && !isCreation/u)
+assert.match(subscriptionWebhook, /billing_status: keepComped \? 'comped' : billingStatus,/u)
+assert.match(subscriptionWebhook, /if \(keepComped\) \{/u)

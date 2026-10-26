@@ -4,6 +4,7 @@ import {
   createWorkspaceStaffTemporaryPassword,
   getWorkspaceCreditLedger,
   grantWorkspaceCredits,
+  runSubscriptionAction,
   setWorkspaceMonthlyAllowance,
   inviteWorkspaceStaff,
   listWorkspaceStaff,
@@ -717,5 +718,39 @@ describe('platform credit changes', () => {
     invoke.mockResolvedValue({ data: { success: true }, error: null })
     await expect(getWorkspaceCreditLedger(workspaceId, { type: 'all', page: 0 }))
       .rejects.toThrow('The credit ledger could not be loaded.')
+  })
+})
+
+describe('runSubscriptionAction', () => {
+  beforeEach(() => invoke.mockReset())
+  const key = '66666666-6666-4666-8666-666666666666'
+
+  it('sends only the fields the operation uses', async () => {
+    invoke.mockResolvedValue({ data: { success: true, operation: 'cancel', result: { cancel_at_period_end: true } }, error: null })
+    await expect(runSubscriptionAction(workspaceId, { operation: 'cancel', reason: 'other', note: '', actionKey: key }))
+      .resolves.toEqual({ operation: 'cancel', idempotent: false, result: { cancel_at_period_end: true } })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: { action: 'subscription-admin', workspace_id: workspaceId, operation: 'cancel', reason: 'other', note: '', action_key: key },
+    })
+  })
+
+  it('sends the plan and email choice for a checkout link', async () => {
+    invoke.mockResolvedValue({ data: { success: true, idempotent: true, operation: 'checkout_link', result: { url: 'https://x' } }, error: null })
+    const response = await runSubscriptionAction(workspaceId, {
+      operation: 'checkout_link', reason: 'other', note: 'n', actionKey: key, planKey: 'standard', emailOwner: true,
+    })
+    expect(response.idempotent).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'subscription-admin', workspace_id: workspaceId, operation: 'checkout_link', reason: 'other', note: 'n',
+        action_key: key, plan_key: 'standard', email_owner: true,
+      },
+    })
+  })
+
+  it('refuses a response without a result', async () => {
+    invoke.mockResolvedValue({ data: { success: true }, error: null })
+    await expect(runSubscriptionAction(workspaceId, { operation: 'cancel', reason: 'other', note: '', actionKey: key }))
+      .rejects.toThrow('The subscription could not be changed.')
   })
 })

@@ -1,10 +1,13 @@
 // Stripe webhook for plan subscriptions. Signature-verified, then subscription
 // lifecycle events record what a workspace is actually subscribed to.
 //
-// This is the only thing that writes plan_key, billing_status, and
-// stripe_subscription_id. workspace-billing-portal opens the Stripe pages and
-// writes none of it, because finishing a form is not the same as being charged,
-// and a plan can also change inside the portal without this app ever seeing it.
+// This is the only thing that writes stripe_subscription_id, and the only
+// thing that writes plan_key and billing_status for a workspace with a
+// subscription. workspace-billing-portal opens the Stripe pages and writes none
+// of it, because finishing a form is not the same as being charged, and a plan
+// can also change inside the portal without this app ever seeing it. A platform
+// admin sets them for a workspace with no subscription, or makes one
+// complimentary (manage-workspace-staff, subscription-admin).
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -194,8 +197,14 @@ serve(async (req) => {
     ? new Date(event.created * 1000).toISOString()
     : new Date().toISOString()
 
+  // A workspace an admin made complimentary stays so while the subscription it
+  // had runs out: that subscription's updates and its deletion would otherwise
+  // mark it active and then suspended. Only a new subscription, which is the
+  // workspace choosing to pay, moves it off.
+  const keepComped = storedStatus === 'comped' && !isCreation
+
   const update: Record<string, unknown> = {
-    billing_status: billingStatus,
+    billing_status: keepComped ? 'comped' : billingStatus,
     last_subscription_event_at: eventAt,
     updated_at: new Date().toISOString(),
   }
@@ -234,7 +243,10 @@ serve(async (req) => {
     }
     const plan = (priceId ? plans.byPrice.get(priceId) : undefined)
       ?? (typeof metadata.plan_key === 'string' ? plans.byKey.get(metadata.plan_key) : undefined)
-    if (plan) {
+    if (keepComped) {
+      // The complimentary plan and its allowance stand; the subscription's
+      // plan is the one being let go.
+    } else if (plan) {
       update.plan_key = plan.plan_key
       // What the plan gives, applied with the plan. Without this a workspace
       // moving to the cheaper plan kept the dearer allowance and went on

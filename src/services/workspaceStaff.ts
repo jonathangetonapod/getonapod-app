@@ -1129,6 +1129,64 @@ export async function adjustWorkspaceCredits(
   return { removed: data.removed, balance: typeof data.balance === 'number' ? data.balance : null }
 }
 
+export type SubscriptionOperation = 'extend_trial' | 'change_plan' | 'make_comped' | 'cancel' | 'checkout_link'
+
+export interface SubscriptionActionInput {
+  operation: SubscriptionOperation
+  reason: string
+  note: string
+  /** One per confirmed action: a retry with the same key is the same action. */
+  actionKey: string
+  trialEndsAt?: string
+  planKey?: string
+  emailOwner?: boolean
+}
+
+export interface SubscriptionActionResult {
+  operation: SubscriptionOperation
+  idempotent: boolean
+  /** What changed. A checkout link carries url, expires_at, emailed and owner_email. */
+  result: {
+    url?: string
+    expires_at?: string | null
+    emailed?: 'sent' | 'failed' | 'skipped' | 'not_requested'
+    owner_email?: string | null
+    [key: string]: unknown
+  }
+}
+
+/** Platform-admin only: change a workspace's trial, plan or subscription. */
+export async function runSubscriptionAction(
+  workspaceId: string,
+  input: SubscriptionActionInput,
+): Promise<SubscriptionActionResult> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const data = await invoke({
+    action: 'subscription-admin',
+    workspace_id: canonicalWorkspaceId,
+    operation: input.operation,
+    reason: input.reason,
+    note: input.note,
+    action_key: input.actionKey,
+    ...(input.trialEndsAt === undefined ? {} : { trial_ends_at: input.trialEndsAt }),
+    ...(input.planKey === undefined ? {} : { plan_key: input.planKey }),
+    ...(input.emailOwner === undefined ? {} : { email_owner: input.emailOwner }),
+  }, 'The subscription could not be changed.') as {
+    success?: boolean
+    idempotent?: boolean
+    operation?: SubscriptionOperation
+    result?: SubscriptionActionResult['result']
+  }
+  if (data?.success !== true || !data.result || typeof data.result !== 'object') {
+    throw new Error('The subscription could not be changed.')
+  }
+  return {
+    operation: data.operation ?? input.operation,
+    idempotent: data.idempotent === true,
+    result: data.result,
+  }
+}
+
 export type CreditLedgerType = 'all' | 'grant' | 'removal' | 'allowance' | 'spend' | 'purchase' | 'expiry'
 
 export interface CreditLedgerEntry {

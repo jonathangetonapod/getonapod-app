@@ -1,21 +1,32 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceSubscriptionStatus } from '@/components/workspace/WorkspaceSubscriptionStatus'
-import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
+import { getWorkspaceBillingOverview, listBillingPlans } from '@/services/workspaceStaff'
 
-vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceBillingOverview: vi.fn() }))
+vi.mock('@/services/workspaceStaff', () => ({
+  getWorkspaceBillingOverview: vi.fn(),
+  listBillingPlans: vi.fn(),
+  runSubscriptionAction: vi.fn(),
+}))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 
 const renderCard = () => render(
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-    <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName="Juliana Munoz" />
+    <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName="Juliana Munoz" ownerEmail="juliana@leadgenjay.com" />
   </QueryClientProvider>,
 )
 
 describe('WorkspaceSubscriptionStatus', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(listBillingPlans).mockResolvedValue([
+      { plan_key: 'founding_member', display_name: 'Founding member', base_price_cents: 4900, monthly_credit_allowance: 100, stripe_price_id: 'price_a', is_purchasable: true },
+      { plan_key: 'standard', display_name: 'Standard', base_price_cents: 9900, monthly_credit_allowance: 300, stripe_price_id: 'price_b', is_purchasable: true },
+    ])
+  })
 
   it('names the status and says what happens next', async () => {
     vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
@@ -90,7 +101,8 @@ describe('WorkspaceSubscriptionStatus', () => {
     renderCard()
 
     expect(await screen.findByText('Active')).toBeInTheDocument()
-    expect(screen.getByText(/^Ends /)).toBeInTheDocument()
+    expect(screen.getByText('Ending')).toBeInTheDocument()
+    expect(screen.getByText('Access until')).toBeInTheDocument()
   })
 
   it('links to the customer in Stripe when there is one', async () => {
@@ -109,7 +121,58 @@ describe('WorkspaceSubscriptionStatus', () => {
     } as never)
     renderCard()
 
-    expect(await screen.findByText(/No Stripe customer yet/i)).toBeInTheDocument()
+    expect(await screen.findByText(/None yet\. One is created at the first checkout\./u)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Open in Stripe/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open in Stripe/i })).toBeDisabled()
+  })
+
+  // "Renews: —" alone said nothing to a workspace with no subscription.
+  it('shows the trial end where a subscription would show its renewal', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'trialing', plan_key: 'founding_member', has_subscription: false,
+      trial_ends_at: '2026-08-23T17:47:06.077Z', has_saved_card: false,
+    } as never)
+    renderCard()
+
+    expect(await screen.findByText('Trial ended')).toBeInTheDocument()
+    expect(screen.getByText('Aug 23, 2026')).toBeInTheDocument()
+    expect(screen.queryByText('Renews')).not.toBeInTheDocument()
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('shows the card on file and the Stripe customer ID with a copy button', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'active', plan_key: 'standard', has_subscription: true, has_saved_card: true,
+      stripe_customer_id: 'cus_abc', current_period_end: '2026-11-26T00:00:00Z',
+    } as never)
+    renderCard()
+
+    const card = (await screen.findByText('Card on file')).parentElement as HTMLElement
+    expect(within(card).getByText('Yes')).toBeInTheDocument()
+    expect(screen.getByText('cus_abc')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy Stripe customer ID' })).toBeInTheDocument()
+    expect(screen.getByText('Next renewal')).toBeInTheDocument()
+  })
+
+  it('offers only the actions that make sense for the subscription', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'trialing', plan_key: 'founding_member', has_subscription: false,
+    } as never)
+    renderCard()
+
+    await screen.findByText('Trialing')
+    expect(await screen.findByRole('button', { name: 'Extend trial' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Send checkout link' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeDisabled()
+  })
+
+  it('opens a confirm dialog for an action', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'trialing', plan_key: 'founding_member', has_subscription: false,
+    } as never)
+    renderCard()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Make complimentary' }))
+    expect(await screen.findByRole('dialog', { name: 'Make complimentary: Juliana Munoz' })).toBeInTheDocument()
   })
 })

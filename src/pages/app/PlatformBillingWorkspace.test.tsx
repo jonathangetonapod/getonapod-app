@@ -15,6 +15,9 @@ vi.mock('@/services/workspaceStaff', () => ({
   grantWorkspaceCredits: vi.fn(),
   setWorkspaceMonthlyAllowance: vi.fn(),
   adjustWorkspaceCredits: vi.fn(),
+  listBillingPlans: vi.fn(async () => []),
+  runSubscriptionAction: vi.fn(),
+  getWorkspaceCreditLedger: vi.fn(async () => ({ entries: [], total: 0, page: 0, pageSize: 25 })),
 }))
 
 const mockedUseAuth = vi.mocked(useAuth)
