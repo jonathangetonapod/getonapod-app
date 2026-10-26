@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  adjustWorkspaceCredits,
   createWorkspaceStaffTemporaryPassword,
+  getWorkspaceCreditLedger,
+  grantWorkspaceCredits,
+  setWorkspaceMonthlyAllowance,
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
@@ -638,5 +642,80 @@ describe('updateBillingPlanPrice', () => {
     expect(invoke).toHaveBeenLastCalledWith('workspace-billing-portal', {
       body: { action: 'plans-update', plan_key: 'standard', base_price_cents: 9900, monthly_credit_allowance: 300 },
     })
+  })
+})
+
+describe('platform credit changes', () => {
+  beforeEach(() => invoke.mockReset())
+
+  const key = '55555555-5555-4555-8555-555555555555'
+
+  // The caller's key, so every attempt at one change is the same change.
+  it('grants with the key the caller holds for the review', async () => {
+    invoke.mockResolvedValue({ data: { success: true, granted: 25, balance: 225 }, error: null })
+    await expect(grantWorkspaceCredits(workspaceId, { amount: 25, reason: 'customer_support', note: '', grantKey: key }))
+      .resolves.toEqual({ granted: 25, balance: 225 })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'credits-grant',
+        workspace_id: workspaceId,
+        amount: 25,
+        reason: 'customer_support',
+        note: '',
+        grant_key: key,
+      },
+    })
+  })
+
+  it('removes with a reason, a note and the review key', async () => {
+    invoke.mockResolvedValue({ data: { success: true, removed: 10, balance: 190 }, error: null })
+    await expect(adjustWorkspaceCredits(workspaceId, { amount: 10, reason: 'other', note: 'Duplicate', adjustmentKey: key }))
+      .resolves.toEqual({ removed: 10, balance: 190 })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'credits-adjust',
+        workspace_id: workspaceId,
+        amount: 10,
+        reason: 'other',
+        note: 'Duplicate',
+        adjustment_key: key,
+      },
+    })
+  })
+
+  it('sets an allowance with a reason and note', async () => {
+    invoke.mockResolvedValue({ data: { success: true, monthly_credit_allowance: 150 }, error: null })
+    await expect(setWorkspaceMonthlyAllowance(workspaceId, 150, { reason: 'contract_adjustment', note: '' })).resolves.toBe(150)
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: {
+        action: 'billing-allowance-set',
+        workspace_id: workspaceId,
+        monthly_credit_allowance: 150,
+        reason: 'contract_adjustment',
+        note: '',
+      },
+    })
+  })
+
+  it('reads a page of the ledger by type', async () => {
+    invoke.mockResolvedValue({
+      data: { success: true, entries: [{ id: 'e1', amount: 5 }], total: 30, page: 1, page_size: 25 },
+      error: null,
+    })
+    await expect(getWorkspaceCreditLedger(workspaceId, { type: 'grant', page: 1 })).resolves.toEqual({
+      entries: [{ id: 'e1', amount: 5 }],
+      total: 30,
+      page: 1,
+      pageSize: 25,
+    })
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: { action: 'credits-ledger', workspace_id: workspaceId, type: 'grant', page: 1 },
+    })
+  })
+
+  it('refuses a ledger response without entries', async () => {
+    invoke.mockResolvedValue({ data: { success: true }, error: null })
+    await expect(getWorkspaceCreditLedger(workspaceId, { type: 'all', page: 0 }))
+      .rejects.toThrow('The credit ledger could not be loaded.')
   })
 })

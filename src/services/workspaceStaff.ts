@@ -984,6 +984,8 @@ export interface WorkspaceBillingOverview {
   balance: number
   expiring_credits: number
   next_expiry_at: string | null
+  /** The balance by the day it lapses, soonest first; expires_on null never lapses. */
+  balance_by_expiry?: Array<{ expires_on: string | null; credits: number }>
   /** The part of expiring_credits that lapses on next_expiry_at itself. */
   expiring_next_credits?: number
   /** Credits in lots with no expiry: purchases. */
@@ -1035,9 +1037,14 @@ export interface WorkspaceCreditGrantResult {
   balance: number | null
 }
 
+/**
+ * The key makes a grant idempotent. Pass the same one for every attempt at
+ * the same grant (a double click, a retry after a timeout) and the ledger
+ * records it once; a fresh key per call would record each attempt.
+ */
 export async function grantWorkspaceCredits(
   workspaceId: string,
-  input: { amount: number; reason: string; note: string },
+  input: { amount: number; reason: string; note: string; grantKey?: string },
 ): Promise<WorkspaceCreditGrantResult> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke({
@@ -1046,7 +1053,7 @@ export async function grantWorkspaceCredits(
     amount: input.amount,
     reason: input.reason,
     note: input.note,
-    grant_key: crypto.randomUUID(),
+    grant_key: input.grantKey ?? crypto.randomUUID(),
   }, 'The credit grant could not be recorded.') as {
     success?: boolean
     granted?: number
@@ -1072,12 +1079,15 @@ export async function grantWorkspaceCredits(
 export async function setWorkspaceMonthlyAllowance(
   workspaceId: string,
   monthlyCreditAllowance: number,
+  input: { reason: string; note: string },
 ): Promise<number> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke({
     action: 'billing-allowance-set',
     workspace_id: canonicalWorkspaceId,
     monthly_credit_allowance: monthlyCreditAllowance,
+    reason: input.reason,
+    note: input.note,
   }, 'The monthly allowance could not be saved.') as {
     success?: boolean
     monthly_credit_allowance?: number
@@ -1098,7 +1108,7 @@ export async function setWorkspaceMonthlyAllowance(
  */
 export async function adjustWorkspaceCredits(
   workspaceId: string,
-  input: { amount: number; reason: string },
+  input: { amount: number; reason: string; note: string; adjustmentKey?: string },
 ): Promise<{ removed: number; balance: number | null }> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke({
@@ -1106,7 +1116,8 @@ export async function adjustWorkspaceCredits(
     workspace_id: canonicalWorkspaceId,
     amount: input.amount,
     reason: input.reason,
-    adjustment_key: crypto.randomUUID(),
+    note: input.note,
+    adjustment_key: input.adjustmentKey ?? crypto.randomUUID(),
   }, 'The adjustment could not be recorded.') as {
     success?: boolean
     removed?: number
@@ -1116,6 +1127,57 @@ export async function adjustWorkspaceCredits(
     throw new Error('The adjustment could not be recorded.')
   }
   return { removed: data.removed, balance: typeof data.balance === 'number' ? data.balance : null }
+}
+
+export type CreditLedgerType = 'all' | 'grant' | 'removal' | 'allowance' | 'spend' | 'purchase' | 'expiry'
+
+export interface CreditLedgerEntry {
+  id: string
+  created_at: string
+  type: Exclude<CreditLedgerType, 'all'>
+  entry_type: string
+  amount: number
+  /** A reason key, an operation, a reference kind, or older free text. */
+  reason: string | null
+  note: string | null
+  actor_email: string | null
+  balance_after: number
+}
+
+export interface CreditLedgerPage {
+  entries: CreditLedgerEntry[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+/** Platform-admin only: a workspace's whole ledger, newest first, a page at a time. */
+export async function getWorkspaceCreditLedger(
+  workspaceId: string,
+  input: { type: CreditLedgerType; page: number },
+): Promise<CreditLedgerPage> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const data = await invoke({
+    action: 'credits-ledger',
+    workspace_id: canonicalWorkspaceId,
+    type: input.type,
+    page: input.page,
+  }, 'The credit ledger could not be loaded.') as {
+    success?: boolean
+    entries?: CreditLedgerEntry[]
+    total?: number
+    page?: number
+    page_size?: number
+  }
+  if (data?.success !== true || !Array.isArray(data.entries)) {
+    throw new Error('The credit ledger could not be loaded.')
+  }
+  return {
+    entries: data.entries,
+    total: Number(data.total) || 0,
+    page: Number(data.page) || 0,
+    pageSize: Number(data.page_size) || 25,
+  }
 }
 
 export interface BillingPortfolioRow {

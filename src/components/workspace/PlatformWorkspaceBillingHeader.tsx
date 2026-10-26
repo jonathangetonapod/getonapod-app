@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
+import { formatExpiryBreakdown } from '@/lib/creditAdjustments'
 import { planLabel, subscriptionStatusView } from '@/lib/subscriptionStatus'
 import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 
@@ -52,6 +53,11 @@ export const PlatformWorkspaceBillingHeader = ({
             : overviewQuery.isError ? 'Unavailable' : '…'}
           {billing && <span className="ml-1 text-sm font-normal text-muted-foreground">credits</span>}
         </p>
+        {/* When it lapses, not only how much: allowance credits expire and
+            bought or granted ones mostly do not. */}
+        {billing && formatExpiryBreakdown(billing.balance_by_expiry) && (
+          <p className="mt-1 text-xs text-muted-foreground">{formatExpiryBreakdown(billing.balance_by_expiry)}</p>
+        )}
       </div>
     </div>
   )

@@ -38,10 +38,43 @@ describe('WorkspaceMonthlyAllowance', () => {
     await waitFor(() => expect((screen.getByLabelText('Monthly credits') as HTMLInputElement).value).toBe('100'))
 
     fireEvent.change(screen.getByLabelText('Monthly credits'), { target: { value: '500' } })
+    // Every change to what a workspace is given says why.
+    expect(screen.getByRole('button', { name: /Save allowance/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Reason' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Contract adjustment' }))
+    fireEvent.change(screen.getByLabelText(/Internal note/), { target: { value: 'Annual contract.' } })
     fireEvent.click(screen.getByRole('button', { name: /Save allowance/i }))
 
-    await waitFor(() => expect(setWorkspaceMonthlyAllowance).toHaveBeenCalledWith(workspaceId, 500))
+    await waitFor(() => expect(setWorkspaceMonthlyAllowance).toHaveBeenCalledWith(workspaceId, 500, {
+      reason: 'contract_adjustment',
+      note: 'Annual contract.',
+    }))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Juliana Munoz will get 500 credits a month.'))
+  })
+
+  it('shows the plan default, and offers a reset only when overridden', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      monthly_credit_allowance: 150,
+      plan_monthly_credit_allowance: 100,
+    } as never)
+    renderCard()
+    await waitFor(() => expect((screen.getByLabelText('Monthly credits') as HTMLInputElement).value).toBe('150'))
+
+    expect(screen.getByText(/Plan default:/)).toHaveTextContent('Plan default: 100')
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to plan default' }))
+    expect(screen.getByLabelText('Monthly credits')).toHaveValue('100')
+    expect(screen.queryByRole('button', { name: 'Reset to plan default' })).not.toBeInTheDocument()
+  })
+
+  it('offers no reset when the allowance is the plan default', async () => {
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      monthly_credit_allowance: 100,
+      plan_monthly_credit_allowance: 100,
+    } as never)
+    renderCard()
+    await waitFor(() => expect((screen.getByLabelText('Monthly credits') as HTMLInputElement).value).toBe('100'))
+
+    expect(screen.queryByRole('button', { name: 'Reset to plan default' })).not.toBeInTheDocument()
   })
 
   it('will not save a figure that has not changed', async () => {

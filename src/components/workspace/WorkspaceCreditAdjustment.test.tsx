@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceCreditAdjustment } from '@/components/workspace/WorkspaceCreditAdjustment'
 import { adjustWorkspaceCredits, getWorkspaceBillingOverview } from '@/services/workspaceStaff'
@@ -8,14 +8,24 @@ vi.mock('@/services/workspaceStaff', () => ({
   getWorkspaceBillingOverview: vi.fn(),
   adjustWorkspaceCredits: vi.fn(),
 }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 
 const renderCard = () => render(
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>
     <WorkspaceCreditAdjustment workspaceId={workspaceId} workspaceName="Juliana Munoz" />
   </QueryClientProvider>,
 )
+
+async function chooseReason(label: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Reason' }))
+  fireEvent.click(await screen.findByRole('option', { name: label }))
+}
+
+async function ready() {
+  await screen.findByText('850 available.')
+}
 
 describe('WorkspaceCreditAdjustment', () => {
   beforeEach(() => {
@@ -24,62 +34,81 @@ describe('WorkspaceCreditAdjustment', () => {
     vi.mocked(adjustWorkspaceCredits).mockResolvedValue({ removed: 100, balance: 750 })
   })
 
-  it('removes a stated number of credits with a reason', async () => {
+  it('files a removal under the same reasons as a grant, with an optional note, after a review', async () => {
     renderCard()
-    await screen.findByLabelText('Credits to remove')
+    await ready()
 
     fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '100' } })
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'duplicate onboarding grant' } })
-    fireEvent.click(screen.getByRole('button', { name: /Remove credits/i }))
+    await chooseReason('Service recovery')
+    fireEvent.change(screen.getByLabelText(/Internal note/), { target: { value: 'Duplicate grant.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Review removal' }))
 
+    // Nothing is removed until the review is confirmed.
+    expect(adjustWorkspaceCredits).not.toHaveBeenCalled()
+    const review = screen.getByRole('alertdialog', { name: 'Remove 100 credits from Juliana Munoz?' })
+    expect(within(review).getByText('850')).toBeInTheDocument()
+    expect(within(review).getByText('750')).toBeInTheDocument()
+    expect(within(review).getByText('Service recovery')).toBeInTheDocument()
+    expect(within(review).getByText('Duplicate grant.')).toBeInTheDocument()
+
+    fireEvent.click(within(review).getByRole('button', { name: 'Remove credits' }))
     await waitFor(() => expect(adjustWorkspaceCredits).toHaveBeenCalledWith(workspaceId, {
       amount: 100,
-      reason: 'duplicate onboarding grant',
+      reason: 'service_recovery',
+      note: 'Duplicate grant.',
+      adjustmentKey: expect.stringMatching(/^[0-9a-f-]{36}$/u),
     }))
   })
 
-  // parseInt read "1e3" as 1 and "12abc" as 12 — an admin typing a thousand
-  // removed one, with a success toast. Digits only, like the grant form.
+  it('will not review a removal without a reason', async () => {
+    renderCard()
+    await ready()
+
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '100' } })
+    expect(screen.getByRole('button', { name: 'Review removal' })).toBeDisabled()
+  })
+
   it('refuses an amount that is not plainly a whole number', async () => {
     renderCard()
-    await screen.findByLabelText('Credits to remove')
+    await ready()
 
-    for (const garbage of ['1e3', '12abc', '10.9']) {
-      fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: garbage } })
-      fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'typo test' } })
-      expect(screen.getByRole('button', { name: /Remove credits/i })).toBeDisabled()
-    }
-    expect(adjustWorkspaceCredits).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '1e3' } })
+    await chooseReason('Other')
+    expect(screen.getByText('Enter a whole number of credits.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review removal' })).toBeDisabled()
   })
 
-  it('will not remove credits without a reason', async () => {
+  // Capped at the balance: a removal larger than the balance is a mistake
+  // about the number, and the server would refuse it anyway.
+  it('caps the amount at the available balance', async () => {
     renderCard()
-    await screen.findByLabelText('Credits to remove')
+    await ready()
 
-    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '100' } })
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '851' } })
+    await chooseReason('Other')
+    expect(screen.getByText('Only 850 credits are available to remove.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review removal' })).toBeDisabled()
 
-    expect(screen.getByRole('button', { name: /Remove credits/i })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '850' } })
+    expect(screen.getByRole('button', { name: 'Review removal' })).toBeEnabled()
   })
 
-  // Refused rather than clamped: asking for more than exists is a mistake
-  // about the number, and quietly taking what is there would hide it.
-  it('refuses to take more than the workspace has', async () => {
+  it('sends the same key for a retry within one review', async () => {
+    vi.mocked(adjustWorkspaceCredits).mockRejectedValueOnce(new Error('Network timeout'))
     renderCard()
-    await screen.findByLabelText('Credits to remove')
+    await ready()
 
-    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '900' } })
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'oops' } })
+    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '10' } })
+    await chooseReason('Other')
+    fireEvent.click(screen.getByRole('button', { name: 'Review removal' }))
+    const review = screen.getByRole('alertdialog')
+    fireEvent.click(within(review).getByRole('button', { name: 'Remove credits' }))
+    await waitFor(() => expect(adjustWorkspaceCredits).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(review).getByRole('button', { name: 'Remove credits' })).toBeEnabled())
+    fireEvent.click(within(review).getByRole('button', { name: 'Remove credits' }))
+    await waitFor(() => expect(adjustWorkspaceCredits).toHaveBeenCalledTimes(2))
 
-    expect(await screen.findByText(/only has 850 credits/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Remove credits/i })).toBeDisabled()
-  })
-
-  it('shows what the balance becomes before committing', async () => {
-    renderCard()
-    await screen.findByLabelText('Credits to remove')
-
-    fireEvent.change(screen.getByLabelText('Credits to remove'), { target: { value: '100' } })
-
-    expect(await screen.findByText(/from 850 to 750/i)).toBeInTheDocument()
+    const [first, second] = vi.mocked(adjustWorkspaceCredits).mock.calls.map(([, input]) => input.adjustmentKey)
+    expect(first).toBe(second)
   })
 })

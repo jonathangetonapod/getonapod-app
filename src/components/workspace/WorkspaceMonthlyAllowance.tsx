@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { allowanceIsOverride } from '@/lib/billingAttention'
+import { CREDIT_REASON_LABELS, type CreditReason } from '@/lib/creditAdjustments'
 import { getWorkspaceBillingOverview, setWorkspaceMonthlyAllowance } from '@/services/workspaceStaff'
 
 interface WorkspaceMonthlyAllowanceProps {
@@ -36,7 +40,11 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
   })
 
   const current = overviewQuery.data?.monthly_credit_allowance ?? null
+  const planDefault = overviewQuery.data?.plan_monthly_credit_allowance ?? null
+  const overridden = typeof current === 'number' && allowanceIsOverride(current, planDefault)
   const [draft, setDraft] = useState('')
+  const [reason, setReason] = useState<CreditReason | ''>('')
+  const [note, setNote] = useState('')
   useEffect(() => {
     if (typeof current === 'number') setDraft(String(current))
   }, [current])
@@ -49,9 +57,13 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
   const parsed = /^\d+$/u.test(draft.trim()) ? Number.parseInt(draft.trim(), 10) : Number.NaN
   const valid = Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 1_000_000
   const dirty = valid && parsed !== current
+  // Saving is a change to what this workspace is given, so it says why, like
+  // a grant. Setting the same number twice changes nothing, which makes it
+  // safe to repeat.
+  const ready = dirty && reason !== ''
 
   const saveMutation = useMutation({
-    mutationFn: () => setWorkspaceMonthlyAllowance(workspaceId, parsed),
+    mutationFn: () => setWorkspaceMonthlyAllowance(workspaceId, parsed, { reason: reason || 'other', note: note.trim() }),
     onSuccess: async (saved) => {
       /*
        * Every surface that shows this workspace's money, not just this
@@ -62,9 +74,10 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
        */
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['workspace-billing-overview', workspaceId] }),
-        queryClient.invalidateQueries({ queryKey: ['workspace-credit-grants', workspaceId] }),
         queryClient.invalidateQueries({ queryKey: ['billing-portfolio'] }),
       ])
+      setReason('')
+      setNote('')
       toast.success(`${workspaceName || 'This workspace'} will get ${saved} credits a month.`)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The monthly allowance could not be saved.'),
@@ -75,8 +88,8 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg"><RefreshCw className="h-5 w-5" />Monthly credits</CardTitle>
         <CardDescription>
-          Credits granted to {workspaceName || 'this workspace'} at the start of every month, on top of anything bought
-          or granted by hand. Unspent credits from the allowance expire at the end of the following month.
+          Credits granted to {workspaceName || 'this workspace'} at the start of every month. They expire at the end of
+          the following month.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -87,39 +100,82 @@ export function WorkspaceMonthlyAllowance({ workspaceId, workspaceName }: Worksp
               id="monthly-allowance"
               inputMode="numeric"
               value={draft}
+              aria-describedby="monthly-allowance-default"
               disabled={overviewQuery.isLoading || saveMutation.isPending}
               onChange={(event) => setDraft(event.target.value)}
             />
           </div>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              disabled={!dirty || saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-            >
-              {saveMutation.isPending
-                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                : <Save className="mr-2 h-4 w-4" />}
-              Save allowance
-            </Button>
-            {dirty && (
+          <div className="flex flex-wrap items-center gap-2 pb-2 text-sm">
+            <span id="monthly-allowance-default" className="text-muted-foreground">
+              Plan default: <span className="font-medium tabular-nums text-foreground">{planDefault?.toLocaleString() ?? 'unknown'}</span>
+            </span>
+            {overridden && typeof planDefault === 'number' && draft !== String(planDefault) && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="link"
+                size="sm"
+                className="h-auto px-0"
                 disabled={saveMutation.isPending}
-                onClick={() => setDraft(String(current ?? ''))}
+                onClick={() => setDraft(String(planDefault))}
               >
-                Reset
+                Reset to plan default
               </Button>
             )}
           </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="monthly-allowance-reason">Reason</Label>
+            <Select value={reason} onValueChange={(value: CreditReason) => setReason(value)}>
+              <SelectTrigger id="monthly-allowance-reason">
+                <SelectValue placeholder="Choose why the allowance is changing" />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.entries(CREDIT_REASON_LABELS) as Array<[CreditReason, string]>).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="monthly-allowance-note">Internal note <span className="font-normal text-muted-foreground">(optional)</span></Label>
+            <Textarea
+              id="monthly-allowance-note"
+              value={note}
+              maxLength={500}
+              className="min-h-10 resize-y"
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            disabled={!ready || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending
+              ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              : <Save className="mr-2 h-4 w-4" />}
+            Save allowance
+          </Button>
+          {dirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={saveMutation.isPending}
+              onClick={() => setDraft(String(current ?? ''))}
+            >
+              Undo changes
+            </Button>
+          )}
         </div>
         {/* Said plainly, because the obvious expectation is that saving a
             bigger number puts the difference in the balance today. */}
         <p className="text-xs leading-5 text-muted-foreground">
           {draft.trim() && !valid
             ? <span className="text-destructive">Enter a whole number of credits between 0 and 1,000,000.</span>
-            : 'Takes effect at the next monthly grant — this month has already been granted at the current figure. To add credits now, use the grant above.'}
+            : 'Takes effect at the next monthly grant. This month was already granted at the current figure; to add credits now, use the grant above.'}
         </p>
       </CardContent>
     </Card>

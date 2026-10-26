@@ -943,6 +943,30 @@ function effectiveTrialEndsAt(trialEndsAt: unknown, workspaceCreatedAt: unknown)
   return new Date(created + TRIAL_LENGTH_DAYS * 86_400_000).toISOString();
 }
 
+/**
+ * What a ledger row is, in the words the billing admin page filters by. The
+ * ledger's own entry_type is mechanical (a purchase and a support grant are
+ * both "grant"), so the reference kind decides.
+ */
+const LEDGER_TYPES = ["all", "grant", "removal", "allowance", "spend", "purchase", "expiry"] as const;
+type LedgerType = typeof LEDGER_TYPES[number];
+const LEDGER_PAGE_SIZE = 25;
+
+function ledgerEntryType(entryType: unknown, referenceKind: unknown): Exclude<LedgerType, "all"> {
+  const kind = typeof referenceKind === "string" ? referenceKind : "";
+  if (entryType === "grant") {
+    if (kind === "allowance_period") return "allowance";
+    if (kind.startsWith("stripe_")) return "purchase";
+    return "grant";
+  }
+  if (entryType === "debit" || entryType === "refund") return "spend";
+  if (entryType === "expiry") return "expiry";
+  // A reversal of a bought pack (refund, dispute) is an adjustment too, but
+  // not one an admin made.
+  if (entryType === "adjustment") return kind === "admin_adjustment" ? "removal" : "purchase";
+  return "grant";
+}
+
 async function listWorkspaceStaff(
   admin: AdminClient,
   workspaceId: string,
@@ -3302,6 +3326,19 @@ serve(async (req) => {
           current_period_end: profileResult.data?.current_period_end ?? null,
           balance,
           expiring_credits: expiringLots.reduce((sum, lot) => sum + (Number(lot.remaining) || 0), 0),
+          // The balance by the day it lapses, soonest first, then what never
+          // does: "120 expire Nov 30, 80 never expire".
+          balance_by_expiry: (() => {
+            const byDay = new Map<string | null, number>();
+            for (const lot of activeLots) {
+              const day = lot.expires_at ? String(lot.expires_at).slice(0, 10) : null;
+              byDay.set(day, (byDay.get(day) ?? 0) + (Number(lot.remaining) || 0));
+            }
+            return [...byDay.entries()]
+              .filter(([, credits]) => credits > 0)
+              .sort(([left], [right]) => (left === null ? 1 : right === null ? -1 : left.localeCompare(right)))
+              .map(([expiresOn, credits]) => ({ expires_on: expiresOn, credits }));
+          })(),
           next_expiry_at: nextExpiryAt,
           expiring_next_credits: expiringNext,
           // Lots with no expiry: purchases, and anything granted to keep.
@@ -3654,8 +3691,114 @@ serve(async (req) => {
       });
     }
 
+    if (action === "credits-ledger") {
+      requireOnlyKeys(body, ["action", "workspace_id", "type", "page"]);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      if (!platformAdmin) {
+        throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
+      }
+      const type: LedgerType = body.type === undefined ? "all" : body.type as LedgerType;
+      if (!LEDGER_TYPES.includes(type)) {
+        throw new HttpError(400, "INVALID_LEDGER_TYPE", "Choose a ledger type to filter by");
+      }
+      const page = body.page === undefined ? 0 : body.page;
+      if (typeof page !== "number" || !Number.isSafeInteger(page) || page < 0 || page > 100_000) {
+        throw new HttpError(400, "INVALID_PAGE", "Choose a page of the ledger");
+      }
+
+      // The whole ledger, oldest first, because the balance after each entry
+      // is the running sum of everything before it. Nothing stores it, and the
+      // ledger sums to the lots' balance, so the sum is the balance.
+      const [ledgerResult, auditResult] = await Promise.all([
+        readAllPages((from, to) => admin.from("workspace_credit_ledger")
+          .select("id, entry_type, amount, operation_type, reference_kind, reference_id, actor_user_id, idempotency_key, created_at")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)),
+        // Notes, and the reason behind a removal, live on the audit row that
+        // carries the same key as the ledger entry.
+        readAllPages((from, to) => admin.from("workspace_audit_log")
+          .select("id, action, metadata")
+          .eq("workspace_id", workspaceId)
+          .in("action", ["workspace.credits.granted", "workspace.credits.adjusted"])
+          .order("id", { ascending: true })
+          .range(from, to)),
+      ]);
+      if (ledgerResult.error || auditResult.error) {
+        throw new HttpError(503, "LEDGER_UNAVAILABLE", "The credit ledger could not be read");
+      }
+
+      const notes = new Map<string, string>();
+      for (const row of auditResult.data) {
+        const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+        const note = typeof metadata.note === "string" ? metadata.note.trim() : "";
+        if (!note) continue;
+        if (typeof metadata.grant_key === "string") notes.set(`grant:${metadata.grant_key}`, note);
+        if (typeof metadata.adjustment_key === "string") notes.set(`adjust:${metadata.adjustment_key}`, note);
+      }
+
+      let running = 0;
+      const all = ledgerResult.data.map((entry) => {
+        const amount = Number(entry.amount) || 0;
+        running += amount;
+        const entryType = ledgerEntryType(entry.entry_type, entry.reference_kind);
+        const referenceId = typeof entry.reference_id === "string" ? entry.reference_id : "";
+        let reason: string | null = null;
+        let note: string | null = null;
+        if (entryType === "grant") {
+          reason = typeof entry.reference_kind === "string" ? entry.reference_kind : null;
+          note = notes.get(`grant:${referenceId}`) ?? null;
+        } else if (entryType === "removal") {
+          // The reason is on the entry itself; older removals hold free text.
+          reason = referenceId || null;
+          const key = typeof entry.idempotency_key === "string" ? entry.idempotency_key : "";
+          if (key.startsWith("admin-adjust:")) note = notes.get(`adjust:${key.slice("admin-adjust:".length)}`) ?? null;
+        } else if (entryType === "spend") {
+          reason = entry.entry_type === "refund"
+            ? "refund"
+            : (typeof entry.operation_type === "string" ? entry.operation_type : null);
+        } else {
+          reason = typeof entry.reference_kind === "string" ? entry.reference_kind : null;
+        }
+        return {
+          id: String(entry.id),
+          created_at: entry.created_at,
+          type: entryType,
+          entry_type: entry.entry_type,
+          amount,
+          reason,
+          note,
+          actor_user_id: typeof entry.actor_user_id === "string" ? entry.actor_user_id : null,
+          balance_after: running,
+        };
+      });
+      const filtered = (type === "all" ? all : all.filter((entry) => entry.type === type)).reverse();
+      const pageEntries = filtered.slice(page * LEDGER_PAGE_SIZE, (page + 1) * LEDGER_PAGE_SIZE);
+
+      // Who made each entry, for the few on this page. A failed lookup shows
+      // no name rather than failing the ledger.
+      const actorIds = [...new Set(pageEntries.map((entry) => entry.actor_user_id).filter(Boolean))] as string[];
+      const actorEmails = new Map<string, string>();
+      await Promise.all(actorIds.map(async (id) => {
+        const { data } = await admin.auth.admin.getUserById(id);
+        if (data?.user?.email) actorEmails.set(id, data.user.email);
+      }));
+
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        page,
+        page_size: LEDGER_PAGE_SIZE,
+        total: filtered.length,
+        entries: pageEntries.map(({ actor_user_id: actorId, ...entry }) => ({
+          ...entry,
+          actor_email: actorId ? actorEmails.get(actorId) ?? null : null,
+        })),
+      });
+    }
+
     if (action === "credits-adjust") {
-      requireOnlyKeys(body, ["action", "workspace_id", "amount", "reason", "adjustment_key"]);
+      requireOnlyKeys(body, ["action", "workspace_id", "amount", "reason", "note", "adjustment_key"]);
       await requireWorkspaceFeatureAccess(authContext, workspaceId);
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
@@ -3669,6 +3812,8 @@ serve(async (req) => {
       // Required, unlike a grant's note: taking credit away is the movement
       // somebody will later ask to have explained.
       const reason = requireString(body.reason, "reason", { min: 1, max: 200 });
+      // Optional, as on a grant: the reason files it, the note explains it.
+      const adjustNote = body.note === undefined ? "" : requireString(body.note, "note", { min: 0, max: 500 });
       const adjustmentKey = requireUuid(body.adjustment_key, "adjustment_key");
 
       const { data, error } = await admin.rpc("adjust_workspace_credits_v1", {
@@ -3695,7 +3840,7 @@ serve(async (req) => {
         action: "workspace.credits.adjusted",
         entityType: "workspace",
         entityId: workspaceId,
-        metadata: { amount: -amount, reason, adjustment_key: adjustmentKey },
+        metadata: { amount: -amount, reason, note: adjustNote, adjustment_key: adjustmentKey },
       });
       return jsonResponse(req, METHODS, 200, {
         success: true,
@@ -3706,7 +3851,7 @@ serve(async (req) => {
     }
 
     if (action === "billing-allowance-set") {
-      requireOnlyKeys(body, ["action", "workspace_id", "monthly_credit_allowance"]);
+      requireOnlyKeys(body, ["action", "workspace_id", "monthly_credit_allowance", "reason", "note"]);
       await requireWorkspaceFeatureAccess(authContext, workspaceId);
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
@@ -3718,6 +3863,14 @@ serve(async (req) => {
       if (!Number.isSafeInteger(allowance) || allowance < 0 || allowance > 1_000_000) {
         throw new HttpError(400, "INVALID_ALLOWANCE", "Set an allowance between 0 and 1,000,000 credits");
       }
+      // Every change to what a workspace is given says why, like a grant.
+      const allowanceReason = requireString(body.reason, "reason", { min: 1, max: 60 });
+      const allowanceNote = body.note === undefined ? "" : requireString(body.note, "note", { min: 0, max: 500 });
+      const { data: previousProfile } = await admin
+        .from("workspace_billing_profiles")
+        .select("monthly_credit_allowance")
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
 
       // Upserted rather than updated: the workspaces that most need an
       // allowance set are the ones that have never been billed, and those have
@@ -3738,7 +3891,12 @@ serve(async (req) => {
         action: "workspace.credits.allowance_set",
         entityType: "workspace",
         entityId: workspaceId,
-        metadata: { monthly_credit_allowance: allowance },
+        metadata: {
+          monthly_credit_allowance: allowance,
+          from_monthly_credit_allowance: previousProfile?.monthly_credit_allowance ?? null,
+          reason: allowanceReason,
+          note: allowanceNote,
+        },
       });
       // Takes effect on the next renewal rather than immediately: the current
       // month is already granted under the old number, and re-granting the

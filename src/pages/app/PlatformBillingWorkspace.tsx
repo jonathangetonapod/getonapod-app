@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
 import { PlatformWorkspaceBillingHeader } from '@/components/workspace/PlatformWorkspaceBillingHeader'
 import { WorkspaceCreditAdjustment } from '@/components/workspace/WorkspaceCreditAdjustment'
+import { WorkspaceCreditLedger } from '@/components/workspace/WorkspaceCreditLedger'
 import { WorkspaceCreditGrantPreview } from '@/components/workspace/WorkspaceCreditGrantPreview'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceMonthlyAllowance } from '@/components/workspace/WorkspaceMonthlyAllowance'
@@ -27,7 +28,7 @@ export interface PlatformBillingListState {
  * admin can bookmark or be linked to, and the list keeps its place.
  */
 const PlatformBillingWorkspace = () => {
-  const { isPlatformAdmin, user } = useAuth()
+  const { isPlatformAdmin } = useAuth()
   const { workspaceId = '' } = useParams()
   const location = useLocation()
   const listSearch = (location.state as PlatformBillingListState | null)?.listSearch ?? ''
@@ -51,7 +52,6 @@ const PlatformBillingWorkspace = () => {
 
   const workspaceName = staffQuery.data?.workspace.name || 'Workspace'
   const ownerName = owner ? owner.full_name || owner.email : null
-  const actorEmail = user?.email || 'Platform administrator'
 
   return (
     <WorkspaceLayout>
@@ -85,7 +85,6 @@ const PlatformBillingWorkspace = () => {
               workspaceName={workspaceName}
               ownerName={ownerName}
               ownerEmail={owner?.email ?? null}
-              actorEmail={actorEmail}
             />
             {/* A grant is a one-off; this is what arrives every month without
                 anyone doing anything. */}
@@ -93,6 +92,7 @@ const PlatformBillingWorkspace = () => {
             {/* The correction to a grant, and the subscription that decides
                 what this workspace is paying in the first place. */}
             <WorkspaceCreditAdjustment workspaceId={workspaceId} workspaceName={workspaceName} />
+            <WorkspaceCreditLedger workspaceId={workspaceId} />
             <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} />
           </div>
         )}

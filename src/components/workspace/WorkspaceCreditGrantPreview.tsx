@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CheckCircle2, Coins, Crown, History, Plus, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Crown, Plus, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { getWorkspaceBillingOverview, grantWorkspaceCredits } from '@/services/workspaceStaff'
 import {
@@ -15,18 +15,18 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-
-type CreditReason =
-  | 'customer_support'
-  | 'service_recovery'
-  | 'trial_bonus'
-  | 'contract_adjustment'
-  | 'other'
+import {
+  CREDIT_REASON_LABELS,
+  QUICK_CREDIT_AMOUNTS,
+  parseCreditAmount,
+  projectBalance,
+  type CreditReason,
+} from '@/lib/creditAdjustments'
 
 interface WorkspaceCreditGrantPreviewProps {
   workspaceId: string
@@ -35,49 +35,26 @@ interface WorkspaceCreditGrantPreviewProps {
   // can still be credited; there is simply no name to put against it.
   ownerName: string | null
   ownerEmail: string | null
-  actorEmail: string
 }
 
-interface PreviewAdjustment {
-  id: number
-  amount: number
-  reason: CreditReason
-  note: string
-  // Null when the grant landed but the resulting balance could not be read.
-  balanceAfter: number | null
-}
-
-const quickAmounts = [25, 50, 100, 250]
-
-const reasonLabels: Record<CreditReason, string> = {
-  customer_support: 'Customer support',
-  service_recovery: 'Service recovery',
-  trial_bonus: 'Trial or launch bonus',
-  contract_adjustment: 'Contract adjustment',
-  other: 'Other',
-}
-
-function creditAmount(value: string): number | null {
-  if (!/^\d+$/u.test(value)) return null
-  const amount = Number(value)
-  return Number.isSafeInteger(amount) && amount >= 1 && amount <= 10_000
-    ? amount
-    : null
-}
+const reasonLabels = CREDIT_REASON_LABELS
 
 export function WorkspaceCreditGrantPreview({
   workspaceId,
   workspaceName,
   ownerName,
   ownerEmail,
-  actorEmail,
 }: WorkspaceCreditGrantPreviewProps) {
   const queryClient = useQueryClient()
-  const [amount, setAmount] = useState('100')
+  // Empty, not a default: a pre-filled 100 was granted by anyone who only
+  // meant to pick the reason.
+  const [amount, setAmount] = useState('')
   const [reason, setReason] = useState<CreditReason | ''>('')
   const [note, setNote] = useState('')
-  const [reviewOpen, setReviewOpen] = useState(false)
-  const [adjustments, setAdjustments] = useState<PreviewAdjustment[]>([])
+  // One key per review, so a double click or a retry inside the same review
+  // is the same grant and the ledger records it once.
+  const [reviewKey, setReviewKey] = useState<string | null>(null)
+  const reviewOpen = reviewKey !== null
 
   // The same query, by key, as every other card for this workspace. A private
   // key meant a second fetch, and when only that one failed this card said the
@@ -95,38 +72,27 @@ export function WorkspaceCreditGrantPreview({
     ? overviewQuery.data.balance
     : null
 
-  const parsedAmount = useMemo(() => creditAmount(amount), [amount])
+  const { amount: parsedAmount, error: amountError } = parseCreditAmount(amount)
   const trimmedNote = note.trim()
   const grantMutation = useMutation({
-    mutationFn: () => grantWorkspaceCredits(workspaceId, {
+    mutationFn: (grantKey: string) => grantWorkspaceCredits(workspaceId, {
       amount: parsedAmount ?? 0,
       reason: reason || 'other',
       note: trimmedNote,
+      grantKey,
     }),
     onSuccess: (result) => {
-      setAdjustments((current) => [{
-        id: Date.now(),
-        amount: result.granted,
-        reason: (reason || 'other') as CreditReason,
-        note: trimmedNote,
-        balanceAfter: result.balance ?? (knownBalance === null ? null : knownBalance + result.granted),
-      }, ...current])
-      /*
-       * Every surface that shows this workspace's money, not just this
-       * card's own query. The four surfaces key four different families, and
-       * invalidating only one's own let the cards on a single screen
-       * contradict each other — a grant the adjustment card could not see,
-       * a removal the grant preview ignored, a portfolio that never moved.
-       */
+      // Every surface that shows this workspace's money, so no card on the
+      // page contradicts another.
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['workspace-billing-overview', workspaceId] }),
-        queryClient.invalidateQueries({ queryKey: ['workspace-credit-grants', workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: ['workspace-credit-ledger', workspaceId] }),
         queryClient.invalidateQueries({ queryKey: ['billing-portfolio'] }),
       ])
-      setAmount('100')
+      setAmount('')
       setReason('')
       setNote('')
-      setReviewOpen(false)
+      setReviewKey(null)
       toast.success(`${result.granted.toLocaleString()} credits added to ${workspaceName}.`)
     },
     onError: (error) => {
@@ -138,11 +104,11 @@ export function WorkspaceCreditGrantPreview({
   // Not while the balance is still on its way: the review would project from a
   // number that is about to arrive. A failed read still lets the grant through.
   const formReady = parsedAmount !== null && reason !== '' && !grantMutation.isPending && !overviewQuery.isLoading
-  const projectedBalance = (knownBalance ?? 0) + (parsedAmount || 0)
+  const projectedBalance = projectBalance(knownBalance ?? 0, parsedAmount || 0)
 
   const confirmPreview = () => {
-    if (parsedAmount === null || reason === '' || grantMutation.isPending) return
-    grantMutation.mutate()
+    if (!reviewKey || parsedAmount === null || reason === '' || grantMutation.isPending) return
+    grantMutation.mutate(reviewKey)
   }
 
   return (
@@ -154,8 +120,7 @@ export function WorkspaceCreditGrantPreview({
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Waterfall access</p>
-            <h2 id="workspace-credits-title" className="mt-1 text-2xl font-semibold tracking-tight">Workspace credits</h2>
+            <h2 id="workspace-credits-title" className="text-2xl font-semibold tracking-tight">Workspace credits</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
               Add complimentary credits for support, onboarding, or account adjustments without changing the workspace plan.
             </p>
@@ -171,10 +136,7 @@ export function WorkspaceCreditGrantPreview({
               <div className="relative overflow-hidden bg-slate-950 p-6 text-white sm:p-7">
                 <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-violet-500/20 blur-3xl" />
                 <div className="relative">
-                  <Badge className="border-white/15 bg-white/10 text-white hover:bg-white/10">
-                    <Coins className="mr-1.5 h-3.5 w-3.5" />Internal balance
-                  </Badge>
-                  <p className="mt-8 text-sm text-white/65">Available now</p>
+                  <p className="text-sm text-white/65">Available now</p>
                   {knownBalance === null ? (
                     <div className="mt-1">
                       <p className="text-2xl font-semibold tracking-tight text-white/70">
@@ -195,7 +157,7 @@ export function WorkspaceCreditGrantPreview({
                       {knownBalance.toLocaleString()}
                     </p>
                   )}
-                  <p className="mt-1 text-sm text-white/65">Waterfall credits</p>
+                  <p className="mt-1 text-sm text-white/65">Credits</p>
 
                   <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.06] p-4">
                     <div className="flex items-start gap-3">
@@ -230,7 +192,7 @@ export function WorkspaceCreditGrantPreview({
                 className="min-w-0 space-y-6 p-6 sm:p-7"
                 onSubmit={(event) => {
                   event.preventDefault()
-                  if (formReady) setReviewOpen(true)
+                  if (formReady) setReviewKey(crypto.randomUUID())
                 }}
               >
                 <div>
@@ -263,21 +225,27 @@ export function WorkspaceCreditGrantPreview({
                     <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">credits</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {quickAmounts.map((quickAmount) => (
-                      <Button
-                        key={quickAmount}
-                        type="button"
-                        size="sm"
-                        variant={amount === String(quickAmount) ? 'secondary' : 'outline'}
-                        aria-label={`Set credit amount to ${quickAmount}`}
-                        onClick={() => setAmount(String(quickAmount))}
-                      >
-                        +{quickAmount}
-                      </Button>
-                    ))}
+                    {/* Each sets the amount rather than adding to it, and the one
+                        that matches the field shows as chosen. */}
+                    {QUICK_CREDIT_AMOUNTS.map((quickAmount) => {
+                      const active = parsedAmount === quickAmount
+                      return (
+                        <Button
+                          key={quickAmount}
+                          type="button"
+                          size="sm"
+                          variant={active ? 'default' : 'outline'}
+                          aria-pressed={active}
+                          aria-label={`Set credit amount to ${quickAmount}`}
+                          onClick={() => setAmount(String(quickAmount))}
+                        >
+                          +{quickAmount}
+                        </Button>
+                      )
+                    })}
                   </div>
-                  <p id="workspace-credit-amount-help" className={`text-xs ${amount && parsedAmount === null ? 'text-destructive' : 'text-muted-foreground'}`}>
-                    {amount && parsedAmount === null ? 'Enter a whole number from 1 to 10,000.' : 'Choose a quick amount or enter a custom grant.'}
+                  <p id="workspace-credit-amount-help" className={`text-xs ${amountError ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {amountError ?? 'Choose a quick amount or enter a custom grant.'}
                   </p>
                 </div>
 
@@ -321,10 +289,14 @@ export function WorkspaceCreditGrantPreview({
                     ) : knownBalance === null ? (
                       <p className="mt-1 text-sm text-muted-foreground" role="status">Reading the current balance…</p>
                     ) : (
-                      <div className="mt-1 flex items-center gap-2 text-lg font-semibold">
+                      <div className="mt-1 flex items-center gap-2 text-lg font-semibold tabular-nums">
                         <span>{knownBalance.toLocaleString()}</span>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-violet-700">{projectedBalance.toLocaleString()}</span>
+                        {parsedAmount !== null && (
+                          <>
+                            <ArrowRight className="h-4 w-4 text-muted-foreground" aria-label="becomes" />
+                            <span className="text-violet-700">{projectedBalance.toLocaleString()}</span>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -338,50 +310,9 @@ export function WorkspaceCreditGrantPreview({
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between gap-4 border-b border-border/70 bg-muted/15">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-lg"><History className="h-5 w-5" />Recent manual adjustments</CardTitle>
-              <CardDescription>Grants you make here, with who made them, why, and the balance that followed.</CardDescription>
-            </div>
-            <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">Internal history</Badge>
-          </CardHeader>
-          <CardContent className="p-0">
-            {adjustments.length === 0 ? (
-              <div className="flex flex-col items-center px-6 py-10 text-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground"><History className="h-5 w-5" /></span>
-                <p className="mt-3 text-sm font-semibold">No manual grants this session</p>
-                <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">Grants recorded here also appear in the workspace's billing activity and audit log.</p>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {adjustments.map((adjustment) => (
-                  <div key={adjustment.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-4 w-4" /></span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{reasonLabels[adjustment.reason]}</p><Badge variant="outline" className="text-[10px]">Just now</Badge></div>
-                        {adjustment.note && <p className="mt-1 truncate text-xs text-muted-foreground">{adjustment.note}</p>}
-                        <p className="mt-1 text-[11px] text-muted-foreground">Granted by {actorEmail}</p>
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-left sm:text-right">
-                      <p className="text-base font-semibold text-emerald-700">+{adjustment.amount.toLocaleString()} credits</p>
-                      <p className="text-xs text-muted-foreground">
-                        {adjustment.balanceAfter === null
-                          ? 'Balance unavailable'
-                          : `Balance ${adjustment.balanceAfter.toLocaleString()}`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </section>
 
-      <AlertDialog open={reviewOpen} onOpenChange={setReviewOpen}>
+      <AlertDialog open={reviewOpen} onOpenChange={(open) => { if (!open && !grantMutation.isPending) setReviewKey(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Add {parsedAmount?.toLocaleString() || 0} credits to {workspaceName}?</AlertDialogTitle>
@@ -393,9 +324,9 @@ export function WorkspaceCreditGrantPreview({
           <div className="space-y-3 rounded-2xl border bg-muted/20 p-4 text-sm">
             <div className="flex items-start justify-between gap-4"><span className="text-muted-foreground">Workspace</span><span className="text-right font-medium">{workspaceName}</span></div>
             <div className="flex items-start justify-between gap-4"><span className="text-muted-foreground">Current owner</span><span className="text-right"><span className="block font-medium">{ownerName}</span><span className="block text-xs text-muted-foreground">{ownerEmail}</span></span></div>
-            <div className="flex items-center justify-between gap-4 border-t pt-3"><span className="text-muted-foreground">Reason</span><span className="font-medium">{reason ? reasonLabels[reason] : '—'}</span></div>
+            <div className="flex items-center justify-between gap-4 border-t pt-3"><span className="text-muted-foreground">Reason</span><span className="font-medium">{reason ? reasonLabels[reason] : ''}</span></div>
             <div className="flex items-center justify-between gap-4"><span className="text-muted-foreground">Balance change</span>{knownBalance === null ? (<span className="text-right font-medium">+{parsedAmount?.toLocaleString() || 0}, from a balance that could not be read</span>) : (<span className="flex items-center gap-2 font-semibold"><span>{knownBalance.toLocaleString()}</span><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-violet-700">{projectedBalance.toLocaleString()}</span></span>)}</div>
-            <div className="border-t pt-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Internal note</p><p className="mt-1 leading-6">{trimmedNote || '—'}</p></div>
+            <div className="border-t pt-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Internal note</p><p className="mt-1 leading-6">{trimmedNote || 'None'}</p></div>
           </div>
 
           <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">

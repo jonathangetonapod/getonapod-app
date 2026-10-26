@@ -644,7 +644,7 @@ assert.match(source, /\.eq\("source", "purchase"\)\s*\n\s*\.not\("stripe_payment
 assert.match(source, /has_saved_card: hasSavedCard,/u)
 // The billing portfolio pages every read to the end, so PostgREST's row cap
 // cannot truncate its totals, and any failed page fails the whole read.
-const portfolio = source.slice(source.indexOf('if (action === "billing-portfolio")'), source.indexOf('if (action === "credits-adjust")'))
+const portfolio = source.slice(source.indexOf('if (action === "billing-portfolio")'), source.indexOf('if (action === "credits-ledger")'))
 assert.match(source, /async function readAllPages\(/u)
 assert.equal((portfolio.match(/readAllPages\(\(from, to\) => admin\.from\(/gu) ?? []).length, 6)
 assert.match(portfolio, /workspacesResult\.error \|\| profilesResult\.error \|\| lotsResult\.error \|\| spendResult\.error\s*\n\s*\|\| plansResult\.error/u)
@@ -668,3 +668,20 @@ assert.match(portfolio, /has_saved_card: cardOnFile\.has\(id\),/u)
 assert.match(portfolio, /last_active_at:/u)
 assert.match(portfolio, /subscription_price_cents: subscriptionPrices\.get\(id\) \?\? null,/u)
 assert.doesNotMatch(portfolio, /stripeHasSavedCard\(/u)
+
+// Billing admin credit management. The ledger is platform-admin only, filters
+// by an allowlisted type, and pages; every write says why and is audited.
+const ledger = source.slice(source.indexOf('if (action === "credits-ledger")'), source.indexOf('if (action === "credits-adjust")'))
+assert.match(ledger, /requireOnlyKeys\(body, \["action", "workspace_id", "type", "page"\]\)/u)
+assert.match(ledger, /if \(!platformAdmin\) \{\s*\n\s*throw new HttpError\(403, "PLATFORM_ADMIN_REQUIRED"/u)
+assert.match(ledger, /if \(!LEDGER_TYPES\.includes\(type\)\)/u)
+assert.match(ledger, /if \(ledgerResult\.error \|\| auditResult\.error\)/u)
+assert.match(source, /const LEDGER_TYPES = \["all", "grant", "removal", "allowance", "spend", "purchase", "expiry"\] as const;/u)
+const adjust = source.slice(source.indexOf('if (action === "credits-adjust")'), source.indexOf('if (action === "billing-allowance-set")'))
+assert.match(adjust, /requireOnlyKeys\(body, \["action", "workspace_id", "amount", "reason", "note", "adjustment_key"\]\)/u)
+assert.match(adjust, /metadata: \{ amount: -amount, reason, note: adjustNote, adjustment_key: adjustmentKey \}/u)
+const allowanceSet = source.slice(source.indexOf('if (action === "billing-allowance-set")'), source.indexOf('if (action === "ai-keys-status"'))
+assert.match(allowanceSet, /const allowanceReason = requireString\(body\.reason, "reason", \{ min: 1, max: 60 \}\);/u)
+assert.match(allowanceSet, /actorUserId: user\.id,/u)
+assert.match(allowanceSet, /reason: allowanceReason,/u)
+assert.match(source, /balance_by_expiry:/u)

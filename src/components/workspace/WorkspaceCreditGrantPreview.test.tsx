@@ -42,7 +42,6 @@ function renderPanel(props: Partial<Parameters<typeof WorkspaceCreditGrantPrevie
         workspaceName="Acme Workspace"
         ownerName="Workspace Owner"
         ownerEmail="owner@example.com"
-        actorEmail="platform@example.com"
         {...props}
       />
     </QueryClientProvider>,
@@ -65,8 +64,10 @@ describe('WorkspaceCreditGrantPreview', () => {
 
     fireEvent.click(within(section).getByRole('combobox', { name: 'Reason' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Customer support' }))
-    // The reason alone arms the grant: a written justification on every top-up
-    // was friction the audit row did not need, so the note is optional now.
+    // No amount yet: the field starts empty, so a reason alone grants nothing.
+    expect(review).toBeDisabled()
+    fireEvent.click(within(section).getByRole('button', { name: 'Set credit amount to 100' }))
+    // The note is optional; amount and reason arm the grant.
     expect(review).toBeEnabled()
 
     fireEvent.change(within(section).getByLabelText(/Internal note/), {
@@ -79,9 +80,15 @@ describe('WorkspaceCreditGrantPreview', () => {
     expect(within(confirmation).getByText('Customer support')).toBeInTheDocument()
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Add credits' }))
 
-    expect(await within(section).findByText('Granted by platform@example.com')).toBeInTheDocument()
-    expect(within(section).getByText('Balance 110')).toBeInTheDocument()
-    expect(toastSuccess).toHaveBeenCalledWith('100 credits added to Acme Workspace.')
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('100 credits added to Acme Workspace.'))
+    expect(mockedGrant).toHaveBeenCalledWith(workspaceId, {
+      amount: 100,
+      reason: 'customer_support',
+      note: 'Onboarding courtesy for the new workspace.',
+      grantKey: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+    })
+    // Reset for the next grant, empty again.
+    expect(within(section).getByLabelText('Credits to add')).toHaveValue(null)
   })
 
   // The credit goes to the workspace ledger, so an owner who has not accepted
@@ -93,7 +100,49 @@ describe('WorkspaceCreditGrantPreview', () => {
     expect(within(section).getByText('Nobody has accepted the invite yet')).toBeInTheDocument()
     fireEvent.click(within(section).getByRole('combobox', { name: 'Reason' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Customer support' }))
+    fireEvent.change(within(section).getByLabelText('Credits to add'), { target: { value: '40' } })
     expect(within(section).getByRole('button', { name: 'Review credit grant' })).toBeEnabled()
+  })
+
+  it('starts with no amount, and quick amounts set it rather than add to it', async () => {
+    renderPanel()
+
+    const section = await screen.findByRole('region', { name: 'Workspace credits' })
+    const field = within(section).getByLabelText('Credits to add')
+    expect(field).toHaveValue(null)
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Set credit amount to 50' }))
+    fireEvent.click(within(section).getByRole('button', { name: 'Set credit amount to 250' }))
+    expect(field).toHaveValue(250)
+    expect(within(section).getByRole('button', { name: 'Set credit amount to 250' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(section).getByRole('button', { name: 'Set credit amount to 50' })).toHaveAttribute('aria-pressed', 'false')
+
+    // A typed amount that matches one lights it up too.
+    fireEvent.change(field, { target: { value: '25' } })
+    expect(within(section).getByRole('button', { name: 'Set credit amount to 25' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // A double click on Add credits, or a retry after a timeout, is the same
+  // grant. Each attempt carries the review's key so the ledger records one.
+  it('sends the same key for every attempt within one review', async () => {
+    mockedGrant.mockRejectedValueOnce(new Error('Network timeout'))
+    renderPanel()
+
+    const section = await screen.findByRole('region', { name: 'Workspace credits' })
+    fireEvent.click(within(section).getByRole('button', { name: 'Set credit amount to 25' }))
+    fireEvent.click(within(section).getByRole('combobox', { name: 'Reason' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Customer support' }))
+    fireEvent.click(within(section).getByRole('button', { name: 'Review credit grant' }))
+
+    const confirmation = screen.getByRole('alertdialog')
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Add credits' }))
+    await waitFor(() => expect(mockedGrant).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(confirmation).getByRole('button', { name: 'Add credits' })).toBeEnabled())
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Add credits' }))
+    await waitFor(() => expect(mockedGrant).toHaveBeenCalledTimes(2))
+
+    const [first, second] = mockedGrant.mock.calls.map(([, input]) => input.grantKey)
+    expect(first).toBe(second)
   })
 
   // The balance used to fall back to 0 when the read failed, and there are no
