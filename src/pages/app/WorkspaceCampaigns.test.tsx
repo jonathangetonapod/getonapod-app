@@ -747,4 +747,35 @@ describe('WorkspaceCampaigns', () => {
     await waitFor(() => expect(mockedRefreshAnalytics).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByText(/Sync failed/)).not.toBeInTheDocument())
   })
+
+  // An account with dozens of campaigns pages them, so the dialog's title and
+  // buttons never scroll off screen.
+  it('pages a long list of unassigned campaigns and keeps choices across pages', async () => {
+    const many = Array.from({ length: 10 }, (_, index) => ({
+      ...unassignedCampaign,
+      id: `88888888-8888-4888-8888-${String(index).padStart(12, '0')}`,
+      name: `Campaign ${index + 1}`,
+    }))
+    mockedOverview.mockResolvedValue({ ...campaignOverview, integration: connectedIntegration, provider_campaigns: many })
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign campaigns' }))
+    expect(await screen.findByText('1-8 of 10')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Client for Campaign 8' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Client for Campaign 9' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(screen.getByText('9-10 of 10')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client for Campaign 10' }))
+    fireEvent.click(await screen.findByRole('option', { name: client.name }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+    // One campaign per client: picked on another row, it shows but cannot be chosen.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client for Campaign 1' }))
+    expect(await screen.findByRole('option', { name: `${client.name} (already picked)` })).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
+    expect(screen.getByRole('button', { name: 'Review 1 assignment' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Review 1 assignment' }))
+    expect(await screen.findByText('Campaign 10')).toBeInTheDocument()
+  })
 })

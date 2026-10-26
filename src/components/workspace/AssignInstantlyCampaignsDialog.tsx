@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -31,6 +31,13 @@ interface AssignInstantlyCampaignsDialogProps {
   onAssigned: (assigned: number) => Promise<void> | void
 }
 
+/*
+ * Paged rather than scrolled: an agency's account can hold dozens of
+ * campaigns, and a scrolling dialog carried its title and buttons off screen.
+ * Eight one-line rows fit a laptop screen with the header and footer.
+ */
+const PAGE_SIZE = 8
+
 interface AssignFailure {
   campaignId: string
   message: string
@@ -57,6 +64,7 @@ export const AssignInstantlyCampaignsDialog = ({
   const [reviewing, setReviewing] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [failures, setFailures] = useState<AssignFailure[]>([])
+  const [page, setPage] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -68,6 +76,7 @@ export const AssignInstantlyCampaignsDialog = ({
     setChecked(new Set(Object.keys(preset)))
     setReviewing(false)
     setFailures([])
+    setPage(0)
     // Reset on open only; the lists refetch while the dialog is up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -77,6 +86,16 @@ export const AssignInstantlyCampaignsDialog = ({
   const takenClientIds = new Set(Object.entries(clientByCampaign)
     .filter(([campaignId]) => checked.has(campaignId))
     .map(([, clientId]) => clientId))
+
+  const listed = reviewing ? ready : campaigns
+  const pageCount = Math.max(1, Math.ceil(listed.length / PAGE_SIZE))
+  // A refetch or a finished retry can shrink the list under the current page.
+  const currentPage = Math.min(page, pageCount - 1)
+  const pageRows = listed.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+  const showReview = (value: boolean) => {
+    setReviewing(value)
+    setPage(0)
+  }
 
   const chooseClient = (campaignId: string, clientId: string) => {
     setClientByCampaign((current) => ({ ...current, [campaignId]: clientId }))
@@ -127,12 +146,12 @@ export const AssignInstantlyCampaignsDialog = ({
     // Keep only the rows that failed, so trying again retries just those.
     const failedIds = new Set(failed.map((failure) => failure.campaignId))
     setChecked((current) => new Set([...current].filter((id) => failedIds.has(id))))
-    setReviewing(false)
+    showReview(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!assigning) onOpenChange(next) }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{reviewing ? 'Confirm assignments' : 'Assign Instantly campaigns'}</DialogTitle>
           <DialogDescription>
@@ -146,22 +165,23 @@ export const AssignInstantlyCampaignsDialog = ({
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
             <p className="font-medium">{failures.length === 1 ? '1 campaign was not assigned' : `${failures.length} campaigns were not assigned`}</p>
             <ul className="mt-1 space-y-0.5 text-red-800">
-              {failures.map((failure) => (
-                <li key={failure.campaignId}>
+              {failures.slice(0, 3).map((failure) => (
+                <li key={failure.campaignId} className="truncate">
                   {campaigns.find((campaign) => campaign.id === failure.campaignId)?.name || 'A campaign'}: {failure.message}
                 </li>
               ))}
+              {failures.length > 3 && <li>And {failures.length - 3} more, still selected below.</li>}
             </ul>
           </div>
         )}
 
         {reviewing ? (
           <ul className="divide-y rounded-xl border">
-            {ready.map((campaign) => (
-              <li key={campaign.id} className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
-                <span className="font-medium">{campaign.name}</span>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" aria-label="assigned to" />
-                <span>{clientName(clientByCampaign[campaign.id])}</span>
+            {pageRows.map((campaign) => (
+              <li key={campaign.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium" title={campaign.name}>{campaign.name}</span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="assigned to" />
+                <span className="w-44 shrink-0 truncate">{clientName(clientByCampaign[campaign.id])}</span>
               </li>
             ))}
           </ul>
@@ -171,34 +191,40 @@ export const AssignInstantlyCampaignsDialog = ({
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every active client already has a campaign. Add or reactivate a client to assign another.</p>
         ) : (
           <ul className="divide-y rounded-xl border" aria-label="Unassigned Instantly campaigns">
-            {campaigns.map((campaign) => {
+            {pageRows.map((campaign) => {
               const chosen = clientByCampaign[campaign.id] || ''
-              const options = clients.filter((client) => client.id === chosen || !takenClientIds.has(client.id))
               return (
-                <li key={campaign.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Checkbox
-                      id={`assign-${campaign.id}`}
-                      className="mt-0.5"
-                      checked={checked.has(campaign.id)}
-                      disabled={!chosen}
-                      onCheckedChange={(value) => toggleChecked(campaign.id, value === true)}
-                      aria-label={`Assign ${campaign.name}`}
-                    />
-                    <label htmlFor={`assign-${campaign.id}`} className="min-w-0">
-                      <span className="block truncate font-medium">{campaign.name}</span>
-                      <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="outline" className="font-normal">{statusLabel(campaign.status)}</Badge>
-                        {campaign.sender_accounts.length} sending account{campaign.sender_accounts.length === 1 ? '' : 's'}
-                      </span>
-                    </label>
-                  </div>
+                <li key={campaign.id} className="flex items-center gap-3 px-3 py-1.5">
+                  <Checkbox
+                    id={`assign-${campaign.id}`}
+                    checked={checked.has(campaign.id)}
+                    disabled={!chosen}
+                    onCheckedChange={(value) => toggleChecked(campaign.id, value === true)}
+                    aria-label={`Assign ${campaign.name}`}
+                  />
+                  <label htmlFor={`assign-${campaign.id}`} className="min-w-0 flex-1 truncate text-sm font-medium" title={campaign.name}>
+                    {campaign.name}
+                  </label>
+                  <span className="hidden shrink-0 items-center gap-2 text-xs text-muted-foreground sm:flex">
+                    <Badge variant="outline" className="font-normal">{statusLabel(campaign.status)}</Badge>
+                    <span className="w-20 text-right">{campaign.sender_accounts.length} sender{campaign.sender_accounts.length === 1 ? '' : 's'}</span>
+                  </span>
                   <Select value={chosen} onValueChange={(value) => chooseClient(campaign.id, value)}>
-                    <SelectTrigger aria-label={`Client for ${campaign.name}`} className="w-full sm:w-52">
+                    <SelectTrigger aria-label={`Client for ${campaign.name}`} className="h-8 w-40 shrink-0 sm:w-48">
                       <SelectValue placeholder="Choose a client" />
                     </SelectTrigger>
                     <SelectContent>
-                      {options.map((client) => <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>)}
+                      {/* A client already picked on another row stays listed,
+                          disabled and saying so: hiding it made some rows
+                          offer three clients and others four, with no reason. */}
+                      {clients.map((client) => {
+                        const takenElsewhere = client.id !== chosen && takenClientIds.has(client.id)
+                        return (
+                          <SelectItem key={client.id} value={client.id} disabled={takenElsewhere}>
+                            {client.name}{takenElsewhere ? ' (already picked)' : ''}
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </li>
@@ -207,8 +233,21 @@ export const AssignInstantlyCampaignsDialog = ({
           </ul>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={assigning} onClick={() => (reviewing ? setReviewing(false) : onOpenChange(false))}>
+        <DialogFooter className="gap-2 sm:items-center">
+          {pageCount > 1 && (
+            <div className="flex items-center gap-1 sm:mr-auto">
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} aria-label="Previous page">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                {currentPage * PAGE_SIZE + 1}-{Math.min(listed.length, (currentPage + 1) * PAGE_SIZE)} of {listed.length}
+              </span>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)} aria-label="Next page">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <Button type="button" variant="outline" disabled={assigning} onClick={() => (reviewing ? showReview(false) : onOpenChange(false))}>
             {reviewing ? 'Back' : 'Cancel'}
           </Button>
           {reviewing ? (
@@ -217,7 +256,7 @@ export const AssignInstantlyCampaignsDialog = ({
               {assigning ? 'Assigning...' : `Assign ${ready.length} campaign${ready.length === 1 ? '' : 's'}`}
             </Button>
           ) : (
-            <Button type="button" disabled={ready.length === 0} onClick={() => setReviewing(true)}>
+            <Button type="button" disabled={ready.length === 0} onClick={() => showReview(true)}>
               {ready.length === 0 ? 'Review assignments' : `Review ${ready.length} assignment${ready.length === 1 ? '' : 's'}`}<ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
