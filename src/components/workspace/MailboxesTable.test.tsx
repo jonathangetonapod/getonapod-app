@@ -226,6 +226,29 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     ])
   })
 
+  it('stops assigning to a client at its first client-level refusal', async () => {
+    vi.mocked(setWorkspaceMailboxClient).mockRejectedValueOnce(
+      Object.assign(new Error('Only active clients can start a new campaign'), { code: 'CLIENT_NOT_ACTIVE' }),
+    )
+    renderTable()
+    for (const email of ['sender020@example.com', 'sender021@example.com', 'sender022@example.com']) {
+      fireEvent.click(screen.getByRole('checkbox', { name: `Select ${email}` }))
+    }
+    const trigger = within(screen.getByRole('region', { name: 'Bulk actions' })).getByRole('button', { name: /Assign to clients/ })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Dallas Fontaine' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Assign to 2 clients' }))
+
+    // One refusal for Dallas Fontaine (first in the client list), then on to Rae Whitfield.
+    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(4))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(vi.mocked(setWorkspaceMailboxClient).mock.calls.map(([input]) => input.clientId)).toEqual([
+      'client-1', 'client-2', 'client-2', 'client-2',
+    ])
+  })
+
   it('groups by error type with only the first group open', () => {
     const table = renderTable()
     fireEvent.click(screen.getByRole('combobox', { name: 'Group mailboxes' }))

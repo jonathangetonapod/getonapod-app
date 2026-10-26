@@ -7336,12 +7336,18 @@ serve(async (req) => {
       const email = requireString(body.email, "email", { max: 254 })
         .trim()
         .toLowerCase();
-      const campaign = await readCampaign(context.admin, workspaceId, clientId);
+      // Assigning is how an agency says which mailboxes send for a client, and
+      // it often comes before any campaign work. The client's local draft row
+      // is where that list lives (the same row campaign creation starts from),
+      // so assigning makes it rather than refusing until one exists.
+      const campaign = body.assigned
+        ? await ensureLocalCampaign(context, workspaceId, requireClientRow())
+        : await readCampaign(context.admin, workspaceId, clientId);
       if (!campaign) {
         throw new HttpError(
           404,
           "CAMPAIGN_NOT_FOUND",
-          "Create the client campaign before assigning a mailbox to it",
+          "This client has no campaign to remove the mailbox from",
         );
       }
       const connection = await readConnection(context.admin, workspaceId);

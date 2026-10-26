@@ -1121,6 +1121,9 @@ const assignAction = edge.match(/if \(action === "mailbox-assign"\) \{[\s\S]*?\n
 assert.ok(assignAction, 'mailbox-assign action must exist')
 assert.match(assignAction[0], /requireCampaignManager\(access\)/u)
 assert.match(assignAction[0], /verifySelectedAccounts\(/u)
+// Assigning before any campaign exists starts the client's local draft row
+// instead of refusing every mailbox with CAMPAIGN_NOT_FOUND.
+assert.match(assignAction[0], /body\.assigned\s*\? await ensureLocalCampaign\(context, workspaceId, requireClientRow\(\)\)/u)
 // Emptying a launched campaign's sender list stops it without saying so.
 assert.match(assignAction[0], /CAMPAIGN_NEEDS_SENDER/u)
 assert.match(assignAction[0], /mailbox_assigned|mailbox_unassigned/u)

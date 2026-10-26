@@ -9,6 +9,7 @@ import {
 import { plural } from '@/lib/plural'
 
 const PAUSE_BATCH_SIZE = 100
+const CLIENT_REFUSALS = new Set(['CAMPAIGN_NOT_FOUND', 'CLIENT_NOT_ACTIVE', 'CLIENT_NOT_FOUND'])
 
 interface MailboxFailure {
   email: string
@@ -49,6 +50,10 @@ function clientList(names: string[]): string {
   if (names.length > 3) return `${names.length} clients`
   if (names.length <= 1) return names[0] ?? ''
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+function errorCode(error: unknown): string | null {
+  return error && typeof error === 'object' ? ((error as { code?: string | null }).code ?? null) : null
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -103,10 +108,20 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
     const progress = total > 1 ? toast.loading(`Assigning 0 of ${total} to ${target}`) : undefined
     try {
       for (const job of input.jobs) {
-        for (const email of job.emails) {
+        for (const [index, email] of job.emails.entries()) {
           try {
             await setWorkspaceMailboxClient({ workspaceId, clientId: job.clientId, email, assigned: input.assigned })
           } catch (error) {
+            // A refusal about the client itself is the same for every mailbox,
+            // so the rest of this client's list would only repeat it.
+            const code = errorCode(error)
+            if (code && CLIENT_REFUSALS.has(code)) {
+              const message = `${job.clientName}: ${errorMessage(error, 'The assignment could not be saved.')}`
+              const rest = job.emails.slice(index)
+              failed.push(...rest.map((skipped) => ({ email: skipped, clientName: job.clientName, message })))
+              done += rest.length
+              break
+            }
             failed.push({ email, clientName: job.clientName, message: errorMessage(error, 'The assignment could not be saved.') })
           }
           done += 1
@@ -142,8 +157,9 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
         }
         return
       }
-      if (total === 1) {
-        toast.error(failed[0].message)
+      if (failed.length === total) {
+        // Nothing went through: the reasons alone, once each ("Rae has no campaign yet...").
+        toast.error([...new Set(failed.map((failure) => failure.message))].join(' '))
       } else if (jobs.length === 1) {
         toast.error(`${total - failed.length} of ${total} connected to ${target}. ${failed.length} failed: ${failed[0].message}`)
       } else {
