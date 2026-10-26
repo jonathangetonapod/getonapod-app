@@ -41,6 +41,9 @@ vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () =
 vi.mock('@/components/workspace/ClientInstantlyCampaignsCard', () => ({
   ClientInstantlyCampaignsCard: () => <div>Instantly campaign links</div>,
 }))
+vi.mock('@/components/workspace/ClientMailboxesCard', () => ({
+  ClientMailboxesCard: () => <div>Sending mailboxes</div>,
+}))
 vi.mock('@/components/workspace/ClientBookingDialog', () => ({
   ClientBookingDialog: () => <div>Booking dialog</div>,
 }))

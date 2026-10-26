@@ -182,7 +182,7 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     expect(vi.mocked(setWorkspaceMailboxClient).mock.calls[1][0].email).toBe('sender021@example.com')
   })
 
-  it('assigns a selection to a client one mailbox at a time, skipping ones that cannot send', async () => {
+  it('assigns a selection to a client one mailbox at a time, including ones that cannot send', async () => {
     renderTable()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select sender000@example.com' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select sender020@example.com' }))
@@ -194,8 +194,10 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Rae Whitfield' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Assign to 1 client' }))
 
-    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(2))
+    // sender000 is at the Gmail limit; the server decides whether its client can take it.
+    await waitFor(() => expect(setWorkspaceMailboxClient).toHaveBeenCalledTimes(3))
     expect(vi.mocked(setWorkspaceMailboxClient).mock.calls.map(([input]) => input.email)).toEqual([
+      'sender000@example.com',
       'sender020@example.com',
       'sender021@example.com',
     ])

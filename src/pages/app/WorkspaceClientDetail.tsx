@@ -41,6 +41,7 @@ import { ClientActivityCalendar } from '@/components/workspace/ClientActivityCal
 import { ClientBookingDialog } from '@/components/workspace/ClientBookingDialog'
 import { activitiesFromBookings } from '@/components/workspace/clientActivity'
 import { ClientInstantlyCampaignsCard } from '@/components/workspace/ClientInstantlyCampaignsCard'
+import { ClientMailboxesCard } from '@/components/workspace/ClientMailboxesCard'
 import { ClientSdrPromptsCard } from '@/components/workspace/ClientSdrPromptsCard'
 import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
 import { OpportunityDetailSheet } from '@/components/workspace/OpportunityDetailSheet'
@@ -1510,6 +1511,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               clientId={client.id}
               clientName={client.name}
               canManage={canManage}
+            />
+
+            <ClientMailboxesCard
+              workspaceId={workspaceId}
+              clientId={client.id}
+              clientName={client.name}
+              canManage={canManage}
+              mailboxesHref={`${baseHref}/mailboxes`}
             />
 
             <Card>

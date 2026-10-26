@@ -1120,7 +1120,10 @@ assert.match(mailboxesAction[0], /campaigns: linksByEmail\.get\(account\.email\.
 const assignAction = edge.match(/if \(action === "mailbox-assign"\) \{[\s\S]*?\n {4}if \(action ===/u)
 assert.ok(assignAction, 'mailbox-assign action must exist')
 assert.match(assignAction[0], /requireCampaignManager\(access\)/u)
-assert.match(assignAction[0], /verifySelectedAccounts\(/u)
+assert.match(assignAction[0], /verifySelectedAccounts\(\[email\], accounts\)/u)
+// A draft records association only; a disconnected mailbox may be on it, but
+// never one outside this workspace's Instantly account.
+assert.match(assignAction[0], /INSTANTLY_SENDER_UNKNOWN/u)
 // Assigning before any campaign exists starts the client's local draft row
 // instead of refusing every mailbox with CAMPAIGN_NOT_FOUND.
 assert.match(assignAction[0], /body\.assigned\s*\? await ensureLocalCampaign\(context, workspaceId, requireClientRow\(\)\)/u)

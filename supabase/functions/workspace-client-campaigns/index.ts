@@ -7356,13 +7356,27 @@ serve(async (req) => {
         ? emailList([...new Set([...current, email])])
         : emailList(current.filter((account) => account !== email));
       if (body.assigned) {
-        // The mailbox has to be one this workspace's key can actually send
-        // from, or the campaign would be pointed at an address that does not
-        // exist.
-        verifySelectedAccounts(
-          next,
-          await freshOrSnapshotAccounts(context, connection),
-        );
+        const accounts = await freshOrSnapshotAccounts(context, connection);
+        if (campaign.instantly_campaign_id) {
+          // A launched campaign is pushed this list right below, and a sender
+          // that cannot send stops it silently. Only the mailbox being added
+          // is checked: one existing sender going bad used to block every
+          // new assignment to the client.
+          verifySelectedAccounts([email], accounts);
+        } else if (
+          !accounts.some((account) =>
+            account.email.trim().toLowerCase() === email
+          )
+        ) {
+          // A draft only records who sends for the client, so a mailbox that
+          // is disconnected today can still be associated (launch verifies
+          // every sender live). It must still be one of this workspace's.
+          throw new HttpError(
+            409,
+            "INSTANTLY_SENDER_UNKNOWN",
+            "This mailbox is not in the connected Instantly workspace",
+          );
+        }
       } else if (next.length === 0 && campaign.instantly_campaign_id) {
         // A launched campaign with no sender is a campaign that has silently
         // stopped. Removing the last one has to be a deliberate pause, not a

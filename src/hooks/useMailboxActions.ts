@@ -84,8 +84,9 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
   })
 
   // Only what these writes change: this workspace's mailbox list (keyed
-  // [tenant|platform, user, 'workspace', id, 'mailboxes']), its campaigns, and
-  // the setup checklist's mailbox step.
+  // [tenant|platform, user, 'workspace', id, 'mailboxes'] on the Mailboxes
+  // screen, ['workspace-mailboxes', id] on the client page), its campaigns,
+  // and the setup checklist's mailbox step.
   const invalidate = () => Promise.all([
     queryClient.invalidateQueries({
       predicate: (query) => {
@@ -97,6 +98,8 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
       },
     }),
     queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
+    // The client page's mailbox card and campaign sender picker.
+    queryClient.invalidateQueries({ queryKey: ['workspace-mailboxes', workspaceId] }),
     queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
   ])
 
@@ -208,28 +211,23 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
   })
 
   /**
-   * Assign to one or more clients, skipping mailboxes that cannot send: the
-   * server refuses those (a campaign pointed at a broken sender silently
-   * stops), so sending them would only produce a list of failures. Mailboxes
-   * already on a client are left out of that client's writes.
+   * Assign to one or more clients. Mailboxes already on a client are left out
+   * of that client's writes. One that cannot send is still sent: a client
+   * whose campaign has not launched just records it, and a launched one
+   * refuses it with its own reason.
    */
   const assign = (accounts: WorkspaceMailboxAccount[], clients: MailboxClientTarget[]) => {
-    const active = accounts.filter((account) => account.status === 1)
-    const skipped = accounts.length - active.length
-    if (skipped > 0) {
-      toast.info(`${skipped} mailbox${skipped === 1 ? '' : 'es'} skipped because ${skipped === 1 ? 'it is' : 'they are'} not active in Instantly.`)
-    }
     const jobs = clients
       .map((client) => ({
         clientId: client.id,
         clientName: client.name,
-        emails: active
+        emails: accounts
           .filter((account) => !(account.campaigns ?? []).some((link) => link.client_id === client.id))
           .map((account) => account.email),
       }))
       .filter((job) => job.emails.length > 0)
     if (jobs.length === 0) {
-      if (active.length > 0) toast.info(`Already connected to ${clientList(clients.map((client) => client.name))}.`)
+      if (accounts.length > 0) toast.info(`Already connected to ${clientList(clients.map((client) => client.name))}.`)
       return
     }
     assignMutation.mutate({ jobs, assigned: true })
