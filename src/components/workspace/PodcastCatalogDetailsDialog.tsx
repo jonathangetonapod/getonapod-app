@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
 import { PodcastPrimaryAction, type PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
-import { categoryNames, podcastEmailStatus, podcastInitials } from '@/lib/podcastCatalogDisplay'
+import { categoryNames, languageName, podcastEmailStatus, podcastInitials, regionName } from '@/lib/podcastCatalogDisplay'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type { RelationshipBadge } from '@/lib/relationshipLabels'
 import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCatalog'
@@ -61,8 +61,8 @@ export function PodcastCatalogDetailsDialog({
       hint: 'A popularity score that comes with the show data. Higher means more popular.',
     },
     { label: 'Last published', value: day(podcast.last_posted_at) },
-    { label: 'Language', value: podcast.language || '—' },
-    { label: 'Region', value: podcast.region || '—' },
+    { label: 'Language', value: languageName(podcast.language) || '—' },
+    { label: 'Region', value: regionName(podcast.region) || '—' },
   ]
 
   return (

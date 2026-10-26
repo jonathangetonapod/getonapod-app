@@ -4,23 +4,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import {
   ACTIVITY_LABELS,
-  ACTIVITY_OPTIONS,
   AUDIENCE_LABELS,
   categoryLabel,
   CONTACT_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
+import { FilterControls, type ParamsUpdate } from '@/components/workspace/catalog/PodcastCatalogFilterControls'
 import { CLEAR_ALL_FILTERS, DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
-
-type ParamsUpdate = (patch: Partial<PodcastCatalogParams>, options?: { replace?: boolean }) => void
-
-/** Closed, a filter reads as its value; its accessible name says which filter it is. */
-function filterName(name: string, value: string, isDefault: boolean) {
-  return isDefault ? value : `${name}: ${value}`
-}
+import { languageName, regionName } from '@/lib/podcastCatalogDisplay'
 
 interface ActiveChip {
   key: string
@@ -45,60 +38,14 @@ function activeChips(params: PodcastCatalogParams): ActiveChip[] {
   if (params.audience !== 'all') {
     chips.push({ key: 'audience', label: `Audience: ${AUDIENCE_LABELS[params.audience]}`, clear: { audience: 'all' } })
   }
+  if (params.language !== 'all') {
+    chips.push({ key: 'language', label: `Language: ${languageName(params.language)}`, clear: { language: 'all' } })
+  }
+  if (params.region !== 'all') {
+    chips.push({ key: 'region', label: `Region: ${regionName(params.region)}`, clear: { region: 'all' } })
+  }
   return chips
 }
-
-const FilterControls = ({
-  params,
-  update,
-  categories,
-}: {
-  params: PodcastCatalogParams
-  update: ParamsUpdate
-  categories: string[]
-}) => (
-  <>
-    <Select value={params.category} onValueChange={(category) => update({ category })}>
-      <SelectTrigger aria-label={filterName('Category', categoryLabel(params.category), params.category === 'all')}>
-        <SelectValue>{categoryLabel(params.category)}</SelectValue>
-      </SelectTrigger>
-      <SelectContent className="max-h-80">
-        <SelectItem value="all">Any category</SelectItem>
-        {categories.map((option) => <SelectItem key={option} value={option}>{categoryLabel(option)}</SelectItem>)}
-      </SelectContent>
-    </Select>
-    <Select value={params.contact} onValueChange={(contact: PodcastCatalogParams['contact']) => update({ contact })}>
-      <SelectTrigger aria-label={filterName('Email status', CONTACT_LABELS[params.contact], params.contact === 'all')}>
-        <SelectValue>{CONTACT_LABELS[params.contact]}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {(Object.keys(CONTACT_LABELS) as Array<PodcastCatalogParams['contact']>).map((value) => (
-          <SelectItem key={value} value={value}>{CONTACT_LABELS[value]}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-    <Select value={params.activity} onValueChange={(activity: PodcastCatalogParams['activity']) => update({ activity })}>
-      <SelectTrigger aria-label={filterName('Activity', ACTIVITY_LABELS[params.activity], params.activity === DEFAULT_CATALOG_PARAMS.activity)}>
-        <SelectValue>{ACTIVITY_LABELS[params.activity]}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {ACTIVITY_OPTIONS.map((value) => (
-          <SelectItem key={value} value={value}>{ACTIVITY_LABELS[value]}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-    <Select value={params.audience} onValueChange={(audience: PodcastCatalogParams['audience']) => update({ audience })}>
-      <SelectTrigger aria-label={filterName('Audience', AUDIENCE_LABELS[params.audience], params.audience === 'all')}>
-        <SelectValue>{AUDIENCE_LABELS[params.audience]}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {(Object.keys(AUDIENCE_LABELS) as Array<PodcastCatalogParams['audience']>).map((value) => (
-          <SelectItem key={value} value={value}>{AUDIENCE_LABELS[value]}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </>
-)
 
 /*
  * Search and filters. The search box explains itself, so there is no
@@ -110,11 +57,15 @@ export const PodcastCatalogSearchPanel = ({
   params,
   update,
   categories,
+  languages,
+  regions,
   searching,
 }: {
   params: PodcastCatalogParams
   update: ParamsUpdate
   categories: string[]
+  languages: string[]
+  regions: string[]
   searching: boolean
 }) => {
   const [input, setInput] = useState(params.search)
@@ -169,13 +120,13 @@ export const PodcastCatalogSearchPanel = ({
                 <SheetDescription className="sr-only">Narrow the shows in the list.</SheetDescription>
               </SheetHeader>
               <div className="grid gap-3">
-                <FilterControls params={params} update={update} categories={categories} />
+                <FilterControls params={params} update={update} categories={categories} languages={languages} regions={regions} />
               </div>
             </SheetContent>
           </Sheet>
         </div>
-        <div className="hidden gap-3 md:grid md:grid-cols-2 lg:grid-cols-4">
-          <FilterControls params={params} update={update} categories={categories} />
+        <div className="hidden gap-3 md:grid md:grid-cols-3 xl:grid-cols-6">
+          <FilterControls params={params} update={update} categories={categories} languages={languages} regions={regions} />
         </div>
         {chips.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">

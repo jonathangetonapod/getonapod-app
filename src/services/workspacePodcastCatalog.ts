@@ -5,7 +5,7 @@ import { decodeFeedText } from '@/lib/feedText'
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
 export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus'
-export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community'
+export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community' | 'rating' | 'reach'
 
 export interface WorkspacePodcastCatalogCategory {
   category_id?: string
@@ -57,6 +57,9 @@ export interface WorkspacePodcastCatalogPage {
   search_mode?: 'browse' | 'keyword' | 'hybrid'
   items: WorkspacePodcastCatalogItem[]
   categories: string[]
+  /** Language and region codes the catalogue holds ("en", "us"), most common first. */
+  languages?: string[]
+  regions?: string[]
   pagination: {
     page: number
     page_size: number
@@ -72,6 +75,8 @@ export interface WorkspacePodcastCatalogParams {
   contact?: WorkspacePodcastCatalogContactFilter
   activity?: WorkspacePodcastCatalogActivityFilter
   audience?: WorkspacePodcastCatalogAudienceFilter
+  language?: string
+  region?: string
   sort?: WorkspacePodcastCatalogSort
   page?: number
   pageSize?: number
@@ -128,6 +133,8 @@ export async function getWorkspacePodcastCatalog(
       contact: params.contact || 'all',
       activity: params.activity || 'active',
       audience: params.audience || 'all',
+      language: params.language || undefined,
+      region: params.region || undefined,
       sort: params.sort || 'best_fit',
       page: params.page || 1,
       page_size: params.pageSize || 24,

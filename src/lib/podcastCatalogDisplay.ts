@@ -51,6 +51,8 @@ export interface PodcastRating {
   source: 'Apple' | 'Spotify'
   value: number
   label: string
+  /** Both platforms, for a tooltip: "Apple Podcasts 4.4 · Spotify 4.9". */
+  detail: string
 }
 
 function validRating(value: number | null): number | null {
@@ -59,15 +61,20 @@ function validRating(value: number | null): number | null {
 }
 
 /*
- * The rating a row shows always names where it came from. The list response
- * carries no rating counts, so "the busier platform" cannot be judged; Apple
- * is the one most shows have, and Spotify stands in when it is missing.
+ * The rating a row shows always names where it came from. Apple is the
+ * platform with more coverage (about nine in ten active shows against eight
+ * for Spotify), so it leads; Spotify stands in only when Apple has nothing,
+ * and the detail names both.
  */
 export function podcastRating(podcast: WorkspacePodcastCatalogItem): PodcastRating | null {
   const apple = validRating(podcast.itunes_rating)
-  if (apple !== null) return { source: 'Apple', value: apple, label: `Apple ${apple.toFixed(1)}` }
   const spotify = validRating(podcast.spotify_rating)
-  if (spotify !== null) return { source: 'Spotify', value: spotify, label: `Spotify ${spotify.toFixed(1)}` }
+  const detail = [
+    apple !== null ? `Apple Podcasts ${apple.toFixed(1)}` : 'No Apple Podcasts rating',
+    spotify !== null ? `Spotify ${spotify.toFixed(1)}` : 'No Spotify rating',
+  ].join(' · ')
+  if (apple !== null) return { source: 'Apple', value: apple, label: `Apple ${apple.toFixed(1)}`, detail }
+  if (spotify !== null) return { source: 'Spotify', value: spotify, label: `Spotify ${spotify.toFixed(1)}`, detail }
   return null
 }
 
@@ -103,6 +110,34 @@ export function formatRelativeAge(value: string | null, now: Date = new Date()):
   if (days < 365) return `${Math.floor(days / 30)} mo ago`
   const years = Math.floor(days / 365)
   return years === 1 ? '1 yr ago' : `${years} yrs ago`
+}
+
+function displayName(type: 'language' | 'region', code: string | null): string | null {
+  const value = (code || '').trim()
+  if (!value) return null
+  try {
+    const name = new Intl.DisplayNames(['en'], { type }).of(type === 'region' ? value.toUpperCase() : value.toLowerCase())
+    return name && name.toLowerCase() !== value.toLowerCase() ? name : value.toUpperCase()
+  } catch {
+    // An unknown or malformed code still reads as itself.
+    return value.toUpperCase()
+  }
+}
+
+/** "en" reads as "English"; the catalogue stores codes. */
+export function languageName(code: string | null): string | null {
+  return displayName('language', code)
+}
+
+/** "us" reads as "United States". */
+export function regionName(code: string | null): string | null {
+  return displayName('region', code)
+}
+
+/** "show@acme.fm" reads as "acme.fm" where only the domain fits. */
+export function emailDomain(email: string | null): string | null {
+  const at = (email || '').lastIndexOf('@')
+  return at > 0 ? (email as string).slice(at + 1) : null
 }
 
 /** "Dallas Fontaine" reads as "Dallas" on a button; the toast keeps the full name. */

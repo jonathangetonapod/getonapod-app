@@ -42,6 +42,8 @@ const userId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const catalogResponse = {
   workspace: { id: workspaceId, name: 'Acme Workspace' },
   categories: ['Business', 'Technology'],
+  languages: ['en', 'de'],
+  regions: ['us', 'gb'],
   pagination: { page: 1, page_size: 24, total: 1, total_pages: 1 },
   summary: {
     total_podcasts: 11807,
@@ -557,6 +559,43 @@ describe('WorkspacePodcastDatabase', () => {
     expect(list).toHaveClass('opacity-35')
   })
 
+  // The table explains its numbers, sorts by them, and shows whose inbox the email is.
+  it('labels, sorts and fills the list columns', async () => {
+    renderPage()
+    const row = within(await screen.findByRole('listitem', { name: 'The Founder Show' }))
+    expect(row.getByText('72')).toBeInTheDocument()
+    expect(row.getByText('@example.com')).toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'The Founder Show' })).toHaveAttribute('title', 'The Founder Show')
+
+    expect(screen.getByRole('button', { name: 'Sort by Audience' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sort by Rating' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by Reach' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ sort: 'reach' }),
+      expect.anything(),
+    ))
+    expect(screen.getByRole('button', { name: 'Sort by Reach' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('combobox', { name: 'Sort: Reach score' })).toBeInTheDocument()
+  })
+
+  it('filters by language and region by name, not code', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any language' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'German' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any region' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'United Kingdom' }))
+
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ language: 'de', region: 'gb' }),
+      expect.anything(),
+    ))
+    expect(screen.getByText('Language: German')).toBeInTheDocument()
+    expect(screen.getByText('Region: United Kingdom')).toBeInTheDocument()
+  })
+
   // The catalog function rejects a search longer than 120 characters.
   it('caps the search box at the length the catalog accepts', async () => {
     renderPage()
@@ -659,6 +698,8 @@ describe('WorkspacePodcastDatabase', () => {
     expect(dialog.getByText('Reach score')).toBeInTheDocument()
     expect(dialog.getByText('Last published')).toBeInTheDocument()
     expect(dialog.getByText(/On 4 shortlists across 2 workspaces/i)).toBeInTheDocument()
+    expect(dialog.getByText('English')).toBeInTheDocument()
+    expect(dialog.getByText('United States')).toBeInTheDocument()
     // The show's own refresh date, named as the show's.
     expect(dialog.getByText(/This show’s data last refreshed/)).toBeInTheDocument()
   })

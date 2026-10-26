@@ -75,6 +75,7 @@ export const PodcastCatalogCard = ({
             <button
               type="button"
               onClick={onOpenDetails}
+              title={podcast.podcast_name}
               className="block max-w-full truncate text-left font-semibold hover:underline focus-visible:underline focus-visible:outline-none"
             >
               {podcast.podcast_name}

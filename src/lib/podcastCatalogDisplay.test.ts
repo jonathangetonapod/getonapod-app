@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  emailDomain,
   formatAudience,
   formatDay,
+  languageName,
   formatRelativeAge,
   podcastEmailStatus,
   podcastRating,
+  regionName,
   shortClientName,
 } from '@/lib/podcastCatalogDisplay'
 import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCatalog'
@@ -27,6 +30,23 @@ describe('podcastCatalogDisplay', () => {
     expect(podcastRating({ ...base, itunes_rating: 4.4, spotify_rating: 4.9 })?.label).toBe('Apple 4.4')
     expect(podcastRating({ ...base, spotify_rating: 4.75 })?.label).toBe('Spotify 4.8')
     expect(podcastRating({ ...base, itunes_rating: 0 })).toBeNull()
+    // Apple leads; the detail names both platforms either way.
+    expect(podcastRating({ ...base, itunes_rating: 4.4, spotify_rating: 4.9 })?.detail).toBe('Apple Podcasts 4.4 · Spotify 4.9')
+    expect(podcastRating({ ...base, spotify_rating: 4.75 })?.detail).toBe('No Apple Podcasts rating · Spotify 4.8')
+  })
+
+  it('names languages and regions instead of showing their codes', () => {
+    expect(languageName('en')).toBe('English')
+    expect(languageName('DE')).toBe('German')
+    expect(regionName('us')).toBe('United States')
+    expect(regionName('GB')).toBe('United Kingdom')
+    expect(regionName(null)).toBeNull()
+    expect(languageName('zz-invalid-code')).toBe('ZZ-INVALID-CODE')
+  })
+
+  it('takes the domain from an address', () => {
+    expect(emailDomain('show@acme.fm')).toBe('acme.fm')
+    expect(emailDomain(null)).toBeNull()
   })
 
   it('reads the three email states from the fields the catalog sends', () => {

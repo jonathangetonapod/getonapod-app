@@ -22,6 +22,11 @@
 -- applies, with match ranking only breaking ties, and a Relevance sort orders
 -- by the match itself (the page selects it while a search is active).
 --
+-- Language and region filters (with the codes the catalogue holds, so the
+-- page offers only choices that match something), and Rating and Reach score
+-- sorts. Rating sorts by the rating the list shows: Apple Podcasts, or Spotify
+-- where a show has no Apple rating, with more ratings breaking ties.
+--
 -- v2 is left as it was: the client shortlist editor's search still calls it.
 
 CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
@@ -30,6 +35,8 @@ CREATE OR REPLACE FUNCTION public.workspace_podcast_catalog_page_v3(
   p_contact TEXT DEFAULT 'all',
   p_activity TEXT DEFAULT 'active',
   p_audience TEXT DEFAULT 'all',
+  p_language TEXT DEFAULT NULL,
+  p_region TEXT DEFAULT NULL,
   p_query_embedding vector(1536) DEFAULT NULL,
   p_sort TEXT DEFAULT 'best_fit',
   p_page INTEGER DEFAULT 1,
@@ -46,6 +53,8 @@ DECLARE
   normalized_contact TEXT := lower(btrim(COALESCE(p_contact, 'all')));
   normalized_activity TEXT := lower(btrim(COALESCE(p_activity, 'active')));
   normalized_audience TEXT := lower(btrim(COALESCE(p_audience, 'all')));
+  normalized_language TEXT := lower(NULLIF(btrim(COALESCE(p_language, '')), ''));
+  normalized_region TEXT := lower(NULLIF(btrim(COALESCE(p_region, '')), ''));
   normalized_sort TEXT := lower(btrim(COALESCE(p_sort, 'best_fit')));
   effective_sort TEXT;
   normalized_page INTEGER := COALESCE(p_page, 1);
@@ -76,7 +85,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'audience filter is invalid';
   END IF;
-  IF normalized_sort NOT IN ('best_fit', 'relevance', 'audience', 'name', 'recent', 'community') THEN
+  IF normalized_language IS NOT NULL AND length(normalized_language) > 16 THEN
+    RAISE EXCEPTION 'language is invalid';
+  END IF;
+  IF normalized_region IS NOT NULL AND length(normalized_region) > 16 THEN
+    RAISE EXCEPTION 'region is invalid';
+  END IF;
+  IF normalized_sort NOT IN (
+    'best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'
+  ) THEN
     RAISE EXCEPTION 'sort is invalid';
   END IF;
   -- Relevance with nothing searched has nothing to rank by.
@@ -133,7 +150,9 @@ BEGIN
       podcast.podcast_categories,
       podcast.episode_count,
       podcast.itunes_rating,
+      podcast.itunes_rating_count,
       podcast.spotify_rating,
+      podcast.spotify_rating_count,
       podcast.audience_size,
       podcast.podcast_reach_score,
       podcast.language,
@@ -232,6 +251,8 @@ BEGIN
         OR (normalized_contact = 'direct' AND direct_email IS NOT NULL)
         OR (normalized_contact = 'none' AND free_podscan_email IS NULL AND direct_email IS NULL)
       )
+      AND (normalized_language IS NULL OR lower(language) = normalized_language)
+      AND (normalized_region IS NULL OR lower(region) = normalized_region)
       AND (
         normalized_audience = 'all'
         OR (normalized_audience = 'under_10k' AND audience_size IS NOT NULL AND audience_size < 10000)
@@ -293,6 +314,13 @@ BEGIN
           CASE WHEN effective_sort = 'audience' THEN audience_size END DESC NULLS LAST,
           CASE WHEN effective_sort = 'community' THEN shortlist_uses END DESC NULLS LAST,
           CASE WHEN effective_sort = 'recent' THEN last_posted_at END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'rating' THEN
+            CASE WHEN itunes_rating > 0 THEN itunes_rating ELSE NULLIF(spotify_rating, 0) END
+          END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'rating' THEN
+            CASE WHEN itunes_rating > 0 THEN itunes_rating_count ELSE spotify_rating_count END
+          END DESC NULLS LAST,
+          CASE WHEN effective_sort = 'reach' THEN podcast_reach_score END DESC NULLS LAST,
           CASE WHEN effective_sort = 'name' THEN lower(podcast_name) END ASC NULLS LAST,
           CASE WHEN normalized_search IS NOT NULL THEN search_rank END DESC NULLS LAST,
           CASE WHEN effective_sort <> 'name' THEN lower(podcast_name) END ASC NULLS LAST,
@@ -394,6 +422,25 @@ BEGIN
     'categories', COALESCE((
       SELECT jsonb_agg(category_name ORDER BY category_name)
       FROM category_options
+    ), '[]'::JSONB),
+    -- Most common first, so English and the United States lead their lists.
+    'languages', COALESCE((
+      SELECT jsonb_agg(code ORDER BY shows DESC, code)
+      FROM (
+        SELECT lower(btrim(language)) AS code, count(*) AS shows
+        FROM catalog
+        WHERE is_active IS TRUE AND NULLIF(btrim(language), '') IS NOT NULL
+        GROUP BY 1
+      ) language_options
+    ), '[]'::JSONB),
+    'regions', COALESCE((
+      SELECT jsonb_agg(code ORDER BY shows DESC, code)
+      FROM (
+        SELECT lower(btrim(region)) AS code, count(*) AS shows
+        FROM catalog
+        WHERE is_active IS TRUE AND NULLIF(btrim(region), '') IS NOT NULL
+        GROUP BY 1
+      ) region_options
     ), '[]'::JSONB)
   ) INTO result;
 
@@ -402,13 +449,13 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.workspace_podcast_catalog_page_v3(
-  TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
 ) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.workspace_podcast_catalog_page_v3(
-  TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
 ) TO service_role;
 
 COMMENT ON FUNCTION public.workspace_podcast_catalog_page_v3(
-  TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
+  TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER
 ) IS
   'Service-only hybrid podcast search. Still publishing means active with an episode in the last 90 days.';

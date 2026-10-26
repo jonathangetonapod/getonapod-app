@@ -57,6 +57,8 @@ export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
   audience: 'Largest audience',
   recent: 'Most recent episode',
   community: 'Most shortlisted',
+  rating: 'Highest rated',
+  reach: 'Reach score',
   name: 'Name A to Z',
 }
 

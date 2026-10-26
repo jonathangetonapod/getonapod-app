@@ -18,7 +18,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
 import { PodcastCatalogPagination } from '@/components/workspace/catalog/PodcastCatalogPagination'
-import { PodcastCatalogRow, PodcastCatalogRowHeader, PodcastCatalogRowSkeleton } from '@/components/workspace/catalog/PodcastCatalogRow'
+import { PodcastCatalogRow } from '@/components/workspace/catalog/PodcastCatalogRow'
+import { PodcastCatalogRowHeader, PodcastCatalogRowSkeleton } from '@/components/workspace/catalog/PodcastCatalogRowHeader'
 import { PodcastCatalogSearchPanel } from '@/components/workspace/catalog/PodcastCatalogSearchPanel'
 import { PodcastResultsHeader, type CatalogView } from '@/components/workspace/catalog/PodcastResultsHeader'
 import type { PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
@@ -101,7 +102,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
   const queryClient = useQueryClient()
   const { params, update } = usePodcastCatalogParams()
-  const { search, category, contact, activity, audience, sort, page, pageSize } = params
+  const { search, category, contact, activity, audience, language, region, sort, page, pageSize } = params
   const resultsRef = useRef<HTMLDivElement>(null)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -122,6 +123,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       contact,
       activity,
       audience,
+      language,
+      region,
       sort,
       page,
       pageSize,
@@ -135,6 +138,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       contact,
       activity,
       audience,
+      language: language === 'all' ? undefined : language,
+      region: region === 'all' ? undefined : region,
       sort,
       page,
       pageSize,
@@ -171,6 +176,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         contact,
         activity,
         audience,
+        language,
+        region,
         sort,
         nextPage,
         pageSize,
@@ -181,6 +188,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         contact,
         activity,
         audience,
+        language: language === 'all' ? undefined : language,
+        region: region === 'all' ? undefined : region,
         sort,
         page: nextPage,
         pageSize,
@@ -189,7 +198,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     })
   }, [
     queryClient, validWorkspaceId, catalogQuery.isFetching, page, totalPages,
-    user?.id, workspaceId, search, category, contact, activity, audience, sort, pageSize,
+    user?.id, workspaceId, search, category, contact, activity, audience, language, region, sort, pageSize,
   ])
 
   // A failed load is shown to the person and reported, not only shown.
@@ -468,6 +477,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           params={params}
           update={update}
           categories={catalog?.categories || []}
+          languages={catalog?.languages || []}
+          regions={catalog?.regions || []}
           searching={catalogQuery.isFetching}
         />
 
@@ -503,8 +514,8 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           {catalogQuery.isLoading ? (
             view === 'list' ? (
               <Card className="overflow-hidden" aria-busy="true" aria-label="Loading podcasts">
-                <PodcastCatalogRowHeader selectable={canAddToClient} />
-                <div className="divide-y">{Array.from({ length: 10 }, (_, index) => <PodcastCatalogRowSkeleton key={index} />)}</div>
+                <PodcastCatalogRowHeader selectable={canAddToClient} sort={sort} onSortChange={(next) => update({ sort: next })} />
+                <div className="divide-y">{Array.from({ length: 10 }, (_, index) => <PodcastCatalogRowSkeleton key={index} selectable={canAddToClient} />)}</div>
               </Card>
             ) : (
               <div className="grid gap-4 xl:grid-cols-2" aria-busy="true" aria-label="Loading podcasts">
@@ -545,7 +556,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
               <div className={refreshing ? 'pointer-events-none select-none opacity-35 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
                 {view === 'list' ? (
                   <Card className="overflow-hidden">
-                    <PodcastCatalogRowHeader selectable={canAddToClient} />
+                    <PodcastCatalogRowHeader selectable={canAddToClient} sort={sort} onSortChange={(next) => update({ sort: next })} />
                     <ul className="divide-y">
                       {podcasts.map((podcast) => <PodcastCatalogRow key={podcast.podcast_id} {...resultProps(podcast)} />)}
                     </ul>

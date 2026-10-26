@@ -22,7 +22,9 @@ const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 // 250k_plus predates the 250K to 1M / 1M+ split and is kept for old addresses.
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
-const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community'])
+const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
+// Language and region codes as the catalogue stores them ("en", "us").
+const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
 // Semantic search embeds every search box change on the platform OpenAI key.
 // Charging credits per keystroke would punish ordinary typing, so instead
 // each workspace (and each member) gets a generous embedding allowance; past
@@ -45,6 +47,14 @@ function optionalChoice(
     throw new HttpError(400, 'INVALID_FIELD', `${field} is invalid`)
   }
   return value
+}
+
+function optionalLocaleCode(value: unknown, field: string): string | null {
+  const code = optionalString(value, field, 16)?.toLowerCase() ?? null
+  if (code !== null && !LOCALE_CODE.test(code)) {
+    throw new HttpError(400, 'INVALID_FIELD', `${field} is invalid`)
+  }
+  return code
 }
 
 function optionalInteger(
@@ -76,6 +86,8 @@ serve(async (req) => {
       'contact',
       'activity',
       'audience',
+      'language',
+      'region',
       'sort',
       'page',
       'page_size',
@@ -90,6 +102,8 @@ serve(async (req) => {
     const contact = optionalChoice(body.contact, 'contact', CONTACT_FILTERS, 'all')
     const activity = optionalChoice(body.activity, 'activity', ACTIVITY_FILTERS, 'active')
     const audience = optionalChoice(body.audience, 'audience', AUDIENCE_FILTERS, 'all')
+    const language = optionalLocaleCode(body.language, 'language')
+    const region = optionalLocaleCode(body.region, 'region')
     const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'best_fit')
     const page = optionalInteger(body.page, 'page', 1, 1, 10_000)
     const pageSize = optionalInteger(body.page_size, 'page_size', 24, 12, 48)
@@ -138,6 +152,8 @@ serve(async (req) => {
       p_contact: contact,
       p_activity: activity,
       p_audience: audience,
+      p_language: language,
+      p_region: region,
       p_query_embedding: queryEmbedding,
       p_sort: sort,
       p_page: page,

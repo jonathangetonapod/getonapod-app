@@ -15,6 +15,10 @@ export interface PodcastCatalogParams {
   contact: WorkspacePodcastCatalogContactFilter
   activity: WorkspacePodcastCatalogActivityFilter
   audience: WorkspacePodcastCatalogAudienceFilter
+  /** A language code such as "en", or 'all'. */
+  language: string
+  /** A region code such as "us", or 'all'. */
+  region: string
   sort: WorkspacePodcastCatalogSort
   page: number
   pageSize: number
@@ -32,6 +36,8 @@ export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   contact: 'any',
   activity: 'active',
   audience: 'all',
+  language: 'all',
+  region: 'all',
   sort: 'best_fit',
   page: 1,
   pageSize: 24,
@@ -44,12 +50,15 @@ export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
   contact: 'all',
   activity: DEFAULT_CATALOG_PARAMS.activity,
   audience: 'all',
+  language: 'all',
+  region: 'all',
 }
 
 const CONTACTS = new Set<string>(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus'])
-const SORTS = new Set<string>(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community'])
+const SORTS = new Set<string>(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
+const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
 
 // Address names are short and stable; the client parameter belongs to the header.
 const KEYS: Record<keyof PodcastCatalogParams, string> = {
@@ -58,9 +67,16 @@ const KEYS: Record<keyof PodcastCatalogParams, string> = {
   contact: 'email',
   activity: 'activity',
   audience: 'audience',
+  language: 'lang',
+  region: 'region',
   sort: 'sort',
   page: 'page',
   pageSize: 'size',
+}
+
+function localeCode(value: string | null): string {
+  const code = (value || '').trim().toLowerCase()
+  return LOCALE_CODE.test(code) ? code : 'all'
 }
 
 function choice<T extends string>(value: string | null, allowed: Set<string>, fallback: T): T {
@@ -78,6 +94,8 @@ export function readCatalogParams(params: URLSearchParams): PodcastCatalogParams
     contact: choice(params.get(KEYS.contact), CONTACTS, DEFAULT_CATALOG_PARAMS.contact),
     activity: choice(params.get(KEYS.activity), ACTIVITIES, DEFAULT_CATALOG_PARAMS.activity),
     audience: choice(params.get(KEYS.audience), AUDIENCES, DEFAULT_CATALOG_PARAMS.audience),
+    language: localeCode(params.get(KEYS.language)),
+    region: localeCode(params.get(KEYS.region)),
     // Relevance ranks a search; with nothing searched it means the default.
     sort: sort === 'relevance' && !search ? DEFAULT_CATALOG_PARAMS.sort : sort,
     page: Number.isSafeInteger(page) && page >= 1 && page <= 10_000 ? page : 1,
