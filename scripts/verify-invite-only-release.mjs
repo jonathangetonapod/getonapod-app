@@ -63,7 +63,10 @@ const EXPECTED_COUNTS = Object.freeze({
   // domain-provider helpers rather than adding its own, because tearing a
   // workspace down has to stop sending exactly the way pausing does.
   // 178 with clips-lead, the free-cut form on /clips (2026-10-24).
-  edgeTypeScriptFiles: 178,
+  // 182 with _shared/finderScans.ts and _shared/compatibilityPrompt.ts and
+  // their tests: stored Podcast Finder scans, and group scoring with the
+  // client's pitch profile and stored episode titles (2026-10-27).
+  edgeTypeScriptFiles: 182,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

@@ -503,3 +503,20 @@ assert.ok(
 )
 
 console.log('Workspace Client Edge transcript-attribution checks passed')
+
+// Podcast Finder scans: stored per tenant, read back only inside it, and the
+// table has no browser role.
+const finderScansMigration = readFileSync('supabase/migrations/20261027000100_workspace_finder_scans.sql', 'utf8')
+const finderScansShared = readFileSync('supabase/functions/_shared/finderScans.ts', 'utf8')
+assert.match(finderScansMigration, /FOREIGN KEY \(workspace_id, client_id\)\s+REFERENCES public\.clients\(workspace_id, id\) ON DELETE CASCADE/u)
+assert.match(finderScansMigration, /ALTER TABLE public\.workspace_finder_scans ENABLE ROW LEVEL SECURITY/u)
+assert.match(finderScansMigration, /REVOKE ALL ON TABLE public\.workspace_finder_scans FROM PUBLIC, anon, authenticated/u)
+assert.doesNotMatch(finderScansMigration, /CREATE POLICY/u, 'scans are read through the Edge Function only')
+assert.match(edge, /action !== 'finder-scan-save'[\s\S]*?> DEFAULT_MAX_BODY_BYTES[\s\S]*?BODY_TOO_LARGE/u, 'only a scan save may exceed the 16 KB body cap')
+assert.match(edge, /action === 'finder-scan-save'\) \{\s+requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'scan'\]\)[\s\S]*?scanToSave = scanInput\(body\.scan\)/u)
+assert.match(edge, /if \(action === 'finder-scan-save'\) \{\s+await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\.from\('clients'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)[\s\S]*?\.from\('workspace_finder_scans'\)\s+\.insert\(\{\s+workspace_id: workspaceId,/u)
+assert.match(edge, /if \(action === 'finder-scan-list'\) \{\s+await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\.from\('workspace_finder_scans'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
+assert.match(edge, /if \(action === 'finder-scan-get'\) \{\s+await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?\.eq\('id', scanId!\)\s+\.eq\('workspace_id', workspaceId\)/u)
+assert.match(finderScansShared, /url\.protocol === 'https:' \|\| url\.protocol === 'http:'/u, 'stored links are http(s) only')
+
+console.log('Workspace Client Edge finder-scan checks passed')

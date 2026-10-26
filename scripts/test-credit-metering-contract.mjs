@@ -216,3 +216,13 @@ assert.match(
   prospectBuild,
   /if \(startError\) \{[\s\S]{0,400}await refundCredits\(context\.admin, \{[\s\S]{0,200}reason: 'prospect dashboard build could not be started'/u,
 )
+
+// Keyword estimates are labelled per score, and a request the model scored
+// none of is given back.
+assert.match(scoring, /source: 'deterministic'/u)
+assert.match(scoring, /source: 'ai'/u)
+assert.match(scoring, /deterministicCount === scores\.length && chargedForRefund && refundAdmin[\s\S]*?refundCredits\(/u)
+assert.match(scoring, /return errorResponse\(req, METHODS, error\)/u, 'scoring uses the shared CORS allowlist, not one hard-coded origin')
+assert.doesNotMatch(scoring, /ALLOWED_ORIGIN/u)
+
+console.log('Credit metering scoring-estimate checks passed')

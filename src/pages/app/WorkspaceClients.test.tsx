@@ -47,7 +47,7 @@ const client: WorkspaceClient = {
   updated_at: '2026-07-21T00:00:00.000Z',
 }
 
-function renderPage(mode: 'manage' | 'research' = 'manage') {
+function renderPage(mode: 'manage' | 'research' = 'manage', initialEntry = '/app/clients') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -57,7 +57,7 @@ function renderPage(mode: 'manage' | 'research' = 'manage') {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[initialEntry]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceClients mode={mode} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -178,6 +178,15 @@ describe('WorkspaceClients tenant mode', () => {
         notes: '',
       })
     })
+  })
+
+  // The Podcast Finder's "+ Add client" lands here with ?new=1.
+  it('opens the add-client dialog when linked with ?new=1', async () => {
+    renderPage('manage', '/app/clients?new=1')
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Add client' })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Client name')).toHaveValue('')
   })
 
   it('edits a client through the tenant service with the authenticated workspace ID', async () => {

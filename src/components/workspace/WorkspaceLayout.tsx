@@ -126,11 +126,18 @@ function groupWorkspaceNavItems(items: WorkspaceNavItem[]): Array<{ label: strin
 
 /*
  * The modules whose page follows the header's working client, not only the
- * other way round. Podcast Finder reads ?client= once on arrival, so changing
- * the address under it would not move it; the Pipeline filters on every read,
- * and the Podcast Database's add buttons name whichever client is chosen.
+ * other way round. The Pipeline filters on every read, the Podcast Database's
+ * add buttons name whichever client is chosen, and the Podcast Finder's client
+ * picker is ?client= itself.
  */
 const HEADER_DRIVES_ADDRESS_SEGMENTS = ['client-podcast-system', 'onboarding', 'podcast-database', 'client-campaigns']
+
+/*
+ * The same, for pages matched exactly rather than with everything under them.
+ * The advanced finder lives under podcast-finder/ and still reads ?client=
+ * once on arrival, so changing the address under it would not move it.
+ */
+const HEADER_DRIVES_ADDRESS_EXACT_SEGMENTS = ['podcast-finder']
 
 /*
  * A client's campaign page names its client in the path rather than in
@@ -324,6 +331,11 @@ const PLATFORM_WORKSPACE_PLACEHOLDER_NAME = 'Client workspace'
 interface WorkspaceLayoutProps {
   children: React.ReactNode
   platformWorkspace?: PlatformWorkspaceConfig
+  /**
+   * Leave the page's name out of the top bar and the sidebar subtitle, for a
+   * page whose own h1 already says it right underneath.
+   */
+  hidePageName?: boolean
 }
 
 interface WorkspaceBrandLogoProps {
@@ -438,7 +450,7 @@ function useBelowMd(): boolean {
   return below
 }
 
-export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayoutProps) => {
+export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = false }: WorkspaceLayoutProps) => {
   const { isPlatformAdmin, membership, signOut, user, workspace } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -585,9 +597,10 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
    * Workspace" is shown, the real name stays as the fallback so the platform
    * owner can still see which workspace that is.
    */
-  const workspaceSubtitle = activeNavItem?.name
+  const pageName = hidePageName ? '' : activeNavItem?.name
+  const workspaceSubtitle = pageName
     || (workspaceDisplayName === workspaceName ? '' : workspaceName)
-  const headerTitle = activeNavItem?.name || workspaceDisplayName
+  const headerTitle = hidePageName ? '' : activeNavItem?.name || workspaceDisplayName
 
   /*
    * The working client. One choice in the header that every client-scoped
@@ -609,6 +622,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace }: WorkspaceLayout
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
   const headerDrivesAddress = HEADER_DRIVES_ADDRESS_SEGMENTS
     .some((segment) => matchesPath(`${baseHref}/${segment}`))
+    || HEADER_DRIVES_ADDRESS_EXACT_SEGMENTS.some((segment) => location.pathname === `${baseHref}/${segment}`)
   const waitingJoinRequests = useWaitingJoinRequests(isPlatformAdmin)
   /*
    * Below md a platform admin's header held the menu, the working client,

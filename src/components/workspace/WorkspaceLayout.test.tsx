@@ -431,12 +431,43 @@ describe('WorkspaceLayout', () => {
   })
 
   it('leaves the address alone on a module that reads the client only on arrival', async () => {
-    renderWithLocation('/app/podcast-finder')
+    renderWithLocation('/app/podcast-finder/advanced')
     await screen.findByRole('combobox', { name: 'Working client' })
     await waitFor(() => expect(mockedClients).toHaveBeenCalled())
 
     chooseWorkingClient('Dallas Fontaine')
     expect(readWorkingClient(workspaceId)).toBe(clientId)
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-finder\/advanced$/u)
+  })
+
+  // The finder's own client picker is ?client=, so the header and the page's
+  // picker are one choice.
+  // A page whose h1 names it right below the bar can drop the repeat.
+  it('leaves the page name out of the header and sidebar when the page asks', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={['/app/podcast-finder']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <WorkspaceLayout hidePageName><div>Module content</div></WorkspaceLayout>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await screen.findByRole('combobox', { name: 'Working client' })
+
+    expect(within(screen.getByRole('banner')).queryByText('Podcast Finder')).not.toBeInTheDocument()
+    // Only the sidebar link is left, not a subtitle under the workspace name.
+    expect(screen.getAllByText('Podcast Finder')).toHaveLength(1)
+    expect(within(screen.getByRole('navigation', { name: 'Workspace navigation' })).getByRole('link', { name: 'Podcast Finder' })).toBeInTheDocument()
+  })
+
+  it('drives the Podcast Finder address from the working client', async () => {
+    renderWithLocation('/app/podcast-finder')
+
+    const combobox = await screen.findByRole('combobox', { name: 'Working client' })
+    chooseWorkingClient('Dallas Fontaine')
+    await waitFor(() => expect(combobox).toHaveTextContent('Dallas Fontaine'))
+    expect(screen.getByTestId('location')).toHaveTextContent(`/app/podcast-finder?client=${clientId}`)
+
+    chooseWorkingClient('All clients')
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/app\/podcast-finder$/u)
   })
 

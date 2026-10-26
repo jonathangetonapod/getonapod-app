@@ -1,7 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
 import {
+  createAdminClient,
+  errorResponse,
   HttpError,
+  jsonResponse,
+  optionsResponse,
   parseJsonObject,
   requireAuthenticatedUser,
   requirePlatformAdminOrService,
@@ -10,20 +14,35 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import {
+  groupScoringPrompt,
+  parseGroupScores,
+  parseSingleScore,
+  SCORING_GROUP_SIZE,
+  singleScoringPrompt,
+  storedEpisodeTitles,
+  targetProfile,
+  type ScoringEpisode,
+  type ScoringPodcast,
+} from '../_shared/compatibilityPrompt.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://getonapod.com',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const METHODS = ['POST'] as const
+const SCORING_MODEL = 'claude-haiku-4-5-20251001'
 
-interface PodcastForScoring {
+type PodcastForScoring = ScoringPodcast
+
+/**
+ * Where a score came from. 'deterministic' is the keyword heuristic below,
+ * used when the model failed; callers show it as an estimate, never as an AI
+ * judgement.
+ */
+type ScoreSource = 'ai' | 'deterministic'
+
+interface ScoreRow {
   podcast_id: string
-  podcast_name: string
-  podcast_description?: string | null
-  publisher_name?: string | null
-  podcast_categories?: Array<{ category_name: string }> | null
-  audience_size?: number | null
-  episode_count?: number | null
+  score: number | null
+  reasoning?: string
+  source: ScoreSource
 }
 
 const SCORE_STOP_WORDS = new Set([
@@ -50,21 +69,50 @@ function deterministicScore(targetBio: string, podcast: PodcastForScoring) {
   return {
     score,
     reasoning: shared.length > 0
-      ? `The show overlaps with the profile’s ${shared.join(', ')} themes. Review the audience and recent episodes to confirm the strongest angle.`
-      : 'The show has broad guest potential, but the available description has limited direct topic overlap. Review it before adding it to the shortlist.',
+      ? `Estimated from keyword overlap (${shared.join(', ')}), not an AI judgement. Review the audience and recent episodes before adding it.`
+      : 'Estimated from keyword overlap, not an AI judgement: the description has little direct topic overlap. Review it before adding it to the shortlist.',
+  }
+}
+
+function messageText(message: Anthropic.Messages.Message): string | null {
+  const content = message.content[0]
+  return content?.type === 'text' ? content.text : null
+}
+
+/*
+ * Recent episode titles from the shared catalog, where a show has been
+ * captured before. Read only: scoring never calls Podscan, so a show nobody
+ * has researched yet is scored on its description and says so.
+ */
+async function storedEpisodes(
+  admin: ReturnType<typeof createAdminClient>,
+  podcastIds: string[],
+): Promise<Map<string, ScoringEpisode[]>> {
+  const ids = podcastIds.filter((id) => /^[a-zA-Z0-9_-]+$/u.test(id))
+  if (ids.length === 0) return new Map()
+  try {
+    const { data, error } = await admin
+      .from('podcasts')
+      .select('podscan_id,recent_episodes')
+      .in('podscan_id', ids)
+    if (error || !Array.isArray(data)) return new Map()
+    return new Map(data.map((row) => [String(row.podscan_id), storedEpisodeTitles(row.recent_episodes)]))
+  } catch {
+    return new Map()
   }
 }
 
 serve(async (req) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
+
   // Set when a real debit lands, so the outer catch can give it back: a
   // scoring run that dies after the charge delivered nothing to pay for.
   let chargedForRefund: { workspaceId: string; entryId: string } | null = null
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
 
   try {
+    if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
+
     /*
      * Size-capped. Podcast names, descriptions and publishers go straight into
      * the prompt, the credit charge is flat per request, and a workspace with
@@ -89,6 +137,9 @@ serve(async (req) => {
 
     let anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
     let meteringActorUserId = ''
+    let admin: ReturnType<typeof createAdminClient> | null = null
+    // Everything the workspace wrote about the client, not just the bio.
+    let profileSections: Array<[string, unknown]> = []
     let metering: {
       admin: Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
       workspaceId: string
@@ -102,6 +153,7 @@ serve(async (req) => {
       const workspaceId = requireUuid(body.workspaceId, 'workspaceId')
       const context = await requireAuthenticatedUser(req)
       await requireWorkspaceFeatureAccess(context, workspaceId)
+      admin = context.admin
       const hasClient = body.clientId !== undefined
       const hasProspect = body.prospectDashboardId !== undefined
       if (Number(hasClient) + Number(hasProspect) !== 1) {
@@ -142,7 +194,7 @@ serve(async (req) => {
         const clientId = requireUuid(body.clientId, 'clientId')
         const { data: scopedClient, error: scopedClientError } = await context.admin
           .from('clients')
-          .select('id,workspace_id,bio,status')
+          .select('id,workspace_id,bio,notes,ai_sdr_profile,status')
           .eq('id', clientId)
           .eq('workspace_id', workspaceId)
           .maybeSingle()
@@ -164,59 +216,45 @@ serve(async (req) => {
         }
         clientBio = scopedClient.bio
         prospectBio = undefined
+        const pitch = scopedClient.ai_sdr_profile && typeof scopedClient.ai_sdr_profile === 'object'
+          ? scopedClient.ai_sdr_profile as Record<string, unknown>
+          : {}
+        profileSections = [
+          ['Notes', scopedClient.notes],
+          ['Positioning', pitch.positioning],
+          ['Topics and angles', pitch.topics_and_angles],
+          ['Listener takeaways', pitch.listener_takeaways],
+          ['Proof points', pitch.proof_points],
+          ['Ideal opportunities', pitch.ideal_opportunities],
+        ]
       }
     } else {
       await requirePlatformAdminOrService(req)
+      admin = createAdminClient()
     }
 
-    // Type validation
     if (clientBio !== undefined && typeof clientBio !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'clientBio must be a string' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new HttpError(400, 'INVALID_BIO', 'clientBio must be a string')
     }
-
     if (prospectBio !== undefined && typeof prospectBio !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'prospectBio must be a string' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new HttpError(400, 'INVALID_BIO', 'prospectBio must be a string')
     }
-
     if (!Array.isArray(podcasts)) {
-      return new Response(
-        JSON.stringify({ error: 'podcasts must be an array' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new HttpError(400, 'INVALID_PODCASTS', 'podcasts must be an array')
     }
 
-    // Support both client and prospect mode
     const targetBio = prospectBio || clientBio
     const isProspectMode = !!prospectBio
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🎯 [PODCAST FINDER] Compatibility Scoring Request')
-    console.log(`   Mode: ${isProspectMode ? 'PROSPECT' : 'CLIENT'}`)
-    console.log(`   Bio length: ${targetBio?.length || 0} characters`)
-    console.log(`   Podcasts to score: ${podcasts?.length || 0}`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
     if (!targetBio || targetBio.trim().length === 0) {
-      console.error('❌ [ERROR] Bio is required but was empty')
-      return new Response(
-        JSON.stringify({ error: `${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new HttpError(400, 'BIO_REQUIRED', `${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring`)
     }
-
-    if (!podcasts || !Array.isArray(podcasts) || podcasts.length === 0) {
-      console.error('❌ [ERROR] Podcasts array is empty or invalid')
-      return new Response(
-        JSON.stringify({ error: 'Podcasts array is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (podcasts.length === 0) {
+      throw new HttpError(400, 'INVALID_PODCASTS', 'Podcasts array is required')
     }
+    if (podcasts.some((podcast) => !podcast || typeof podcast.podcast_id !== 'string' || typeof podcast.podcast_name !== 'string')) {
+      throw new HttpError(400, 'INVALID_PODCASTS', 'Every podcast needs a podcast_id and podcast_name')
+    }
+    console.log(`[score-podcast-compatibility] ${isProspectMode ? 'prospect' : 'client'} mode, ${podcasts.length} podcasts`)
 
     /*
      * Charged here rather than on arrival. Every check between the old charge
@@ -245,125 +283,85 @@ serve(async (req) => {
     }
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
-
-    console.log('🤖 [AI] Using Claude Haiku 4.5 for fast batch scoring...')
-    console.log(`   Processing ${podcasts.length} podcasts in parallel`)
-
-    let successCount = 0
-    let errorCount = 0
+    const targetLabel = isProspectMode ? 'prospect' : 'client'
+    const profile = targetProfile(targetBio, profileSections)
+    const episodesById = admin
+      ? await storedEpisodes(admin, podcasts.map((podcast) => podcast.podcast_id))
+      : new Map<string, ScoringEpisode[]>()
+    const episodesFor = (podcast: PodcastForScoring) => episodesById.get(podcast.podcast_id) ?? []
     let anthropicInputTokens = 0
     let anthropicOutputTokens = 0
-
-    // Score each podcast
-    const scores = await Promise.all(
-      podcasts.map(async (podcast, index) => {
-        try {
-          const podcastInfo = `
-Podcast Name: ${podcast.podcast_name}
-Host/Publisher: ${podcast.publisher_name || 'Unknown'}
-Description: ${podcast.podcast_description || 'No description available'}
-Categories: ${podcast.podcast_categories?.map(c => c.category_name).join(', ') || 'None'}
-Audience Size: ${podcast.audience_size ? podcast.audience_size.toLocaleString() : 'Unknown'}
-Episodes: ${podcast.episode_count || 'Unknown'}
-          `.trim()
-
-          const prompt = `You are a podcast booking expert. Rate the compatibility (1-10) between this ${isProspectMode ? 'prospect' : 'client'} and podcast.
-
-${isProspectMode ? 'Prospect' : 'Client'} Bio:
-${targetBio}
-
-Podcast Information:
-${podcastInfo}
-
-Scoring Guidelines:
-- 9-10: Perfect match - ${isProspectMode ? 'prospect' : 'client'}'s expertise directly aligns with podcast's focus and audience
-- 7-8: Strong match - related topics, good audience overlap
-- 5-6: Moderate match - some relevance but not ideal
-- 3-4: Weak match - tangentially related
-- 1-2: Poor match - not relevant
-
-Return your answer as JSON in this exact format:
-{
-  "score": <number 1-10>,
-  "reasoning": "<2-3 sentences explaining why this score>"
-}
-
-CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, just the raw JSON object.`
-
-          const message = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 200,
-            temperature: 0,
-            messages: [{ role: 'user', content: prompt }],
-          })
-          anthropicInputTokens += message.usage?.input_tokens ?? 0
-          anthropicOutputTokens += message.usage?.output_tokens ?? 0
-
-          const content = message.content[0]
-          if (content.type !== 'text') {
-            return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' as const }
-          }
-
-          // Strip markdown code blocks if present
-          let jsonText = content.text.trim()
-          if (jsonText.startsWith('```')) {
-            jsonText = jsonText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-          }
-
-          try {
-            const parsed = JSON.parse(jsonText)
-            successCount++
-            if (successCount % 10 === 0 || successCount === podcasts.length) {
-              console.log(`⏳ [PROGRESS] Scored ${successCount}/${podcasts.length} podcasts...`)
-            }
-            return {
-              podcast_id: podcast.podcast_id,
-              score: parsed.score,
-              reasoning: parsed.reasoning
-            }
-          } catch (parseError) {
-            console.warn(`⚠️  [PARSE WARNING] Failed to parse JSON for ${podcast.podcast_name.substring(0, 50)}`)
-            // Fallback: try to extract just the score
-            const match = content.text.match(/\b([1-9]|10)\b/)
-            if (match) {
-              successCount++
-              return {
-                podcast_id: podcast.podcast_id,
-                score: parseInt(match[1], 10),
-                reasoning: undefined
-              }
-            }
-            errorCount++
-            return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' as const }
-          }
-        } catch (error) {
-          console.error(`❌ [ERROR] Scoring ${String(podcast.podcast_name ?? '').slice(0, 50)}:`, error)
-          errorCount++
-          return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' as const }
-        }
+    const ask = async (prompt: string, maxTokens: number) => {
+      const message = await anthropic.messages.create({
+        model: SCORING_MODEL,
+        max_tokens: maxTokens,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
       })
-    )
+      anthropicInputTokens += message.usage?.input_tokens ?? 0
+      anthropicOutputTokens += message.usage?.output_tokens ?? 0
+      return messageText(message)
+    }
 
-    // Calculate statistics
-    const validScores = scores.filter(s => s.score !== null)
-    const highScores = validScores.filter(s => s.score && s.score >= 7)
-    const avgScore = validScores.length > 0
-      ? (validScores.reduce((sum, s) => sum + (s.score || 0), 0) / validScores.length).toFixed(1)
-      : 'N/A'
+    // One model call per group; the group's misses get their own call each,
+    // and only what still fails falls back to the keyword estimate.
+    const scoreGroup = async (group: PodcastForScoring[]): Promise<ScoreRow[]> => {
+      let groupScores = new Map<string, { score: number; reasoning: string | null }>()
+      try {
+        const text = await ask(groupScoringPrompt({
+          targetLabel,
+          profile,
+          podcasts: group.map((podcast) => ({ podcast, episodes: episodesFor(podcast) })),
+        }), 180 * group.length + 200)
+        if (text) groupScores = parseGroupScores(text, group.map((podcast) => podcast.podcast_id))
+      } catch (error) {
+        console.error('[score-podcast-compatibility] group call failed:', error instanceof Error ? error.message : 'unknown error')
+      }
+      return await Promise.all(group.map(async (podcast): Promise<ScoreRow> => {
+        let parsed = groupScores.get(podcast.podcast_id) ?? null
+        if (!parsed) {
+          try {
+            const text = await ask(singleScoringPrompt({ targetLabel, profile, podcast, episodes: episodesFor(podcast) }), 250)
+            parsed = text ? parseSingleScore(text) : null
+          } catch (error) {
+            console.error('[score-podcast-compatibility] single call failed:', error instanceof Error ? error.message : 'unknown error')
+          }
+        }
+        if (parsed) {
+          return {
+            podcast_id: podcast.podcast_id,
+            score: parsed.score,
+            ...(parsed.reasoning ? { reasoning: parsed.reasoning } : {}),
+            source: 'ai',
+          }
+        }
+        return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' }
+      }))
+    }
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('✅ [SCORING COMPLETE] Batch processing finished!')
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('📊 [STATISTICS]:')
-    console.log(`   Total podcasts: ${podcasts.length}`)
-    console.log(`   ✅ Successfully scored: ${successCount}`)
-    console.log(`   ❌ Failed: ${errorCount}`)
-    console.log(`   🎯 High scores (7+): ${highScores.length}`)
-    console.log(`   📈 Average score: ${avgScore}/10`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🚀 [NEXT STEP] Frontend will filter and rank by score')
-    console.log(`   Recommended: Filter for scores >= 7 (${highScores.length} podcasts)`)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    const groups: PodcastForScoring[][] = []
+    for (let start = 0; start < podcasts.length; start += SCORING_GROUP_SIZE) {
+      groups.push(podcasts.slice(start, start + SCORING_GROUP_SIZE))
+    }
+    const scores = (await Promise.all(groups.map(scoreGroup))).flat()
+    const deterministicCount = scores.filter((score) => score.source === 'deterministic').length
+
+    /*
+     * A request where the model scored nothing delivered only the keyword
+     * estimate, which costs nothing to produce. The charge goes back; the
+     * estimates are still returned, labelled, so the caller has something to
+     * show. A partly estimated request keeps its flat charge.
+     */
+    let refunded = false
+    if (deterministicCount === scores.length && chargedForRefund && refundAdmin) {
+      refunded = await refundCredits(refundAdmin, {
+        workspaceId: chargedForRefund.workspaceId,
+        entryId: chargedForRefund.entryId,
+        reason: 'compatibility scoring fell back to keyword estimates for every podcast',
+      })
+      chargedForRefund = null
+    }
+    console.log(`[score-podcast-compatibility] scored ${scores.length - deterministicCount} with AI, ${deterministicCount} estimated`)
 
     if (metering) {
       await logOperationCost(metering.admin, {
@@ -377,21 +375,17 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
       })
     }
 
-    return new Response(
-      /*
-       * deterministic_count says how many of these came from the local
-       * keyword heuristic rather than the model. The charge is flat per
-       * request, so without it a workspace pays full price for a fallback run
-       * during an outage and has no way to know it happened.
-       */
-      JSON.stringify({
-        scores,
-        deterministic_count: scores.filter((score) => (score as { source?: string }).source === 'deterministic').length,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    /*
+     * deterministic_count says how many of these came from the local
+     * keyword heuristic rather than the model, and each score names its own
+     * source. refunded says the whole request was given back.
+     */
+    return jsonResponse(req, METHODS, 200, {
+      scores,
+      deterministic_count: deterministicCount,
+      refunded,
+    })
   } catch (error) {
-    console.error('Error:', error)
     if (chargedForRefund && refundAdmin) {
       await refundCredits(refundAdmin, {
         workspaceId: chargedForRefund.workspaceId,
@@ -399,12 +393,6 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, ju
         reason: 'compatibility scoring failed after the charge',
       })
     }
-    return new Response(
-      JSON.stringify({
-        error: (error instanceof Error ? error.message : String(error)) || 'Something went wrong on our side. Try again in a moment',
-        ...(error instanceof HttpError ? { code: error.code } : {}),
-      }),
-      { status: error instanceof HttpError ? error.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(req, METHODS, error)
   }
 })

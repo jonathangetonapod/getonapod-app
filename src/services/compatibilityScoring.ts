@@ -16,6 +16,12 @@ export interface CompatibilityScore {
   podcast_id: string
   score: number | null
   reasoning?: string
+  /**
+   * 'deterministic' is the server's keyword estimate, used when the model
+   * failed. Absent from older function builds and from batches that failed
+   * outright.
+   */
+  source?: 'ai' | 'deterministic'
 }
 
 /**
