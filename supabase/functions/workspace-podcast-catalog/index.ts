@@ -22,6 +22,8 @@ const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 // 250k_plus predates the 250K to 1M / 1M+ split and is kept for old addresses.
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
+// Podscan's guest detection: 'yes' = takes guests, 'no' = not flagged as taking guests.
+const GUEST_FILTERS = new Set(['all', 'yes', 'no'])
 const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
 // Language and region codes as the catalogue stores them ("en", "us").
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
@@ -86,6 +88,7 @@ serve(async (req) => {
       'contact',
       'activity',
       'audience',
+      'guests',
       'language',
       'region',
       'sort',
@@ -102,6 +105,7 @@ serve(async (req) => {
     const contact = optionalChoice(body.contact, 'contact', CONTACT_FILTERS, 'all')
     const activity = optionalChoice(body.activity, 'activity', ACTIVITY_FILTERS, 'active')
     const audience = optionalChoice(body.audience, 'audience', AUDIENCE_FILTERS, 'all')
+    const guests = optionalChoice(body.guests, 'guests', GUEST_FILTERS, 'all')
     const language = optionalLocaleCode(body.language, 'language')
     const region = optionalLocaleCode(body.region, 'region')
     const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'best_fit')
@@ -152,6 +156,7 @@ serve(async (req) => {
       p_contact: contact,
       p_activity: activity,
       p_audience: audience,
+      p_guests: guests,
       p_language: language,
       p_region: region,
       p_query_embedding: queryEmbedding,

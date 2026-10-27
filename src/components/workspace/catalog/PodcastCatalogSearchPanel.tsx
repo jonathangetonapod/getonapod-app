@@ -10,6 +10,7 @@ import {
   AUDIENCE_LABELS,
   categoryLabel,
   CONTACT_LABELS,
+  GUESTS_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
 import { FilterControls, type ParamsUpdate } from '@/components/workspace/catalog/PodcastCatalogFilterControls'
 import { CLEAR_ALL_FILTERS, DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
@@ -38,6 +39,9 @@ function activeChips(params: PodcastCatalogParams): ActiveChip[] {
   if (params.audience !== 'all') {
     chips.push({ key: 'audience', label: `Audience: ${AUDIENCE_LABELS[params.audience]}`, clear: { audience: 'all' } })
   }
+  if (params.guests !== 'all') {
+    chips.push({ key: 'guests', label: `Guests: ${GUESTS_LABELS[params.guests]}`, clear: { guests: 'all' } })
+  }
   if (params.language !== 'all') {
     chips.push({ key: 'language', label: `Language: ${languageName(params.language)}`, clear: { language: 'all' } })
   }
@@ -49,7 +53,7 @@ function activeChips(params: PodcastCatalogParams): ActiveChip[] {
 
 /*
  * Search and filters. The search box explains itself, so there is no
- * paragraph about how matching works. On a phone the four filters fold into
+ * paragraph about how matching works. On a phone the filters fold into
  * a sheet behind one button, and the chips below show what is narrowing the
  * list wherever the controls are.
  */

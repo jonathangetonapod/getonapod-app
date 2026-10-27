@@ -37,6 +37,7 @@ describe('workspacePodcastCatalog service', () => {
       contact: 'free',
       activity: 'last_90_days',
       audience: '10k_50k',
+      guests: 'yes',
       sort: 'community',
       page: 2,
     })).resolves.toEqual(response)
@@ -50,6 +51,7 @@ describe('workspacePodcastCatalog service', () => {
         contact: 'free',
         activity: 'last_90_days',
         audience: '10k_50k',
+        guests: 'yes',
         sort: 'community',
         page: 2,
         page_size: 24,

@@ -6,6 +6,7 @@ import {
   AUDIENCE_OPTIONS,
   categoryLabel,
   CONTACT_LABELS,
+  GUESTS_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
 import { DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
 import { languageName, regionName } from '@/lib/podcastCatalogDisplay'
@@ -133,6 +134,16 @@ export const FilterControls = ({
       <SelectContent>
         {AUDIENCE_OPTIONS.map((value) => (
           <SelectItem key={value} value={value}>{AUDIENCE_LABELS[value]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+    <Select value={params.guests} onValueChange={(guests: PodcastCatalogParams['guests']) => update({ guests })}>
+      <SelectTrigger aria-label={filterName('Guests', GUESTS_LABELS[params.guests], params.guests === 'all')}>
+        <SelectValue>{GUESTS_LABELS[params.guests]}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(GUESTS_LABELS) as Array<PodcastCatalogParams['guests']>).map((value) => (
+          <SelectItem key={value} value={value}>{GUESTS_LABELS[value]}</SelectItem>
         ))}
       </SelectContent>
     </Select>

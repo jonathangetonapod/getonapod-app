@@ -179,6 +179,31 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText(/^Email:/)).not.toBeInTheDocument()
   })
 
+  // Podscan's guest flag narrows the list on request; untouched, every format shows.
+  it('filters to shows that take guests and keeps it in the address', async () => {
+    renderPage()
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ guests: 'all' }), expect.anything())
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any guest format' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Takes guests' }))
+
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ guests: 'yes', page: 1 }), expect.anything()))
+    expect(screen.getByText('Guests: Takes guests')).toBeInTheDocument()
+
+    // Removing the chip returns to the untouched page, which the query cache already holds.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Guests: Takes guests' }))
+    expect(await screen.findByRole('combobox', { name: 'Any guest format' })).toBeInTheDocument()
+    expect(screen.queryByText('Guests: Takes guests')).not.toBeInTheDocument()
+  })
+
+  it('opens a guests link already filtered', async () => {
+    renderPage('/app/podcast-database?guests=no')
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ guests: 'no' }), expect.anything())
+    expect(screen.getByRole('combobox', { name: 'Guests: Not flagged for guests' })).toBeInTheDocument()
+  })
+
   it('narrows to shows with an email when the address asks for it', async () => {
     renderPage('/app/podcast-database?email=any')
     await screen.findByText('The Founder Show')

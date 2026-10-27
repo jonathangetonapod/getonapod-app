@@ -5,6 +5,7 @@ import { decodeFeedText } from '@/lib/feedText'
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
 export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus' | '250k_plus'
+export type WorkspacePodcastCatalogGuestsFilter = 'all' | 'yes' | 'no'
 export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community' | 'rating' | 'reach'
 
 export interface WorkspacePodcastCatalogCategory {
@@ -75,6 +76,7 @@ export interface WorkspacePodcastCatalogParams {
   contact?: WorkspacePodcastCatalogContactFilter
   activity?: WorkspacePodcastCatalogActivityFilter
   audience?: WorkspacePodcastCatalogAudienceFilter
+  guests?: WorkspacePodcastCatalogGuestsFilter
   language?: string
   region?: string
   sort?: WorkspacePodcastCatalogSort
@@ -133,6 +135,7 @@ export async function getWorkspacePodcastCatalog(
       contact: params.contact || 'all',
       activity: params.activity || 'active',
       audience: params.audience || 'all',
+      guests: params.guests || 'all',
       language: params.language || undefined,
       region: params.region || undefined,
       sort: params.sort || 'best_fit',

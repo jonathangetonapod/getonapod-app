@@ -3,6 +3,7 @@ import type {
   WorkspacePodcastCatalogActivityFilter,
   WorkspacePodcastCatalogAudienceFilter,
   WorkspacePodcastCatalogContactFilter,
+  WorkspacePodcastCatalogGuestsFilter,
   WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
 
@@ -64,6 +65,13 @@ export const AUDIENCE_OPTIONS: WorkspacePodcastCatalogAudienceFilter[] = [
   '250k_1m',
   '1m_plus',
 ]
+
+// Podscan's guest detection; it misses some interview shows, so "Not flagged" is not "never".
+export const GUESTS_LABELS: Record<WorkspacePodcastCatalogGuestsFilter, string> = {
+  all: 'Any guest format',
+  yes: 'Takes guests',
+  no: 'Not flagged for guests',
+}
 
 export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
   best_fit: 'Best fit',
