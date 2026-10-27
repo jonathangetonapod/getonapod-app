@@ -19,10 +19,16 @@ export const GONE_QUIET_AFTER_DAYS = 30
 
 const DAY_MS = 86_400_000
 
+/**
+ * A pitch or conversation where we wrote last and have heard nothing for this
+ * many days is a follow-up that is overdue.
+ */
+export const FOLLOW_UP_AFTER_DAYS = 7
+
 type StatusRow = Pick<
   HostRelationshipSummary,
   'derived_state' | 'manual_stage' | 'last_contacted_at' | 'last_message_at' | 'last_message_direction'
->
+> & Partial<Pick<HostRelationshipSummary, 'snoozed_until'>>
 
 /** Whole days since a timestamp, or null when there is nothing to date. */
 export function daysSince(value: string | null | undefined, now: Date = new Date()): number | null {
@@ -136,15 +142,30 @@ export function relativeTime(value: string | null | undefined, now: Date = new D
   return minutes >= 1 ? `${minutes}m ago` : 'just now'
 }
 
-/**
- * Five days, not the inbox's two. A relationship touch is a slower cadence,
- * and flagging every three-day gap would bury the genuinely stalled.
- */
-export const QUIET_AFTER_DAYS = 5
+/** Whether someone parked this row and the date has not passed yet. */
+export function isSnoozed(row: Pick<StatusRow, 'snoozed_until'>, now: Date = new Date()): boolean {
+  if (!row.snoozed_until) return false
+  const until = new Date(row.snoozed_until).getTime()
+  return !Number.isNaN(until) && until > now.getTime()
+}
 
-/** The Needs attention filter: a live conversation silent past the quiet line. */
-export function needsAttention(row: StatusRow, now: Date = new Date()): boolean {
-  if (relationshipStage(row) !== 'in_conversation') return false
+/**
+ * Follow-up overdue: pitched or in conversation, we sent the last message, and
+ * no reply in FOLLOW_UP_AFTER_DAYS. A snoozed row is not overdue until the
+ * snooze ends.
+ */
+export function followUpOverdue(row: StatusRow, now: Date = new Date()): boolean {
+  if (isSnoozed(row, now) || relationshipMove(row) !== 'theirs') return false
   const days = daysQuiet(row, now)
-  return days !== null && days >= QUIET_AFTER_DAYS
+  return days !== null && days >= FOLLOW_UP_AFTER_DAYS
+}
+
+/**
+ * Needs attention: a live exchange waiting on us. The host wrote last, a
+ * follow-up is overdue, or the conversation has gone quiet. Snoozed rows wait.
+ */
+export function needsAttention(row: StatusRow, now: Date = new Date()): boolean {
+  if (isSnoozed(row, now)) return false
+  if (relationshipMove(row) === 'yours') return true
+  return followUpOverdue(row, now) || relationshipStatus(row, now).goneQuiet
 }

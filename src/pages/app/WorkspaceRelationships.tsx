@@ -64,7 +64,7 @@ import {
   type RelationshipNextStep,
   type RelationshipStage,
 } from '@/lib/relationshipLabels'
-import { needsAttention } from '@/lib/relationshipAttention'
+import { FOLLOW_UP_AFTER_DAYS, followUpOverdue, needsAttention } from '@/lib/relationshipAttention'
 import { sortRelationships, type RelationshipSort } from '@/lib/relationshipSort'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -92,7 +92,11 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const RELATIONSHIPS_PER_PAGE = 25
 
 type NoteKind = 'note' | 'call' | 'meeting'
-type RelationshipFilter = 'all' | 'needs_attention' | RelationshipStage
+type RelationshipFilter = 'all' | 'needs_attention' | 'follow_up_overdue' | RelationshipStage
+
+/** The filters that matter day to day, as tabs. The rest of the stages sit in a dropdown. */
+const FILTER_TABS = ['all', 'needs_attention', 'in_conversation', 'follow_up_overdue', 'placed'] as const
+const DROPDOWN_STAGES = RELATIONSHIP_STAGES.filter((stage) => !(FILTER_TABS as readonly string[]).includes(stage))
 type RelationshipView = 'overview' | 'notes' | 'threads' | 'activity'
 type SaveState = 'idle' | 'saving' | 'saved'
 
@@ -154,6 +158,7 @@ const EVENT_TITLES: Record<Exclude<RelationshipActivityItem['kind'], 'email'>, s
 const FILTER_LABELS: Record<RelationshipFilter, string> = {
   all: 'All',
   needs_attention: 'Needs attention',
+  follow_up_overdue: 'Follow-up overdue',
   new: stageLabel('new'),
   pitched: stageLabel('pitched'),
   in_conversation: stageLabel('in_conversation'),
@@ -209,6 +214,13 @@ function ActivityItemView({ item, compact = false }: { item: RelationshipActivit
   )
 }
 
+function matchesFilter(row: HostRelationshipSummary, filter: RelationshipFilter, now: Date): boolean {
+  if (filter === 'all') return true
+  if (filter === 'needs_attention') return needsAttention(row, now)
+  if (filter === 'follow_up_overdue') return followUpOverdue(row, now)
+  return relationshipStage(row) === filter
+}
+
 interface WorkspaceRelationshipsProps {
   platformWorkspaceId?: string
 }
@@ -228,7 +240,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter>('all')
-  const [relationshipSort, setRelationshipSort] = useState<RelationshipSort>('recent')
+  const [relationshipSort, setRelationshipSort] = useState<RelationshipSort>('attention')
   const [relationshipPage, setRelationshipPage] = useState(1)
   const [openPodcastId, setOpenPodcastId] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<RelationshipView>('overview')
@@ -294,10 +306,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     const term = search.trim().toLowerCase()
     const now = new Date()
     return relationships.filter((row) => (
-      (
-        relationshipFilter === 'all'
-        || (relationshipFilter === 'needs_attention' ? needsAttention(row, now) : relationshipStage(row) === relationshipFilter)
-      )
+      matchesFilter(row, relationshipFilter, now)
       && (
         !term
         || decodeFeedText(row.podcast_name ?? '').toLowerCase().includes(term)
@@ -352,21 +361,19 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     setFocusClientPicker(false)
   }, [detailQuery.data, focusClientPicker])
 
-  // The count of live conversations is not the actionable fact; which of
-  // them has gone silent is. Recency sort puts exactly those at the bottom.
-  const attentionCount = useMemo(
-    () => relationships.filter((row) => needsAttention(row)).length,
-    [relationships],
-  )
-  // Whole-book figures from the server, so the header is right before every
-  // page has loaded. Needs attention depends on the clock, so it is counted
-  // over the rows loaded; live conversations sort first, so the first page
-  // holds them.
-  const chips: Array<{ filter: RelationshipFilter; count: number; className: string }> = [
-    { filter: 'in_conversation', count: firstBookPage?.counts.in_conversation ?? 0, className: 'border-sky-200 bg-sky-50 text-sky-900 data-[active=true]:bg-sky-700 data-[active=true]:text-white' },
-    { filter: 'placed', count: firstBookPage?.counts.booked ?? 0, className: 'border-emerald-200 bg-emerald-50 text-emerald-900 data-[active=true]:bg-emerald-700 data-[active=true]:text-white' },
-    { filter: 'needs_attention', count: attentionCount, className: 'border-amber-300 bg-amber-50 text-amber-900 data-[active=true]:bg-amber-600 data-[active=true]:text-white' },
-  ]
+  // Needs attention and Follow-up overdue depend on the clock, so they are
+  // counted over the rows loaded. In conversation and Placed are whole-book
+  // figures from the server, so the tabs are right before every page loads.
+  const tabCounts = useMemo(() => {
+    const now = new Date()
+    return {
+      all: bookTotal,
+      needs_attention: relationships.filter((row) => needsAttention(row, now)).length,
+      in_conversation: firstBookPage?.counts.in_conversation ?? 0,
+      follow_up_overdue: relationships.filter((row) => followUpOverdue(row, now)).length,
+      placed: firstBookPage?.counts.booked ?? 0,
+    }
+  }, [bookTotal, firstBookPage, relationships])
 
   const applyFilter = (filter: RelationshipFilter) => {
     setRelationshipFilter(filter)
@@ -574,8 +581,8 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       }
       return
     }
-    // A conversation or follow-up opens what we have saved.
-    openRelationship(row.podcast_id, step === 'open' ? 'overview' : 'threads')
+    // A conversation opens what we have saved.
+    openRelationship(row.podcast_id, step === 'conversation' ? 'threads' : 'overview')
   }
   const saveSummary = (podcastId: string) => {
     if (summaryDraft === (openRow?.summary ?? '') || summaryMutation.isPending) return
@@ -626,25 +633,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             </p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            {!bookEmpty && (
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Quick filters">
-                {chips.map((chip) => {
-                  const active = relationshipFilter === chip.filter
-                  return (
-                    <button
-                      key={chip.filter}
-                      type="button"
-                      aria-pressed={active}
-                      data-active={active}
-                      onClick={() => applyFilter(active ? 'all' : chip.filter)}
-                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${chip.className}`}
-                    >
-                      <span className="tabular-nums">{chip.count}</span> {FILTER_LABELS[chip.filter].toLowerCase()}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
             {canManage && !bookEmpty && (
               <Button type="button" size="sm" onClick={() => setAddOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />Add relationship
@@ -661,46 +649,80 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
         )}
 
         {!bookEmpty && (
-          <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
-            <div className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="Search relationships"
-                placeholder="Search shows, hosts, emails, or clients"
-                className="pl-9"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
+          <div className="space-y-3">
+            {/* Toggle buttons rather than ARIA tabs: they filter one list
+                instead of switching between panels. */}
+            <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <div className="inline-flex min-w-max gap-1 rounded-lg border bg-muted/30 p-1" role="group" aria-label="Filter by status">
+                {FILTER_TABS.map((filter) => {
+                  const active = relationshipFilter === filter
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => applyFilter(filter)}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                      {FILTER_LABELS[filter]}{' '}
+                      {!bookQuery.isLoading && (
+                        <span className={`rounded-full px-1.5 text-xs tabular-nums ${active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                          {tabCounts[filter]}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
+              <div className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search relationships"
+                  placeholder="Search shows, hosts, emails, or clients"
+                  className="pl-9"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value)
+                    setRelationshipPage(1)
+                    setOpenPodcastId(null)
+                  }}
+                />
+              </div>
+              <Select
+                value={(DROPDOWN_STAGES as string[]).includes(relationshipFilter) ? relationshipFilter : ''}
+                onValueChange={(value) => applyFilter(value as RelationshipFilter)}
+              >
+                <SelectTrigger aria-label="Other stages" className="w-full sm:w-44"><SelectValue placeholder="Other stages" /></SelectTrigger>
+                <SelectContent>
+                  {DROPDOWN_STAGES.map((stage) => (
+                    <SelectItem key={stage} value={stage}>{FILTER_LABELS[stage]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={relationshipSort}
+                onValueChange={(value) => {
+                  setRelationshipSort(value as RelationshipSort)
                   setRelationshipPage(1)
                   setOpenPodcastId(null)
                 }}
-              />
+              >
+                <SelectTrigger aria-label="Sort relationships" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="attention">Needs attention first</SelectItem>
+                  <SelectItem value="recent">Recent contact</SelectItem>
+                  <SelectItem value="show">Show name A–Z</SelectItem>
+                  <SelectItem value="host">Host name A–Z</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={relationshipFilter} onValueChange={(value) => applyFilter(value as RelationshipFilter)}>
-              <SelectTrigger aria-label="Filter relationships" className="w-full sm:w-48"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{FILTER_LABELS.all}</SelectItem>
-                <SelectItem value="needs_attention">{FILTER_LABELS.needs_attention}</SelectItem>
-                {RELATIONSHIP_STAGES.map((stage) => (
-                  <SelectItem key={stage} value={stage}>{FILTER_LABELS[stage]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={relationshipSort}
-              onValueChange={(value) => {
-                setRelationshipSort(value as RelationshipSort)
-                setRelationshipPage(1)
-                setOpenPodcastId(null)
-              }}
-            >
-              <SelectTrigger aria-label="Sort relationships" className="w-full sm:w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="recent">Recent contact</SelectItem>
-                <SelectItem value="show">Show name A–Z</SelectItem>
-                <SelectItem value="host">Host name A–Z</SelectItem>
-              </SelectContent>
-            </Select>
+            {relationshipFilter === 'follow_up_overdue' && (
+              <p className="text-sm text-muted-foreground">
+                Pitches and conversations where you wrote last and have had no reply in {FOLLOW_UP_AFTER_DAYS} days or more.
+              </p>
+            )}
           </div>
         )}
 

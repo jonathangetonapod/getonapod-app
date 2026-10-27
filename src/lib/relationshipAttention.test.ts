@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FOLLOW_UP_AFTER_DAYS,
   GONE_QUIET_AFTER_DAYS,
-  QUIET_AFTER_DAYS,
   daysQuiet,
+  followUpOverdue,
+  isSnoozed,
   lastMessageSender,
   needsAttention,
   relationshipMove,
@@ -90,13 +92,62 @@ describe('relationshipMove', () => {
   })
 })
 
+describe('followUpOverdue', () => {
+  it('is our last message on a pitch or conversation with no reply for a week', () => {
+    expect(FOLLOW_UP_AFTER_DAYS).toBe(7)
+    expect(followUpOverdue(row('pitched', daysAgo(6)), now)).toBe(false)
+    expect(followUpOverdue(row('pitched', daysAgo(7)), now)).toBe(true)
+    expect(followUpOverdue(row('pitched', daysAgo(249)), now)).toBe(true)
+    expect(followUpOverdue(row('in_conversation', daysAgo(10), {
+      last_message_direction: 'outbound', last_message_at: daysAgo(10),
+    }), now)).toBe(true)
+  })
+
+  it('is never overdue when the host spoke last or nobody is waiting', () => {
+    expect(followUpOverdue(row('in_conversation', daysAgo(20), {
+      last_message_direction: 'inbound', last_message_at: daysAgo(20),
+    }), now)).toBe(false)
+    expect(followUpOverdue(row('booked', daysAgo(20)), now)).toBe(false)
+    expect(followUpOverdue(row('pitched', null), now)).toBe(false)
+  })
+
+  it('waits out a snooze, and resumes when it ends', () => {
+    expect(followUpOverdue(row('pitched', daysAgo(30), { snoozed_until: daysAgo(-2) }), now)).toBe(false)
+    expect(followUpOverdue(row('pitched', daysAgo(30), { snoozed_until: daysAgo(1) }), now)).toBe(true)
+  })
+})
+
+describe('isSnoozed', () => {
+  it('holds only until the date', () => {
+    expect(isSnoozed({ snoozed_until: daysAgo(-1) }, now)).toBe(true)
+    expect(isSnoozed({ snoozed_until: daysAgo(1) }, now)).toBe(false)
+    expect(isSnoozed({ snoozed_until: null }, now)).toBe(false)
+    expect(isSnoozed({ snoozed_until: 'not a date' }, now)).toBe(false)
+  })
+})
+
 describe('needsAttention', () => {
-  it('flags a live conversation past the quiet line', () => {
-    expect(QUIET_AFTER_DAYS).toBe(5)
-    expect(needsAttention(row('in_conversation', daysAgo(6)), now)).toBe(true)
-    expect(needsAttention(row('in_conversation', daysAgo(88)), now)).toBe(true)
-    expect(needsAttention(row('in_conversation', daysAgo(1)), now)).toBe(false)
-    expect(needsAttention(row('in_conversation', null), now)).toBe(false)
+  it('flags a host waiting on our reply, however recent', () => {
+    expect(needsAttention(row('in_conversation', daysAgo(0), {
+      last_message_direction: 'inbound', last_message_at: daysAgo(0),
+    }), now)).toBe(true)
+    expect(needsAttention(row('replied', daysAgo(1)), now)).toBe(true)
+  })
+
+  it('counts overdue follow-ups', () => {
+    expect(needsAttention(row('pitched', daysAgo(9)), now)).toBe(true)
+    expect(needsAttention(row('pitched', daysAgo(2)), now)).toBe(false)
+  })
+
+  it('counts a conversation that has gone quiet even when nobody knows who spoke last', () => {
+    expect(needsAttention(row('in_conversation', daysAgo(45)), now)).toBe(true)
+    expect(needsAttention(row('in_conversation', daysAgo(10)), now)).toBe(false)
+  })
+
+  it('leaves settled and snoozed hosts alone', () => {
+    expect(needsAttention(row('booked', daysAgo(90), { last_message_direction: 'inbound' }), now)).toBe(false)
+    expect(needsAttention(row('declined', daysAgo(90)), now)).toBe(false)
+    expect(needsAttention(row('replied', daysAgo(1), { snoozed_until: daysAgo(-7) }), now)).toBe(false)
   })
 })
 

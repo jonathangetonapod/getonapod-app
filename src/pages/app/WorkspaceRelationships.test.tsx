@@ -247,10 +247,15 @@ describe('WorkspaceRelationships', () => {
     expect(snippet).toMatch(/^Hi there, a long pitch.*…$/)
     expect(screen.getByText('No messages yet')).toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: 'View conversation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Follow up' })).toBeInTheDocument()
+    // Replying from the app is retired: a row with a conversation opens it,
+    // a host nobody has pitched opens the pitch.
+    expect(screen.getAllByRole('button', { name: 'View conversation' })).toHaveLength(3)
     expect(screen.getByRole('button', { name: 'Pitch' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reply' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Follow up' })).not.toBeInTheDocument()
+    // Whose move it is, from who wrote last; a week-old pitch is overdue.
+    expect(screen.getAllByText('Your move').length).toBeGreaterThan(0)
+    expect(screen.getByText('Their move')).toBeInTheDocument()
     // The old metadata line is gone from the row.
     expect(screen.queryByText(/Last contact .* 2026/)).not.toBeInTheDocument()
     expect(screen.queryByText(/\d+ notes?$/)).not.toBeInTheDocument()
@@ -272,11 +277,10 @@ describe('WorkspaceRelationships', () => {
     expect(screen.getByText('Not a fit')).toBeInTheDocument()
     expect(screen.getByText('Nurturing')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Filter relationships' }))
+    // The common filters are tabs; the dropdown holds only the other stages.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Other stages' }))
     const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
-    expect(options).toEqual([
-      'All', 'Needs attention', 'New', 'Pitched', 'In conversation', 'Nurturing', 'Placed', 'Not a fit', 'Do not contact',
-    ])
+    expect(options).toEqual(['New', 'Pitched', 'Nurturing', 'Not a fit', 'Do not contact'])
     fireEvent.click(screen.getByRole('option', { name: 'Not a fit' }))
     expect(screen.getByText('Second Show')).toBeInTheDocument()
     expect(screen.queryByText('Third Show')).not.toBeInTheDocument()
@@ -392,21 +396,24 @@ describe('WorkspaceRelationships', () => {
       })
     renderPage()
 
-    const live = await screen.findByRole('button', { name: '7 in conversation' })
-    expect(screen.getByRole('button', { name: '3 placed' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: '0 needs attention' })).toBeInTheDocument()
+    await screen.findByText('Founder & Operator')
+    const tabs = screen.getByRole('group', { name: 'Filter by status' })
+    expect(within(tabs).getAllByRole('button').map((tab) => tab.textContent)).toEqual([
+      'All 2', 'Needs attention 1', 'In conversation 7', 'Follow-up overdue 0', 'Placed 3',
+    ])
+    const live = within(tabs).getByRole('button', { name: 'In conversation 7' })
+    expect(within(tabs).getByRole('button', { name: 'All 2' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByText(/engaged/)).not.toBeInTheDocument()
     expect(screen.getByText('1 of 2 relationships loaded. Search, filters and sorting cover the loaded rows.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load more relationships' }))
     expect(await screen.findByText('Second Show')).toBeInTheDocument()
     expect(mockedListPage).toHaveBeenLastCalledWith(workspaceId, { offset: 1 })
 
-    fireEvent.click(screen.getByRole('button', { name: '3 placed' }))
-    expect(screen.getByRole('button', { name: '3 placed' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(within(tabs).getByRole('button', { name: 'Placed 3' }))
+    expect(within(tabs).getByRole('button', { name: 'Placed 3' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByText('Founder & Operator')).not.toBeInTheDocument()
     expect(screen.getByText('Second Show')).toBeInTheDocument()
-    // Clicking the active chip clears it.
-    fireEvent.click(screen.getByRole('button', { name: '3 placed' }))
+    fireEvent.click(within(tabs).getByRole('button', { name: 'All 2' }))
     expect(screen.getByText('Founder & Operator')).toBeInTheDocument()
     expect(live).toHaveAttribute('aria-pressed', 'false')
   })
@@ -441,9 +448,10 @@ describe('WorkspaceRelationships', () => {
     expect(screen.queryByText('Went cold')).not.toBeInTheDocument()
     expect(screen.queryByText('In conversation · 88d')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '1 needs attention' }))
+    // Gone quiet needs attention; the fresh conversation where the host wrote
+    // last does too (it is our move), so both are listed, quiet one included.
+    fireEvent.click(screen.getByRole('button', { name: 'Needs attention 2' }))
     expect(screen.getByText('Long Gone FM')).toBeInTheDocument()
-    expect(screen.queryByText('Fresh Talk')).not.toBeInTheDocument()
   })
 
   it('names an unresolved row after its host, never a placeholder', async () => {

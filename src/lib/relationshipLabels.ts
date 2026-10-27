@@ -163,12 +163,13 @@ export function messageSnippet(body: string | null | undefined, max = 90): strin
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
 }
 
-export type RelationshipNextStep = 'reply' | 'follow_up' | 'pitch' | 'open'
+export type RelationshipNextStep = 'pitch' | 'conversation' | 'open'
 
-/** The one action a row offers, decided by its stage. */
-export function relationshipNextStep(stage: RelationshipStage): RelationshipNextStep {
-  if (stage === 'in_conversation') return 'reply'
-  if (stage === 'pitched') return 'follow_up'
+/**
+ * The one action a row offers. Replying from the app is retired, so a live
+ * exchange opens what was said; a host nobody has pitched opens the pitch.
+ */
+export function relationshipNextStep(stage: RelationshipStage, hasConversation: boolean): RelationshipNextStep {
   if (stage === 'new' || stage === 'nurturing') return 'pitch'
-  return 'open'
+  return hasConversation ? 'conversation' : 'open'
 }

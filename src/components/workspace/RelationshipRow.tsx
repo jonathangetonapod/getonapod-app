@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { ChevronDown, ChevronUp, Hourglass, Loader2, MoreHorizontal, Reply } from 'lucide-react'
+import { AlarmClock, BellOff, ChevronDown, ChevronUp, Hourglass, Loader2, MoreHorizontal, Reply } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
+  followUpOverdue,
+  isSnoozed,
   lastMessageSender,
   relationshipMove,
   relationshipStatus,
@@ -29,11 +31,21 @@ import type { HostRelationshipSummary } from '@/services/hostRelationships'
 /** Clients shown as chips before the rest collapse into "+N". */
 const VISIBLE_CLIENT_CHIPS = 2
 
-const NEXT_STEP_LABEL: Record<RelationshipNextStep, string> = {
-  reply: 'View conversation',
-  follow_up: 'Follow up',
+const NEXT_STEP_LABEL: Record<Exclude<RelationshipNextStep, 'open'>, string> = {
+  conversation: 'View conversation',
   pitch: 'Pitch',
-  open: 'Open',
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value))
+}
+
+type Indicator = 'snoozed' | 'overdue' | 'yours' | 'theirs'
+
+const INDICATOR_VIEW: Record<Exclude<Indicator, 'snoozed'>, { label: string; className: string; Icon: typeof Reply }> = {
+  overdue: { label: 'Follow-up overdue', className: 'text-amber-800', Icon: AlarmClock },
+  yours: { label: 'Your move', className: 'text-foreground', Icon: Reply },
+  theirs: { label: 'Their move', className: 'text-muted-foreground', Icon: Hourglass },
 }
 
 function initials(name: string): string {
@@ -166,7 +178,12 @@ export const RelationshipRow = ({
   const stage = relationshipStage(row)
   const status = relationshipStatus(row, now)
   const move = relationshipMove(row)
-  const nextStep = relationshipNextStep(stage)
+  // One indicator, most pressing first: a snooze silences the rest, and an
+  // overdue follow-up outranks "Their move", which it would otherwise read as.
+  const indicator: Indicator | null = isSnoozed(row, now)
+    ? 'snoozed'
+    : followUpOverdue(row, now) ? 'overdue' : move
+  const nextStep = relationshipNextStep(stage, Boolean(row.last_message_body || row.last_thread_key))
   const clientNames = (row.client_names ?? []).filter(Boolean)
   const hiddenClients = clientNames.length - VISIBLE_CLIENT_CHIPS
   const snippet = messageSnippet(row.last_message_body)
@@ -189,16 +206,20 @@ export const RelationshipRow = ({
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <h3 className="min-w-0 max-w-full truncate text-sm font-semibold leading-6">{title}</h3>
           <div className="flex flex-wrap items-center gap-2">
-            {move && (
-              <span
-                className={`inline-flex items-center gap-1 text-xs font-medium ${move === 'yours' ? 'text-foreground' : 'text-muted-foreground'}`}
-              >
-                {move === 'yours'
-                  ? <Reply className="h-3.5 w-3.5" aria-hidden="true" />
-                  : <Hourglass className="h-3.5 w-3.5" aria-hidden="true" />}
-                {move === 'yours' ? 'Your move' : 'Their move'}
+            {indicator === 'snoozed' && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                <BellOff className="h-3.5 w-3.5" aria-hidden="true" />
+                Snoozed until {formatShortDate(row.snoozed_until as string)}
               </span>
             )}
+            {indicator && indicator !== 'snoozed' && (() => {
+              const { label, className, Icon } = INDICATOR_VIEW[indicator]
+              return (
+                <span className={`inline-flex items-center gap-1 text-xs font-medium ${className}`}>
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}
+                </span>
+              )
+            })()}
             <Badge variant="outline" className={status.className}>{statusText(status)}</Badge>
           </div>
         </div>
@@ -246,12 +267,7 @@ export const RelationshipRow = ({
           )
           : (
             <>
-              <Button
-                type="button"
-                size="sm"
-                variant={nextStep === 'reply' ? 'default' : 'outline'}
-                onClick={() => onNextStep(nextStep)}
-              >
+              <Button type="button" size="sm" variant="outline" onClick={() => onNextStep(nextStep)}>
                 {NEXT_STEP_LABEL[nextStep]}
               </Button>
               <Button
