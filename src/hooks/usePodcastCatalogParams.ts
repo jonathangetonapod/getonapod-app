@@ -25,15 +25,15 @@ export interface PodcastCatalogParams {
 }
 
 /*
- * Untouched, the email filter shows shows somebody can actually be pitched:
- * a first page full of "No email" rows is a page with nothing to do on it. The
- * filter says so as a removable chip, so nobody wonders where the rest went.
- * Best fit leads with shows a client can book rather than the biggest ones.
+ * Untouched, the catalogue shows every active show, with or without an email:
+ * a show with no public inbox can still be reached through its website or
+ * socials, or unlocked. Best fit already ranks shows with an email first, and
+ * leads with shows a client can book rather than the biggest ones.
  */
 export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   search: '',
   category: 'all',
-  contact: 'any',
+  contact: 'all',
   activity: 'active',
   audience: 'all',
   language: 'all',

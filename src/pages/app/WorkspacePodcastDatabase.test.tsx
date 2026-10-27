@@ -134,7 +134,7 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByText('Catalog synced Oct 25, 2026')).not.toHaveClass('text-amber-700')
     // Every control is named by what it shows.
     expect(screen.getByRole('combobox', { name: 'Any category' })).toHaveTextContent('Any category')
-    expect(screen.getByRole('combobox', { name: 'Email status: Public or verified' })).toHaveTextContent('Public or verified')
+    expect(screen.getByRole('combobox', { name: 'Any email status' })).toHaveTextContent('Any email status')
     expect(screen.getByRole('combobox', { name: 'Still publishing' })).toHaveTextContent('Still publishing')
     expect(screen.getByRole('combobox', { name: 'Any audience size' })).toHaveTextContent('Any audience size')
     // Best fit, not the biggest shows nobody can book.
@@ -152,7 +152,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
     await screen.findByText('The Founder Show')
 
-    fireEvent.click(screen.getByRole('combobox', { name: 'Email status: Public or verified' }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any email status' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Verified email' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Still publishing' }))
     // Still publishing already means an episode in 90 days, so that is not offered twice.
@@ -171,15 +171,21 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByText('Audience: 10K to 50K')).toBeInTheDocument()
   })
 
-  // Untouched, the list shows shows somebody can be pitched, and says so.
-  it('starts on shows with an email and lets the chip be removed', async () => {
+  // Untouched, the list shows every show, with or without an email, and no email chip.
+  it('starts on all shows, with or without an email', async () => {
     renderPage()
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' }), expect.anything())
+    expect(screen.queryByText(/^Email:/)).not.toBeInTheDocument()
+  })
+
+  it('narrows to shows with an email when the address asks for it', async () => {
+    renderPage('/app/podcast-database?email=any')
     await screen.findByText('The Founder Show')
     expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'any' }), expect.anything())
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Email: Public or verified' }))
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' }), expect.anything()))
-    expect(screen.queryByText('Email: Public or verified')).not.toBeInTheDocument()
   })
 
   it('reads filters, sort, page and size from the address', async () => {
@@ -543,12 +549,9 @@ describe('WorkspacePodcastDatabase', () => {
     )
     expect(screen.getByRole('combobox', { name: 'Sort: Relevance' })).toBeInTheDocument()
 
+    // Clearing returns to the untouched page, which the query cache already holds.
     fireEvent.click(screen.getByRole('button', { name: 'Clear all' }))
-    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
-      workspaceId,
-      expect.objectContaining({ search: '', sort: 'best_fit' }),
-      expect.anything(),
-    ))
+    expect(await screen.findByRole('combobox', { name: 'Sort: Best fit' })).toBeInTheDocument()
     expect(screen.getByLabelText('Search podcasts')).toHaveValue('')
     expect(screen.queryByText(/^Search:/)).not.toBeInTheDocument()
   })
