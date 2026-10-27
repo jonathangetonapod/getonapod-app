@@ -78,7 +78,7 @@ import {
   relativeTime,
 } from '@/lib/relationshipAttention'
 import { sortRelationships, type RelationshipSort } from '@/lib/relationshipSort'
-import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { getWorkspaceClients } from '@/services/clients'
@@ -231,6 +231,72 @@ function matchesFilter(row: HostRelationshipSummary, filter: RelationshipFilter,
   if (filter === 'needs_attention') return needsAttention(row, now)
   if (filter === 'follow_up_overdue') return followUpOverdue(row, now)
   return relationshipStage(row) === filter
+}
+
+/**
+ * What an empty filter says, and the one thing to do instead. An empty
+ * Needs attention list is good news and reads that way.
+ */
+const EMPTY_FILTER: Partial<Record<RelationshipFilter, { title: string; body: string; action: 'pitch' | 'all' }>> = {
+  needs_attention: {
+    title: 'No hosts need attention. Nice.',
+    body: 'Nobody is waiting on a reply and no follow-up is overdue. A good time to pitch someone new.',
+    action: 'pitch',
+  },
+  follow_up_overdue: {
+    title: 'No follow-ups overdue.',
+    body: `Every pitch has a reply or is under ${FOLLOW_UP_AFTER_DAYS} days old.`,
+    action: 'all',
+  },
+  in_conversation: {
+    title: 'No live conversations right now.',
+    body: 'Conversations show here once a host replies to a pitch.',
+    action: 'pitch',
+  },
+  placed: {
+    title: 'No placements yet.',
+    body: 'Hosts you place a client with show here.',
+    action: 'pitch',
+  },
+}
+
+const FilterEmptyState = ({
+  filter,
+  search,
+  pitchHref,
+  onClearSearch,
+  onShowAll,
+}: {
+  filter: RelationshipFilter
+  search: string
+  pitchHref: string
+  onClearSearch: () => void
+  onShowAll: () => void
+}) => {
+  const copy = search
+    ? { title: `No hosts match "${search}".`, body: 'Search covers show names, hosts, emails and clients.', action: 'search' as const }
+    : EMPTY_FILTER[filter] ?? {
+      title: `No hosts at ${FILTER_LABELS[filter]}.`,
+      body: 'Nothing in the book is at this stage right now.',
+      action: 'all' as const,
+    }
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center p-8 text-center">
+        <p className="text-sm font-medium">{copy.title}</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{copy.body}</p>
+        <div className="mt-4">
+          {copy.action === 'search' && <Button type="button" size="sm" variant="outline" onClick={onClearSearch}>Clear search</Button>}
+          {copy.action === 'all' && <Button type="button" size="sm" variant="outline" onClick={onShowAll}>Show all hosts</Button>}
+          {copy.action === 'pitch' && (
+            <Button asChild size="sm">
+              <Link to={pitchHref}>Pitch a client</Link>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 interface WorkspaceRelationshipsProps {
@@ -805,14 +871,13 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
           </Card>
         )}
         {!bookQuery.isLoading && !bookQuery.error && !bookEmpty && filtered.length === 0 && (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-sm font-medium">No relationships match</p>
-              <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Try a different search or filter.
-              </p>
-            </CardContent>
-          </Card>
+          <FilterEmptyState
+            filter={relationshipFilter}
+            search={search.trim()}
+            pitchHref={workspaceModuleHref(baseHref, 'clients')}
+            onClearSearch={() => setSearch('')}
+            onShowAll={() => applyFilter('all')}
+          />
         )}
 
         <div className="space-y-2">

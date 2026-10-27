@@ -701,6 +701,31 @@ describe('WorkspaceRelationships', () => {
     }))
   })
 
+  it('says so kindly when nothing needs attention, and points to the pitch flow', async () => {
+    mockedList.mockResolvedValue([{ ...relationship, derived_state: 'booked', last_message_direction: 'outbound' }])
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Needs attention 0' }))
+    expect(screen.getByText('No hosts need attention. Nice.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Pitch a client' })).toHaveAttribute('href', '/app/clients')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Follow-up overdue 0' }))
+    expect(screen.getByText('No follow-ups overdue.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all hosts' }))
+    expect(screen.getByRole('heading', { name: 'Founder & Operator' })).toBeInTheDocument()
+  })
+
+  it('offers to clear a search that matches nothing', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search relationships' }), { target: { value: 'zzz' } })
+    expect(screen.getByText('No hosts match "zzz".')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(screen.getByRole('heading', { name: 'Founder & Operator' })).toBeInTheDocument()
+  })
+
   it('shows an empty state when the workspace has no hosts', async () => {
     mockedList.mockResolvedValue([])
     renderPage()
