@@ -6,9 +6,9 @@
 -- line, about 60 MB; 14s on production) and recomputed catalogue-wide lists and
 -- counts, to show 24 shows. The refresh tick's due list timed out the same way.
 --
--- 1. Search and category matching use indexed, generated columns instead of
---    reading every description: search_document (Postgres full text, 'simple'
---    config, no stemming) and category_keys. A search still needs every word:
+-- 1. Search and category matching use indexed columns kept current by a
+--    trigger, instead of reading every description: search_document
+--    (Postgres full text, 'simple' config, no stemming) and category_keys. A search still needs every word:
 --    words longer than three letters match the start of a word ("invest"
 --    finds "investing"), shorter ones a whole word ("ai" does not find "said").
 -- 2. Wide columns (description, artwork, links, categories) are read only for
@@ -54,20 +54,75 @@ AS $$
   FROM unnest(public.podcast_category_keys(categories)) key
 $$;
 
+-- Plain columns kept current by a trigger, not GENERATED ... STORED: adding a
+-- stored generated column rewrites the whole table under an exclusive lock
+-- that blocks every reader of podcasts, and on production that rewrite ran
+-- past the statement timeout. This way the columns appear instantly, the
+-- backfill below takes row locks only, and reads carry on throughout.
 ALTER TABLE public.podcasts
-  ADD COLUMN IF NOT EXISTS category_keys TEXT[]
-    GENERATED ALWAYS AS (public.podcast_category_keys(podcast_categories)) STORED,
-  ADD COLUMN IF NOT EXISTS search_document TSVECTOR
-    GENERATED ALWAYS AS (
-      to_tsvector(
-        'simple'::REGCONFIG,
-        COALESCE(podcast_name, '') || ' ' ||
-        COALESCE(publisher_name, '') || ' ' ||
-        COALESCE(host_name, '') || ' ' ||
-        COALESCE(podcast_description, '') || ' ' ||
-        public.podcast_category_text(podcast_categories)
-      )
-    ) STORED;
+  ADD COLUMN IF NOT EXISTS category_keys TEXT[],
+  ADD COLUMN IF NOT EXISTS search_document TSVECTOR;
+
+CREATE OR REPLACE FUNCTION public.podcast_search_document(
+  podcast_name TEXT,
+  publisher_name TEXT,
+  host_name TEXT,
+  podcast_description TEXT,
+  podcast_categories JSONB
+)
+RETURNS TSVECTOR
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT to_tsvector(
+    'simple'::REGCONFIG,
+    COALESCE(podcast_name, '') || ' ' ||
+    COALESCE(publisher_name, '') || ' ' ||
+    COALESCE(host_name, '') || ' ' ||
+    COALESCE(podcast_description, '') || ' ' ||
+    public.podcast_category_text(podcast_categories)
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION public.podcasts_set_search_columns()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  NEW.category_keys := public.podcast_category_keys(NEW.podcast_categories);
+  NEW.search_document := public.podcast_search_document(
+    NEW.podcast_name, NEW.publisher_name, NEW.host_name, NEW.podcast_description, NEW.podcast_categories
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS podcasts_search_columns ON public.podcasts;
+CREATE TRIGGER podcasts_search_columns
+  BEFORE INSERT OR UPDATE OF podcast_name, publisher_name, host_name, podcast_description, podcast_categories
+  ON public.podcasts
+  FOR EACH ROW EXECUTE FUNCTION public.podcasts_set_search_columns();
+
+-- The backfill and the index builds read every show once; give this session
+-- the time for it (the default would cancel them on production).
+SET statement_timeout = '30min';
+
+-- Fill existing rows. The updated_at and fetch-count triggers are paused for
+-- it, so the backfill changes nothing but the two new columns; they are
+-- re-enabled in the same transaction.
+ALTER TABLE public.podcasts DISABLE TRIGGER podcasts_updated_at_trigger;
+ALTER TABLE public.podcasts DISABLE TRIGGER trigger_auto_increment_fetch_count;
+UPDATE public.podcasts
+SET
+  category_keys = public.podcast_category_keys(podcast_categories),
+  search_document = public.podcast_search_document(
+    podcast_name, publisher_name, host_name, podcast_description, podcast_categories
+  )
+WHERE search_document IS NULL;
+ALTER TABLE public.podcasts ENABLE TRIGGER podcasts_updated_at_trigger;
+ALTER TABLE public.podcasts ENABLE TRIGGER trigger_auto_increment_fetch_count;
 
 CREATE INDEX IF NOT EXISTS podcasts_search_document_idx
   ON public.podcasts USING GIN (search_document);
@@ -645,6 +700,8 @@ GRANT EXECUTE ON FUNCTION public.podcast_catalog_refresh_due(INTEGER) TO service
 
 -- Facts first computed here, then every 15 minutes.
 SELECT public.refresh_podcast_catalog_facets();
+
+RESET statement_timeout;
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 

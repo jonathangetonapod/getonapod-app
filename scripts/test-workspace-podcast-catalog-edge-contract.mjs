@@ -110,7 +110,11 @@ assert.match(v3Migration, /lower\(btrim\(language\)\) ~ '\^\[a-z\]\{2,3\}/u)
 // generated columns, wide columns are read for the page only, catalogue-wide
 // lists come from a cached facets row, and every call is planned for its own
 // filters (a cached generic plan was 40x slower).
-assert.match(scaleMigration, /search_document TSVECTOR\s+GENERATED ALWAYS AS/u)
+// Trigger-maintained columns, not GENERATED STORED: a stored generated column
+// rewrites the table under an exclusive lock, which timed out on production.
+assert.doesNotMatch(scaleMigration, /GENERATED ALWAYS AS/u)
+assert.match(scaleMigration, /CREATE TRIGGER podcasts_search_columns\s+BEFORE INSERT OR UPDATE OF/u)
+assert.match(scaleMigration, /DISABLE TRIGGER podcasts_updated_at_trigger;[\s\S]+ENABLE TRIGGER podcasts_updated_at_trigger;/u)
 assert.match(scaleMigration, /USING GIN \(search_document\)/u)
 assert.match(scaleMigration, /USING GIN \(category_keys\)/u)
 assert.match(scaleMigration, /category_keys @> ARRAY\[normalized_category\]/u)
