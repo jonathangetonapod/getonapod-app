@@ -11,6 +11,7 @@ const scaleMigration = readFileSync('supabase/migrations/20261029000300_podcast_
 const categoryGroupsMigration = readFileSync('supabase/migrations/20261029000700_podcast_catalog_category_groups.sql', 'utf8')
 const guestsMigration = readFileSync('supabase/migrations/20261029000900_podcast_catalog_guests_filter.sql', 'utf8')
 const embeddingCacheMigration = readFileSync('supabase/migrations/20261029001000_podcast_search_embedding_cache.sql', 'utf8')
+const verifiedContactMigration = readFileSync('supabase/migrations/20261030000200_podcast_contact_email_verified.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/workspacePodcastCatalog.ts', 'utf8')
 const clientEditor = readFileSync('src/components/workspace/ClientShortlistEditor.tsx', 'utf8')
@@ -147,6 +148,17 @@ assert.match(embeddingCacheMigration, /REVOKE ALL ON TABLE public\.podcast_searc
 assert.match(embeddingCacheMigration, /CASE WHEN p_query_embedding IS NULL THEN 'keyword' ELSE 'semantic' END/u)
 assert.match(embeddingCacheMigration, /CASE WHEN podcast_has_guests IS TRUE THEN 4 ELSE 0 END/u)
 assert.match(searchHelper, /export async function rememberedSearchEmbedding/u)
+// Contacts chosen by deliverability: never an invalid or disposable address,
+// confirmed before catch-all before unchecked; re-picked when results land;
+// exposed as email_verification and the 'verified' contact filter.
+assert.match(edge, /'direct', 'verified', 'none'/u)
+assert.match(verifiedContactMigration, /verification\.status IS NULL OR verification\.status NOT IN \('invalid', 'disposable'\)/u)
+assert.match(verifiedContactMigration, /CASE verification\.status WHEN 'ok' THEN 0 WHEN 'catch_all' THEN 1 ELSE 2 END/u)
+assert.match(verifiedContactMigration, /AFTER INSERT ON public\.podcast_email_verifications\s+REFERENCING NEW TABLE AS changed_verifications/u)
+assert.match(verifiedContactMigration, /AFTER UPDATE ON public\.podcast_email_verifications\s+REFERENCING NEW TABLE AS changed_verifications/u)
+assert.match(verifiedContactMigration, /REVOKE ALL ON FUNCTION public\.podcasts_set_search_columns\(\) FROM PUBLIC, anon, authenticated;/u)
+assert.match(verifiedContactMigration, /'email_verification', page_item\.contact_email_status/u)
+assert.match(verifiedContactMigration, /normalized_contact = 'verified' AND \(direct_email IS NOT NULL OR contact_email_status = 'ok'\)/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)

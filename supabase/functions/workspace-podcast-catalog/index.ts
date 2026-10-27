@@ -24,7 +24,8 @@ import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { reservePublicRate } from '../_shared/publicRateLimit.ts'
 
 const METHODS = ['POST'] as const
-const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'none'])
+// verified: a verified direct contact, or an address MillionVerifier confirmed.
+const CONTACT_FILTERS = new Set(['all', 'any', 'free', 'direct', 'verified', 'none'])
 const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 // 250k_plus predates the 250K to 1M / 1M+ split and is kept for old addresses.
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
