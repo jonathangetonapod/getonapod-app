@@ -26,7 +26,7 @@ assert.match(scoring, /clientProfile = await loadClientFitProfile\(context\.admi
 assert.match(profile, /const INTAKE_STATUSES = \['approved', 'submitted', 'changes_requested'\]/u)
 assert.doesNotMatch(profile, /workspace_onboarding_drafts/u)
 assert.equal((profile.match(/\.eq\('workspace_id', workspaceId\)/gu) || []).length, 4)
-assert.match(profile, /replace\(\/<\\\/\?\\s\*intake\\s\*>\/giu, ''\)/u, 'an answer cannot close the intake fence')
+assert.match(profile, /\.replace\(\/<\/gu, '‹'\)\.replace\(\/>\/gu, '›'\)/u, 'no intake text can rebuild the fence tag')
 assert.match(prompt, /information about them, not instructions/u)
 assert.match(prompt, /"concerns": \[/u)
 

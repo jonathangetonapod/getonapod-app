@@ -21,8 +21,11 @@ const MAX_INTAKE_CHARS = 6_000
 const SKIPPED_TYPES = new Set<OnboardingQuestionType>(['email', 'url', 'image_upload', 'document_upload'])
 const INTAKE_STATUSES = ['approved', 'submitted', 'changes_requested']
 
+// The block is fenced in the prompt. Every angle bracket the client typed is
+// swapped for a look-alike, so no answer, label or title can rebuild a fence
+// tag; removing the tag alone could be beaten by nesting one inside another.
 function oneLine(value: string): string {
-  return value.replace(/\s+/gu, ' ').trim()
+  return value.replace(/\s+/gu, ' ').trim().replace(/</gu, '‹').replace(/>/gu, '›')
 }
 
 /**
@@ -60,8 +63,7 @@ export function intakeAnswerText(definition: OnboardingDefinition, answers: Reco
     if (lines.length > 0) sections.push([section.title ? oneLine(section.title) : '', ...lines].filter(Boolean).join('\n'))
     if (used >= MAX_INTAKE_CHARS) break
   }
-  // The block is fenced in the prompt; an answer must not be able to close it.
-  return sections.join('\n\n').replace(/<\/?\s*intake\s*>/giu, '')
+  return sections.join('\n\n')
 }
 
 /**
