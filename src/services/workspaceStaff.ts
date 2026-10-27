@@ -936,6 +936,28 @@ export async function clearWorkspaceAiKey(
   if (data?.success !== true) throw new Error('The API key could not be removed.')
 }
 
+export type WorkspaceAiKeyTestResult = 'valid' | 'invalid' | 'unreachable'
+
+/**
+ * Asks the provider whether the saved key still works. "unreachable" is the
+ * provider not answering (an outage, a timeout, a rate limit), which says
+ * nothing about the key itself.
+ */
+export async function testWorkspaceAiKey(
+  workspaceId: string,
+  provider: 'anthropic' | 'openai',
+): Promise<WorkspaceAiKeyTestResult> {
+  const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
+  const data = await invoke(
+    { action: 'ai-keys-test', workspace_id: canonicalWorkspaceId, provider },
+    'The API key could not be tested.',
+  ) as { success?: boolean; result?: unknown }
+  if (data?.success !== true || (data.result !== 'valid' && data.result !== 'invalid' && data.result !== 'unreachable')) {
+    throw new Error('The API key could not be tested.')
+  }
+  return data.result
+}
+
 export interface WorkspaceBillingOverview {
   plan_key: string
   billing_status: string

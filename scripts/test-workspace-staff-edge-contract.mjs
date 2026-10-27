@@ -486,8 +486,13 @@ assert.match(schedulerEmbed, /export function bookingLinkFromPaste\(/u)
 assert.match(schedulerEmbed, /calLink\\s\*:/u)
 assert.match(schedulerEmbed, /const EMBED_ASSET =/u)
 const staffPage = readFileSync('src/pages/app/WorkspaceStaff.tsx', 'utf8')
-assert.match(staffPage, /Booking link or embed code/u)
-assert.match(staffPage, /bookingLinkMutation\.mutate\(bookingLinkResolved\)/u)
+// The field lives in the branding section and saves itself; what it saves is
+// the link taken out of the paste, never the pasted script.
+const brandingSection = readFileSync('src/components/workspace/settings/ClientBrandingSection.tsx', 'utf8')
+assert.match(staffPage, /<ClientBrandingSection/u)
+assert.match(brandingSection, /Booking link or embed code/u)
+assert.match(brandingSection, /normalize: \(value\) => bookingLinkFromPaste\(value\) \?\? value\.trim\(\)/u)
+assert.match(brandingSection, /await updateWorkspaceBookingLink\(workspaceId, value \|\| null\)/u)
 assert.match(schedulerEmbed, /url\.protocol === 'https:'/u)
 // The scheduler frames itself when there is one to frame — and not onto a
 // dashboard whose operator asked for no call to action at all.
@@ -710,3 +715,18 @@ const subscriptionWebhook = readFileSync('supabase/functions/workspace-subscript
 assert.match(subscriptionWebhook, /const keepComped = storedStatus === 'comped' && !isCreation/u)
 assert.match(subscriptionWebhook, /billing_status: keepComped \? 'comped' : billingStatus,/u)
 assert.match(subscriptionWebhook, /if \(keepComped\) \{/u)
+
+// Testing a saved AI key: owner or platform admin only, the workspace's own
+// stored key only (the platform key would always pass), and an outage is not
+// reported as a bad key.
+const aiKeys = source.slice(source.indexOf('if (action === "ai-keys-status"'), source.indexOf('if (action === "ai-keys-status") {'))
+assert.match(aiKeys, /action === "ai-keys-test"/u)
+assert.match(aiKeys, /if \(!\["owner", "platform_admin"\]\.includes\(access\.role\)\)/u)
+const aiKeyTest = source.slice(source.indexOf('if (action === "ai-keys-test") {'), source.indexOf('if (action === "ai-keys-set") {'))
+assert.match(aiKeyTest, /requireOnlyKeys\(body, \["action", "workspace_id", "provider"\]\)/u)
+assert.match(aiKeyTest, /readStoredAiKey\(admin, workspaceId, provider\)/u)
+assert.doesNotMatch(aiKeyTest, /resolveAiKey/u)
+assert.match(aiKeyTest, /probeAiKeyResult\(provider, stored\.apiKey\)/u)
+assert.match(aiKeyTest, /"AI_KEY_NOT_CONFIGURED"/u)
+const aiKeysShared = readFileSync('supabase/functions/_shared/workspaceAiKeys.ts', 'utf8')
+assert.match(aiKeysShared, /response\.status === 401 \|\| response\.status === 403 \? 'invalid' : 'unreachable'/u)

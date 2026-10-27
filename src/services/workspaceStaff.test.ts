@@ -6,6 +6,7 @@ import {
   grantWorkspaceCredits,
   runSubscriptionAction,
   setWorkspaceMonthlyAllowance,
+  testWorkspaceAiKey,
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
@@ -652,6 +653,23 @@ describe('updateBillingPlanPrice', () => {
         reason: 'other', note: '', action_key: actionKey,
       },
     })
+  })
+})
+
+describe('testWorkspaceAiKey', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('asks the server to test the saved key and returns its answer', async () => {
+    invoke.mockResolvedValue({ data: { success: true, result: 'unreachable' }, error: null })
+    await expect(testWorkspaceAiKey(workspaceId.toUpperCase(), 'anthropic')).resolves.toBe('unreachable')
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', {
+      body: { action: 'ai-keys-test', workspace_id: workspaceId, provider: 'anthropic' },
+    })
+  })
+
+  it('refuses an answer it does not recognize', async () => {
+    invoke.mockResolvedValue({ data: { success: true, result: 'maybe' }, error: null })
+    await expect(testWorkspaceAiKey(workspaceId, 'openai')).rejects.toThrow('The API key could not be tested.')
   })
 })
 

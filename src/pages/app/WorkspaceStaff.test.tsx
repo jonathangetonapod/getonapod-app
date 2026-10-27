@@ -27,6 +27,8 @@ import {
   getWorkspaceBillingOverview,
   getWorkspaceAiKeys,
   grantWorkspaceCredits,
+  setWorkspaceAiKey,
+  testWorkspaceAiKey,
 } from '@/services/workspaceStaff'
 
 const { toastError, toastSuccess } = vi.hoisted(() => ({
@@ -53,6 +55,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   getWorkspaceAiKeys: vi.fn(),
   setWorkspaceAiKey: vi.fn(),
   clearWorkspaceAiKey: vi.fn(),
+  testWorkspaceAiKey: vi.fn(),
   getWorkspaceBillingOverview: vi.fn(),
   grantWorkspaceCredits: vi.fn(),
   inviteWorkspaceStaff: vi.fn(),
@@ -360,6 +363,87 @@ describe('WorkspaceStaff', () => {
     expect(field).toHaveAttribute('type', 'text')
     fireEvent.click(screen.getByRole('button', { name: 'Hide Anthropic (Claude) key' }))
     expect(field).toHaveAttribute('type', 'password')
+  })
+
+  describe('AI keys', () => {
+    const savedAnthropic = () => vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
+      anthropic: { configured: true, last_four: '4f2a', updated_at: '2026-10-01T00:00:00Z' },
+      openai: { configured: false, last_four: null, updated_at: null },
+      winnr: { configured: false, last_four: null, updated_at: null },
+    })
+
+    it('shows a saved key masked, with Replace, Test and Remove instead of an empty box', async () => {
+      savedAnthropic()
+      renderPage()
+
+      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toHaveTextContent('sk-ant-…4f2a')
+      expect(screen.queryByLabelText('Anthropic (Claude) API key')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Replace' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Test key' })).toBeEnabled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+      expect(screen.getByLabelText('Anthropic (Claude) API key')).toHaveAttribute('type', 'password')
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.getByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /^Remove$/ }))
+      expect(await screen.findByRole('alertdialog', { name: 'Remove the Anthropic (Claude) key?' })).toBeInTheDocument()
+    })
+
+    it.each([
+      ['valid', 'Valid. The provider accepted this key.'],
+      ['invalid', 'Invalid. The provider rejected this key.'],
+      // An outage says nothing about the key; calling it invalid would
+      // invite deleting a key that works.
+      ['unreachable', 'The provider did not answer, so the key could not be checked.'],
+    ] as const)('says what a test of the saved key found: %s', async (result, copy) => {
+      savedAnthropic()
+      vi.mocked(testWorkspaceAiKey).mockResolvedValue(result)
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Test key' }))
+      expect(await screen.findByText(new RegExp(`^${copy.replace(/[.]/gu, '\\.')}`))).toBeInTheDocument()
+      expect(testWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic')
+    })
+
+    it('says plainly when the server cannot test keys yet', async () => {
+      savedAnthropic()
+      vi.mocked(testWorkspaceAiKey).mockRejectedValue(Object.assign(new Error('Unknown workspace user action'), { code: 'INVALID_ACTION' }))
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Test key' }))
+      expect(await screen.findByText('Testing a saved key is not available yet.')).toBeInTheDocument()
+    })
+
+    it('shows the platform credits a key would have covered this month', async () => {
+      vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+        plan_key: 'founding_member',
+        billing_status: 'active',
+        balance: 500,
+        ledger_usage_this_month: {
+          research_run: { credits: 200, refunds: 0 },
+          query_generation: { credits: 112, refunds: 0 },
+          podscan_lookup: { credits: 30, refunds: 0 },
+        },
+      } as never)
+      renderPage()
+
+      expect(await screen.findByText('Used 312 platform credits on Claude tasks this month.')).toBeInTheDocument()
+      // Database search costs nothing, so there is no line to show for it.
+      expect(screen.queryByText(/on database searches this month/)).not.toBeInTheDocument()
+      expect(screen.getByText(/^Used for podcast research, pitch writing and inbox replies\./)).toBeInTheDocument()
+    })
+
+    it('saves a new key with an explicit save, then shows it masked', async () => {
+      vi.mocked(setWorkspaceAiKey).mockResolvedValue(undefined)
+      renderPage()
+
+      fireEvent.change(await screen.findByLabelText('Anthropic (Claude) API key'), { target: { value: ' sk-ant-api03-new-key-0000 ' } })
+      savedAnthropic()
+      fireEvent.click(screen.getAllByRole('button', { name: 'Save key' })[0])
+      await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic', 'sk-ant-api03-new-key-0000'))
+      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+    })
   })
 
   it('saves a pasted scheduler link when the field loses focus and says it will load inline', async () => {

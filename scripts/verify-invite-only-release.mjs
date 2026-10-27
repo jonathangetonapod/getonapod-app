@@ -78,7 +78,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // (2026-10-27).
   // 192 with podcast-email-verify-tick: catalogue inboxes checked with
   // MillionVerifier on a schedule (2026-10-27).
-  edgeTypeScriptFiles: 192,
+  // 193 with _shared/workspaceAiKeys.test.ts: testing a saved AI key tells a
+  // rejected key from an unreachable provider (2026-10-27).
+  edgeTypeScriptFiles: 193,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

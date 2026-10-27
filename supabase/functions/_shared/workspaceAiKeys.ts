@@ -101,44 +101,76 @@ export async function resolveAiKey(
   provider: AiProvider,
 ): Promise<ResolvedAiKey | null> {
   if (workspaceId) {
-    const { data, error } = await admin
-      .from('workspace_ai_credentials')
-      .select('api_key_ciphertext, api_key_iv')
-      .eq('workspace_id', workspaceId)
-      .eq('provider', provider)
-      .maybeSingle()
-    if (!error && data?.api_key_ciphertext && data?.api_key_iv) {
-      try {
-        const apiKey = await decryptInstantlyApiKey({
-          ciphertext: data.api_key_ciphertext,
-          iv: data.api_key_iv,
-        })
-        if (apiKey.trim()) return { apiKey: apiKey.trim(), source: 'workspace' }
-      } catch (_error) {
-        console.error('[Workspace AI Keys] Stored key undecryptable; using platform key')
-      }
-    }
+    const stored = await readStoredAiKey(admin, workspaceId, provider)
+    if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
   }
   const platformKey = Deno.env.get(PLATFORM_ENV[provider])?.trim()
   if (platformKey) return { apiKey: platformKey, source: 'platform' }
   return null
 }
 
-// Cheap live validation before storing a key: both providers expose a models
-// listing that authenticates without incurring generation cost.
-export async function probeAiKey(provider: AiProvider, apiKey: string): Promise<boolean> {
+export type AiKeyProbeResult = 'valid' | 'invalid' | 'unreachable'
+
+export interface StoredAiKey {
+  /** A row exists for this provider. */
+  configured: boolean
+  /** The decrypted key; null when there is no row or it cannot be read. */
+  apiKey: string | null
+}
+
+// The workspace's own key only, never the platform's. A read error counts as
+// no key; a row that will not decrypt is configured but unreadable.
+export async function readStoredAiKey(
+  admin: ReturnType<typeof createAdminClient>,
+  workspaceId: string,
+  provider: AiProvider,
+): Promise<StoredAiKey> {
+  const { data, error } = await admin
+    .from('workspace_ai_credentials')
+    .select('api_key_ciphertext, api_key_iv')
+    .eq('workspace_id', workspaceId)
+    .eq('provider', provider)
+    .maybeSingle()
+  if (error || !data?.api_key_ciphertext || !data?.api_key_iv) return { configured: false, apiKey: null }
+  try {
+    const apiKey = await decryptInstantlyApiKey({
+      ciphertext: data.api_key_ciphertext,
+      iv: data.api_key_iv,
+    })
+    return { configured: true, apiKey: apiKey.trim() || null }
+  } catch (_error) {
+    console.error('[Workspace AI Keys] Stored key undecryptable')
+    return { configured: true, apiKey: null }
+  }
+}
+
+// Cheap live validation: both providers expose a models listing that
+// authenticates without incurring generation cost. Only an authentication
+// refusal says the key is bad; a timeout, an outage or a rate limit says
+// nothing about it, and calling that "invalid" invites deleting a good key.
+export async function probeAiKeyResult(
+  provider: AiProvider,
+  apiKey: string,
+  fetcher: typeof fetch = fetch,
+): Promise<AiKeyProbeResult> {
   try {
     const response = provider === 'anthropic'
-      ? await fetch('https://api.anthropic.com/v1/models?limit=1', {
+      ? await fetcher('https://api.anthropic.com/v1/models?limit=1', {
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         signal: AbortSignal.timeout(10_000),
       })
-      : await fetch('https://api.openai.com/v1/models', {
+      : await fetcher('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(10_000),
       })
-    return response.ok
+    if (response.ok) return 'valid'
+    return response.status === 401 || response.status === 403 ? 'invalid' : 'unreachable'
   } catch (_error) {
-    return false
+    return 'unreachable'
   }
+}
+
+// Before storing a key: anything but a clear yes refuses it, as it always has.
+export async function probeAiKey(provider: AiProvider, apiKey: string): Promise<boolean> {
+  return await probeAiKeyResult(provider, apiKey) === 'valid'
 }

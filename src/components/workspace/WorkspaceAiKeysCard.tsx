@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -12,48 +12,42 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { notACredentialField } from '@/lib/formAutofill'
+import { AiKeyRow, type AiKeyProviderInfo } from '@/components/workspace/settings/AiKeyRow'
+import { platformCreditsByProvider, type AiKeyProvider } from '@/lib/aiKeyUsage'
 import {
   clearWorkspaceAiKey,
   getWorkspaceAiKeys,
+  getWorkspaceBillingOverview,
   setWorkspaceAiKey,
-  type WorkspaceAiKeyStatus,
 } from '@/services/workspaceStaff'
-
-type KeyProvider = 'anthropic' | 'openai'
 
 // What each key is actually spent on, and where to get one, so the choice to
 // bring a key is made knowing what it changes.
-const PROVIDERS: Array<{ id: KeyProvider; label: string; placeholder: string; usedFor: string; consoleUrl: string }> = [
+const PROVIDERS: AiKeyProviderInfo[] = [
   {
     id: 'anthropic',
     label: 'Anthropic (Claude)',
-    placeholder: 'sk-ant-…',
-    usedFor: 'Podcast research, pitch writing and inbox replies.',
+    keyPrefix: 'sk-ant-',
+    usedFor: 'Used for podcast research, pitch writing and inbox replies.',
+    workName: 'Claude tasks',
     consoleUrl: 'https://console.anthropic.com/settings/keys',
   },
   {
     id: 'openai',
     label: 'OpenAI',
-    placeholder: 'sk-…',
-    usedFor: 'Searching the podcast database.',
+    keyPrefix: 'sk-',
+    usedFor: 'Used for searching the podcast database.',
+    workName: 'database searches',
     consoleUrl: 'https://platform.openai.com/api-keys',
   },
 ]
 
 export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: string; queryScope: readonly unknown[] }) {
   const queryClient = useQueryClient()
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  // Hidden by default, revealable to check a paste before saving it.
-  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   // Removing a key silently moves the workspace back onto platform credits, so
   // it is confirmed rather than done on one click.
-  const [removing, setRemoving] = useState<KeyProvider | null>(null)
+  const [removing, setRemoving] = useState<AiKeyProvider | null>(null)
   const queryKey = [...queryScope, 'workspace-ai-keys']
 
   const keysQuery = useQuery({
@@ -61,14 +55,22 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
     queryFn: () => getWorkspaceAiKeys(workspaceId),
     retry: false,
   })
+  // Same key as the header's credit chip, so this costs no extra request.
+  // Only to say what a key would save; the card works without it.
+  const billingQuery = useQuery({
+    queryKey: ['workspace-billing-overview', workspaceId],
+    queryFn: () => getWorkspaceBillingOverview(workspaceId),
+    retry: false,
+    staleTime: 120_000,
+  })
+  const creditsByProvider = platformCreditsByProvider(billingQuery.data?.ledger_usage_this_month)
 
   const saveMutation = useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: 'anthropic' | 'openai' | 'winnr'; apiKey: string }) =>
+    mutationFn: ({ provider, apiKey }: { provider: AiKeyProvider; apiKey: string }) =>
       setWorkspaceAiKey(workspaceId, provider, apiKey),
-    onSuccess: (_result, variables) => {
-      setDrafts((current) => ({ ...current, [variables.provider]: '' }))
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
-      toast.success('API key verified and saved. Operations using it will not consume platform credits.')
+      toast.success('Key verified and saved. The work it covers no longer uses platform credits.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The API key could not be saved.')
@@ -76,10 +78,10 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
   })
 
   const removeMutation = useMutation({
-    mutationFn: (provider: 'anthropic' | 'openai' | 'winnr') => clearWorkspaceAiKey(workspaceId, provider),
+    mutationFn: (provider: AiKeyProvider) => clearWorkspaceAiKey(workspaceId, provider),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
-      toast.success('API key removed. Operations now use platform credits.')
+      toast.success('Key removed. That work uses platform credits again.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The API key could not be removed.')
@@ -87,9 +89,6 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
   })
 
   const busy = saveMutation.isPending || removeMutation.isPending
-
-  const statusFor = (provider: 'anthropic' | 'openai' | 'winnr'): WorkspaceAiKeyStatus | null =>
-    keysQuery.data?.[provider] ?? null
 
   return (
     <Card>
@@ -102,80 +101,19 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
             <Loader2 className="h-4 w-4 animate-spin" />Loading key status…
           </div>
         ) : (
-          PROVIDERS.map((provider) => {
-            const status = statusFor(provider.id)
-            return (
-              <div key={provider.id} className="space-y-2 rounded-xl border p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-medium">{provider.label}</p>
-                  {status?.configured ? (
-                    <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
-                      Connected ····{status.last_four}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Using platform credits</Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Used for</span> {provider.usedFor}{' '}
-                  <a
-                    href={provider.consoleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
-                  >
-                    Get a key<ExternalLink className="h-3 w-3" />
-                  </a>
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="relative flex-1">
-                    <Label htmlFor={`ai-key-${provider.id}`} className="sr-only">{provider.label} API key</Label>
-                    {/* A provider key, not this person's password: kept out of
-                        password managers so they neither fill nor save it. */}
-                    <Input
-                      id={`ai-key-${provider.id}`}
-                      type={revealed[provider.id] ? 'text' : 'password'}
-                      {...notACredentialField}
-                      spellCheck={false}
-                      placeholder={status?.configured ? 'Enter a new key to replace the saved one' : provider.placeholder}
-                      value={drafts[provider.id] ?? ''}
-                      onChange={(event) => setDrafts((current) => ({ ...current, [provider.id]: event.target.value }))}
-                      disabled={busy}
-                      className="pr-10 font-mono"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-10 w-10 text-muted-foreground"
-                      aria-label={revealed[provider.id] ? `Hide ${provider.label} key` : `Show ${provider.label} key`}
-                      aria-pressed={Boolean(revealed[provider.id])}
-                      onClick={() => setRevealed((current) => ({ ...current, [provider.id]: !current[provider.id] }))}
-                    >
-                      {revealed[provider.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  <Button
-                    type="button"
-                    disabled={busy || !(drafts[provider.id] ?? '').trim()}
-                    onClick={() => saveMutation.mutate({ provider: provider.id, apiKey: (drafts[provider.id] ?? '').trim() })}
-                  >
-                    {saveMutation.isPending ? 'Verifying…' : 'Save key'}
-                  </Button>
-                  {status?.configured && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => setRemoving(provider.id)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />Remove
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })
+          PROVIDERS.map((provider) => (
+            <AiKeyRow
+              key={provider.id}
+              workspaceId={workspaceId}
+              provider={provider}
+              status={keysQuery.data?.[provider.id] ?? null}
+              creditsThisMonth={creditsByProvider[provider.id]}
+              busy={busy}
+              saving={saveMutation.isPending && saveMutation.variables?.provider === provider.id}
+              onSave={(apiKey) => saveMutation.mutateAsync({ provider: provider.id, apiKey })}
+              onRemove={() => setRemoving(provider.id)}
+            />
+          ))
         )}
       </CardContent>
       <AlertDialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null) }}>
@@ -185,7 +123,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
               Remove the {PROVIDERS.find((provider) => provider.id === removing)?.label ?? ''} key?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Research and pitch writing will start using platform credits again.
+              The work it covers starts using platform credits again.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

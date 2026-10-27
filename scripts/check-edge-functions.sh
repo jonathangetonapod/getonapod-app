@@ -74,4 +74,5 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/showText.test.ts \
   supabase/functions/_shared/stripeSignature.test.ts \
   supabase/functions/_shared/workspaceCredentials.test.ts \
+  supabase/functions/_shared/workspaceAiKeys.test.ts \
   supabase/functions/send-outreach-webhook/webhookTarget.test.ts

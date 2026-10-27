@@ -24,6 +24,8 @@ import { generateTemporaryPassword } from "../_shared/workspaceCredentials.ts";
 import {
   clearWorkspaceAiKey,
   probeAiKey,
+  probeAiKeyResult,
+  readStoredAiKey,
   requireProvider,
   storeWorkspaceAiKey,
   workspaceAiKeyStatus,
@@ -4226,7 +4228,7 @@ serve(async (req) => {
     }
 
 
-    if (action === "ai-keys-status" || action === "ai-keys-set" || action === "ai-keys-clear") {
+    if (action === "ai-keys-status" || action === "ai-keys-set" || action === "ai-keys-clear" || action === "ai-keys-test") {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId);
       if (!["owner", "platform_admin"].includes(access.role)) {
         throw new HttpError(403, "WORKSPACE_OWNER_REQUIRED", "Workspace owner access is required");
@@ -4236,6 +4238,24 @@ serve(async (req) => {
         requireOnlyKeys(body, ["action", "workspace_id"]);
         const status = await workspaceAiKeyStatus(admin, workspaceId);
         return jsonResponse(req, METHODS, 200, { success: true, providers: status });
+      }
+
+      // Whether the saved key still works, asked of the provider with the
+      // key itself: never the platform key, which would always pass. Read
+      // only, so nothing to audit.
+      if (action === "ai-keys-test") {
+        requireOnlyKeys(body, ["action", "workspace_id", "provider"]);
+        const provider = requireProvider(body.provider);
+        if (provider === "winnr") {
+          throw new HttpError(400, "AI_KEY_TEST_UNSUPPORTED", "Winnr keys cannot be tested here");
+        }
+        const stored = await readStoredAiKey(admin, workspaceId, provider);
+        if (!stored.configured) {
+          throw new HttpError(404, "AI_KEY_NOT_CONFIGURED", "No API key is saved for this provider");
+        }
+        // A key that will not decrypt is as good as a rejected one: replace it.
+        const result = stored.apiKey ? await probeAiKeyResult(provider, stored.apiKey) : "invalid";
+        return jsonResponse(req, METHODS, 200, { success: true, result });
       }
 
       if (action === "ai-keys-set") {
