@@ -119,20 +119,21 @@ serve(async (req) => {
     const pageSize = optionalInteger(body.page_size, 'page_size', 24, 12, 48)
 
     const context = await requireAuthenticatedUser(req)
-    // Browsing needs no embedding, so the AI key and the remembered embeddings
-    // are only read for a search. Those reads and the workspace check do not
-    // depend on each other and run together; nothing is spent with OpenAI
-    // until the workspace check has passed.
+    // Browsing needs no embedding, so the remembered embeddings are only read
+    // for a search. That read holds nothing belonging to a workspace (one
+    // embedding per search text), so it runs alongside the workspace check.
     const wantsEmbedding = Boolean(search && search.length >= 3 && isSemanticSearchEnabled())
-    const [access, rememberedEmbedding, openaiKey] = await Promise.all([
+    const [access, rememberedEmbedding] = await Promise.all([
       requireWorkspaceFeatureAccess(context, workspaceId),
       wantsEmbedding ? rememberedSearchEmbedding(context.admin, search as string) : Promise.resolve(null),
-      wantsEmbedding ? resolveAiKey(context.admin, workspaceId, 'openai') : Promise.resolve(null),
     ])
     // A search seen before reuses its embedding: no OpenAI call, no cost, no
-    // rate-limit slot.
+    // rate-limit slot, and the workspace's own AI key is never read.
     let queryEmbedding: number[] | null = rememberedEmbedding
     if (wantsEmbedding && !queryEmbedding) {
+      // Only after the workspace check has passed: a workspace's stored key is
+      // decrypted for its own members, never for a caller still being checked.
+      const openaiKey = await resolveAiKey(context.admin, workspaceId, 'openai')
       let embeddingAllowed = true
       if (openaiKey && openaiKey.source !== 'workspace') {
         try {

@@ -179,8 +179,11 @@ assert.match(edge, /const searchEmbedding = embeddingAllowed\s+\? await generate
 // slot); browsing reads neither the AI key nor the embedding store; the
 // workspace check runs alongside those reads but before any OpenAI spend.
 assert.match(edge, /const wantsEmbedding = Boolean\(search && search\.length >= 3 && isSemanticSearchEnabled\(\)\)/u)
-assert.match(edge, /const \[access, rememberedEmbedding, openaiKey\] = await Promise\.all\(\[\s+requireWorkspaceFeatureAccess\(context, workspaceId\),/u)
-assert.match(edge, /wantsEmbedding \? resolveAiKey\(context\.admin, workspaceId, 'openai'\) : Promise\.resolve\(null\)/u)
+assert.match(edge, /const \[access, rememberedEmbedding\] = await Promise\.all\(\[\s+requireWorkspaceFeatureAccess\(context, workspaceId\),/u)
+// The workspace's stored AI key is read only after the access check, and only
+// when no remembered embedding exists.
+assert.match(edge, /if \(wantsEmbedding && !queryEmbedding\) \{[\s\S]{0,300}const openaiKey = await resolveAiKey\(context\.admin, workspaceId, 'openai'\)/u)
+assert.doesNotMatch(edge, /Promise\.all\(\[[^\]]*resolveAiKey/u)
 assert.match(edge, /if \(wantsEmbedding && !queryEmbedding\) \{/u)
 assert.match(edge, /rememberSearchEmbedding\(context\.admin, search as string, searchEmbedding\.embedding\)/u)
 
