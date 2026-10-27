@@ -7,6 +7,7 @@ const searchHelper = readFileSync('supabase/functions/_shared/podcastSearch.ts',
 const foundationMigration = readFileSync('supabase/migrations/20260725000600_workspace_podcast_catalog.sql', 'utf8')
 const filterMigration = readFileSync('supabase/migrations/20260725000700_workspace_podcast_catalog_filters.sql', 'utf8')
 const v3Migration = readFileSync('supabase/migrations/20261029000100_workspace_podcast_catalog_v3.sql', 'utf8')
+const scaleMigration = readFileSync('supabase/migrations/20261029000300_podcast_catalog_scale.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/workspacePodcastCatalog.ts', 'utf8')
 const clientEditor = readFileSync('src/components/workspace/ClientShortlistEditor.tsx', 'utf8')
@@ -105,6 +106,21 @@ assert.match(v3Migration, /regexp_replace\(search_word, '\(\[\^\[:alnum:\]\]\)',
 assert.match(v3Migration, /lower\(btrim\(language\)\) = normalized_language/u)
 assert.match(v3Migration, /lower\(btrim\(region\)\) = normalized_region/u)
 assert.match(v3Migration, /lower\(btrim\(language\)\) ~ '\^\[a-z\]\{2,3\}/u)
+// At catalogue scale (73K shows): search and category matching use indexed
+// generated columns, wide columns are read for the page only, catalogue-wide
+// lists come from a cached facets row, and every call is planned for its own
+// filters (a cached generic plan was 40x slower).
+assert.match(scaleMigration, /search_document TSVECTOR\s+GENERATED ALWAYS AS/u)
+assert.match(scaleMigration, /USING GIN \(search_document\)/u)
+assert.match(scaleMigration, /USING GIN \(category_keys\)/u)
+assert.match(scaleMigration, /category_keys @> ARRAY\[normalized_category\]/u)
+assert.match(scaleMigration, /podcast\.search_document @@ search_query/u)
+assert.match(scaleMigration, /SET plan_cache_mode = force_custom_plan/u)
+assert.match(scaleMigration, /JOIN public\.podcasts podcast ON podcast\.id = page_item\.id/u)
+assert.match(scaleMigration, /'categories', COALESCE\(catalog_facets -> 'categories'/u)
+assert.match(scaleMigration, /'podcast-catalog-facets',\s+'\*\/15 \* \* \* \*'/u)
+assert.match(scaleMigration, /REVOKE ALL ON FUNCTION public\.refresh_podcast_catalog_facets\(\)\s+FROM PUBLIC, anon, authenticated, service_role;/u)
+assert.match(scaleMigration, /podcasts_catalog_refresh_touched_idx/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)
