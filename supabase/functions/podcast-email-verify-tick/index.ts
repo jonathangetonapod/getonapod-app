@@ -57,6 +57,31 @@ function batchSize(): number {
   return Number.isInteger(configured) && configured > 0 ? Math.min(configured, MAX_BATCH) : DEFAULT_BATCH
 }
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u
+
+/**
+ * The due list the cron job sent, normalized, de-duplicated and capped; null
+ * when the body carries none. Only well-formed addresses are kept.
+ */
+async function dueFromBody(req: Request): Promise<string[] | null> {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return null
+  }
+  const emails = (body as { emails?: unknown } | null)?.emails
+  if (!Array.isArray(emails)) return null
+  const unique = new Set<string>()
+  for (const value of emails) {
+    if (typeof value !== 'string') continue
+    const email = value.trim().toLowerCase()
+    if (email.length <= 320 && EMAIL.test(email)) unique.add(email)
+    if (unique.size >= MAX_BATCH) break
+  }
+  return [...unique]
+}
+
 function optionalText(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, 200) : null
 }
@@ -77,14 +102,20 @@ serve(async (req) => {
   const deadlineAt = Date.now() + RUN_BUDGET_MS
 
   const admin = createAdminClient()
-  const { data: due, error } = await admin.rpc('podcast_email_verification_due', { p_limit: batchSize() })
-  if (error || !Array.isArray(due)) {
-    console.error('[Email Verify] Due list unavailable', error?.message)
-    return json(200, { verified: 0, error: 'due_list_unavailable' })
+  // The pg_cron job works the due list out in the database, where the API's
+  // statement timeout does not apply, and sends it. A call without one (a
+  // manual run) asks for it, which fits the timeout when the database is quiet.
+  let dueEmails = await dueFromBody(req)
+  if (dueEmails === null) {
+    const { data: due, error } = await admin.rpc('podcast_email_verification_due', { p_limit: batchSize() })
+    if (error || !Array.isArray(due)) {
+      console.error('[Email Verify] Due list unavailable', error?.message)
+      return json(200, { verified: 0, error: 'due_list_unavailable' })
+    }
+    dueEmails = due
+      .map((row: { normalized_email?: unknown }) => row.normalized_email)
+      .filter((value): value is string => typeof value === 'string')
   }
-  const dueEmails = due
-    .map((row: { normalized_email?: unknown }) => row.normalized_email)
-    .filter((value): value is string => typeof value === 'string')
 
   const rows: VerificationRow[] = []
   const counts: Record<string, number> = { failed: 0, not_reached: 0 }

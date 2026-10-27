@@ -6,6 +6,7 @@ const tableMigration = readFileSync('supabase/migrations/20261029001100_podcast_
 const migration = readFileSync('supabase/migrations/20261030000300_podcast_email_verify_tick.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const fastDue = readFileSync('supabase/migrations/20261030000400_podcast_email_verify_due_fast.sql', 'utf8')
+const sendsDue = readFileSync('supabase/migrations/20261030000500_podcast_email_verify_tick_sends_due.sql', 'utf8')
 
 // Driven by pg_cron with a shared secret, never a user session.
 assert.match(config, /\[functions\.podcast-email-verify-tick\]\s+verify_jwt = false/u)
@@ -52,5 +53,13 @@ assert.match(migration, /HAVING count\(\*\) = 2/u)
 assert.match(fastDue, /podcast\.podscan_email !~ '\[,;\[:space:\]\]'/u)
 assert.match(fastDue, /NOT EXISTS \(\s+SELECT 1 FROM public\.podcast_email_verifications verification/u)
 assert.match(fastDue, /GRANT EXECUTE ON FUNCTION public\.podcast_email_verification_due\(INTEGER\) TO service_role;/u)
+
+// The cron job computes the due list in the database (no API statement
+// timeout) and sends it; the tick validates every address and caps the list.
+assert.match(sendsDue, /'podcast-email-verify-tick',\s+'7-59\/10 \* \* \* \*'/u)
+assert.match(sendsDue, /jsonb_agg\(due\.normalized_email\) FROM public\.podcast_email_verification_due\(300\)/u)
+assert.match(tick, /let dueEmails = await dueFromBody\(req\)/u)
+assert.match(tick, /if \(email\.length <= 320 && EMAIL\.test\(email\)\) unique\.add\(email\)/u)
+assert.match(tick, /if \(unique\.size >= MAX_BATCH\) break/u)
 
 console.log('podcast email verify Edge contract passed')
