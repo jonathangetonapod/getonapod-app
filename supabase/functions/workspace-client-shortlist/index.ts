@@ -282,15 +282,21 @@ async function requireWorkspaceClient(
   return data
 }
 
+/**
+ * A link that is not a usable HTTP(S) URL is dropped rather than refused.
+ * These come from the shared catalog, where a few feeds carry junk such as
+ * "https://" or two URLs run together; refusing one would fail its whole batch
+ * of 50 and add nothing.
+ */
 function optionalHttpUrl(value: unknown, field: string): string | null {
   const url = optionalString(value, field, 2_048)
   if (!url) return null
   try {
     const parsed = new URL(url)
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('invalid protocol')
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
     return parsed.toString()
   } catch {
-    throw new HttpError(400, 'INVALID_FIELD', `${field} must be an HTTP or HTTPS URL`)
+    return null
   }
 }
 
