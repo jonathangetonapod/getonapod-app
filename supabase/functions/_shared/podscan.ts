@@ -289,12 +289,13 @@ async function fetchOnce(
         // The status and headers still provide a safe retry path.
       }
       // Three kinds, told apart by `error`: concurrency_limit_exceeded,
-      // per_minute_limit_exceeded and per_day_limit_exceeded. Only the last
-      // is not worth retrying soon; the quota resets once a day.
+      // per_minute_limit_exceeded and a daily one, which production sends as
+      // daily_limit_exceeded (per_day_limit_exceeded is also accepted). Only
+      // the daily one is not worth retrying soon; the quota resets once a day.
       if (upstreamCode.includes('concurrency_limit_exceeded')) {
         throw new PodscanRateLimitError('PODSCAN_CONCURRENCY_LIMIT', 'Podscan concurrency limit reached', response.headers)
       }
-      if (upstreamCode.includes('per_day_limit_exceeded')) {
+      if (upstreamCode.includes('per_day_limit_exceeded') || upstreamCode.includes('daily_limit_exceeded')) {
         throw new PodscanRateLimitError('PODSCAN_DAILY_LIMIT', 'Podscan daily request limit reached', response.headers)
       }
       throw new PodscanRateLimitError('PODSCAN_RATE_LIMIT', 'Podscan rate limit reached', response.headers)

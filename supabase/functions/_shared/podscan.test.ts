@@ -140,6 +140,16 @@ Deno.test('a spent daily quota is reported as such and not retried', async () =>
   assertEquals(urls.length, 1)
 })
 
+Deno.test('the daily quota error Podscan sends in production is not retried', async () => {
+  const { impl, urls } = scriptedFetch([
+    json({ message: 'Daily API limit exceeded. Resets in 10 hour(s).', error: 'daily_limit_exceeded', retry_after: 35560 }, 429),
+  ])
+  const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, retries: 2, sleep: noWait }))
+  assertEquals(error instanceof PodscanRateLimitError && error.code, 'PODSCAN_DAILY_LIMIT')
+  assertEquals(isRetryablePodscanError(error), false)
+  assertEquals(urls.length, 1)
+})
+
 Deno.test('a per-minute 429 is retryable', async () => {
   const { impl } = scriptedFetch([json({ error: 'per_minute_limit_exceeded', retry_after: 20 }, 429)])
   const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl }))
