@@ -94,8 +94,16 @@ async function upload(emails) {
 
 async function waitForFile(fileId) {
   for (;;) {
-    const res = await fetch(`${BULK}/fileinfo?key=${encodeURIComponent(KEY)}&file_id=${fileId}`)
-    const info = await res.json()
+    let info
+    try {
+      const res = await fetch(`${BULK}/fileinfo?key=${encodeURIComponent(KEY)}&file_id=${fileId}`, { signal: AbortSignal.timeout(60_000) })
+      info = await res.json()
+    } catch (err) {
+      // The job keeps running on MillionVerifier's side; a dropped status poll is not a failure.
+      log(`file ${fileId}: status check failed (${err.message}), retrying`)
+      await sleep(30_000)
+      continue
+    }
     if (info.error) throw new Error(`MillionVerifier fileinfo: ${info.error}`)
     log(`file ${fileId}: ${info.status} ${info.percent}% (${info.verified ?? 0} verified, eta ${info.estimated_time_sec ?? '?'}s)`)
     if (info.status === 'finished') return info
@@ -112,9 +120,17 @@ function parseCsv(text) {
 }
 
 async function download(fileId) {
-  const res = await fetch(`${BULK}/download?key=${encodeURIComponent(KEY)}&file_id=${fileId}&filter=all`)
-  if (!res.ok) throw new Error(`MillionVerifier download ${res.status}`)
-  return parseCsv(await res.text())
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(`${BULK}/download?key=${encodeURIComponent(KEY)}&file_id=${fileId}&filter=all`, { signal: AbortSignal.timeout(300_000) })
+      if (!res.ok) throw new Error(`MillionVerifier download ${res.status}`)
+      return parseCsv(await res.text())
+    } catch (err) {
+      if (attempt >= 5) throw err
+      log(`download failed (${err.message}), retrying`)
+      await sleep(15_000 * attempt)
+    }
+  }
 }
 
 const yesNo = (v) => (v === 'yes' ? true : v === 'no' ? false : null)
