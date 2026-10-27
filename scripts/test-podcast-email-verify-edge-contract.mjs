@@ -16,7 +16,10 @@ assert.doesNotMatch(tick, /Access-Control-Allow-Origin/u, 'a cron tick has no br
 
 // The key is a server secret, never logged and never in the response.
 assert.match(tick, /Deno\.env\.get\('MILLIONVERIFIER_API_KEY'\)/u)
-assert.doesNotMatch(tick, /console\.[a-z]+\([^)]*apiKey/u)
+assert.doesNotMatch(tick, /console\.[a-z]+\([^)]*apiKey\)/u)
+// The key travels in MillionVerifier's query string, so a logged fetch error has it redacted.
+assert.match(tick, /\.replaceAll\(apiKey, '\[key\]'\)/u)
+assert.doesNotMatch(tick, /console\.error\('\[Email Verify\] Check failed', caught/u)
 
 // The database decides what is due; the tick only spends the batch.
 assert.match(tick, /admin\.rpc\('podcast_email_verification_due', \{ p_limit: batchSize\(\) \}\)/u)

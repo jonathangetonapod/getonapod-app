@@ -117,7 +117,10 @@ serve(async (req) => {
       counts.not_reached += 1
       transientFailuresInARow += 1
       if (transientFailuresInARow >= MAX_TRANSIENT_FAILURES) stopReason ??= 'millionverifier_unavailable'
-      console.error('[Email Verify] Check failed', caught instanceof Error ? caught.message : caught)
+      // MillionVerifier only takes the key in the query string, and a fetch
+      // error can echo the URL: the key and the address never reach the log.
+      const message = caught instanceof Error ? caught.message : 'unknown error'
+      console.error('[Email Verify] Check failed', message.replaceAll(apiKey, '[key]').replaceAll(email, '[email]').slice(0, 200))
       return
     }
     transientFailuresInARow = 0
