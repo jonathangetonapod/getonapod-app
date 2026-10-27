@@ -367,7 +367,7 @@ describe('WorkspaceStaff', () => {
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://calendly.com/agency/intro' } })
-    expect(screen.getByText('Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
+    expect(screen.getByText('Calendly link detected. It loads inline on prospect dashboards.')).toBeInTheDocument()
     // No button of its own any more.
     expect(screen.queryByRole('button', { name: 'Save link' })).not.toBeInTheDocument()
 
@@ -405,7 +405,7 @@ describe('WorkspaceStaff', () => {
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://book.example.com/agency' } })
 
-    expect(screen.getByText(/This link opens in a new tab/i)).toBeInTheDocument()
+    expect(screen.getByText('Link detected. It opens in a new tab from prospect dashboards.')).toBeInTheDocument()
   })
 
   it('refuses a paste with no link in it, under the field, without saving', async () => {
@@ -771,7 +771,7 @@ describe('WorkspaceStaff', () => {
 
     const box = screen.getByLabelText('Booking link or embed code') as HTMLInputElement
     expect(box.value).toBe('https://calendly.com/northstar/intro')
-    expect(screen.getByText('Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
+    expect(screen.getByText('Calendly link detected. It loads inline on prospect dashboards.')).toBeInTheDocument()
 
     fireEvent.change(box, { target: { value: '' } })
     fireEvent.blur(box)
@@ -830,6 +830,60 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByText(/The name your clients recognize/i)).toBeInTheDocument()
   })
 
+  it('names the scheduler a link belongs to and offers to open it', async () => {
+    renderPage()
+
+    const field = await screen.findByLabelText('Booking link or embed code')
+    fireEvent.change(field, { target: { value: 'https://savvycal.com/northstar/intro' } })
+    expect(screen.getByText('SavvyCal link detected. It loads inline on prospect dashboards.')).toBeInTheDocument()
+    const test = screen.getByRole('link', { name: /Test link/ })
+    expect(test).toHaveAttribute('href', 'https://savvycal.com/northstar/intro')
+    expect(test).toHaveAttribute('target', '_blank')
+    expect(test).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it('takes a hex color with or without the # and stores it in capitals', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    const primary = screen.getByLabelText('Primary color')
+    fireEvent.focus(primary)
+    fireEvent.change(primary, { target: { value: '2b4c7e' } })
+    fireEvent.blur(primary)
+    expect(primary).toHaveValue('#2B4C7E')
+
+    fireEvent.focus(primary)
+    fireEvent.change(primary, { target: { value: '#12' } })
+    // Half a color while typing is not an error yet.
+    expect(screen.queryByText('Enter a hex color, like #2B4C7E.')).not.toBeInTheDocument()
+    fireEvent.blur(primary)
+    expect(screen.getByText('Enter a hex color, like #2B4C7E.')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it('warns when white text on a brand color would be hard to read', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    // The default accent, #C7794F, is already too light for white text.
+    expect(screen.getAllByText(/Text on this color may be hard to read/)).toHaveLength(1)
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#FFAA00' } })
+    expect(screen.getAllByText(/Text on this color may be hard to read/)).toHaveLength(2)
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
+    expect(screen.getAllByText(/Text on this color may be hard to read/)).toHaveLength(1)
+  })
+
+  it('previews the brand on the client dashboard and on onboarding', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    expect(screen.getByLabelText('Client dashboard brand preview')).toBeInTheDocument()
+    // Radix tabs switch on mouse down, which is what a click starts with.
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Onboarding' }))
+    expect(await screen.findByLabelText('Onboarding brand preview')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Client dashboard brand preview')).not.toBeInTheDocument()
+  })
+
   it('says what the two brand colours actually move', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
@@ -844,9 +898,10 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByText(/Paste the scheduler link, or the whole embed code/i)).toBeInTheDocument()
-    // Nothing typed yet, so there is no status line to read.
-    expect(screen.queryByText(/will load inline|opens in a new tab/)).not.toBeInTheDocument()
+    // One line: what the link is for. Nothing typed yet, so no provider.
+    expect(screen.getByText('Prospects without their own call-to-action will see this booking link.')).toBeInTheDocument()
+    expect(screen.queryByText(/link detected/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Test link/ })).not.toBeInTheDocument()
   })
 
   it('invites through the authenticated workspace and its allowed default role', async () => {
@@ -925,7 +980,8 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByTestId('workspace-logo-settings')).toHaveClass('h-24', 'w-40', 'sm:h-28', 'sm:w-48')
+    // Shown on the primary color it sits on in the client's header.
+    expect(screen.getByTestId('workspace-logo-on-primary')).toHaveStyle({ backgroundColor: '#0D1B2A' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove logo' }))
     const dialog = screen.getByRole('alertdialog', { name: 'Remove workspace logo?' })

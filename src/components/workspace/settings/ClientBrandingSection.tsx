@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { AlertTriangle, ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Loader2, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -12,17 +12,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { WorkspaceBrandLogo } from '@/components/workspace/WorkspaceLayout'
+import { BrandColorField } from '@/components/workspace/settings/BrandColorField'
+import { BrandPreview } from '@/components/workspace/settings/BrandPreview'
 import { FieldSaveError, FieldSaveStatus } from '@/components/workspace/settings/FieldSaveStatus'
 import { UnsavedChangesBar } from '@/components/workspace/settings/UnsavedChangesBar'
 import { useAutoSaveField } from '@/components/workspace/settings/useAutoSaveField'
-import { isHexColor, readableColor } from '@/lib/brandColor'
+import { normalizeHexColor, readableColor } from '@/lib/brandColor'
 import { notACredentialField } from '@/lib/formAutofill'
 import { bookingLinkFromPaste, schedulerName } from '@/lib/schedulerEmbed'
 import { cn } from '@/lib/utils'
@@ -170,9 +170,14 @@ export const ClientBrandingSection = ({
     lastServerColorsRef.current = key
     setColors({ primary: workspace.client_brand_primary_color, accent: workspace.client_brand_accent_color })
   }, [workspace.client_brand_primary_color, workspace.client_brand_accent_color])
-  const colorsDirty = colors.primary.toUpperCase() !== serverColors.primary
-    || colors.accent.toUpperCase() !== serverColors.accent
-  const colorsValid = isHexColor(colors.primary) && isHexColor(colors.accent)
+  // The fields hold what was typed; the preview and the save use the colour
+  // it means, or the saved one while it means none yet.
+  const primary = normalizeHexColor(colors.primary)
+  const accent = normalizeHexColor(colors.accent)
+  const colorsDirty = primary !== serverColors.primary || accent !== serverColors.accent
+  const colorsValid = primary !== null && accent !== null
+  const shownPrimary = primary ?? serverColors.primary
+  const shownAccent = accent ?? serverColors.accent
 
   // A chosen logo waits for Save, shown in the preview meanwhile.
   const [pendingLogo, setPendingLogo] = useState<{ file: File; url: string } | null>(null)
@@ -190,7 +195,10 @@ export const ClientBrandingSection = ({
 
   const saveBarMutation = useMutation({
     mutationFn: async () => {
-      if (colorsDirty) await saveBrand({ primary: colors.primary.toUpperCase(), accent: colors.accent.toUpperCase() })
+      if (colorsDirty) {
+        if (!primary || !accent) throw new Error('Enter both colors as hex values, like #2B4C7E.')
+        await saveBrand({ primary, accent })
+      }
       if (pendingLogo) {
         if (!canManageBranding) throw new Error('You do not have permission to update workspace branding.')
         await updateWorkspaceLogo(workspaceId, pendingLogo.file, workspace.logo_path)
@@ -221,9 +229,15 @@ export const ClientBrandingSection = ({
 
   return (
     <>
-      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-        <CardContent className="min-w-0 p-0">
-          <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.88fr)]">
+      {/* Form and preview side by side once there is room for both (the app
+          sidebar and the section menu take 460px first), the preview pinned
+          while the form scrolls past it; stacked, preview second, below
+          that. Two panels rather than one card: the card's overflow-hidden,
+          there for its rounded corners, would have stopped the preview
+          sticking. */}
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+        <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+          <CardContent className="min-w-0 p-0">
             <div className="min-w-0 space-y-6 p-6 sm:p-7">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -315,17 +329,25 @@ export const ClientBrandingSection = ({
                   aria-describedby={bookingLink.error ? 'workspace-booking-link-error' : undefined}
                 />
                 <FieldSaveError id="workspace-booking-link-error" error={bookingLink.error} />
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Paste the scheduler link, or the whole embed code it gives you. Prospect dashboards
-                  without a call-to-action of their own show it instead of asking the prospect to reply to an email.
-                </p>
-                {bookingLinkResolved && !bookingLink.error && (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {bookingProvider
-                      ? `${bookingProvider} will load inline on prospect dashboards.`
-                      : 'This link opens in a new tab from prospect dashboards. Calendly, Cal.com, SavvyCal, TidyCal, HubSpot, and Zcal load inline.'}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {/* Which scheduler it is, said back, so a wrong paste is
+                      caught here and not by a prospect. */}
+                  <p className="text-xs leading-5 text-muted-foreground" aria-live="polite">
+                    {bookingLinkResolved && !bookingLink.error
+                      ? bookingProvider
+                        ? `${bookingProvider} link detected. It loads inline on prospect dashboards.`
+                        : 'Link detected. It opens in a new tab from prospect dashboards.'
+                      : 'Prospects without their own call-to-action will see this booking link.'}
                   </p>
-                )}
+                  {bookingLinkResolved && !bookingLink.error && (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <a href={bookingLinkResolved} target="_blank" rel="noopener noreferrer">
+                        Test link<ExternalLink className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -338,54 +360,37 @@ export const ClientBrandingSection = ({
                   you change them.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {COLOR_FIELDS.map((field) => {
-                    const value = colors[field.key]
-                    return (
-                      <div key={field.key} className="min-w-0 space-y-2">
-                        <Label htmlFor={field.id}>{field.label}</Label>
-                        <div className="flex min-w-0 gap-2">
-                          <Input
-                            aria-label={`${field.label} picker`}
-                            type="color"
-                            value={isHexColor(value) ? value : '#0D1B2A'}
-                            disabled={fieldsDisabled || busy}
-                            onChange={(event) => setColors((current) => ({ ...current, [field.key]: event.target.value.toUpperCase() }))}
-                            className="h-10 w-12 shrink-0 cursor-pointer p-1"
-                          />
-                          <Input
-                            id={field.id}
-                            {...notACredentialField}
-                            value={value}
-                            maxLength={7}
-                            spellCheck={false}
-                            disabled={fieldsDisabled || busy}
-                            onChange={(event) => setColors((current) => ({ ...current, [field.key]: event.target.value.toUpperCase() }))}
-                            className="min-w-0 flex-1 font-mono uppercase"
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {COLOR_FIELDS.map((field) => (
+                    <BrandColorField
+                      key={field.key}
+                      id={field.id}
+                      label={field.label}
+                      value={colors[field.key]}
+                      disabled={fieldsDisabled || busy}
+                      onChange={(value) => setColors((current) => ({ ...current, [field.key]: value }))}
+                    />
+                  ))}
                 </div>
               </div>
 
-              <div className="border-t border-border/70 pt-6">
-                <div className="mb-4 flex items-start gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                    <ImageIcon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="font-semibold">Agency logo</p>
-                    <p className="mt-0.5 text-sm text-muted-foreground">PNG, JPEG, or WebP up to 2 MB.</p>
-                  </div>
+              <div className="space-y-3 border-t border-border/70 pt-6">
+                <div>
+                  <p className="font-semibold">Agency logo</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Recommended: square, at least 256×256px.</p>
                 </div>
                 <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                  <WorkspaceBrandLogo
-                    logoUrl={shownLogoUrl}
-                    workspaceName={workspace.name}
-                    workspaceInitials={workspaceInitials}
-                    placement="settings"
-                  />
+                  {/* On the primary color, which is what it sits on in the
+                      client's header, so a dark logo on a dark brand shows
+                      up here first. */}
+                  <span
+                    data-testid="workspace-logo-on-primary"
+                    className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl p-3 shadow-sm"
+                    style={{ backgroundColor: shownPrimary, color: readableColor(shownPrimary) }}
+                  >
+                    {shownLogoUrl
+                      ? <img src={shownLogoUrl} alt={`${workspace.name} logo`} className="max-h-full max-w-full object-contain" />
+                      : <span className="text-lg font-bold">{workspaceInitials}</span>}
+                  </span>
                   <div className="min-w-0 space-y-3">
                     {/* A native input, not the styled one: Input's h-10 w-full
                         survive sr-only through tailwind-merge, and the
@@ -446,51 +451,19 @@ export const ClientBrandingSection = ({
               ) : null}
             </div>
 
-            <div className="min-w-0 border-t border-border/70 bg-muted/25 p-4 sm:p-6 xl:border-l xl:border-t-0">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live preview</p>
-                <Badge variant="secondary" className="rounded-full text-[10px]">Shared dashboard</Badge>
-              </div>
-              <div
-                className="relative min-h-80 overflow-hidden rounded-2xl border border-white/10 p-6 shadow-sm"
-                style={{
-                  background: `linear-gradient(135deg, ${colors.primary} 0%, #102033 140%)`,
-                  color: readableColor(colors.primary),
-                }}
-                aria-label="Client dashboard brand preview"
-              >
-                <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                <div className="relative flex items-center gap-3">
-                  {shownLogoUrl ? (
-                    <span className="flex h-12 w-20 items-center justify-center p-1">
-                      <img src={shownLogoUrl} alt="" className="max-h-full max-w-full object-contain" />
-                    </span>
-                  ) : (
-                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-sm font-bold ring-1 ring-white/20">
-                      {workspaceInitials}
-                    </span>
-                  )}
-                  <div>
-                    <p className="font-semibold">{agencyName.value.trim() || workspace.name}</p>
-                    <p className="mt-0.5 text-xs opacity-65">Private podcast campaign</p>
-                  </div>
-                </div>
-                <div className="relative mt-12 max-w-sm">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Prepared for your client</p>
-                  <p className="mt-3 text-3xl font-semibold leading-tight">The right rooms for their next big ideas.</p>
-                  <span
-                    className="mt-6 inline-flex rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
-                    style={{ backgroundColor: colors.accent, color: readableColor(colors.accent) }}
-                  >
-                    Review top matches
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
+        <div className="min-w-0 rounded-xl border border-border/70 bg-muted/25 p-4 sm:p-5 xl:sticky xl:top-28">
+          <BrandPreview
+            name={agencyName.value.trim() || workspace.name}
+            primary={shownPrimary}
+            accent={shownAccent}
+            logoUrl={shownLogoUrl}
+            initials={workspaceInitials}
+          />
+        </div>
+      </div>
       {brandDirty && (
         <UnsavedChangesBar
           saving={busy}
