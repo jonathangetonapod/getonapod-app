@@ -106,8 +106,10 @@ async function waitForFile(fileId) {
     }
     if (info.error) throw new Error(`MillionVerifier fileinfo: ${info.error}`)
     log(`file ${fileId}: ${info.status} ${info.percent}% (${info.verified ?? 0} verified, eta ${info.estimated_time_sec ?? '?'}s)`)
-    if (info.status === 'finished') return info
-    if (['canceled', 'error'].includes(info.status)) throw new Error(`MillionVerifier file ${fileId} ${info.status}`)
+    // A stopped file (bulkapi/stop, for a slow tail) still serves what was verified;
+    // the unverified rest has no row, so the next run picks it up.
+    if (info.status === 'finished' || info.status === 'canceled') return info
+    if (info.status === 'error') throw new Error(`MillionVerifier file ${fileId} ${info.status}`)
     await sleep(30_000)
   }
 }
@@ -151,14 +153,23 @@ async function save(results, checkedAt) {
   for (let i = 0; i < rows.length; i += 1000) {
     const batch = rows.slice(i, i + 1000)
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(`${SB}/podcast_email_verifications?on_conflict=normalized_email`, {
-        method: 'POST',
-        headers: { ...SB_HEADERS, Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(batch),
-      })
-      if (res.ok) break
-      if (attempt >= 6) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 300)}`)
-      await sleep(3000 * attempt)
+      let problem
+      try {
+        const res = await fetch(`${SB}/podcast_email_verifications?on_conflict=normalized_email`, {
+          method: 'POST',
+          headers: { ...SB_HEADERS, Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(batch),
+          signal: AbortSignal.timeout(120_000),
+        })
+        if (res.ok) break
+        problem = `Supabase ${res.status}: ${(await res.text()).slice(0, 300)}`
+      } catch (err) {
+        problem = err.message
+      }
+      // Upserts are idempotent, so a batch whose answer was lost is simply sent again.
+      if (attempt >= 8) throw new Error(problem)
+      log(`save batch at ${i} failed (${problem}), retrying`)
+      await sleep(Math.min(5000 * attempt, 60_000))
     }
     log(`saved ${Math.min(i + 1000, rows.length)}/${rows.length}`)
   }
