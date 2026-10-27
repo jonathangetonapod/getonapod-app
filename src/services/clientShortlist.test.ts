@@ -11,6 +11,7 @@ import {
   reorderClientShortlistFeatured,
   runClientShortlistEmailSearch,
   runClientShortlistResearch,
+  scoreClientShortlistFit,
   searchClientPodcastCatalog,
   updateClientShortlistPodcast,
 } from '@/services/clientShortlist'
@@ -40,6 +41,28 @@ describe('clientShortlist service', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-client-shortlist', {
       body: { action: 'catalog-search', workspace_id: workspaceId, client_id: clientId, query: 'founder' },
     })
+  })
+
+  it('scores shortlist rows through the scoring function and maps the result', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { scores: [], deterministic_count: 1, refunded: false, saved: 2, profile_hash: 'abc' },
+      error: null,
+    } as never)
+    const rowIds = ['33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444']
+
+    await expect(scoreClientShortlistFit(workspaceId, clientId, rowIds))
+      .resolves.toEqual({ saved: 2, estimated: 1, refunded: false })
+    expect(invoke).toHaveBeenCalledWith('score-podcast-compatibility', {
+      body: { workspaceId, clientId, shortlistPodcastIds: rowIds },
+    })
+  })
+
+  it('reads the current fit profile with the list, and tolerates its absence', async () => {
+    invoke
+      .mockResolvedValueOnce({ data: { client: { id: clientId, name: 'C' }, podcasts: [], fit_profile: { hash: 'h1', ready: true } }, error: null } as never)
+      .mockResolvedValueOnce({ data: { client: { id: clientId, name: 'C' }, podcasts: [] }, error: null } as never)
+    expect((await getClientShortlist(workspaceId, clientId)).fit_profile).toEqual({ hash: 'h1', ready: true })
+    expect((await getClientShortlist(workspaceId, clientId)).fit_profile).toBeNull()
   })
 
   // Podscan sends some show links as a bare domain; one used to fail the whole add.

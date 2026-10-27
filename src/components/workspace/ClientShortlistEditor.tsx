@@ -52,6 +52,8 @@ import { safeExternalUrl } from '@/lib/externalUrl'
 import { MY_WORKSPACE_BASE_HREF, clientPitchHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
+import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
+import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
@@ -62,9 +64,9 @@ import {
   type ClientShortlistVisibility,
 } from '@/services/clientShortlist'
 
-type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'archived'
-const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'archived']
-type ListSort = 'list_order' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
+type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' | 'archived'
+const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'archived']
+type ListSort = 'list_order' | 'fit_desc' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
 interface ClientShortlistEditorProps {
   workspaceId: string
@@ -88,10 +90,16 @@ interface ClientShortlistEditorProps {
   campaignHref: string
   relationshipsHref?: string
   billingHref?: string
+  /** The workspace has its own Anthropic key, so scoring costs no credits. */
+  byoAi?: boolean
   onChanged?: () => void
 }
 
 const PAGE_SIZE = 10
+
+function isWeakFit(podcast: ClientShortlistPodcast): boolean {
+  return podcast.visibility === 'visible' && typeof podcast.fit_score === 'number' && podcast.fit_score < WEAK_FIT_BELOW
+}
 
 function compareOptionalNumbers(
   left: number | null | undefined,
@@ -170,6 +178,7 @@ export function ClientShortlistEditor({
   finderHref,
   campaignHref,
   initialFilter,
+  byoAi,
   onChanged,
 }: ClientShortlistEditorProps) {
   const queryClient = useQueryClient()
@@ -248,6 +257,7 @@ export function ClientShortlistEditor({
     approved: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'approved').length,
     rejected: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'rejected').length,
     notReviewed: podcasts.filter((podcast) => podcast.visibility === 'visible' && !podcast.feedback_status).length,
+    weakFit: podcasts.filter(isWeakFit).length,
   }), [podcasts])
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -258,10 +268,12 @@ export function ClientShortlistEditor({
       if (podcast.visibility !== 'visible') return false
       if (filter === 'approved') return podcast.feedback_status === 'approved'
       if (filter === 'rejected') return podcast.feedback_status === 'rejected'
+      if (filter === 'weak_fit') return isWeakFit(podcast)
       return podcast.feedback_status === null
     })
     if (sort === 'list_order') return matching
     return [...matching].sort((left, right) => {
+      if (sort === 'fit_desc') return compareOptionalNumbers(left.fit_score, right.fit_score, 'desc')
       if (sort === 'audience_desc') return compareOptionalNumbers(left.audience_size, right.audience_size, 'desc')
       if (sort === 'audience_asc') return compareOptionalNumbers(left.audience_size, right.audience_size, 'asc')
       if (sort === 'rating_desc') return compareOptionalNumbers(left.itunes_rating, right.itunes_rating, 'desc')
@@ -405,6 +417,14 @@ export function ClientShortlistEditor({
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline"><Link to={databaseHref}><Database className="mr-2 h-4 w-4" />Browse database</Link></Button>
               <Button onClick={() => setAddOpen(true)} variant="outline"><ListPlus className="mr-2 h-4 w-4" />Quick add</Button>
+              <ShortlistFitRunner
+                workspaceId={workspaceId}
+                clientId={clientId}
+                podcasts={podcasts}
+                profile={shortlistQuery.data?.fit_profile ?? null}
+                byoAi={byoAi}
+                onProgress={refresh}
+              />
             </div>
           </div>
         </CardHeader>
@@ -432,6 +452,7 @@ export function ClientShortlistEditor({
                 className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-56"
               >
                 <option value="list_order">Client list order</option>
+                <option value="fit_desc">Fit: best first</option>
                 <option value="audience_desc">Audience: largest first</option>
                 <option value="audience_asc">Audience: smallest first</option>
                 <option value="rating_desc">Rating: highest first</option>
@@ -446,6 +467,7 @@ export function ClientShortlistEditor({
                 ['not_reviewed', `To review ${counts.notReviewed}`],
                 ['approved', `Approved ${counts.approved}`],
                 ['rejected', `Passed ${counts.rejected}`],
+                ['weak_fit', `Weak fit ${counts.weakFit}`],
                 ['archived', `Archived ${counts.archived}`],
               ] as Array<[ListFilter, string]>).map(([value, label]) => (
                 <Button key={value} type="button" size="sm" variant={filter === value ? 'default' : 'outline'} onClick={() => setFilter(value)}>{label}</Button>
@@ -469,7 +491,8 @@ export function ClientShortlistEditor({
                     <PodcastArtwork podcast={podcast} />
                     <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{podcast.prior_outreach_at && <Badge aria-label={`${podcast.podcast_name} was previously contacted`} variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
                   </button>
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 lg:w-[500px] lg:items-center">
+                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5 lg:w-[600px] lg:items-center">
+                    <div><p className="text-xs text-muted-foreground">Fit</p><FitScoreBadge podcast={podcast} profile={shortlistQuery.data?.fit_profile ?? null} /></div>
                     <div><p className="text-xs text-muted-foreground">Audience</p><p className="font-medium">{compactNumber(podcast.audience_size)}</p></div>
                     <div><p className="text-xs text-muted-foreground">Rating</p><p className="font-medium">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
                     <div>{feedbackBadge(podcast)}</div>
@@ -542,6 +565,7 @@ export function ClientShortlistEditor({
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Rating</p><p className="mt-1 font-semibold">{detailPodcast.itunes_rating ? Number(detailPodcast.itunes_rating).toFixed(1) : '—'}</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Episodes</p><p className="mt-1 font-semibold">{detailPodcast.episode_count?.toLocaleString() || '—'}</p></div>
               </div>
+              <FitDetails podcast={detailPodcast} profile={shortlistQuery.data?.fit_profile ?? null} />
               <section><h4 className="text-sm font-semibold">About this podcast</h4><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{detailPodcast.ai_clean_description || detailPodcast.podcast_description || 'No podcast description is available yet.'}</p></section>
               <section className="rounded-xl border bg-muted/20 p-4"><h4 className="text-sm font-semibold">Client feedback</h4><p className="mt-2 text-sm leading-6 text-muted-foreground">{detailPodcast.feedback_notes || (detailPodcast.feedback_status ? 'The client left a decision without a note.' : 'The client has not reviewed this podcast yet.')}</p></section>
               {detailPodcast.prior_outreach_at && <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4"><h4 className="flex items-center gap-2 text-sm font-semibold text-amber-950"><MailCheck className="h-4 w-4" />Outreach history</h4><p className="mt-2 text-sm leading-6 text-amber-900/80">This podcast was already handed off for outreach for this client on {formattedDate(detailPodcast.prior_outreach_at)}. You can prepare a re-pitch, but the relationship warning must be reviewed first and any active campaign remains protected.</p></section>}

@@ -11,7 +11,9 @@ import {
   requirePlatformAdminOrService,
   requireUuid,
   requireWorkspaceFeatureAccess,
+  writeAudit,
 } from '../_shared/workspaceAuth.ts'
+import { type ClientFitProfile, loadClientFitProfile } from '../_shared/clientFitProfile.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
@@ -22,12 +24,16 @@ import {
   singleScoringPrompt,
   storedEpisodeTitles,
   targetProfile,
+  type ParsedScore,
   type ScoringEpisode,
   type ScoringPodcast,
 } from '../_shared/compatibilityPrompt.ts'
 
 const METHODS = ['POST'] as const
 const SCORING_MODEL = 'claude-haiku-4-5-20251001'
+const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+const MAX_SHORTLIST_IDS = 20
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 type PodcastForScoring = ScoringPodcast
 
@@ -42,6 +48,7 @@ interface ScoreRow {
   podcast_id: string
   score: number | null
   reasoning?: string
+  concerns?: string[]
   source: ScoreSource
 }
 
@@ -56,8 +63,8 @@ function meaningfulTokens(value: string): Set<string> {
     .filter((token) => !SCORE_STOP_WORDS.has(token)))
 }
 
-function deterministicScore(targetBio: string, podcast: PodcastForScoring) {
-  const targetTokens = meaningfulTokens(targetBio)
+function deterministicScore(targetText: string, podcast: PodcastForScoring) {
+  const targetTokens = meaningfulTokens(targetText)
   const podcastText = [
     podcast.podcast_name,
     podcast.publisher_name,
@@ -102,6 +109,58 @@ async function storedEpisodes(
   }
 }
 
+function shortlistIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SHORTLIST_IDS) {
+    throw new HttpError(400, 'INVALID_SHORTLIST_IDS', `shortlistPodcastIds must list 1 to ${MAX_SHORTLIST_IDS} shortlist rows`)
+  }
+  if (value.some((id) => typeof id !== 'string' || !UUID_PATTERN.test(id))) {
+    throw new HttpError(400, 'INVALID_SHORTLIST_IDS', 'shortlistPodcastIds must be shortlist row ids')
+  }
+  return [...new Set((value as string[]).map((id) => id.toLowerCase()))]
+}
+
+/*
+ * The client's own shortlist rows, with the shared catalog's current copy of
+ * each show laid over the snapshot taken when it was added — the same merge
+ * the shortlist editor shows.
+ */
+async function shortlistPodcasts(
+  admin: ReturnType<typeof createAdminClient>,
+  clientId: string,
+  ids: string[],
+): Promise<Array<{ rowId: string; podcast: PodcastForScoring }>> {
+  const { data: rows, error } = await admin
+    .from('client_dashboard_podcasts')
+    .select('id,podcast_id,podcast_name,podcast_description,publisher_name,podcast_categories,audience_size,episode_count')
+    .eq('client_id', clientId)
+    .in('id', ids)
+  if (error) throw new HttpError(500, 'SHORTLIST_LOOKUP_FAILED', 'The shortlist could not be loaded')
+  if (!rows || rows.length === 0) throw new HttpError(404, 'SHORTLIST_PODCAST_NOT_FOUND', 'None of these shows are on this client\'s shortlist')
+  const podscanIds = rows.map((row) => String(row.podcast_id)).filter((id) => /^[a-zA-Z0-9_-]+$/u.test(id))
+  const catalog = podscanIds.length > 0
+    ? await admin
+      .from('podcasts')
+      .select('podscan_id,podcast_name,podcast_description,publisher_name,podcast_categories,audience_size,episode_count')
+      .in('podscan_id', podscanIds)
+    : { data: [], error: null }
+  const catalogById = new Map((catalog.error ? [] : catalog.data ?? []).map((row) => [String(row.podscan_id), row]))
+  return rows.map((row) => {
+    const current = catalogById.get(String(row.podcast_id))
+    return {
+      rowId: String(row.id),
+      podcast: {
+        podcast_id: String(row.podcast_id),
+        podcast_name: current?.podcast_name || row.podcast_name || 'Untitled podcast',
+        podcast_description: current?.podcast_description ?? row.podcast_description ?? null,
+        publisher_name: current?.publisher_name ?? row.publisher_name ?? null,
+        podcast_categories: current?.podcast_categories ?? row.podcast_categories ?? null,
+        audience_size: current?.audience_size ?? row.audience_size ?? null,
+        episode_count: current?.episode_count ?? row.episode_count ?? null,
+      },
+    }
+  })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
@@ -125,21 +184,26 @@ serve(async (req) => {
       workspaceId?: string
       clientId?: string
       prospectDashboardId?: string
+      /** Score these shortlist rows and save the result on them. Client mode only. */
+      shortlistPodcastIds?: unknown
     }
     let { clientBio, prospectBio } = body
     const scopedRequest = body.workspaceId !== undefined
       || body.clientId !== undefined
       || body.prospectDashboardId !== undefined
+    const shortlistMode = body.shortlistPodcastIds !== undefined
     // Workspace callers are capped: one request scores at most 20 podcasts.
-    const podcasts = scopedRequest && Array.isArray(body.podcasts)
+    let podcasts = scopedRequest && Array.isArray(body.podcasts)
       ? body.podcasts.slice(0, 20)
       : body.podcasts
 
     let anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
     let meteringActorUserId = ''
     let admin: ReturnType<typeof createAdminClient> | null = null
-    // Everything the workspace wrote about the client, not just the bio.
-    let profileSections: Array<[string, unknown]> = []
+    // Everything on file about the client: bio, guest brief and intake answers.
+    let clientProfile: ClientFitProfile | null = null
+    let shortlistRows: Array<{ rowId: string; podcast: PodcastForScoring }> = []
+    let actorRole = ''
     let metering: {
       admin: Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
       workspaceId: string
@@ -152,7 +216,7 @@ serve(async (req) => {
     if (scopedRequest) {
       const workspaceId = requireUuid(body.workspaceId, 'workspaceId')
       const context = await requireAuthenticatedUser(req)
-      await requireWorkspaceFeatureAccess(context, workspaceId)
+      actorRole = (await requireWorkspaceFeatureAccess(context, workspaceId)).role
       admin = context.admin
       const hasClient = body.clientId !== undefined
       const hasProspect = body.prospectDashboardId !== undefined
@@ -192,45 +256,44 @@ serve(async (req) => {
         clientBio = undefined
       } else {
         const clientId = requireUuid(body.clientId, 'clientId')
-        const { data: scopedClient, error: scopedClientError } = await context.admin
-          .from('clients')
-          .select('id,workspace_id,bio,notes,ai_sdr_profile,status')
-          .eq('id', clientId)
-          .eq('workspace_id', workspaceId)
-          .maybeSingle()
-
-        if (scopedClientError) {
+        try {
+          clientProfile = await loadClientFitProfile(context.admin, workspaceId, clientId)
+        } catch {
           throw new HttpError(500, 'CLIENT_CONTEXT_UNAVAILABLE', 'The client profile could not be loaded')
         }
-        if (!scopedClient || scopedClient.workspace_id !== workspaceId) {
+        if (!clientProfile) {
           throw new HttpError(404, 'CLIENT_NOT_FOUND', 'This client is not in this workspace')
         }
         // Named rather than folded into "not found": a paused client is a
         // state the operator can change, a missing one is not.
-        if (scopedClient.status !== 'active') {
+        if (clientProfile.status !== 'active') {
           throw new HttpError(
             409,
             'CLIENT_NOT_ACTIVE',
-            `This client is ${scopedClient.status}. Reactivate them to run this.`,
+            `This client is ${clientProfile.status}. Reactivate them to run this.`,
           )
         }
-        clientBio = scopedClient.bio
+        clientBio = undefined
         prospectBio = undefined
-        const pitch = scopedClient.ai_sdr_profile && typeof scopedClient.ai_sdr_profile === 'object'
-          ? scopedClient.ai_sdr_profile as Record<string, unknown>
-          : {}
-        profileSections = [
-          ['Notes', scopedClient.notes],
-          ['Positioning', pitch.positioning],
-          ['Topics and angles', pitch.topics_and_angles],
-          ['Listener takeaways', pitch.listener_takeaways],
-          ['Proof points', pitch.proof_points],
-          ['Ideal opportunities', pitch.ideal_opportunities],
-        ]
       }
     } else {
       await requirePlatformAdminOrService(req)
       admin = createAdminClient()
+    }
+
+    if (shortlistMode) {
+      if (!clientProfile || !metering?.clientId) {
+        throw new HttpError(400, 'INVALID_RESEARCH_TARGET', 'Shortlist scoring needs a workspace client')
+      }
+      if (body.podcasts !== undefined) {
+        throw new HttpError(400, 'INVALID_PODCASTS', 'Send podcasts or shortlistPodcastIds, not both')
+      }
+      // Saving onto the shortlist is a shortlist edit, which only managers make.
+      if (!MANAGER_ROLES.has(actorRole)) {
+        throw new HttpError(403, 'WORKSPACE_MANAGER_REQUIRED', 'Workspace manager access is required')
+      }
+      shortlistRows = await shortlistPodcasts(metering.admin, metering.clientId, shortlistIds(body.shortlistPodcastIds))
+      podcasts = shortlistRows.map((row) => row.podcast)
     }
 
     if (clientBio !== undefined && typeof clientBio !== 'string') {
@@ -245,8 +308,17 @@ serve(async (req) => {
 
     const targetBio = prospectBio || clientBio
     const isProspectMode = !!prospectBio
-    if (!targetBio || targetBio.trim().length === 0) {
-      throw new HttpError(400, 'BIO_REQUIRED', `${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring`)
+    // A workspace client is scored on everything on file, so a guest brief or
+    // a submitted intake is enough without a bio.
+    const profile = clientProfile ? clientProfile.profile : targetProfile(targetBio ?? '')
+    if (!profile.trim()) {
+      throw new HttpError(
+        400,
+        'BIO_REQUIRED',
+        clientProfile
+          ? 'Add a bio, guest brief or intake for this client before scoring'
+          : `${isProspectMode ? 'Prospect' : 'Client'} bio is required for compatibility scoring`,
+      )
     }
     if (podcasts.length === 0) {
       throw new HttpError(400, 'INVALID_PODCASTS', 'Podcasts array is required')
@@ -284,7 +356,6 @@ serve(async (req) => {
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey })
     const targetLabel = isProspectMode ? 'prospect' : 'client'
-    const profile = targetProfile(targetBio, profileSections)
     const episodesById = admin
       ? await storedEpisodes(admin, podcasts.map((podcast) => podcast.podcast_id))
       : new Map<string, ScoringEpisode[]>()
@@ -306,13 +377,13 @@ serve(async (req) => {
     // One model call per group; the group's misses get their own call each,
     // and only what still fails falls back to the keyword estimate.
     const scoreGroup = async (group: PodcastForScoring[]): Promise<ScoreRow[]> => {
-      let groupScores = new Map<string, { score: number; reasoning: string | null }>()
+      let groupScores = new Map<string, ParsedScore>()
       try {
         const text = await ask(groupScoringPrompt({
           targetLabel,
           profile,
           podcasts: group.map((podcast) => ({ podcast, episodes: episodesFor(podcast) })),
-        }), 180 * group.length + 200)
+        }), 240 * group.length + 200)
         if (text) groupScores = parseGroupScores(text, group.map((podcast) => podcast.podcast_id))
       } catch (error) {
         console.error('[score-podcast-compatibility] group call failed:', error instanceof Error ? error.message : 'unknown error')
@@ -321,7 +392,7 @@ serve(async (req) => {
         let parsed = groupScores.get(podcast.podcast_id) ?? null
         if (!parsed) {
           try {
-            const text = await ask(singleScoringPrompt({ targetLabel, profile, podcast, episodes: episodesFor(podcast) }), 250)
+            const text = await ask(singleScoringPrompt({ targetLabel, profile, podcast, episodes: episodesFor(podcast) }), 320)
             parsed = text ? parseSingleScore(text) : null
           } catch (error) {
             console.error('[score-podcast-compatibility] single call failed:', error instanceof Error ? error.message : 'unknown error')
@@ -332,10 +403,11 @@ serve(async (req) => {
             podcast_id: podcast.podcast_id,
             score: parsed.score,
             ...(parsed.reasoning ? { reasoning: parsed.reasoning } : {}),
+            ...(parsed.concerns.length > 0 ? { concerns: parsed.concerns } : {}),
             source: 'ai',
           }
         }
-        return { podcast_id: podcast.podcast_id, ...deterministicScore(targetBio, podcast), source: 'deterministic' }
+        return { podcast_id: podcast.podcast_id, ...deterministicScore(profile, podcast), source: 'deterministic' }
       }))
     }
 
@@ -363,6 +435,47 @@ serve(async (req) => {
     }
     console.log(`[score-podcast-compatibility] scored ${scores.length - deterministicCount} with AI, ${deterministicCount} estimated`)
 
+    /*
+     * Shortlist mode keeps the result on each row, with the fingerprint of the
+     * profile it was judged against so a later brief or intake change shows
+     * the score as stale. Estimates are saved too, labelled, so the row says
+     * what happened rather than looking untouched.
+     */
+    let saved = 0
+    if (shortlistMode && clientProfile && metering?.clientId) {
+      const scoredAt = new Date().toISOString()
+      const rowIdByPodcast = new Map(shortlistRows.map((row) => [row.podcast.podcast_id, row.rowId]))
+      const writes = await Promise.all(scores.map(async (row) => {
+        const rowId = rowIdByPodcast.get(row.podcast_id)
+        if (!rowId || row.score === null) return false
+        const { error } = await metering!.admin
+          .from('client_dashboard_podcasts')
+          .update({
+            fit_score: Math.min(10, Math.max(1, Math.round(row.score * 10) / 10)),
+            fit_reasoning: row.reasoning ?? null,
+            fit_concerns: row.concerns ?? [],
+            fit_source: row.source === 'ai' ? 'ai' : 'estimate',
+            fit_scored_at: scoredAt,
+            fit_profile_hash: clientProfile!.hash,
+          })
+          .eq('id', rowId)
+          .eq('client_id', metering!.clientId!)
+        return !error
+      }))
+      saved = writes.filter(Boolean).length
+      if (saved === 0) {
+        throw new HttpError(500, 'SHORTLIST_SCORE_SAVE_FAILED', 'The fit scores could not be saved')
+      }
+      await writeAudit(metering.admin, {
+        workspaceId: metering.workspaceId,
+        actorUserId: meteringActorUserId,
+        action: 'workspace.client.shortlist.fit_scored',
+        entityType: 'client',
+        entityId: metering.clientId,
+        metadata: { shortlist_podcast_ids: shortlistRows.map((row) => row.rowId), saved, estimated: deterministicCount },
+      })
+    }
+
     if (metering) {
       await logOperationCost(metering.admin, {
         workspaceId: metering.workspaceId,
@@ -384,6 +497,7 @@ serve(async (req) => {
       scores,
       deterministic_count: deterministicCount,
       refunded,
+      ...(shortlistMode && clientProfile ? { saved, profile_hash: clientProfile.hash } : {}),
     })
   } catch (error) {
     if (chargedForRefund && refundAdmin) {

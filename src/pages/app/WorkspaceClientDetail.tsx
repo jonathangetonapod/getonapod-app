@@ -909,6 +909,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 campaignHref={campaignHref}
                 relationshipsHref={relationshipsHref}
                 billingHref={billingHref}
+                byoAi={detail.ai_keys?.anthropic}
                 onChanged={() => void detailQuery.refetch()}
               />
             )}

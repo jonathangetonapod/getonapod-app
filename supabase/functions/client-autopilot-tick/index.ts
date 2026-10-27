@@ -480,6 +480,15 @@ serve(async (req) => {
             visibility: 'visible',
             display_order: startingOrder + index,
             operator_notes: `Autopilot ${score} fit — ${reason}`.slice(0, 500),
+            // Kept as a shortlist fit score too, on the editor's 1-10 scale.
+            // No profile hash: autopilot judges the bio alone, so the editor
+            // offers a rescore against the full brief and intake.
+            fit_score: Math.min(10, Math.max(1, Math.round(score) / 10)),
+            fit_reasoning: reason || null,
+            fit_concerns: [],
+            fit_source: 'ai',
+            fit_scored_at: new Date().toISOString(),
+            fit_profile_hash: null,
           })),
           { onConflict: 'client_id,podcast_id', ignoreDuplicates: true },
         )

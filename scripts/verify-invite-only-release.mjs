@@ -80,7 +80,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // MillionVerifier on a schedule (2026-10-27).
   // 193 with _shared/workspaceAiKeys.test.ts: testing a saved AI key tells a
   // rejected key from an unreachable provider (2026-10-27).
-  edgeTypeScriptFiles: 193,
+  // 195 with _shared/clientFitProfile.ts and its test: shortlist fit scores
+  // read the bio, guest brief and intake answers (2026-10-27).
+  edgeTypeScriptFiles: 195,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

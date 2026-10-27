@@ -40,6 +40,7 @@ import {
   STAGE_RESPONSE_TARGETS,
 } from '../_shared/promptVariables.ts'
 import { splitStructuredAngles, type StructuredAngle } from '../_shared/pitchAngles.ts'
+import { loadClientFitProfile } from '../_shared/clientFitProfile.ts'
 import { thinkingForModel } from '../_shared/promptModels.ts'
 import {
   describeMissingRequirements,
@@ -152,6 +153,12 @@ const SHORTLIST_FIELDS = [
   'featured_order',
   'operator_notes',
   'archived_at',
+  'fit_score',
+  'fit_reasoning',
+  'fit_concerns',
+  'fit_source',
+  'fit_scored_at',
+  'fit_profile_hash',
   'created_at',
   'updated_at',
 ].join(',')
@@ -195,6 +202,9 @@ interface ShortlistPodcastInput {
   region: string | null
   podcast_email: string | null
   rss_feed: string | null
+  /** A Finder score on the 1-10 scale, kept on the new row. */
+  fit_score: number | null
+  fit_reasoning: string | null
 }
 
 interface ShortlistPodcastRow extends Record<string, unknown> {
@@ -396,6 +406,22 @@ function shortlistPodcast(value: unknown, index: number): ShortlistPodcastInput 
     region: optionalString(podcast.region, `podcasts[${index}].region`, 30),
     podcast_email: optionalString(podcast.podcast_email, `podcasts[${index}].podcast_email`, 500),
     rss_feed: optionalHttpUrl(podcast.rss_feed, `podcasts[${index}].rss_feed`),
+    ...finderFit(podcast.compatibility_score, podcast.compatibility_reasoning),
+  }
+}
+
+/**
+ * The Finder's score, when one came with the show. Lenient on purpose: a
+ * score off the 1-10 scale is dropped rather than failing the batch, since
+ * the show itself is still worth adding.
+ */
+function finderFit(score: unknown, reasoning: unknown): { fit_score: number | null; fit_reasoning: string | null } {
+  if (typeof score !== 'number' || !Number.isFinite(score) || score < 1 || score > 10) {
+    return { fit_score: null, fit_reasoning: null }
+  }
+  return {
+    fit_score: Math.round(score * 10) / 10,
+    fit_reasoning: typeof reasoning === 'string' && reasoning.trim() ? reasoning.trim().slice(0, 1_000) : null,
   }
 }
 
@@ -1083,7 +1109,13 @@ serve(async (req) => {
           agency_relationship: relationships.get(podcast.podcast_id as string) ?? null,
         }
       })
-      return jsonResponse(req, METHODS, 200, { client, podcasts })
+      // What a fit score must have been made against to be current.
+      const fitProfile = await loadClientFitProfile(authContext.admin, workspaceId, clientId).catch(() => null)
+      return jsonResponse(req, METHODS, 200, {
+        client,
+        podcasts,
+        fit_profile: fitProfile ? { hash: fitProfile.hash, ready: fitProfile.profile.trim() !== '' } : null,
+      })
     }
 
     if (action === 'catalog-search') {
@@ -1221,6 +1253,12 @@ serve(async (req) => {
           throw new HttpError(500, 'SHORTLIST_ADD_FAILED', 'The client podcast list could not be positioned')
         }
         const startingOrder = lastPosition ? Number(lastPosition.display_order) + 1 : 0
+        // Finder scores were made against this client's profile; the hash lets
+        // a later brief or intake change mark them stale like any other score.
+        const fitHash = newPodcasts.some((podcast) => podcast.fit_score !== null)
+          ? await loadClientFitProfile(authContext.admin, workspaceId, clientId).then((fit) => fit?.hash ?? null).catch(() => null)
+          : null
+        const scoredAt = new Date().toISOString()
         const shortlistResult = await authContext.admin.from('client_dashboard_podcasts').upsert(
           newPodcasts.map((podcast, index) => {
             const central = centralById.get(podcast.podcast_id)
@@ -1240,6 +1278,17 @@ serve(async (req) => {
               demographics: central?.demographics || null,
               visibility: 'visible',
               display_order: startingOrder + index,
+              ...(podcast.fit_score !== null
+                ? {
+                  fit_score: podcast.fit_score,
+                  fit_reasoning: podcast.fit_reasoning,
+                  fit_concerns: [],
+                  // The Finder labels its keyword fallback in the reasoning.
+                  fit_source: podcast.fit_reasoning?.startsWith('Estimated from keyword overlap') ? 'estimate' : 'ai',
+                  fit_scored_at: scoredAt,
+                  fit_profile_hash: fitHash,
+                }
+                : {}),
             }
           }),
           { onConflict: 'client_id,podcast_id', ignoreDuplicates: true },

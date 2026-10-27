@@ -52,6 +52,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL \
   supabase/functions/_shared/accountContextDto.test.ts \
   supabase/functions/_shared/auditEntity.test.ts \
+  supabase/functions/_shared/clientFitProfile.test.ts \
   supabase/functions/_shared/compatibilityPrompt.test.ts \
   supabase/functions/_shared/cors.test.ts \
   supabase/functions/_shared/finderScans.test.ts \

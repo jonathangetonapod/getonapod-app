@@ -155,8 +155,26 @@ export interface ClientShortlistPodcast extends ClientShortlistPodcastInput {
   feedback_updated_at: string | null
   prior_outreach_at?: string | null
   agency_relationship?: ClientShortlistAgencyRelationship | null
+  /** 1-10 fit against the client's bio, guest brief and intake. Operator-only. */
+  fit_score?: number | null
+  fit_reasoning?: string | null
+  fit_concerns?: string[] | null
+  /** 'estimate' is the keyword fallback, not an AI judgement. */
+  fit_source?: ClientShortlistFitSource | null
+  fit_scored_at?: string | null
+  /** The profile fingerprint the score was made against; null when unknown. */
+  fit_profile_hash?: string | null
   created_at: string
   updated_at: string
+}
+
+export type ClientShortlistFitSource = 'ai' | 'estimate'
+
+/** The client profile a fit score is judged against, as it stands now. */
+export interface ClientShortlistFitProfile {
+  hash: string
+  /** False when the client has no bio, guest brief or intake to score against. */
+  ready: boolean
 }
 
 export interface ClientShortlistCatalogPodcast extends ClientShortlistPodcastInput {
@@ -180,6 +198,8 @@ export interface ClientShortlistCatalogPodcast extends ClientShortlistPodcastInp
 export interface ClientShortlistResponse {
   client: { id: string; name: string }
   podcasts: ClientShortlistPodcast[]
+  /** Absent from older responses; null when the profile could not be read. */
+  fit_profile?: ClientShortlistFitProfile | null
 }
 
 export interface ClientShortlistAddResult {
@@ -259,7 +279,38 @@ export async function getClientShortlist(
     client_id: clientId,
   })
   data.podcasts = (data.podcasts || []).map(decodeShortlistPodcast)
+  data.fit_profile = data.fit_profile ?? null
   return data
+}
+
+/** Shortlist rows one scoring request may carry; the server charges per request. */
+export const FIT_SCORE_BATCH_SIZE = 20
+
+export interface ClientShortlistFitScoreResult {
+  saved: number
+  estimated: number
+  refunded: boolean
+}
+
+/**
+ * Scores up to 20 shortlist rows against the client's bio, guest brief and
+ * intake answers, and saves the result on each row. One credit per request
+ * on the platform key; free on the workspace's own Anthropic key.
+ */
+export async function scoreClientShortlistFit(
+  workspaceId: string,
+  clientId: string,
+  shortlistPodcastIds: string[],
+): Promise<ClientShortlistFitScoreResult> {
+  const { data, error } = await supabase.functions.invoke('score-podcast-compatibility', {
+    body: { workspaceId, clientId, shortlistPodcastIds },
+  })
+  if (error) throw await toFunctionError(error, 'The shortlist could not be scored.')
+  return {
+    saved: Number(data?.saved) || 0,
+    estimated: Number(data?.deterministic_count) || 0,
+    refunded: data?.refunded === true,
+  }
 }
 
 export async function searchClientPodcastCatalog(

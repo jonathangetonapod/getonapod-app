@@ -6,6 +6,7 @@ import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEdi
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
+  scoreClientShortlistFit,
   searchClientPodcastCatalog,
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
@@ -13,8 +14,10 @@ import {
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({
+  FIT_SCORE_BATCH_SIZE: 20,
   addClientShortlistPodcasts: vi.fn(),
   getClientShortlist: vi.fn(),
+  scoreClientShortlistFit: vi.fn(),
   searchClientPodcastCatalog: vi.fn(),
   updateClientShortlistPodcast: vi.fn(),
 }))
@@ -174,6 +177,70 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archived 1' }))
     expect(screen.getByText('Archived Show')).toBeInTheDocument()
     expect(screen.getAllByText('Archived', { exact: true }).length).toBeGreaterThan(0)
+  })
+
+  it('shows fit scores, why a show may not fit, and scores only what is unscored or stale', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      fit_profile: { hash: 'current', ready: true },
+      podcasts: [
+        podcast({
+          fit_score: 3.5,
+          fit_source: 'ai',
+          fit_profile_hash: 'current',
+          fit_reasoning: 'The show serves optometrists, not business owners.',
+          fit_concerns: ['Audience is practice owners in one profession'],
+          fit_scored_at: '2026-10-27T00:00:00.000Z',
+        }),
+        podcast({
+          id: '44444444-4444-4444-8444-444444444444',
+          podcast_id: 'podcast-two',
+          podcast_name: 'Operator Weekly',
+          is_featured: false,
+          featured_order: null,
+          fit_score: 8.5,
+          fit_source: 'ai',
+          fit_profile_hash: 'older',
+          fit_scored_at: '2026-10-01T00:00:00.000Z',
+        }),
+        podcast({
+          id: '66666666-6666-4666-8666-666666666666',
+          podcast_id: 'podcast-three',
+          podcast_name: 'Exit Ready',
+          is_featured: false,
+          featured_order: null,
+        }),
+      ],
+    })
+    vi.mocked(scoreClientShortlistFit).mockResolvedValue({ saved: 2, estimated: 0, refunded: false })
+    renderEditor()
+
+    expect(await screen.findByLabelText('Weak fit, 3.5 out of 10')).toBeInTheDocument()
+    expect(screen.getByLabelText('Strong fit, 8.5 out of 10, needs rescoring')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weak fit 1' }))
+    expect(screen.queryByText('Operator Weekly')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Founder Stories' }))
+    expect(screen.getByText('The show serves optometrists, not business owners.')).toBeInTheDocument()
+    expect(screen.getByText('Audience is practice owners in one profession')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    // The current score is left alone; the stale and the unscored row are sent.
+    fireEvent.click(screen.getByRole('button', { name: /Score fit \(2\)/ }))
+    await waitFor(() => expect(scoreClientShortlistFit).toHaveBeenCalledWith(workspaceId, clientId, [
+      '44444444-4444-4444-8444-444444444444',
+      '66666666-6666-4666-8666-666666666666',
+    ]))
+  })
+
+  it('will not score a client with nothing on file to score against', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      fit_profile: { hash: 'empty', ready: false },
+      podcasts: [podcast()],
+    })
+    renderEditor()
+    expect(await screen.findByRole('button', { name: 'Score fit (needs a brief)' })).toBeDisabled()
   })
 
   it('hides the empty featured panel and keeps featuring in the actions menu', async () => {
