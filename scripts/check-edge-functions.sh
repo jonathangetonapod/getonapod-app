@@ -65,6 +65,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/podcastExportDedupe.test.ts \
   supabase/functions/_shared/pitchAngles.test.ts \
   supabase/functions/_shared/podcastRefresh.test.ts \
+  supabase/functions/_shared/podcastSearch.test.ts \
   supabase/functions/_shared/promptModels.test.ts \
   supabase/functions/_shared/promptRequirements.test.ts \
   supabase/functions/_shared/promptVariables.test.ts \

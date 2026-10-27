@@ -74,7 +74,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // when a failed Podscan search ends the run (2026-10-27).
   // 190 with the scheduled catalogue refresh: podcast-catalog-refresh-tick,
   // plus _shared/podcastRefresh.ts and its test (2026-10-27).
-  edgeTypeScriptFiles: 190,
+  // 191 with _shared/podcastSearch.test.ts: the remembered search embeddings
+  // (2026-10-27).
+  edgeTypeScriptFiles: 191,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
