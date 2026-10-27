@@ -64,8 +64,13 @@ export type RelationshipMove = 'yours' | 'theirs'
 export function relationshipMove(row: StatusRow): RelationshipMove | null {
   const stage = relationshipStage(row)
   if (stage !== 'pitched' && stage !== 'in_conversation') return null
-  if (row.last_message_direction === 'inbound') return 'yours'
-  if (row.last_message_direction === 'outbound') return 'theirs'
+  // A saved message only says who spoke last if nothing has happened since.
+  // When outreach touched the host after it, fall back to outreach state.
+  const savedIsLatest = !row.last_message_at
+    || !row.last_contacted_at
+    || new Date(row.last_message_at).getTime() >= new Date(row.last_contacted_at).getTime()
+  if (savedIsLatest && row.last_message_direction === 'inbound') return 'yours'
+  if (savedIsLatest && row.last_message_direction === 'outbound') return 'theirs'
   if (row.derived_state === 'replied') return 'yours'
   if (stage === 'pitched') return 'theirs'
   return null

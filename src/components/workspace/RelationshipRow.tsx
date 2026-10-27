@@ -212,8 +212,11 @@ export const RelationshipRow = ({
   const identityLine = [hostName !== title ? hostName : '', email !== title ? email : ''].filter(Boolean).join(' · ')
 
   // The whole row opens the panel; its own controls keep their own meaning.
+  // Menus and dialogs render in a portal but still bubble React events here,
+  // so a click inside one must not toggle the row behind it.
   const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('a, button, input, [role="menuitem"]')) return
+    if (!event.currentTarget.contains(event.target as Node)) return
+    if ((event.target as HTMLElement).closest('a, button, input, [role="menuitem"], [role="menu"], [role="dialog"]')) return
     onToggle()
   }
 

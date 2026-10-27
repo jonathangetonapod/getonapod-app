@@ -80,6 +80,12 @@ describe('relationshipMove', () => {
     expect(relationshipMove(row('in_conversation', daysAgo(1), { last_message_direction: 'outbound' }))).toBe('theirs')
   })
 
+  it('stops trusting a saved reply once outreach has touched the host since', () => {
+    const later = row('pitched', daysAgo(2), { last_message_direction: 'inbound', last_message_at: daysAgo(40) })
+    expect(relationshipMove(later)).toBe('theirs')
+    expect(needsAttention(later, now)).toBe(false)
+  })
+
   it('falls back to outreach state when no message was saved', () => {
     expect(relationshipMove(row('replied', daysAgo(1)))).toBe('yours')
     expect(relationshipMove(row('pitched', daysAgo(1)))).toBe('theirs')

@@ -124,7 +124,30 @@ const SHARED_MAIL_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'outlook.com', 'hotmail.com', 'live.com',
   'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'gmx.com',
   'gmx.net', 'yandex.com', 'zoho.com', 'mail.com', 'fastmail.com', 'hey.com', 'comcast.net',
+  'att.net', 'sbcglobal.net', 'verizon.net', 'cox.net', 'charter.net', 'earthlink.net', 'bellsouth.net',
+  'btinternet.com', 'sky.com', 'yahoo.co.uk', 'yahoo.ca', 'hotmail.co.uk', 'outlook.co.uk', 'live.co.uk',
+  'googlemail.co.uk', 'web.de', 'orange.fr', 'free.fr', 'laposte.net', 'libero.it', 'qq.com', '163.com',
+  'naver.com', 'mail.ru', 'rocketmail.com', 'tutanota.com', 'pm.me',
 ])
+// Addresses per .in() lookup, so a full page of unnamed rows stays a sane URL.
+const MATCH_CHUNK = 100
+
+/** Rows from a lookup split into chunks. A failed chunk is logged and skipped: matching is a nicety. */
+async function chunkedRows(
+  values: string[],
+  query: (chunk: string[]) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<Array<Record<string, unknown>>> {
+  const rows: Array<Record<string, unknown>> = []
+  for (let index = 0; index < values.length; index += MATCH_CHUNK) {
+    const { data, error } = await query(values.slice(index, index + MATCH_CHUNK))
+    if (error) {
+      console.error('[workspace-host-relationships] show match lookup failed', error)
+      continue
+    }
+    rows.push(...((data ?? []) as Array<Record<string, unknown>>))
+  }
+  return rows
+}
 const MAX_DOMAIN_LOOKUPS = 20
 
 /**
@@ -151,10 +174,9 @@ async function matchShowsByEmail(
       : null
   )
 
-  const { data: targets } = await admin.from('workspace_client_campaign_targets')
+  const targetRows = await chunkedRows(emails, (chunk) => admin.from('workspace_client_campaign_targets')
     .select('podcast_id, podcast_name, host_name, normalized_contact_email')
-    .eq('workspace_id', workspaceId).in('normalized_contact_email', emails).limit(2_000)
-  const targetRows = (targets ?? []) as Array<Record<string, unknown>>
+    .eq('workspace_id', workspaceId).in('normalized_contact_email', chunk).limit(2_000))
   const pitched = new Set(targetRows.map((row) => String(row.normalized_contact_email)))
   for (const [email, show] of uniqueShows(targetRows.map((row) => ({
     key: String(row.normalized_contact_email),
@@ -163,17 +185,17 @@ async function matchShowsByEmail(
     if (show.podcastName) matches.set(email, show)
   }
 
-  const { data: threads } = await admin.from('workspace_inbox_thread_state')
+  const threads = await chunkedRows(emails, (chunk) => admin.from('workspace_inbox_thread_state')
     .select('lead_email')
-    .eq('workspace_id', workspaceId).in('lead_email', emails).limit(2_000)
-  const held = new Set([...pitched, ...((threads ?? []) as Array<Record<string, unknown>>)
+    .eq('workspace_id', workspaceId).in('lead_email', chunk).limit(2_000))
+  const held = new Set([...pitched, ...threads
     .flatMap((row) => typeof row.lead_email === 'string' ? [row.lead_email.trim().toLowerCase()] : [])])
   const catalogEmails = emails.filter((email) => !matches.has(email) && held.has(email))
   if (catalogEmails.length > 0) {
-    const { data: contacts } = await admin.from('podcast_direct_contacts')
+    const contacts = await chunkedRows(catalogEmails, (chunk) => admin.from('podcast_direct_contacts')
       .select('normalized_email, host_name, podcasts:podcast_id (podscan_id, podcast_name, host_name)')
-      .in('normalized_email', catalogEmails).limit(2_000)
-    for (const [email, show] of uniqueShows(((contacts ?? []) as Array<Record<string, unknown>>).map((row) => {
+      .in('normalized_email', chunk).limit(2_000))
+    for (const [email, show] of uniqueShows(contacts.map((row) => {
       const podcast = (Array.isArray(row.podcasts) ? row.podcasts[0] : row.podcasts) as
         Record<string, unknown> | null | undefined
       const podscanId = text(podcast?.podscan_id, 200)
@@ -198,9 +220,13 @@ async function matchShowsByEmail(
     .filter((domain) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/u.test(domain) && !SHARED_MAIL_DOMAINS.has(domain))
     .slice(0, MAX_DOMAIN_LOOKUPS)
   for (const domain of domains) {
-    const { data: sameDomain } = await admin.from('workspace_client_campaign_targets')
+    const { data: sameDomain, error: domainError } = await admin.from('workspace_client_campaign_targets')
       .select('podcast_id, podcast_name, host_name')
       .eq('workspace_id', workspaceId).like('normalized_contact_email', `%@${domain}`).limit(200)
+    if (domainError) {
+      console.error('[workspace-host-relationships] show match lookup failed', domainError)
+      continue
+    }
     const show = uniqueShows(((sameDomain ?? []) as Array<Record<string, unknown>>).map((row) => ({
       key: domain,
       show: targetShow(row),

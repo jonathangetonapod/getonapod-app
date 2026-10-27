@@ -617,6 +617,10 @@ describe('WorkspaceRelationships', () => {
     expect(show).toHaveValue('Founder & Operator')
     fireEvent.change(show, { target: { value: 'Founder and Operator' } })
     fireEvent.change(screen.getByLabelText('Host name'), { target: { value: 'Morgan Q. Host' } })
+    // The dialog is portalled but bubbles React events; a click in it must
+    // not open the row behind it.
+    fireEvent.click(screen.getByText('Fix the show name, the host, or the address you reach them at.'))
+    expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {

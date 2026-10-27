@@ -53,8 +53,10 @@ export const RelationshipRowMenu = ({
 }: RelationshipRowMenuProps) => {
   // Members who cannot curate keep the main action as a button at every width.
   if (!canManage) return null
+  // Non-modal, so the dialogs two items open take focus cleanly instead of
+  // fighting a modal menu that is still closing.
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"

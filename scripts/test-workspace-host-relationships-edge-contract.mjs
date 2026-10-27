@@ -149,7 +149,7 @@ assert.match(edge, /async function matchShowsByEmail\(/u)
 assert.match(edge, /function uniqueShows\([\s\S]*?if \(shows\.size === 1\)/u)
 assert.match(
   edge,
-  /matchShowsByEmail\([\s\S]*?from\('workspace_client_campaign_targets'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.in\('normalized_contact_email', emails\)[\s\S]*?from\('workspace_inbox_thread_state'\)[\s\S]*?const catalogEmails = emails\.filter\(\(email\) => !matches\.has\(email\) && held\.has\(email\)\)[\s\S]*?from\('podcast_direct_contacts'\)/u,
+  /matchShowsByEmail\([\s\S]*?from\('workspace_client_campaign_targets'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.in\('normalized_contact_email', chunk\)[\s\S]*?from\('workspace_inbox_thread_state'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.in\('lead_email', chunk\)[\s\S]*?const catalogEmails = emails\.filter\(\(email\) => !matches\.has\(email\) && held\.has\(email\)\)[\s\S]*?from\('podcast_direct_contacts'\)/u,
 )
 assert.match(edge, /!SHARED_MAIL_DOMAINS\.has\(domain\)/u)
 assert.match(edge, /\/\^\[a-z0-9-\]\+\(\\\.\[a-z0-9-\]\+\)\+\$\/u\.test\(domain\)/u)
