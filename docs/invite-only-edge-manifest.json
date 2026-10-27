@@ -3,8 +3,8 @@
   "base_commit": "b46a737631ee840f2f49270bdfbbe392833e814a",
   "generated_on": "2026-07-24",
   "scope": "Every changed or new Supabase Edge Function relative to base_commit",
-  "expected_unique_function_count": 121,
-  "expected_deploy_count": 119,
+  "expected_unique_function_count": 122,
+  "expected_deploy_count": 120,
   "retired_http_410_functions": [
     "analyze-sales-call",
     "backfill-prospect-podcasts",
@@ -153,6 +153,7 @@
       "manage-workspace-users",
       "platform-university",
       "podcast-catalog-refresh-tick",
+      "podcast-email-verify-tick",
       "podscan-proxy",
       "portal-experience",
       "portal-password-reset",

@@ -201,6 +201,11 @@ verify_jwt = false
 [functions.podcast-catalog-refresh-tick]
 verify_jwt = false
 
+# Checks catalogue inbox addresses with MillionVerifier. Driven by pg_cron with
+# a shared secret (EMAIL_VERIFY_SECRET), so there is no user JWT.
+[functions.podcast-email-verify-tick]
+verify_jwt = false
+
 [functions.workspace-credit-refill-tick]
 verify_jwt = false
 
