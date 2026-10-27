@@ -542,15 +542,19 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('button', { name: 'Close workspace' })).toBeInTheDocument()
     expect(screen.getByLabelText('Primary color')).toHaveClass('min-w-0', 'flex-1')
     expect(screen.getByRole('table')).toHaveClass('min-w-[44rem]')
-    expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
+    expect(screen.getByText('Who can sign in to this workspace, and what they can do.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
     expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
     const table = screen.getByRole('table')
     expect(within(table).getByText('Owner')).toBeInTheDocument()
     expect(within(table).queryByText('Protected owner')).not.toBeInTheDocument()
     expect(within(table).queryByText('No actions')).not.toBeInTheDocument()
-    // The roles are explained once, beside the list they apply to.
-    expect(screen.getByText(/Cannot see Settings, Billing or the team list\./)).toBeInTheDocument()
+    // One line beside the list; what each role may do is behind its ⓘ.
+    expect(screen.getByText('Owners and admins manage the workspace; members work on clients.')).toBeInTheDocument()
+    expect(screen.queryByText(/Cannot see Settings, Billing or the team list\./)).not.toBeInTheDocument()
+    fireEvent.focus(screen.getByRole('button', { name: 'More about what each role can do' }))
+    expect((await screen.findAllByText(/Cannot see Settings, Billing or the team list\./)).length).toBeGreaterThan(0)
+    fireEvent.blur(screen.getByRole('button', { name: 'More about what each role can do' }))
 
     // Everything but the role sits behind the row menu, grouped by what it does.
     openRowMenu('admin@example.com')
@@ -960,9 +964,11 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByText(/Only your team sees this/i)).toBeInTheDocument()
-    expect(screen.getByText(/Clients never see it unless you type the same name/i)).toBeInTheDocument()
-    expect(screen.getByText(/The name your clients recognize/i)).toBeInTheDocument()
+    expect(screen.getByText('Only your team sees this.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More about the workspace name' })).toBeInTheDocument()
+    expect(screen.getByText('Shown on client dashboards. Defaults to your workspace name.')).toBeInTheDocument()
+    // The fixture has no reply-to yet, so its field shows the warning in place of its line.
+    expect(screen.getByText('Replies to your client emails go nowhere until you add an address.')).toBeInTheDocument()
   })
 
   it('names the scheduler a link belongs to and offers to open it', async () => {
@@ -1019,12 +1025,23 @@ describe('WorkspaceStaff', () => {
     expect(screen.queryByLabelText('Client dashboard brand preview')).not.toBeInTheDocument()
   })
 
+  // The copy rules for this page: no em dashes anywhere a person reads.
+  it('puts no em dash in any copy on the page', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Billing' })).toBeInTheDocument())
+
+    expect(screen.getByTestId('workspace-settings-page').textContent).not.toMatch(/—/u)
+    const labelled = [...document.querySelectorAll('[aria-label],[placeholder],[title]')]
+      .map((element) => ['aria-label', 'placeholder', 'title'].map((name) => element.getAttribute(name) ?? '').join(' '))
+    expect(labelled.join(' ')).not.toMatch(/—/u)
+  })
+
   it('says what the two brand colours actually move', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByText(/Primary is the solid colour behind headers and buttons/i)).toBeInTheDocument()
-    expect(screen.getByText(/Accent marks the active item/i)).toBeInTheDocument()
+    expect(screen.getByText('Primary fills headers and buttons on client pages. Accent marks the active item, like the current tab.')).toBeInTheDocument()
   })
 
   // The instruction never changes and the status changes with every keystroke,
@@ -1555,7 +1572,7 @@ describe('WorkspaceStaff', () => {
     expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
     // The same words a workspace owner reads on their own settings page.
     expect(screen.getByText('Manage your workspace identity, client experience, and team access.')).toBeInTheDocument()
-    expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
+    expect(screen.getByText('Who can sign in to this workspace, and what they can do.')).toBeInTheDocument()
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Workspace credits' })).not.toBeInTheDocument()
@@ -1571,7 +1588,7 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
     expect(screen.getByText(/Only you see this order/i)).toBeInTheDocument()
-    expect(screen.getByText(/It is saved in this browser/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More about where the order is saved' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     // Sign out lives in the menu on the person's avatar.

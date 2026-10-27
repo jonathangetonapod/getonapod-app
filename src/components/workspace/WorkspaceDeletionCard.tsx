@@ -95,7 +95,7 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
           <DialogHeader>
             <DialogTitle>Close {workspaceName}?</DialogTitle>
             <DialogDescription>
-              This ends your subscription now — not at the end of the billing period — and
+              This ends your subscription now, not at the end of the billing period, and
               signs everyone out. Campaigns still sending are stopped first.
             </DialogDescription>
           </DialogHeader>
@@ -105,7 +105,7 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
               <p className="font-medium">You will not be able to undo this yourself.</p>
               <p className="mt-1 text-muted-foreground">
                 Closing removes your access straight away, so there is nothing to sign in to
-                afterwards. Your data is recoverable for 30 days — email
+                afterwards. Your data is recoverable for 30 days: email
                 {' '}
                 <a className="underline" href={`mailto:${PLATFORM_SUPPORT_EMAIL}`}>{PLATFORM_SUPPORT_EMAIL}</a>
                 {' '}

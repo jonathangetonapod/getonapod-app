@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { BrandColorField } from '@/components/workspace/settings/BrandColorField'
 import { BrandPreview } from '@/components/workspace/settings/BrandPreview'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { FieldSaveError, FieldSaveStatus } from '@/components/workspace/settings/FieldSaveStatus'
 import { UnsavedChangesBar } from '@/components/workspace/settings/UnsavedChangesBar'
 import { useAutoSaveField } from '@/components/workspace/settings/useAutoSaveField'
@@ -257,7 +258,7 @@ export const ClientBrandingSection = ({
                   aria-describedby={agencyName.error ? 'client-brand-name-error' : undefined}
                 />
                 <FieldSaveError id="client-brand-name-error" error={agencyName.error} />
-                <p className="text-xs text-muted-foreground">The name your clients recognize, shown on their dashboards, onboarding and portal.</p>
+                <p className="text-xs text-muted-foreground">Shown on client dashboards. Defaults to your workspace name.</p>
               </div>
 
               <div className="space-y-2">
@@ -303,7 +304,12 @@ export const ClientBrandingSection = ({
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Set as the reply-to on intake invitations, reminders, shortlist and booking emails, so a client who replies reaches you.</p>
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    Client replies to your emails go here.
+                    <InfoTip topic="which emails use this address">
+                      It is the reply-to on intake invitations, reminders, shortlist and booking emails.
+                    </InfoTip>
+                  </p>
                 )}
               </div>
 
@@ -355,9 +361,7 @@ export const ClientBrandingSection = ({
                     "primary" and "accent" mean nothing until you know which
                     one moves. */}
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Primary is the solid colour behind headers and buttons on a client&rsquo;s pages. Accent
-                  marks the active item — the current tab, a selected row. The live preview updates as
-                  you change them.
+                  Primary fills headers and buttons on client pages. Accent marks the active item, like the current tab.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {COLOR_FIELDS.map((field) => (

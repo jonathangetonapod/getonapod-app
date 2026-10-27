@@ -32,6 +32,7 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
+import { InfoTip } from '@/components/workspace/InfoTip'
 import { useSetupProgress } from '@/components/workspace/SetupChecklist'
 import { ClientBrandingSection } from '@/components/workspace/settings/ClientBrandingSection'
 import { FieldSaveError, FieldSaveStatus } from '@/components/workspace/settings/FieldSaveStatus'
@@ -138,7 +139,7 @@ function validateView(
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return '—'
+  if (!value) return 'Not yet'
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
 }
 
@@ -967,8 +968,11 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                               <PanelLeft className="h-5 w-5" />
                             </span>
-                            <p className="min-w-0 max-w-2xl text-sm leading-6 text-muted-foreground">
-                              Drag pages into the order that works for you. It is saved in this browser, so another browser or device starts with the default order.
+                            <p className="flex min-w-0 max-w-2xl items-center gap-1 text-sm leading-6 text-muted-foreground">
+                              Drag pages into the order you want.
+                              <InfoTip topic="where the order is saved">
+                                It is saved in this browser, so another browser or device starts with the default order.
+                              </InfoTip>
                             </p>
                           </div>
                           <Button
@@ -988,7 +992,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   <section id="workspace-general" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-general-title">
                     <div>
                       <h2 id="workspace-general-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">General</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">The private identity your team sees inside the app.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">How this workspace appears to your team.</p>
                     </div>
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
@@ -1011,7 +1015,12 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               aria-describedby={workspaceName.error ? 'workspace-name-error' : undefined}
                             />
                             <FieldSaveError id="workspace-name-error" error={workspaceName.error} />
-                            <p className="text-xs text-muted-foreground">Only your team sees this — it names the workspace in the sidebar and in the workspace switcher. Clients never see it unless you type the same name into the client-facing brand below.</p>
+                            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                              Only your team sees this.
+                              <InfoTip topic="the workspace name">
+                                It names the workspace in the sidebar and the workspace switcher. Clients see the agency name under Client branding instead.
+                              </InfoTip>
+                            </p>
                             {!canManageWorkspaceName ? (
                               <p className="text-sm text-muted-foreground">Workspace name controls are not available for your role.</p>
                             ) : null}
@@ -1024,7 +1033,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   <section id="client-branding" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="client-branding-title">
                     <div>
                       <h2 id="client-branding-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Client branding</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Control the identity clients see on dashboards and onboarding.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">What your clients see on their dashboards, onboarding and emails.</p>
                     </div>
 
                     <ClientBrandingSection
@@ -1089,7 +1098,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                           </span>
                         </h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          Manage the people who can access your workspace.
+                          Who can sign in to this workspace, and what they can do.
                         </p>
                       </div>
                       {platformRoster ? (
@@ -1115,9 +1124,19 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         <CardDescription>
                           {platformRoster
                             ? <>These are the people who run the platform. They are added on the platform side, not invited here. To create a workspace or change who owns one, open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link>.</>
-                            : 'Team members are separate from client portal users, which are managed inside each client.'}
+                            : (
+                              <span className="flex items-center gap-1">
+                                Owners and admins manage the workspace; members work on clients.
+                                {/* The full list of what each role may do, behind
+                                    the line rather than three paragraphs above
+                                    the table. The role picker repeats it. */}
+                                <InfoTip topic="what each role can do">
+                                  <RolesCaption roles={['admin', 'member', 'owner']} className="text-popover-foreground [&_span]:text-popover-foreground" />
+                                  <span className="mt-2 block">Client portal users are separate, and are managed inside each client.</span>
+                                </InfoTip>
+                              </span>
+                            )}
                         </CardDescription>
-                        {!platformRoster && <RolesCaption roles={['admin', 'member', 'owner']} className="pt-2" />}
                       </CardHeader>
                       <CardContent className="min-w-0 p-0">
                         {/* A phone gets the same people stacked: name, then

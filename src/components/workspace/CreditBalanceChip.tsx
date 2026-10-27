@@ -71,7 +71,7 @@ export function CreditBalanceChip({ workspaceId, canViewBalance, billingHref }: 
           <TooltipTrigger asChild>
             <Link
               to={billingHref}
-              aria-label={`${overview.balance.toLocaleString()} credits remaining — open billing`}
+              aria-label={`${overview.balance.toLocaleString()} credits remaining. Open billing`}
               className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
             >
               <Coins className="h-3.5 w-3.5" />
