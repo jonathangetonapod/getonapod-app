@@ -3,6 +3,7 @@ import {
   ACTIVITY_LABELS,
   ACTIVITY_OPTIONS,
   AUDIENCE_LABELS,
+  AUDIENCE_OPTIONS,
   categoryLabel,
   CONTACT_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
@@ -35,7 +36,10 @@ const LocaleSelect = ({
   onChange: (code: string) => void
 }) => {
   const anyLabel = name === 'Language' ? 'Any language' : 'Any region'
-  const options = value !== 'all' && !codes.includes(value) ? [value, ...codes] : codes
+  // A code nothing can name (a language code stored as a region, say) would
+  // only read as itself, so it is not offered; one already chosen stays.
+  const named = codes.filter((code) => label(code) !== code.toUpperCase())
+  const options = value !== 'all' && !named.includes(value) ? [value, ...named] : named
   const current = value === 'all' ? anyLabel : label(value) || value
   return (
     <Select value={value} onValueChange={onChange}>
@@ -98,7 +102,7 @@ export const FilterControls = ({
         <SelectValue>{AUDIENCE_LABELS[params.audience]}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {(Object.keys(AUDIENCE_LABELS) as Array<PodcastCatalogParams['audience']>).map((value) => (
+        {AUDIENCE_OPTIONS.map((value) => (
           <SelectItem key={value} value={value}>{AUDIENCE_LABELS[value]}</SelectItem>
         ))}
       </SelectContent>

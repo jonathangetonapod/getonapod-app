@@ -143,15 +143,6 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
    * remembered client in its own effect when the address names none.
    */
   const [rememberedClientId] = useState(() => (clientId ? null : readWorkingClient(workspaceId, user?.id)))
-  useEffect(() => {
-    if (!rememberedClientId) return
-    setSearchParams((current) => {
-      if (current.get('client')) return current
-      const params = new URLSearchParams(current)
-      params.set('client', rememberedClientId)
-      return params
-    }, { replace: true })
-  }, [rememberedClientId, setSearchParams])
 
   const clientsQuery = useQuery({
     queryKey: ['workspace-clients', workspaceId],
@@ -162,6 +153,20 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
     () => (clientsQuery.data || []).filter((client) => client.status === 'active'),
     [clientsQuery.data],
   )
+  // Only a client that is still active: a paused or deleted one written back
+  // into the address would be kept by the header as a deliberate choice.
+  const restorableClientId = rememberedClientId && activeClients.some((client) => client.id.toLowerCase() === rememberedClientId)
+    ? rememberedClientId
+    : null
+  useEffect(() => {
+    if (!restorableClientId) return
+    setSearchParams((current) => {
+      if (current.get('client')) return current
+      const params = new URLSearchParams(current)
+      params.set('client', restorableClientId)
+      return params
+    }, { replace: true })
+  }, [restorableClientId, setSearchParams])
   const selectedClient = activeClients.find((client) => client.id.toLowerCase() === clientId) || null
 
   const contextQuery = useQuery({

@@ -86,7 +86,7 @@ assert.match(edge, /'rating', 'reach'/u)
 assert.match(edge, /p_language: language,\s+p_region: region,/u)
 assert.match(edge, /const LOCALE_CODE = /u)
 assert.match(v3Migration, /p_language TEXT DEFAULT NULL,\s+p_region TEXT DEFAULT NULL,/u)
-assert.match(v3Migration, /normalized_language IS NULL OR lower\(language\) = normalized_language/u)
+assert.match(v3Migration, /normalized_language IS NULL OR lower\(btrim\(language\)\) = normalized_language/u)
 assert.match(v3Migration, /'languages', COALESCE\(/u)
 assert.match(v3Migration, /CASE WHEN effective_sort = 'reach' THEN podcast_reach_score END DESC NULLS LAST/u)
 // "uk" is folded into the ISO "gb", or United Kingdom is offered twice.
@@ -97,6 +97,14 @@ assert.match(v3Migration, /regexp_split_to_array\(lower\(btrim\(p_search\)\), '\
 assert.match(v3Migration, /OR NOT EXISTS \(\s+SELECT 1\s+FROM unnest\(search_words\) search_word/u)
 assert.doesNotMatch(v3Migration, /OR position\(normalized_search IN lower\(concat_ws\(/u)
 assert.match(v3Migration, /round\(abs\(ln\(audience_size::NUMERIC \/ 50000\)\) \/ ln\(2\)\)/u)
+// Review fixes: short words match whole words (escaped), language and region
+// codes are not searched as text, filters trim like their option lists, and
+// the option lists only carry codes the page can send back.
+assert.match(v3Migration, /WHEN length\(search_word\) <= 3 THEN search_text !~ \(/u)
+assert.match(v3Migration, /regexp_replace\(search_word, '\(\[\^\[:alnum:\]\]\)', '\\\\\\1', 'g'\)/u)
+assert.match(v3Migration, /lower\(btrim\(language\)\) = normalized_language/u)
+assert.match(v3Migration, /lower\(btrim\(region\)\) = normalized_region/u)
+assert.match(v3Migration, /lower\(btrim\(language\)\) ~ '\^\[a-z\]\{2,3\}/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)

@@ -30,7 +30,10 @@
 -- A search matches shows containing every word typed, in any order and
 -- anywhere in the show's text, rather than the exact phrase: "real estate
 -- investing" used to miss a show about "investing in real estate". Exact
--- phrases still rank first under Relevance.
+-- phrases still rank first under Relevance. Words of three letters or fewer
+-- ("ai", "seo") must match a whole word, or "ai" would match "said". Language
+-- and region codes are no longer searched as text ("us" matched every US
+-- show); they have their own filters.
 --
 -- Within a Best fit tier, audiences are grouped into doubling bands around
 -- 50K (about 35K to 70K, then 18K to 35K and 70K to 140K, and so on), nearest
@@ -194,7 +197,17 @@ BEGIN
       direct_contact.last_verified_at AS direct_verified_at,
       COALESCE(combined_usage.use_count, 0) AS shortlist_uses,
       COALESCE(combined_usage.workspace_count, 0) AS workspace_uses,
-      semantic_candidate.semantic_similarity
+      semantic_candidate.semantic_similarity,
+      -- The text a search looks in, built only when there is a search: as typed
+      -- for long words, and as space-separated words for short ones.
+      CASE WHEN normalized_search IS NOT NULL THEN lower(concat_ws(
+        ' ',
+        podcast.podcast_name,
+        podcast.publisher_name,
+        COALESCE(direct_contact.host_name, podcast.host_name),
+        podcast.podcast_description,
+        podcast.podcast_categories::TEXT
+      )) END AS search_text
     FROM public.podcasts podcast
     LEFT JOIN combined_usage ON combined_usage.podcast_id = podcast.podscan_id
     LEFT JOIN semantic_candidates semantic_candidate
@@ -240,16 +253,14 @@ BEGIN
         OR NOT EXISTS (
           SELECT 1
           FROM unnest(search_words) search_word
-          WHERE position(search_word IN lower(concat_ws(
-            ' ',
-            podcast_name,
-            publisher_name,
-            host_name,
-            podcast_description,
-            podcast_categories::TEXT,
-            language,
-            region
-          ))) = 0
+          WHERE CASE
+            -- A whole word: \m and \M are word boundaries, and anything in the
+            -- word that regex would read as syntax is escaped first.
+            WHEN length(search_word) <= 3 THEN search_text !~ (
+              '\m' || regexp_replace(search_word, '([^[:alnum:]])', '\\\1', 'g') || '\M'
+            )
+            ELSE position(search_word IN search_text) = 0
+          END
         )
         OR COALESCE(semantic_similarity, 0) >= 0.22
       )
@@ -276,8 +287,10 @@ BEGIN
         OR (normalized_contact = 'direct' AND direct_email IS NOT NULL)
         OR (normalized_contact = 'none' AND free_podscan_email IS NULL AND direct_email IS NULL)
       )
-      AND (normalized_language IS NULL OR lower(language) = normalized_language)
-      AND (normalized_region IS NULL OR lower(region) = normalized_region)
+      -- Trimmed the same way as the option lists, so a choice always matches
+      -- the shows it was counted from.
+      AND (normalized_language IS NULL OR lower(btrim(language)) = normalized_language)
+      AND (normalized_region IS NULL OR lower(btrim(region)) = normalized_region)
       AND (
         normalized_audience = 'all'
         OR (normalized_audience = 'under_10k' AND audience_size IS NOT NULL AND audience_size < 10000)
@@ -309,11 +322,10 @@ BEGIN
             WHEN position(normalized_search IN lower(COALESCE(podcast_description, ''))) > 0 THEN 4
             WHEN position(normalized_search IN lower(COALESCE(podcast_categories::TEXT, ''))) > 0 THEN 3
             -- Every word somewhere in the show's text.
+            -- (The filter already required that, short words as whole words.)
             WHEN NOT EXISTS (
               SELECT 1 FROM unnest(search_words) search_word
-              WHERE position(search_word IN lower(concat_ws(
-                ' ', podcast_name, publisher_name, host_name, podcast_description, podcast_categories::TEXT
-              ))) = 0
+              WHERE position(search_word IN search_text) = 0
             ) THEN 2
             ELSE 0
           END
@@ -468,7 +480,8 @@ BEGIN
       FROM (
         SELECT lower(btrim(language)) AS code, count(*) AS shows
         FROM catalog
-        WHERE is_active IS TRUE AND NULLIF(btrim(language), '') IS NOT NULL
+        -- Only codes the page can send back (the edge function's LOCALE_CODE).
+        WHERE is_active IS TRUE AND lower(btrim(language)) ~ '^[a-z]{2,3}(-[a-z0-9]{2,8})?$'
         GROUP BY 1
       ) language_options
     ), '[]'::JSONB),
@@ -477,7 +490,7 @@ BEGIN
       FROM (
         SELECT lower(btrim(region)) AS code, count(*) AS shows
         FROM catalog
-        WHERE is_active IS TRUE AND NULLIF(btrim(region), '') IS NOT NULL
+        WHERE is_active IS TRUE AND lower(btrim(region)) ~ '^[a-z]{2,3}(-[a-z0-9]{2,8})?$'
         GROUP BY 1
       ) region_options
     ), '[]'::JSONB)

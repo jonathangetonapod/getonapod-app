@@ -60,7 +60,7 @@ function readStoredView(): CatalogView {
     return 'list'
   }
 }
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface WorkspacePodcastDatabaseProps {
   platformWorkspaceId?: string
@@ -90,15 +90,6 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
    * address names none. All clients in the header clears it for good.
    */
   const [rememberedClientId] = useState(() => (targetClientId ? null : readWorkingClient(workspaceId, user?.id)))
-  useEffect(() => {
-    if (!rememberedClientId) return
-    setSearchParams((current) => {
-      if (current.get('client')) return current
-      const params = new URLSearchParams(current)
-      params.set('client', rememberedClientId)
-      return params
-    }, { replace: true })
-  }, [rememberedClientId, setSearchParams])
 
   const queryClient = useQueryClient()
   const { params, update } = usePodcastCatalogParams()
@@ -272,6 +263,24 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const catalog = catalogQuery.data
   const podcasts = catalog?.items || []
   const activeClients = (clientsQuery.data || []).filter((client) => client.status === 'active')
+  /*
+   * Restored only once the client list says it is still an active client: a
+   * paused or deleted one would otherwise be written back into the address,
+   * which the header treats as a deliberate choice and keeps.
+   */
+  const restorableClientId = rememberedClientId && activeClients.some((client) => client.id.toLowerCase() === rememberedClientId)
+    ? rememberedClientId
+    : null
+  const awaitingClientRestore = Boolean(rememberedClientId) && !clientsQuery.isFetched
+  useEffect(() => {
+    if (!restorableClientId) return
+    setSearchParams((current) => {
+      if (current.get('client')) return current
+      const params = new URLSearchParams(current)
+      params.set('client', restorableClientId)
+      return params
+    }, { replace: true })
+  }, [restorableClientId, setSearchParams])
   // Any client, not only active ones: the header can open this page on a
   // paused client by address, and the buttons have to name who that is.
   const targetClient = (clientsQuery.data || []).find((client) => client.id === targetClientId) || null
@@ -482,7 +491,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
           searching={catalogQuery.isFetching}
         />
 
-        {canAddToClient && !targetClientId && !rememberedClientId && !clientHintDismissed && (
+        {canAddToClient && !targetClientId && !awaitingClientRestore && !clientHintDismissed && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/[0.035] px-3 py-2 text-sm">
             <p>Pick a client in the top bar to add shows with one click.</p>
             <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label="Dismiss" onClick={dismissClientHint}>

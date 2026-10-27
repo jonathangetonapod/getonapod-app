@@ -49,7 +49,21 @@ export const AUDIENCE_LABELS: Record<WorkspacePodcastCatalogAudienceFilter, stri
   '50k_250k': '50K to 250K',
   '250k_1m': '250K to 1M',
   '1m_plus': '1M+',
+  '250k_plus': '250K+',
 }
+
+/*
+ * The choices the Audience filter offers. 250K+ was split into 250K to 1M and
+ * 1M+; an old address that still carries it keeps its label and its meaning.
+ */
+export const AUDIENCE_OPTIONS: WorkspacePodcastCatalogAudienceFilter[] = [
+  'all',
+  'under_10k',
+  '10k_50k',
+  '50k_250k',
+  '250k_1m',
+  '1m_plus',
+]
 
 export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
   best_fit: 'Best fit',

@@ -4,7 +4,7 @@ import { decodeFeedText } from '@/lib/feedText'
 
 export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
-export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus'
+export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus' | '250k_plus'
 export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community' | 'rating' | 'reach'
 
 export interface WorkspacePodcastCatalogCategory {

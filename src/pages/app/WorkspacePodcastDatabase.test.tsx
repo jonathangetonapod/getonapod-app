@@ -43,7 +43,8 @@ const catalogResponse = {
   workspace: { id: workspaceId, name: 'Acme Workspace' },
   categories: ['Business', 'Technology'],
   languages: ['en', 'de'],
-  regions: ['us', 'gb'],
+  // "en" is a language code some feeds store as their region.
+  regions: ['us', 'gb', 'en'],
   pagination: { page: 1, page_size: 24, total: 1, total_pages: 1 },
   summary: {
     total_podcasts: 11807,
@@ -481,6 +482,13 @@ describe('WorkspacePodcastDatabase', () => {
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ audience: '1m_plus' }), expect.anything()))
   })
 
+  it('keeps an old 250K+ link meaning what it said', async () => {
+    renderPage('/app/podcast-database?audience=250k_plus')
+    await screen.findByText('The Founder Show')
+    expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ audience: '250k_plus' }), expect.anything())
+    expect(screen.getByText('Audience: 250K+')).toBeInTheDocument()
+  })
+
   // The client this person last worked on comes back on the next visit, so the
   // add stays one click and the pick-a-client hint stays away.
   it('opens on the client this person last worked on', async () => {
@@ -497,6 +505,19 @@ describe('WorkspacePodcastDatabase', () => {
       action: expect.objectContaining({ label: 'Undo' }),
     }))
     expect(readWorkingClient(workspaceId, userId)).toBe(clientId)
+  })
+
+  // A remembered client that has since been paused is not written back into
+  // the address, where the header would keep it as a deliberate choice.
+  it('does not reopen on a remembered client that is no longer active', async () => {
+    mockedClients.mockResolvedValue([{ id: clientId, name: 'Dallas Fontaine', status: 'paused' }] as never)
+    writeWorkingClient(workspaceId, userId, clientId)
+    renderPage()
+
+    await screen.findByText('The Founder Show')
+    expect(await screen.findByText('Pick a client in the top bar to add shows with one click.')).toBeInTheDocument()
+    expect(screen.queryByText('Browsing for Dallas Fontaine')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add to client: The Founder Show' })).toBeInTheDocument()
   })
 
   it('does not suggest a client when one is already working', async () => {
@@ -606,6 +627,7 @@ describe('WorkspacePodcastDatabase', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Any language' }))
     fireEvent.click(await screen.findByRole('option', { name: 'German' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Any region' }))
+    expect(screen.queryByRole('option', { name: 'EN' })).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole('option', { name: 'United Kingdom' }))
 
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
