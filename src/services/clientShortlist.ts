@@ -302,11 +302,32 @@ const SHORTLIST_INPUT_KEYS = [
   'compatibility_reasoning',
 ] as const
 
+// Link fields the endpoint accepts only as http(s) URLs. Podscan sends some
+// as a bare domain ("simplecast.com"); one of those used to fail the whole
+// batch, so a bare domain gains https:// and anything else is left out.
+const SHORTLIST_URL_KEYS = new Set<string>(['podcast_url', 'podcast_image_url', 'rss_feed'])
+const BARE_DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?:[/?#]\S*)?$/iu
+
+export function shortlistHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const candidate = /^https?:\/\//iu.test(trimmed) ? trimmed : BARE_DOMAIN.test(trimmed) ? `https://${trimmed}` : null
+  if (!candidate) return null
+  try {
+    const parsed = new URL(candidate)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null
+  } catch {
+    return null
+  }
+}
+
 function shortlistInput(podcast: ClientShortlistPodcastInput): ClientShortlistPodcastInput {
   const source = podcast as unknown as Record<string, unknown>
   const trimmed: Record<string, unknown> = {}
   for (const key of SHORTLIST_INPUT_KEYS) {
-    if (source[key] !== undefined) trimmed[key] = source[key]
+    if (source[key] === undefined) continue
+    trimmed[key] = SHORTLIST_URL_KEYS.has(key) && source[key] !== null ? shortlistHttpUrl(source[key]) : source[key]
   }
   return trimmed as unknown as ClientShortlistPodcastInput
 }

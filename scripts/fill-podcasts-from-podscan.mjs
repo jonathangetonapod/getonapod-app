@@ -362,6 +362,16 @@ const num = (v, parse) => (v === undefined || v === null || v === '' ? null : pa
 const int = (v) => num(v, (x) => { const n = parseInt(x, 10); return Number.isFinite(n) ? n : null })
 const float = (v) => num(v, (x) => { const n = parseFloat(x); return Number.isFinite(n) ? n : null })
 
+// Podscan sends some links as a bare domain ("simplecast.com"): those gain https://, and
+// anything that is not a web address (handles, emails) is dropped, so every stored link loads.
+const BARE_DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?:[/?#]\S*)?$/iu
+function httpUrl(value) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) return null
+  if (/^https?:\/\//iu.test(text)) return text
+  return BARE_DOMAIN.test(text) ? `https://${text}` : null
+}
+
 // Fields Podscan owns. Counters, embeddings and enrichment columns are left alone.
 function podscanFields(p) {
   const reach = p.reach || {}
@@ -371,7 +381,7 @@ function podscanFields(p) {
     podcast_description: p.podcast_description || null,
     podcast_guid: p.podcast_guid || null,
     podcast_image_url: p.podcast_image_url || null,
-    podcast_url: p.podcast_url || null,
+    podcast_url: httpUrl(p.podcast_url),
     podcast_itunes_id: p.podcast_itunes_id ? String(p.podcast_itunes_id) : null,
     podcast_spotify_id: p.podcast_spotify_id || null,
     rss_url: p.rss_url || null,
@@ -394,7 +404,7 @@ function podscanFields(p) {
     audience_size: int(reach.audience_size),
     podcast_reach_score: int(p.podcast_reach_score ?? reach.reach_score),
     podscan_email: reach.email || null,
-    website: reach.website || null,
+    website: httpUrl(reach.website),
     social_links: reach.social_links || null,
     podscan_last_fetched_at: new Date().toISOString(),
   }

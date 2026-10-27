@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { supabase } from '@/lib/supabase'
 import {
   addClientShortlistPodcasts,
+  shortlistHttpUrl,
   ensureClientShortlistEpisodes,
   generateClientShortlistPitch,
   getClientShortlist,
@@ -39,6 +40,30 @@ describe('clientShortlist service', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-client-shortlist', {
       body: { action: 'catalog-search', workspace_id: workspaceId, client_id: clientId, query: 'founder' },
     })
+  })
+
+  // Podscan sends some show links as a bare domain; one used to fail the whole add.
+  it('sends link fields as http(s) URLs, or leaves them out', async () => {
+    invoke.mockResolvedValueOnce({ data: { added: 1, skipped: 0, podcast_ids: ['podcast-one'] }, error: null } as never)
+    await addClientShortlistPodcasts(workspaceId, clientId, [{
+      podcast_id: 'podcast-one',
+      podcast_name: 'Podcast One',
+      podcast_url: 'www.channerconsulting.com/podcast',
+      podcast_image_url: 'not a link',
+      rss_feed: 'https://feeds.example.com/one.xml',
+    }])
+    const sent = (invoke.mock.calls[0][1] as { body: { podcasts: Array<Record<string, unknown>> } }).body.podcasts[0]
+    expect(sent.podcast_url).toBe('https://www.channerconsulting.com/podcast')
+    expect(sent.podcast_image_url).toBeNull()
+    expect(sent.rss_feed).toBe('https://feeds.example.com/one.xml')
+  })
+
+  it('reads a link as an http(s) URL', () => {
+    expect(shortlistHttpUrl('simplecast.com')).toBe('https://simplecast.com/')
+    expect(shortlistHttpUrl(' http://show.fm/ep ')).toBe('http://show.fm/ep')
+    expect(shortlistHttpUrl('mailto:a@b.com')).toBeNull()
+    expect(shortlistHttpUrl('javascript:alert(1)')).toBeNull()
+    expect(shortlistHttpUrl('')).toBeNull()
   })
 
   it('uses narrow add, update, and reorder actions', async () => {
