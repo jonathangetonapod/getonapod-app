@@ -1,4 +1,4 @@
-import { Copy, ShieldCheck } from 'lucide-react'
+import { Copy, MailCheck, ShieldCheck } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils'
 
 const CHIP: Record<PodcastEmailStatus['state'], { label: string; className: string }> = {
   verified: { label: 'Verified email', className: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50' },
+  deliverable: { label: 'Deliverable email', className: 'border-emerald-200 bg-white text-emerald-800 hover:bg-white' },
+  catch_all: { label: 'Catch-all email', className: 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-50' },
   public: { label: 'Public email', className: 'border-border bg-muted text-foreground hover:bg-muted' },
   none: { label: 'No email', className: 'border-dashed bg-transparent text-muted-foreground hover:bg-transparent' },
 }
@@ -16,17 +18,20 @@ function chipHint(status: PodcastEmailStatus): string | null {
     const checked = formatDay(status.verifiedAt)
     return checked ? `Verified contact. Checked ${checked}.` : 'Verified contact.'
   }
-  if (status.state === 'public') return 'Published by the show. Unverified.'
+  if (status.state === 'deliverable') return 'Published by the show. The mailbox is confirmed to accept mail.'
+  if (status.state === 'catch_all') return 'Published by the show. Its mail server accepts every address, so this inbox cannot be confirmed.'
+  if (status.state === 'public') return 'Published by the show. Not checked yet.'
   return null
 }
 
-/** One chip for the three contact states, the same in the list, the cards and the details. */
+/** One chip for the contact states, the same in the list, the cards and the details. */
 export const PodcastEmailChip = ({ status, className }: { status: PodcastEmailStatus; className?: string }) => {
   const chip = CHIP[status.state]
   const hint = chipHint(status)
   const badge = (
     <Badge variant="outline" className={cn('whitespace-nowrap font-medium', chip.className, !hint && className)}>
       {status.state === 'verified' && <ShieldCheck className="mr-1 h-3 w-3" aria-hidden="true" />}
+      {status.state === 'deliverable' && <MailCheck className="mr-1 h-3 w-3" aria-hidden="true" />}
       {chip.label}
       {status.state === 'public' && <span className="sr-only">, unverified</span>}
     </Badge>

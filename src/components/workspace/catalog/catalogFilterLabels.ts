@@ -15,6 +15,7 @@ import type {
 export const CONTACT_LABELS: Record<WorkspacePodcastCatalogContactFilter, string> = {
   all: 'Any email status',
   any: 'Public or verified',
+  verified: 'Deliverable or verified',
   direct: 'Verified email',
   free: 'Public email',
   none: 'No email',

@@ -23,7 +23,7 @@ export function categoryNames(podcast: WorkspacePodcastCatalogItem): string[] {
   })
 }
 
-export type PodcastEmailState = 'verified' | 'public' | 'none'
+export type PodcastEmailState = 'verified' | 'deliverable' | 'catch_all' | 'public' | 'none'
 
 export interface PodcastEmailStatus {
   state: PodcastEmailState
@@ -32,17 +32,21 @@ export interface PodcastEmailStatus {
 }
 
 /*
- * Three states, because the catalogue holds three. A direct contact is a paid
- * unlock somebody verified; the free address is whatever the show published,
- * unchecked. Stale or invalid direct contacts never reach this row, so they
- * fall through to the public address or to nothing.
+ * A direct contact is a paid unlock somebody verified. The free address is
+ * whatever the show published, read by its mailbox check: deliverable (the
+ * mailbox accepts mail), catch-all (the domain accepts everything, so the
+ * inbox cannot be confirmed), or public (unknown or not checked yet). Invalid
+ * addresses never reach this row, so a show with only those has no email.
  */
 export function podcastEmailStatus(podcast: WorkspacePodcastCatalogItem): PodcastEmailStatus {
   if (podcast.direct_email) {
     return { state: 'verified', email: podcast.direct_email, verifiedAt: podcast.direct_verified_at }
   }
   if (podcast.free_podscan_email) {
-    return { state: 'public', email: podcast.free_podscan_email, verifiedAt: null }
+    const state = podcast.email_verification === 'ok'
+      ? 'deliverable'
+      : podcast.email_verification === 'catch_all' ? 'catch_all' : 'public'
+    return { state, email: podcast.free_podscan_email, verifiedAt: null }
   }
   return { state: 'none', email: null, verifiedAt: null }
 }

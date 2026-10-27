@@ -2,7 +2,9 @@ import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { decodeFeedText } from '@/lib/feedText'
 
-export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'free' | 'direct' | 'none'
+export type WorkspacePodcastCatalogContactFilter = 'all' | 'any' | 'verified' | 'free' | 'direct' | 'none'
+/** MillionVerifier's answer for the show's public address; null when not yet checked. */
+export type WorkspacePodcastCatalogEmailVerification = 'ok' | 'catch_all' | 'unknown' | 'error'
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
 export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus' | '250k_plus'
 export type WorkspacePodcastCatalogGuestsFilter = 'all' | 'yes' | 'no'
@@ -35,6 +37,8 @@ export interface WorkspacePodcastCatalogItem {
   is_active: boolean
   catalog_updated_at: string | null
   free_podscan_email: string | null
+  /** Absent from older responses, which read as unchecked. */
+  email_verification?: WorkspacePodcastCatalogEmailVerification | null
   direct_email: string | null
   direct_verified_at: string | null
   shortlist_uses: number

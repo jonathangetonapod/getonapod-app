@@ -179,6 +179,24 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText(/^Email:/)).not.toBeInTheDocument()
   })
 
+  // A public address whose mailbox check passed reads as deliverable, and the
+  // Email filter can narrow to deliverable or paid-verified contacts.
+  it('marks a deliverable email and filters to deliverable or verified contacts', async () => {
+    mockedCatalog.mockResolvedValue({
+      ...catalogResponse,
+      items: catalogResponse.items.map((item) => ({ ...item, email_verification: 'ok' })),
+    } as never)
+    renderPage()
+    await screen.findByText('The Founder Show')
+    expect(screen.getAllByText('Deliverable email').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Public email')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any email status' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Deliverable or verified' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'verified', page: 1 }), expect.anything()))
+    expect(screen.getByText('Email: Deliverable or verified')).toBeInTheDocument()
+  })
+
   // Podscan's guest flag narrows the list on request; untouched, every format shows.
   it('filters to shows that take guests and keeps it in the address', async () => {
     renderPage()

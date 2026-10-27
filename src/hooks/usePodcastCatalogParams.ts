@@ -58,7 +58,7 @@ export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
   region: 'all',
 }
 
-const CONTACTS = new Set<string>(['all', 'any', 'free', 'direct', 'none'])
+const CONTACTS = new Set<string>(['all', 'any', 'verified', 'free', 'direct', 'none'])
 const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'last_180_days', 'last_year', 'all'])
 // 250k_plus is no longer offered, but an address that carries it still means it.
 const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])

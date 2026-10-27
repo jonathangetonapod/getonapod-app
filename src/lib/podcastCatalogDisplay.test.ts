@@ -57,6 +57,16 @@ describe('podcastCatalogDisplay', () => {
     expect(podcastEmailStatus(base)).toMatchObject({ state: 'none', email: null })
   })
 
+  // The public address reads by its mailbox check; a paid direct contact still leads.
+  it('reads the mailbox check on the public address', () => {
+    const show = { ...base, free_podscan_email: 'b@x.com' }
+    expect(podcastEmailStatus({ ...show, email_verification: 'ok' })).toMatchObject({ state: 'deliverable', email: 'b@x.com' })
+    expect(podcastEmailStatus({ ...show, email_verification: 'catch_all' })).toMatchObject({ state: 'catch_all' })
+    expect(podcastEmailStatus({ ...show, email_verification: 'unknown' })).toMatchObject({ state: 'public' })
+    expect(podcastEmailStatus({ ...show, email_verification: null })).toMatchObject({ state: 'public' })
+    expect(podcastEmailStatus({ ...show, direct_email: 'a@x.com', email_verification: 'ok' })).toMatchObject({ state: 'verified', email: 'a@x.com' })
+  })
+
   it('says how long ago an episode came out in short words', () => {
     expect(formatRelativeAge('2026-10-23T08:00:00.000Z', now)).toBe('Today')
     expect(formatRelativeAge('2026-10-02T12:00:00.000Z', now)).toBe('3 wks ago')
