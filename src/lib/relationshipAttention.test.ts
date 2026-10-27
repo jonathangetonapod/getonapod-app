@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-  COLD_AFTER_DAYS,
+  GONE_QUIET_AFTER_DAYS,
   QUIET_AFTER_DAYS,
-  conversationAttention,
-  describeQuiet,
+  daysQuiet,
+  lastMessageSender,
   needsAttention,
-  quietConversations,
+  relationshipMove,
+  relationshipStatus,
   relativeTime,
+  statusText,
 } from '@/lib/relationshipAttention'
 import type { HostRelationshipSummary } from '@/services/hostRelationships'
 
@@ -14,66 +16,111 @@ const now = new Date('2026-08-01T12:00:00Z')
 const daysAgo = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString()
 
 const row = (
-  id: string,
   state: HostRelationshipSummary['derived_state'],
   lastContactedAt: string | null,
-  manualStage: HostRelationshipSummary['manual_stage'] = null,
-) => ({ podcast_id: id, derived_state: state, manual_stage: manualStage, last_contacted_at: lastContactedAt })
+  extra: Partial<HostRelationshipSummary> = {},
+) => ({
+  derived_state: state,
+  manual_stage: null,
+  last_contacted_at: lastContactedAt,
+  last_message_at: null,
+  last_message_direction: null,
+  ...extra,
+}) as Pick<
+  HostRelationshipSummary,
+  'derived_state' | 'manual_stage' | 'last_contacted_at' | 'last_message_at' | 'last_message_direction'
+>
 
-describe('thresholds', () => {
-  it('goes quiet at five days and cold past thirty', () => {
-    expect(QUIET_AFTER_DAYS).toBe(5)
-    expect(COLD_AFTER_DAYS).toBe(30)
+describe('relationshipStatus', () => {
+  it('gives a live conversation one status with its age, never two badges', () => {
+    const status = relationshipStatus(row('in_conversation', daysAgo(3)), now)
+    expect(statusText(status)).toBe('In conversation · 3d')
+    expect(status.goneQuiet).toBe(false)
+    expect(statusText(relationshipStatus(row('in_conversation', now.toISOString()), now))).toBe('In conversation · today')
   })
 
-  it('places each conversation on the right side of both lines', () => {
-    expect(conversationAttention(row('a', 'in_conversation', daysAgo(4)), now)).toBeNull()
-    expect(conversationAttention(row('b', 'in_conversation', daysAgo(5)), now)).toBe('quiet')
-    expect(conversationAttention(row('c', 'in_conversation', daysAgo(30)), now)).toBe('quiet')
-    expect(conversationAttention(row('d', 'in_conversation', daysAgo(31)), now)).toBe('cold')
-    expect(conversationAttention(row('e', 'in_conversation', daysAgo(88)), now)).toBe('cold')
+  it('reads a conversation silent past the line as gone quiet, not as both', () => {
+    expect(GONE_QUIET_AFTER_DAYS).toBe(30)
+    expect(statusText(relationshipStatus(row('in_conversation', daysAgo(29)), now))).toBe('In conversation · 29d')
+    const quiet = relationshipStatus(row('in_conversation', daysAgo(92)), now)
+    expect(statusText(quiet)).toBe('Gone quiet · 92d')
+    expect(quiet.goneQuiet).toBe(true)
+    expect(quiet.stage).toBe('in_conversation')
   })
 
-  it('only watches live conversations', () => {
-    expect(conversationAttention(row('booked', 'booked', daysAgo(10)), now)).toBeNull()
-    expect(conversationAttention(row('declined', 'declined', daysAgo(10)), now)).toBeNull()
-    // A host someone marked Not a fit is no longer a conversation to save.
-    expect(conversationAttention(row('overridden', 'replied', daysAgo(10), 'not_a_fit'), now)).toBeNull()
-    // A host replied: the stage is In conversation even though the raw state says replied.
-    expect(conversationAttention(row('replied', 'replied', daysAgo(10)), now)).toBe('quiet')
+  it('says how long a pitch has waited for a reply', () => {
+    expect(statusText(relationshipStatus(row('pitched', daysAgo(249)), now))).toBe('Pitched · no reply 249d')
+    expect(statusText(relationshipStatus(row('pitched', now.toISOString()), now))).toBe('Pitched · today')
+    expect(statusText(relationshipStatus(row('pitched', null), now))).toBe('Pitched')
   })
 
-  it('never flags a row it cannot date', () => {
-    expect(conversationAttention(row('undated', 'in_conversation', null), now)).toBeNull()
-    expect(conversationAttention(row('garbage', 'in_conversation', 'not a date'), now)).toBeNull()
+  it('dates from the newest of the last message and the last touch', () => {
+    const fresher = row('in_conversation', daysAgo(40), { last_message_at: daysAgo(2) })
+    expect(daysQuiet(fresher, now)).toBe(2)
+    expect(statusText(relationshipStatus(fresher, now))).toBe('In conversation · 2d')
+  })
+
+  it('leaves settled stages unqualified', () => {
+    expect(statusText(relationshipStatus(row('booked', daysAgo(10)), now))).toBe('Placed')
+    expect(statusText(relationshipStatus(row('declined', daysAgo(10)), now))).toBe('Not a fit')
+    expect(statusText(relationshipStatus(row('none', null), now))).toBe('New')
+  })
+
+  it('follows a manual stage over activity', () => {
+    const overridden = row('replied', daysAgo(10), { manual_stage: 'not_a_fit' })
+    expect(statusText(relationshipStatus(overridden, now))).toBe('Not a fit')
   })
 })
 
-describe('quietConversations', () => {
-  it('lists only the conversations going quiet, longest silence first', () => {
-    const rows = quietConversations([
-      row('quiet-6d', 'in_conversation', daysAgo(6)),
-      row('quiet-12d', 'in_conversation', daysAgo(12)),
-      row('cold-88d', 'in_conversation', daysAgo(88)),
-      row('active', 'in_conversation', daysAgo(1)),
-    ], now)
+describe('relationshipMove', () => {
+  it('reads the move from who sent the last message', () => {
+    expect(relationshipMove(row('in_conversation', daysAgo(1), { last_message_direction: 'inbound' }))).toBe('yours')
+    expect(relationshipMove(row('in_conversation', daysAgo(1), { last_message_direction: 'outbound' }))).toBe('theirs')
+  })
 
-    expect(rows.map((item) => item.podcast_id)).toEqual(['quiet-12d', 'quiet-6d'])
+  it('falls back to outreach state when no message was saved', () => {
+    expect(relationshipMove(row('replied', daysAgo(1)))).toBe('yours')
+    expect(relationshipMove(row('pitched', daysAgo(1)))).toBe('theirs')
+    expect(relationshipMove(row('in_conversation', daysAgo(1)))).toBeNull()
+  })
+
+  it('gives settled hosts no move', () => {
+    expect(relationshipMove(row('booked', daysAgo(1), { last_message_direction: 'inbound' }))).toBeNull()
+    expect(relationshipMove(row('none', null))).toBeNull()
   })
 })
 
 describe('needsAttention', () => {
-  it('holds both the quiet and the cold', () => {
-    expect(needsAttention(row('quiet', 'in_conversation', daysAgo(6)), now)).toBe(true)
-    expect(needsAttention(row('cold', 'in_conversation', daysAgo(88)), now)).toBe(true)
-    expect(needsAttention(row('fresh', 'in_conversation', daysAgo(1)), now)).toBe(false)
+  it('flags a live conversation past the quiet line', () => {
+    expect(QUIET_AFTER_DAYS).toBe(5)
+    expect(needsAttention(row('in_conversation', daysAgo(6)), now)).toBe(true)
+    expect(needsAttention(row('in_conversation', daysAgo(88)), now)).toBe(true)
+    expect(needsAttention(row('in_conversation', daysAgo(1)), now)).toBe(false)
+    expect(needsAttention(row('in_conversation', null), now)).toBe(false)
   })
 })
 
-describe('time phrasing', () => {
-  it('phrases the silence and the age of a message', () => {
-    expect(describeQuiet(daysAgo(6), now)).toBe('quiet 6d')
-    expect(describeQuiet(null, now)).toBeNull()
+describe('lastMessageSender', () => {
+  const sender = (extra: Partial<HostRelationshipSummary>) => lastMessageSender({
+    last_message_direction: null,
+    host_name: null,
+    contact_email: null,
+    ...extra,
+  })
+
+  it('names the host by first name, and us as You', () => {
+    expect(sender({ last_message_direction: 'inbound', host_name: 'Morgan Host' })).toBe('Morgan')
+    expect(sender({ last_message_direction: 'outbound', host_name: 'Morgan Host' })).toBe('You')
+  })
+
+  it('falls back to the address, and says nothing when the direction is unknown', () => {
+    expect(sender({ last_message_direction: 'inbound', contact_email: 'host@example.com' })).toBe('host@example.com')
+    expect(sender({ host_name: 'Morgan Host' })).toBeNull()
+  })
+})
+
+describe('relativeTime', () => {
+  it('phrases the age of a message', () => {
     expect(relativeTime(daysAgo(88), now)).toBe('88d ago')
     expect(relativeTime(new Date(now.getTime() - 3 * 3_600_000).toISOString(), now)).toBe('3h ago')
     expect(relativeTime(now.toISOString(), now)).toBe('just now')

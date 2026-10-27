@@ -1,6 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronUp, Loader2, MoreHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, Hourglass, Loader2, MoreHorizontal, Reply } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,9 +10,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { conversationAttention, relativeTime } from '@/lib/relationshipAttention'
 import {
-  RELATIONSHIP_STAGE_VIEW,
+  lastMessageSender,
+  relationshipMove,
+  relationshipStatus,
+  relativeTime,
+  statusText,
+} from '@/lib/relationshipAttention'
+import {
   messageSnippet,
   relationshipNextStep,
   relationshipStage,
@@ -21,6 +25,9 @@ import {
   type RelationshipNextStep,
 } from '@/lib/relationshipLabels'
 import type { HostRelationshipSummary } from '@/services/hostRelationships'
+
+/** Clients shown as chips before the rest collapse into "+N". */
+const VISIBLE_CLIENT_CHIPS = 2
 
 const NEXT_STEP_LABEL: Record<RelationshipNextStep, string> = {
   reply: 'View conversation',
@@ -157,15 +164,14 @@ export const RelationshipRow = ({
 }: RelationshipRowProps) => {
   const { title, showKnown } = relationshipTitle(row)
   const stage = relationshipStage(row)
-  const stageView = RELATIONSHIP_STAGE_VIEW[stage]
-  const cold = conversationAttention(row, now) === 'cold'
+  const status = relationshipStatus(row, now)
+  const move = relationshipMove(row)
   const nextStep = relationshipNextStep(stage)
   const clientNames = (row.client_names ?? []).filter(Boolean)
+  const hiddenClients = clientNames.length - VISIBLE_CLIENT_CHIPS
   const snippet = messageSnippet(row.last_message_body)
   const messageAge = relativeTime(row.last_message_at ?? row.last_contacted_at, now)
-  const speaker = row.last_message_direction === 'inbound'
-    ? 'Them'
-    : row.last_message_direction === 'outbound' ? 'Us' : null
+  const sender = lastMessageSender(row)
 
   // The whole row opens the panel; its own controls keep their own meaning.
   const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -179,25 +185,29 @@ export const RelationshipRow = ({
       {/* At phone width the actions wrap onto their own line rather than
           squeezing the message to a few characters. */}
       <div className="min-w-0 flex-1 basis-48">
-        {/* The badges drop below a long title rather than truncating it. */}
-        <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+        {/* The status drops below a long title rather than truncating it. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <h3 className="min-w-0 max-w-full truncate text-sm font-semibold leading-6">{title}</h3>
-          <div className="flex flex-wrap gap-1">
-            <Badge variant="outline" className={stageView.className}>{stageView.label}</Badge>
-            {cold && (
-              <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">Went cold</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            {move && (
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-medium ${move === 'yours' ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                {move === 'yours'
+                  ? <Reply className="h-3.5 w-3.5" aria-hidden="true" />
+                  : <Hourglass className="h-3.5 w-3.5" aria-hidden="true" />}
+                {move === 'yours' ? 'Your move' : 'Their move'}
+              </span>
             )}
+            <Badge variant="outline" className={status.className}>{statusText(status)}</Badge>
           </div>
         </div>
         {!showKnown && canManage && <ShowNameEditor title={title} onSave={onRename} />}
-        {clientNames.length > 0 && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{clientNames.join(', ')}</p>
-        )}
         <p className="mt-0.5 line-clamp-3 text-xs leading-5 text-foreground/80 sm:line-clamp-1">
           {snippet
             ? (
               <>
-                {speaker && <span className="font-medium">{speaker}: </span>}
+                {sender && <span className="font-medium">{sender}: </span>}
                 {snippet}
                 {messageAge && <span className="text-muted-foreground"> · {messageAge}</span>}
               </>
@@ -206,6 +216,26 @@ export const RelationshipRow = ({
               ? <span className="text-muted-foreground">Last contact {messageAge}</span>
               : <span className="text-muted-foreground">No messages yet</span>}
         </p>
+        {clientNames.length > 0 && (
+          <ul className="mt-1.5 flex flex-wrap gap-1" aria-label="Clients pitched to this host">
+            {clientNames.slice(0, VISIBLE_CLIENT_CHIPS).map((name) => (
+              <li key={name}>
+                <Badge variant="secondary" className="max-w-[12rem] truncate px-2 py-0 text-[11px] font-normal">{name}</Badge>
+              </li>
+            ))}
+            {hiddenClients > 0 && (
+              <li>
+                <Badge
+                  variant="secondary"
+                  className="px-2 py-0 text-[11px] font-normal"
+                  title={clientNames.slice(VISIBLE_CLIENT_CHIPS).join(', ')}
+                >
+                  +{hiddenClients} more
+                </Badge>
+              </li>
+            )}
+          </ul>
+        )}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {nextStep === 'open'

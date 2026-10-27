@@ -1,33 +1,28 @@
-import { relationshipStage } from '@/lib/relationshipLabels'
+import { decodeFeedText } from '@/lib/feedText'
+import { RELATIONSHIP_STAGE_VIEW, relationshipStage, type RelationshipStage } from '@/lib/relationshipLabels'
 import type { HostRelationshipSummary } from '@/services/hostRelationships'
 
 /**
- * Live conversations going quiet, and the ones that already went cold.
+ * What a relationship row says about where things stand, in one badge.
  *
- * The relationship book counts conversations that are live, but the count is
- * not the actionable fact; which of them has gone silent is. The banner used
- * to say "no touch in five days" next to a chip reading "quiet 88d", which was
- * true of both and useful for neither: a conversation silent for three months
- * is not going quiet, it is over unless someone revives it.
- *
- * So there are two thresholds. Between them a conversation is going quiet and
- * belongs in the banner, one reply away from saved. Past the second it went
- * cold: it leaves the banner and waits under Needs attention instead.
+ * A row used to carry its stage badge and, beside it, a "Went cold" badge, so
+ * one host read "In conversation" and "Went cold" at once. Now there is one
+ * status with a time qualifier ("In conversation · 3d", "Gone quiet · 92d",
+ * "Pitched · no reply 249d") and, separately, whose move it is.
  */
 
 /**
- * Five days, not the inbox's two. An inbox reply is a person waiting on an
- * answer; a relationship touch is a slower cadence, and flagging every
- * three-day gap would bury the genuinely stalled under the merely unhurried.
+ * A live conversation silent this long has gone quiet: it is over unless
+ * someone revives it, and it reads that way rather than as a conversation.
  */
-export const QUIET_AFTER_DAYS = 5
-export const COLD_AFTER_DAYS = 30
+export const GONE_QUIET_AFTER_DAYS = 30
 
 const DAY_MS = 86_400_000
 
-export type ConversationAttention = 'quiet' | 'cold'
-
-type AttentionRow = Pick<HostRelationshipSummary, 'derived_state' | 'manual_stage' | 'last_contacted_at'>
+type StatusRow = Pick<
+  HostRelationshipSummary,
+  'derived_state' | 'manual_stage' | 'last_contacted_at' | 'last_message_at' | 'last_message_direction'
+>
 
 /** Whole days since a timestamp, or null when there is nothing to date. */
 export function daysSince(value: string | null | undefined, now: Date = new Date()): number | null {
@@ -37,33 +32,95 @@ export function daysSince(value: string | null | undefined, now: Date = new Date
   return Math.max(0, Math.floor((now.getTime() - at) / DAY_MS))
 }
 
-/** Whether a relationship needs someone, and how badly. */
-export function conversationAttention(row: AttentionRow, now: Date = new Date()): ConversationAttention | null {
-  if (relationshipStage(row) !== 'in_conversation') return null
-  const days = daysSince(row.last_contacted_at, now)
-  if (days === null || days < QUIET_AFTER_DAYS) return null
-  return days > COLD_AFTER_DAYS ? 'cold' : 'quiet'
+/** When anyone last wrote: the latest saved message or outreach touch, whichever is newer. */
+export function lastActivityAt(row: Pick<StatusRow, 'last_contacted_at' | 'last_message_at'>): string | null {
+  const times = [row.last_contacted_at, row.last_message_at]
+    .filter((value): value is string => Boolean(value) && !Number.isNaN(new Date(value as string).getTime()))
+  if (times.length === 0) return null
+  return times.reduce((latest, value) => (new Date(value) > new Date(latest) ? value : latest))
 }
 
-/** The banner: conversations going quiet, longest silence first. */
-export function quietConversations<T extends AttentionRow>(rows: T[], now: Date = new Date()): T[] {
-  return rows
-    .filter((row) => conversationAttention(row, now) === 'quiet')
-    .sort((left, right) => String(left.last_contacted_at).localeCompare(String(right.last_contacted_at)))
+/** Days since anyone last wrote, or null when the row has no dated activity. */
+export function daysQuiet(row: StatusRow, now: Date = new Date()): number | null {
+  return daysSince(lastActivityAt(row), now)
+}
+
+export type RelationshipMove = 'yours' | 'theirs'
+
+/**
+ * Whose move it is, from who sent the last message.
+ *
+ * Only a live exchange has a move: a host at New, Placed or Not a fit is not
+ * waiting on anyone. When no message was saved, outreach state still says who
+ * spoke last: a host who replied is waiting on us, a pitch with no reply is
+ * waiting on them.
+ */
+export function relationshipMove(row: StatusRow): RelationshipMove | null {
+  const stage = relationshipStage(row)
+  if (stage !== 'pitched' && stage !== 'in_conversation') return null
+  if (row.last_message_direction === 'inbound') return 'yours'
+  if (row.last_message_direction === 'outbound') return 'theirs'
+  if (row.derived_state === 'replied') return 'yours'
+  if (stage === 'pitched') return 'theirs'
+  return null
+}
+
+export interface RelationshipStatus {
+  stage: RelationshipStage
+  /** "In conversation", "Gone quiet", "Pitched". */
+  label: string
+  /** "3d", "92d", "no reply 249d"; null when there is nothing to date. */
+  qualifier: string | null
+  goneQuiet: boolean
+  className: string
+}
+
+const GONE_QUIET_CLASS = 'border-amber-300 bg-amber-50 text-amber-900'
+
+/** The one status a row shows. */
+export function relationshipStatus(row: StatusRow, now: Date = new Date()): RelationshipStatus {
+  const stage = relationshipStage(row)
+  const view = RELATIONSHIP_STAGE_VIEW[stage]
+  const days = daysQuiet(row, now)
+  if (stage === 'in_conversation') {
+    const goneQuiet = days !== null && days >= GONE_QUIET_AFTER_DAYS
+    return {
+      stage,
+      label: goneQuiet ? 'Gone quiet' : view.label,
+      qualifier: days === null ? null : days === 0 ? 'today' : `${days}d`,
+      goneQuiet,
+      className: goneQuiet ? GONE_QUIET_CLASS : view.className,
+    }
+  }
+  if (stage === 'pitched') {
+    return {
+      stage,
+      label: view.label,
+      qualifier: days === null ? null : days === 0 ? 'today' : `no reply ${days}d`,
+      goneQuiet: false,
+      className: view.className,
+    }
+  }
+  return { stage, label: view.label, qualifier: null, goneQuiet: false, className: view.className }
+}
+
+/** "In conversation · 3d": the badge text, and the accessible name of the badge. */
+export function statusText(status: RelationshipStatus): string {
+  return status.qualifier ? `${status.label} · ${status.qualifier}` : status.label
 }
 
 /**
- * The Needs attention filter: every live conversation past the quiet line,
- * the ones in the banner and the ones that already went cold.
+ * Who wrote the last message, by name: "You" for us, and for the host their
+ * first name, else the show, else the address.
  */
-export function needsAttention(row: AttentionRow, now: Date = new Date()): boolean {
-  return conversationAttention(row, now) !== null
-}
-
-/** "quiet 6d" for a banner item. */
-export function describeQuiet(lastContactedAt: string | null, now: Date = new Date()): string | null {
-  const days = daysSince(lastContactedAt, now)
-  return days !== null && days >= 1 ? `quiet ${days}d` : null
+export function lastMessageSender(
+  row: Pick<HostRelationshipSummary, 'last_message_direction' | 'host_name' | 'contact_email'>,
+): string | null {
+  if (row.last_message_direction === 'outbound') return 'You'
+  if (row.last_message_direction !== 'inbound') return null
+  const host = decodeFeedText(row.host_name ?? '').trim()
+  if (host) return host.split(/\s+/u)[0]
+  return (row.contact_email ?? '').trim() || 'Host'
 }
 
 /** "3d ago", "5h ago" or "just now" next to a message. */
@@ -77,4 +134,17 @@ export function relativeTime(value: string | null | undefined, now: Date = new D
   if (hours >= 1) return `${hours}h ago`
   const minutes = Math.floor(elapsed / 60_000)
   return minutes >= 1 ? `${minutes}m ago` : 'just now'
+}
+
+/**
+ * Five days, not the inbox's two. A relationship touch is a slower cadence,
+ * and flagging every three-day gap would bury the genuinely stalled.
+ */
+export const QUIET_AFTER_DAYS = 5
+
+/** The Needs attention filter: a live conversation silent past the quiet line. */
+export function needsAttention(row: StatusRow, now: Date = new Date()): boolean {
+  if (relationshipStage(row) !== 'in_conversation') return false
+  const days = daysQuiet(row, now)
+  return days !== null && days >= QUIET_AFTER_DAYS
 }

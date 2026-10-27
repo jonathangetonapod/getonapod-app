@@ -232,13 +232,17 @@ describe('WorkspaceRelationships', () => {
     ])
     renderPage()
 
-    expect(await screen.findByText('Taylor Client, Jordan Client')).toBeInTheDocument()
-    expect(screen.getAllByText('Them:')).toHaveLength(2)
-    expect(screen.getByText('Us:')).toBeInTheDocument()
+    // Clients pitched to the host show on the row as chips.
+    const [firstClients] = await screen.findAllByRole('list', { name: 'Clients pitched to this host' })
+    expect(within(firstClients).getByText('Taylor Client')).toBeInTheDocument()
+    expect(within(firstClients).getByText('Jordan Client')).toBeInTheDocument()
+    // The sender is named: the host by first name, us as You.
+    expect(screen.getAllByText('Morgan:')).toHaveLength(2)
+    expect(screen.getByText('You:')).toBeInTheDocument()
     expect(screen.getByText(/· 3d ago/)).toBeInTheDocument()
     // Snippets stop at 90 characters.
-    const line = screen.getByText('Us:').parentElement!.textContent!
-    const snippet = line.replace(/^Us: /, '').replace(/ · 3d ago$/, '')
+    const line = screen.getByText('You:').parentElement!.textContent!
+    const snippet = line.replace(/^You: /, '').replace(/ · 3d ago$/, '')
     expect(snippet.length).toBeLessThanOrEqual(90)
     expect(snippet).toMatch(/^Hi there, a long pitch.*…$/)
     expect(screen.getByText('No messages yet')).toBeInTheDocument()
@@ -264,7 +268,7 @@ describe('WorkspaceRelationships', () => {
     ])
     renderPage()
 
-    expect(await screen.findByText('In conversation')).toBeInTheDocument()
+    expect(await screen.findByText('In conversation · 2d')).toBeInTheDocument()
     expect(screen.getByText('Not a fit')).toBeInTheDocument()
     expect(screen.getByText('Nurturing')).toBeInTheDocument()
 
@@ -423,16 +427,19 @@ describe('WorkspaceRelationships', () => {
     }))
   })
 
-  // Past thirty days a conversation went cold and waits under Needs attention.
-  it('moves cold conversations to Needs attention', async () => {
+  // One status per row: a conversation silent past thirty days reads Gone
+  // quiet instead of carrying a second "Went cold" badge.
+  it('shows one status for a conversation that has gone quiet', async () => {
     mockedList.mockResolvedValue([
-      { ...relationship, podcast_id: 'show-cold', podcast_name: 'Long Gone FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(88) },
-      { ...relationship, podcast_id: 'show-fresh', podcast_name: 'Fresh Talk', derived_state: 'in_conversation', last_contacted_at: daysAgo(0) },
+      { ...relationship, podcast_id: 'show-cold', podcast_name: 'Long Gone FM', derived_state: 'in_conversation', last_contacted_at: daysAgo(88), last_message_at: daysAgo(92) },
+      { ...relationship, podcast_id: 'show-fresh', podcast_name: 'Fresh Talk', derived_state: 'in_conversation', last_contacted_at: daysAgo(0), last_message_at: daysAgo(0) },
     ])
     renderPage()
 
-    expect(await screen.findByText('Went cold')).toBeInTheDocument()
-    expect(screen.queryByText(/going quiet/)).not.toBeInTheDocument()
+    expect(await screen.findByText('Gone quiet · 88d')).toBeInTheDocument()
+    expect(screen.getByText('In conversation · today')).toBeInTheDocument()
+    expect(screen.queryByText('Went cold')).not.toBeInTheDocument()
+    expect(screen.queryByText('In conversation · 88d')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '1 needs attention' }))
     expect(screen.getByText('Long Gone FM')).toBeInTheDocument()
