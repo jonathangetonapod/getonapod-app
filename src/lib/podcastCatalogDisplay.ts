@@ -150,6 +150,30 @@ export function shortClientName(name: string): string {
   return first.length > 12 ? `${first.slice(0, 11)}…` : first
 }
 
+/*
+ * Show artwork is full-size cover art (often 3000px, 1 to 5 MB) hotlinked from
+ * the show's host, shown at 40 to 56px. A page of 24 was ~27 MB of images and
+ * the avatar waited for each whole file, so most rows sat on initials. The
+ * thumbnail comes from wsrv.nl, a free resizing proxy cached on Cloudflare:
+ * a ~10 KB WebP at twice the display size. It also serves the few http://
+ * covers, which an https page would otherwise block.
+ */
+const ARTWORK_PROXY = 'https://wsrv.nl/'
+
+export function podcastArtworkThumbnail(url: string | null | undefined, displaySize: number): string | null {
+  const source = (url || '').trim()
+  if (!/^https?:\/\//iu.test(source)) return null
+  const size = String(Math.round(displaySize * 2))
+  const params = new URLSearchParams({ url: source, w: size, h: size, fit: 'cover', output: 'webp', q: '80' })
+  return `${ARTWORK_PROXY}?${params.toString()}`
+}
+
+/** The original cover, when the proxy cannot serve it; only https can load on an https page. */
+export function podcastArtworkOriginal(url: string | null | undefined): string | null {
+  const source = (url || '').trim()
+  return /^https:\/\//iu.test(source) ? source : null
+}
+
 export function podcastInitials(name: string): string {
   return name
     .split(/\s+/u)

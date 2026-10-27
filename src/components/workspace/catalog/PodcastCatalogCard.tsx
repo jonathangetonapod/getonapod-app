@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PodcastArtwork } from '@/components/workspace/catalog/PodcastArtwork'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -12,7 +12,6 @@ import {
   formatAudience,
   formatMonth,
   podcastEmailStatus,
-  podcastInitials,
   podcastRating,
 } from '@/lib/podcastCatalogDisplay'
 import { categoryDisplayNames } from '@/lib/podcastCategories'
@@ -68,10 +67,13 @@ export const PodcastCatalogCard = ({
               className="mt-1"
             />
           )}
-          <Avatar className="h-12 w-12 shrink-0 rounded-lg border">
-            {podcast.podcast_image_url && <AvatarImage src={podcast.podcast_image_url} alt="" className="object-cover" />}
-            <AvatarFallback className="rounded-lg font-semibold">{podcastInitials(podcast.podcast_name)}</AvatarFallback>
-          </Avatar>
+          <PodcastArtwork
+            imageUrl={podcast.podcast_image_url}
+            name={podcast.podcast_name}
+            displaySize={48}
+            className="h-12 w-12 shrink-0 rounded-lg border"
+            fallbackClassName="rounded-lg font-semibold"
+          />
           <div className="min-w-0 flex-1">
             <button
               type="button"

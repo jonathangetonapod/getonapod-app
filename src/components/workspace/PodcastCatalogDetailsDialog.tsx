@@ -1,13 +1,13 @@
 import { ExternalLink, Mail, Rss } from 'lucide-react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PodcastArtwork } from '@/components/workspace/catalog/PodcastArtwork'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
 import { PodcastPrimaryAction, type PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
-import { categoryNames, languageName, podcastEmailStatus, podcastInitials, regionName } from '@/lib/podcastCatalogDisplay'
+import { categoryNames, languageName, podcastEmailStatus, regionName } from '@/lib/podcastCatalogDisplay'
 import { categoryDisplayNames } from '@/lib/podcastCategories'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type { RelationshipBadge } from '@/lib/relationshipLabels'
@@ -79,10 +79,13 @@ export function PodcastCatalogDetailsDialog({
       >
         <DialogHeader>
           <div className="flex items-start gap-3">
-            <Avatar className="h-14 w-14 shrink-0 rounded-xl border">
-              {podcast.podcast_image_url && <AvatarImage src={podcast.podcast_image_url} alt="" className="object-cover" />}
-              <AvatarFallback className="rounded-xl font-bold">{podcastInitials(podcast.podcast_name)}</AvatarFallback>
-            </Avatar>
+            <PodcastArtwork
+              imageUrl={podcast.podcast_image_url}
+              name={podcast.podcast_name}
+              displaySize={56}
+              className="h-14 w-14 shrink-0 rounded-xl border"
+              fallbackClassName="rounded-xl font-bold"
+            />
             <div className="min-w-0">
               <DialogTitle className="text-left text-xl">{podcast.podcast_name}</DialogTitle>
               <DialogDescription className="text-left">

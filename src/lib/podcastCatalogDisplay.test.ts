@@ -5,6 +5,8 @@ import {
   formatDay,
   languageName,
   formatRelativeAge,
+  podcastArtworkOriginal,
+  podcastArtworkThumbnail,
   podcastEmailStatus,
   podcastRating,
   regionName,
@@ -65,6 +67,27 @@ describe('podcastCatalogDisplay', () => {
     expect(podcastEmailStatus({ ...show, email_verification: 'unknown' })).toMatchObject({ state: 'public' })
     expect(podcastEmailStatus({ ...show, email_verification: null })).toMatchObject({ state: 'public' })
     expect(podcastEmailStatus({ ...show, direct_email: 'a@x.com', email_verification: 'ok' })).toMatchObject({ state: 'verified', email: 'a@x.com' })
+  })
+
+  // Full-size covers are fetched as small WebP thumbnails at twice the display size.
+  it('builds a resized thumbnail URL for a cover', () => {
+    const url = podcastArtworkThumbnail('https://cdn.example.com/art/cover.png?v=2', 40)
+    const parsed = new URL(url as string)
+    expect(parsed.origin).toBe('https://wsrv.nl')
+    expect(parsed.searchParams.get('url')).toBe('https://cdn.example.com/art/cover.png?v=2')
+    expect(parsed.searchParams.get('w')).toBe('80')
+    expect(parsed.searchParams.get('h')).toBe('80')
+    expect(parsed.searchParams.get('output')).toBe('webp')
+    // An http:// cover is served through the proxy too, so it loads on an https page.
+    expect(podcastArtworkThumbnail('http://old.example.com/a.jpg', 48)).toContain('url=http%3A%2F%2Fold.example.com%2Fa.jpg')
+    expect(podcastArtworkThumbnail(null, 40)).toBeNull()
+    expect(podcastArtworkThumbnail('data:image/png;base64,xx', 40)).toBeNull()
+  })
+
+  it('falls back to the original cover only when it is https', () => {
+    expect(podcastArtworkOriginal(' https://cdn.example.com/a.jpg ')).toBe('https://cdn.example.com/a.jpg')
+    expect(podcastArtworkOriginal('http://old.example.com/a.jpg')).toBeNull()
+    expect(podcastArtworkOriginal(null)).toBeNull()
   })
 
   it('says how long ago an episode came out in short words', () => {

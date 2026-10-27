@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PodcastArtwork } from '@/components/workspace/catalog/PodcastArtwork'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -11,7 +11,6 @@ import {
   formatAudience,
   formatRelativeAge,
   podcastEmailStatus,
-  podcastInitials,
   podcastRating,
 } from '@/lib/podcastCatalogDisplay'
 import { categoryDisplayNames } from '@/lib/podcastCategories'
@@ -58,10 +57,13 @@ export const PodcastCatalogRow = ({
           className={ROW_COLUMNS.select}
         />
       )}
-      <Avatar className={cn(ROW_COLUMNS.artwork, 'h-10 rounded-md border')}>
-        {podcast.podcast_image_url && <AvatarImage src={podcast.podcast_image_url} alt="" className="object-cover" />}
-        <AvatarFallback className="rounded-md text-xs font-semibold">{podcastInitials(podcast.podcast_name)}</AvatarFallback>
-      </Avatar>
+      <PodcastArtwork
+        imageUrl={podcast.podcast_image_url}
+        name={podcast.podcast_name}
+        displaySize={40}
+        className={cn(ROW_COLUMNS.artwork, 'h-10 rounded-md border')}
+        fallbackClassName="rounded-md text-xs font-semibold"
+      />
       <div className={ROW_COLUMNS.show}>
         <div className="flex min-w-0 items-center gap-2">
           {/* The whole name on hover, where the column cuts it short. */}
