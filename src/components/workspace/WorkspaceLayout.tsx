@@ -608,6 +608,9 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
   // Platform administration acts on every workspace, so a working client and
   // the admin's own credit balance describe nothing on these pages.
   const onPlatformPage = isPlatformAdmin && matchesPath('/app/platform')
+  // Settings and billing are about the workspace, not any one client, so a
+  // working-client picker there offered a choice that changed nothing.
+  const onSettingsPage = matchesPath(`${baseHref}/settings`)
   const [workingClientId, setWorkingClientId] = useState<string | null>(() => readWorkingClient(workingClientWorkspaceId, user?.id))
   const clientInPathHref = `${baseHref}/${CLIENT_IN_PATH_SEGMENT}`
   const clientInPath = location.pathname.startsWith(`${clientInPathHref}/`)
@@ -1036,7 +1039,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
           <div className="min-w-0 flex-1 lg:hidden">
             <p className="truncate text-sm font-semibold">{headerTitle}</p>
           </div>
-          {workingClientWorkspaceId && !onPlatformPage && (
+          {workingClientWorkspaceId && !onPlatformPage && !onSettingsPage && (
             <div className="flex min-w-0 shrink items-center gap-2 lg:ml-4">
               <span className="hidden whitespace-nowrap text-xs font-medium text-muted-foreground md:inline">Working on</span>
               <Select value={workingClientId ?? ALL_CLIENTS} onValueChange={handleWorkingClientChange}>
@@ -1092,7 +1095,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
               <CreditBalanceChip
                 workspaceId={workspace.id}
                 canViewBalance={membership?.role === 'owner' || membership?.role === 'admin'}
-                billingHref="/app/settings/billing"
+                // On Settings, the balance is a section on the same page.
+                billingHref={location.pathname === '/app/settings' ? '/app/settings#billing' : '/app/settings/billing'}
               />
             )}
             {isPlatformAdmin && !adminControlsInDrawer && (

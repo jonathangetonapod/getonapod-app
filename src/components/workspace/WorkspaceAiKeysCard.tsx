@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, Eye, EyeOff, KeyRound, Loader2, Trash2 } from 'lucide-react'
+import { ExternalLink, Eye, EyeOff, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { notACredentialField } from '@/lib/formAutofill'
@@ -93,15 +93,10 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg"><KeyRound className="h-5 w-5" />AI API keys</CardTitle>
-        <CardDescription>
-          Optional. Without a key, these run on your credits. AI operations that run on your keys are
-          billed to your provider account directly and never consume platform credits. Keys are stored
-          encrypted and can't be viewed after saving.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+      {/* The section heading above names this card and says what a key is
+          for, so the card itself starts at the keys. */}
+      <CardContent className="space-y-5 pt-6">
+        <p className="text-sm text-muted-foreground">Keys are stored encrypted and can't be viewed after saving.</p>
         {keysQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />Loading key status…

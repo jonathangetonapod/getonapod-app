@@ -615,6 +615,25 @@ describe('WorkspaceLayout', () => {
     expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
   })
 
+  // Settings is about the workspace, not a client, and its balance has a
+  // section on the page itself.
+  it('drops the working client on Settings and points the balance at its billing section', async () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com' },
+      workspace: { id: workspaceId, name: 'Acme', is_default: false },
+      membership: { full_name: 'Owner', role: 'owner' },
+      isPlatformAdmin: false,
+      signOut,
+    } as never)
+    mockedBillingOverview.mockResolvedValue({ enforcement_enabled: true, monthly_credit_allowance: 100, balance: 400 } as never)
+
+    renderLayout(undefined, '/app/settings')
+
+    expect(await screen.findByRole('link', { name: /400 credits remaining/i })).toHaveAttribute('href', '/app/settings#billing')
+    expect(screen.queryByRole('combobox', { name: 'Working client' })).toBeNull()
+    expect(screen.queryByText('Working on')).toBeNull()
+  })
+
   // Platform administration acts on every workspace: a working client and the
   // admin's own balance describe nothing there, and said "All clients" and
   // "797 credits" over a page about other people's money.

@@ -22,6 +22,7 @@ import {
   Save,
   Trash2,
   Upload,
+  UserCircle,
   UserPlus,
   Users,
 } from 'lucide-react'
@@ -36,6 +37,10 @@ import {
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
 import { useSetupProgress } from '@/components/workspace/SetupChecklist'
+import { SettingsBillingSection } from '@/components/workspace/settings/SettingsBillingSection'
+import { SettingsSectionNav, type SettingsSectionGroup } from '@/components/workspace/settings/SettingsSectionNav'
+import { SettingsSetupBadge } from '@/components/workspace/settings/SettingsSetupBadge'
+import { SECTION_NAV_STATE, useActiveSection } from '@/components/workspace/settings/useActiveSection'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -408,20 +413,25 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
    * intake page's reply-to banner). The sections only exist once the
    * workspace has loaded, and the router does not scroll to a hash on its
    * own, so a link used to land at the top of Settings with nothing pointed
-   * out. Scroll to it once, and put the cursor in it when it is a field.
+   * out. Scroll to it once per navigation, and put the cursor in it when it
+   * is a field. Keyed on the navigation rather than the hash, so following
+   * the same link twice (the credit chip, a setup step) still scrolls. The
+   * section menu scrolls for itself and marks its own hash changes.
    */
   const location = useLocation()
-  const scrolledHashRef = useRef('')
+  const scrolledNavigationRef = useRef('')
   const settingsLoaded = Boolean(data)
   useEffect(() => {
     const target = location.hash.slice(1)
-    if (!settingsLoaded || !target || scrolledHashRef.current === location.hash) return
+    if (!settingsLoaded || !target || scrolledNavigationRef.current === location.key) return
+    if ((location.state as typeof SECTION_NAV_STATE | null)?.settingsSectionNav) return
     const element = document.getElementById(decodeURIComponent(target))
     if (!element) return
-    scrolledHashRef.current = location.hash
-    element.scrollIntoView({ block: 'center' })
-    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) element.focus({ preventScroll: true })
-  }, [location.hash, settingsLoaded])
+    scrolledNavigationRef.current = location.key
+    const isField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+    element.scrollIntoView({ block: isField ? 'center' : 'start' })
+    if (isField) element.focus({ preventScroll: true })
+  }, [location.hash, location.key, location.state, settingsLoaded])
   const staff = useMemo(
     () => (data?.members || []).filter((member) => member.status !== 'revoked'),
     [data?.members],
@@ -799,26 +809,38 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     : undefined
 
 
-  const settingsNavigation = [
-    { href: '#workspace-general', label: 'General', description: 'Workspace identity', icon: Building2 },
-    ...(canOrganizeSidebar
-      ? [{ href: '#sidebar-navigation', label: 'Sidebar', description: 'Your page order', icon: PanelLeft }]
-      : []),
-    { href: '#client-branding', label: 'Client branding', description: 'Logo, name, and colors', icon: Palette },
-    ...(canManageAiKeys
-      ? [{ href: '#ai-keys', label: 'AI keys', description: 'Bring your own provider keys', icon: KeyRound }]
-      : []),
-    { href: '#workspace-access', label: 'Team & access', description: 'Users, roles, and passwords', icon: Users },
-    // No platform-only entry here. Viewing a workspace shows what its own
-    // people see, and a tenant has never had a manual-grant screen — that is
-    // platform work and lives at /app/platform/billing, against any workspace.
-    ...(!isPlatformWorkspace
-      ? [{ href: '/app/settings/billing', label: 'Billing', description: 'Plan and credits', icon: CreditCard }]
-      : []),
-    ...(canCloseWorkspace
-      ? [{ href: '#danger-zone', label: 'Danger zone', description: 'Close the workspace', icon: AlertTriangle }]
-      : []),
-  ]
+  /*
+   * The menu, in page order. Grouped by whose setting it is: the first group
+   * is the viewer's own and follows them, the second belongs to the
+   * workspace. The group names replace the small uppercase labels each
+   * section used to carry above its heading.
+   */
+  const settingsGroups: SettingsSectionGroup[] = [
+    {
+      label: 'Your account',
+      sections: [
+        ...(viewerBelongsToWorkspaceOnScreen ? [{ id: 'your-profile', label: 'Profile', icon: UserCircle }] : []),
+        ...(canOrganizeSidebar ? [{ id: 'sidebar-navigation', label: 'Sidebar order', icon: PanelLeft }] : []),
+      ],
+    },
+    {
+      label: 'Workspace',
+      sections: [
+        { id: 'workspace-general', label: 'General', icon: Building2 },
+        { id: 'client-branding', label: 'Client branding', icon: Palette },
+        { id: 'ai-keys', label: canManageAiKeys ? 'AI keys' : 'Integrations', icon: KeyRound },
+        { id: 'workspace-access', label: 'Team & access', icon: Users },
+        // Not while viewing another workspace: its billing is platform work
+        // and lives at /app/platform/billing, against any workspace.
+        ...(!isPlatformWorkspace ? [{ id: 'billing', label: 'Billing', icon: CreditCard }] : []),
+        ...(canCloseWorkspace ? [{ id: 'danger-zone', label: 'Danger zone', icon: AlertTriangle }] : []),
+      ],
+    },
+  ].filter((group) => group.sections.length > 0)
+  const { activeId: activeSectionId, selectSection } = useActiveSection(
+    settingsGroups.flatMap((group) => group.sections.map((section) => section.id)),
+    settingsLoaded,
+  )
 
   const body = !validWorkspaceId
     ? <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>The workspace address is invalid.</CardDescription></CardHeader></Card>
@@ -834,63 +856,20 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
         : (
             <div data-testid="workspace-settings-page" className="mx-auto w-full min-w-0 max-w-full space-y-8 pb-12 xl:max-w-7xl">
               <header className="flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
-                <div className="min-w-0 space-y-3">
-                  <Badge variant="secondary" className="max-w-full gap-1.5 rounded-full px-3 py-1 font-medium">
-                    <Building2 className="h-3.5 w-3.5" />
-                    <span className="truncate">{data.workspace.name}</span>
-                  </Badge>
-                  <div>
-                    <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
-                    <p className="mt-1.5 max-w-2xl text-muted-foreground">
-                      Manage your workspace identity, client experience, and team access.
-                    </p>
-                  </div>
+                <div className="min-w-0">
+                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
+                  <p className="mt-1.5 max-w-2xl text-muted-foreground">
+                    Manage your workspace identity, client experience, and team access.
+                  </p>
                 </div>
-                <Link
-                  to={`${baseHref}/clients`}
-                  className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
-                >
-                  <span className={cn('h-2 w-2 rounded-full', setupProgress.complete ? 'bg-emerald-500' : 'bg-amber-500')} />
-                  Setup: {setupProgress.requiredDone} of {setupProgress.requiredTotal} required steps done
-                  {setupProgress.requiredDismissed > 0 && `, ${setupProgress.requiredDismissed} dismissed`}
-                </Link>
+                <SettingsSetupBadge progress={setupProgress} checklistHref={`${baseHref}/clients`} />
               </header>
 
-              <div className="grid min-w-0 items-start gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)]">
-                <aside className="min-w-0 lg:sticky lg:top-28">
-                  <p className="mb-2 hidden px-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:block">
-                    Workspace settings
-                  </p>
-                  <nav
-                    aria-label="Settings sections"
-                    className={cn(
-                      'grid gap-2 lg:grid-cols-1 lg:gap-1',
-                      'grid-cols-2 sm:grid-cols-4',
-                    )}
-                  >
-                    {settingsNavigation.map((item) => {
-                      const Icon = item.icon
-                      const content = (
-                        <>
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition group-hover:bg-background group-hover:text-foreground">
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block truncate text-xs font-semibold sm:text-sm">{item.label}</span>
-                            <span className="mt-0.5 hidden truncate text-xs text-muted-foreground lg:block">{item.description}</span>
-                          </span>
-                        </>
-                      )
-                      const className = 'group flex min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-3 py-3 text-left transition hover:border-primary/25 hover:bg-muted/60 lg:border-transparent lg:bg-transparent'
-                      return item.href.startsWith('#')
-                        ? <a key={item.href} href={item.href} className={className}>{content}</a>
-                        : <Link key={item.href} to={item.href} className={className}>{content}</Link>
-                    })}
-                  </nav>
-                  <div className="mt-5 hidden rounded-xl border border-border/70 bg-muted/25 p-3 text-xs leading-5 text-muted-foreground lg:block">
-                    Public brand changes appear on shared client dashboards and onboarding pages.
-                  </div>
-                </aside>
+              {/* A block on a phone, not a one-column grid: the menu sticks
+                  within its parent, and a grid row of its own is exactly
+                  its height, so it could never stick there. */}
+              <div className="min-w-0 space-y-8 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0">
+                <SettingsSectionNav groups={settingsGroups} activeId={activeSectionId} onSelect={selectSection} />
 
                 <div className="min-w-0 space-y-12">
                   {/*
@@ -907,11 +886,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     * that simply has no meaning here.
                     */}
                   {viewerBelongsToWorkspaceOnScreen && (
-                  <section id="your-profile" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="your-profile-title">
+                  <section id="your-profile" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="your-profile-title">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">You</p>
-                      <h2 id="your-profile-title" className="mt-1 text-2xl font-semibold tracking-tight">Profile picture</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Shown beside your name at the foot of the sidebar.</p>
+                      <h2 id="your-profile-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Profile</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">Your picture, shown beside your name in the sidebar.</p>
                     </div>
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
@@ -974,22 +952,46 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   </section>
                   )}
 
-                  <section id="workspace-general" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="workspace-general-title">
+                  {canOrganizeSidebar && (
+                    <section id="sidebar-navigation" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="sidebar-navigation-title">
+                      <div>
+                        <h2 id="sidebar-navigation-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Sidebar order</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Put the pages you use most where you want them. Only you see this order.</p>
+                      </div>
+
+                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                        <CardContent className="flex min-w-0 flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+                          <div className="flex min-w-0 items-start gap-4">
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                              <PanelLeft className="h-5 w-5" />
+                            </span>
+                            <p className="min-w-0 max-w-2xl text-sm leading-6 text-muted-foreground">
+                              Drag pages into the order that works for you. It is saved in this browser, so another browser or device starts with the default order.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={() => window.dispatchEvent(new Event(WORKSPACE_NAV_ORGANIZE_EVENT))}
+                          >
+                            <PanelLeft className="mr-2 h-4 w-4" />
+                            Organize sidebar
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </section>
+                  )}
+
+                  <section id="workspace-general" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-general-title">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</p>
-                      <h2 id="workspace-general-title" className="mt-1 text-2xl font-semibold tracking-tight">General</h2>
+                      <h2 id="workspace-general-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">General</h2>
                       <p className="mt-1 text-sm text-muted-foreground">The private identity your team sees inside the app.</p>
                     </div>
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
                       <CardContent className="p-0">
-                        <div className="grid min-w-0 gap-5 p-6 sm:p-7 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
-                          <div>
-                            <p className="font-semibold">Workspace name</p>
-                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                              Used in your workspace selector and throughout the private app.
-                            </p>
-                          </div>
+                        <div className="min-w-0 p-6 sm:p-7">
                           <div className="min-w-0 max-w-xl space-y-3">
                             <Label htmlFor="workspace-name">Workspace name</Label>
                             <Input
@@ -1034,52 +1036,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  {canOrganizeSidebar && (
-                    <section id="sidebar-navigation" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="sidebar-navigation-title">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Personalization</p>
-                        <h2 id="sidebar-navigation-title" className="mt-1 text-2xl font-semibold tracking-tight">Sidebar navigation</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Put the pages you use most exactly where you want them.</p>
-                      </div>
-
-                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                        <CardContent className="flex min-w-0 flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
-                          <div className="flex min-w-0 items-start gap-4">
-                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                              <PanelLeft className="h-5 w-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-semibold">Choose your page order</p>
-                                <Badge variant="secondary" className="rounded-full text-[10px]">Owner preference</Badge>
-                              </div>
-                              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                                Drag pages into the order that works for you. Only you see it, and it is saved in this browser, so another browser or device starts with the default order.
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="shrink-0"
-                            onClick={() => window.dispatchEvent(new Event(WORKSPACE_NAV_ORGANIZE_EVENT))}
-                          >
-                            <PanelLeft className="mr-2 h-4 w-4" />
-                            Organize sidebar
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </section>
-                  )}
-
-                  <section id="client-branding" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="client-branding-title">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">White label</p>
-                        <h2 id="client-branding-title" className="mt-1 text-2xl font-semibold tracking-tight">Client-facing brand</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Control the identity clients see on dashboards and onboarding.</p>
-                      </div>
-                      <Badge variant="outline" className="w-fit rounded-full">Client visible</Badge>
+                  <section id="client-branding" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="client-branding-title">
+                    <div>
+                      <h2 id="client-branding-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Client branding</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">Control the identity clients see on dashboards and onboarding.</p>
                     </div>
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
@@ -1422,12 +1382,16 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  <section id="ai-keys" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="ai-keys-title">
+                  <section id="ai-keys" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="ai-keys-title">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Integrations</p>
-                      <h2 id="ai-keys-title" className="mt-1 text-2xl font-semibold tracking-tight">
-                        {canManageAiKeys ? 'AI API keys' : 'Integrations'}
+                      <h2 id="ai-keys-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">
+                        {canManageAiKeys ? 'AI keys' : 'Integrations'}
                       </h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {canManageAiKeys
+                          ? 'Optional. Add your own key to bill AI usage to your provider instead of using platform credits.'
+                          : 'The services this workspace is connected to.'}
+                      </p>
                     </div>
                     {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />}
                     {/* Read-only on purpose: the connection is made and
@@ -1453,11 +1417,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
-                  <section id="workspace-access" className="min-w-0 scroll-mt-28 space-y-4" aria-labelledby="workspace-access-title">
+                  <section id="workspace-access" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-access-title">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Access</p>
-                        <h2 id="workspace-access-title" className="mt-1 text-2xl font-semibold tracking-tight">Team</h2>
+                        <h2 id="workspace-access-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Team &amp; access</h2>
                         <p className="mt-1 text-sm text-muted-foreground">
                           Manage the people who can access your workspace.
                         </p>
@@ -1497,7 +1460,6 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
                       <CardHeader className="border-b border-border/70 bg-muted/15">
-                        <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-5 w-5" />Agency team</CardTitle>
                         <CardDescription>
                           {platformRoster
                             ? <>These are platform operator accounts, listed here for reference. They are managed by the platform allowlist rather than invited into a workspace — open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link> to create a workspace or change a tenant owner's access.</>
@@ -1639,15 +1601,24 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                     </Card>
                   </section>
 
+                  {!isPlatformWorkspace && (
+                    <section id="billing" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="billing-title">
+                      <div>
+                        <h2 id="billing-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Billing</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Your plan and credit balance. Buy credits or change plan on the billing page.</p>
+                      </div>
+                      <SettingsBillingSection workspaceId={workspaceId} billingHref={`${baseHref}/settings/billing`} />
+                    </section>
+                  )}
+
                   {canCloseWorkspace && workspace && (
                     <section
                       id="danger-zone"
-                      className="min-w-0 scroll-mt-28 space-y-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-5 sm:p-6"
+                      className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28 rounded-2xl border border-destructive/30 bg-destructive/5 p-5 sm:p-6"
                       aria-labelledby="danger-zone-title"
                     >
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-destructive">Irreversible</p>
-                        <h2 id="danger-zone-title" className="mt-1 text-2xl font-semibold tracking-tight">Danger zone</h2>
+                        <h2 id="danger-zone-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Danger zone</h2>
                         <p className="mt-1 text-sm text-muted-foreground">Nothing here can be undone from inside the app.</p>
                       </div>
                       <WorkspaceDeletionCard workspaceId={workspace.id} workspaceName={workspace.name} />

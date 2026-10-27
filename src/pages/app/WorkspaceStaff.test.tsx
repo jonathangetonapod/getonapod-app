@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceStaff from '@/pages/app/WorkspaceStaff'
 import { useAuth } from '@/contexts/AuthContext'
@@ -168,6 +168,8 @@ function openRowMenu(email: string) {
   fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
 }
 
+const LocationHash = () => <span data-testid="location-hash">{useLocation().hash}</span>
+
 function renderPage(platformWorkspaceId?: string, hash = '') {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -186,6 +188,7 @@ function renderPage(platformWorkspaceId?: string, hash = '') {
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <WorkspaceStaff platformWorkspaceId={platformWorkspaceId} />
+        <LocationHash />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -408,17 +411,27 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(within(settingsNavigation).getByRole('link', { name: /General/ })).toHaveAttribute('href', '#workspace-general')
-    expect(within(settingsNavigation).getByRole('link', { name: /Sidebar/ })).toHaveAttribute('href', '#sidebar-navigation')
+    expect(within(settingsNavigation).getByRole('link', { name: /Sidebar order/ })).toHaveAttribute('href', '#sidebar-navigation')
+    expect(within(settingsNavigation).getByRole('link', { name: /Profile/ })).toHaveAttribute('href', '#your-profile')
+    expect(within(settingsNavigation).getByRole('link', { name: /AI keys/ })).toHaveAttribute('href', '#ai-keys')
+    // Grouped by whose setting it is; the group names replaced the small
+    // uppercase labels each section used to carry.
+    expect(within(settingsNavigation).getByText('Your account')).toBeInTheDocument()
+    expect(within(settingsNavigation).getByText('Workspace')).toBeInTheDocument()
+    for (const label of ['YOU', 'PERSONALIZATION', 'WHITE LABEL', 'INTEGRATIONS', 'ACCESS']) {
+      expect(screen.queryByText(new RegExp(`^${label}$`, 'i'))).not.toBeInTheDocument()
+    }
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
     expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
-    expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '/app/settings/billing')
-    expect(within(settingsNavigation).getByText('Plan and credits')).toBeInTheDocument()
+    // Billing is a section of its own now, not a link off the page.
+    expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '#billing')
+    expect(screen.getByRole('heading', { name: 'Billing', level: 2 })).toBeInTheDocument()
     expect(within(settingsNavigation).getByRole('link', { name: /Danger zone/ })).toHaveAttribute('href', '#danger-zone')
     expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Client-facing brand', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Team', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Client branding', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Team & access', level: 2 })).toBeInTheDocument()
     // The way out sits inside the settings body under its own heading, not
     // floating after the grid where nothing pointed at it.
     expect(screen.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeInTheDocument()
@@ -452,10 +465,62 @@ describe('WorkspaceStaff', () => {
     await waitFor(() => expect(status).toHaveTextContent('Connected to Acme Sending · Manage in Client Campaigns'))
     expect(within(status).getByRole('link', { name: 'Manage in Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
     // Instantly connected and credits in hand, but no client, no linked
-    // mailbox and no reply-to address: two of five, linking to the clients
-    // page where the full checklist lives.
-    expect(await screen.findByRole('link', { name: /Setup: 2 of 5 required steps done/ })).toHaveAttribute('href', '/app/clients')
+    // mailbox and no reply-to address: two of five. It opens what is left,
+    // each linking to where it is finished.
+    fireEvent.click(await screen.findByRole('button', { name: /Setup: 2 of 5 required steps done/ }))
+    expect(await screen.findByText('Still to do')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Set the email clients reply to' })).toHaveAttribute('href', '/app/settings#client-contact-email')
+    expect(screen.getByRole('link', { name: 'Add your first client' })).toHaveAttribute('href', '/app/clients')
+    expect(screen.getByRole('link', { name: 'Open the full checklist' })).toHaveAttribute('href', '/app/clients')
     expect(screen.queryByText('Workspace active')).not.toBeInTheDocument()
+  })
+
+  it('moves to a section from the menu, marks it current and puts it in the address', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
+    const branding = within(settingsNavigation).getByRole('link', { name: /Client branding/ })
+    fireEvent.click(branding)
+
+    expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'start' }))
+    expect(branding).toHaveAttribute('aria-current', 'location')
+    expect(screen.getByRole('heading', { name: 'Client branding', level: 2 })).toHaveFocus()
+    await waitFor(() => expect(screen.getByTestId('location-hash')).toHaveTextContent('#client-branding'))
+    // The menu scrolled already; the page does not scroll a second time.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides the setup badge once every required step is done', async () => {
+    mockedList.mockResolvedValue({
+      ...ownerView,
+      workspace: { ...ownerView.workspace, client_contact_email: 'hello@northstar.test' },
+    })
+    vi.mocked(getWorkspaceClients).mockResolvedValue([{ id: 'client-1' }] as never)
+    vi.mocked(getWorkspaceMailboxes).mockResolvedValue({
+      connected: true,
+      provider_workspace_name: 'Acme Sending',
+      accounts: [{ campaigns: [{ id: 'campaign-1' }] }],
+      last_synced_at: null,
+      analytics_errors: [],
+    } as never)
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    await waitFor(() => expect(getWorkspaceMailboxes).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('button', { name: /Setup:/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the plan and balance in its own billing section', async () => {
+    renderPage()
+
+    const billing = await screen.findByRole('region', { name: 'Billing' })
+    expect(await within(billing).findByText('Founding member')).toBeInTheDocument()
+    expect(within(billing).getByText('10 credits')).toBeInTheDocument()
+    expect(within(billing).getByRole('link', { name: 'Manage billing' })).toHaveAttribute('href', '/app/settings/billing')
   })
 
   it('marks an expired invite and puts sending a new one in the open', async () => {
@@ -735,7 +800,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    const profile = screen.getByRole('region', { name: 'Profile picture' })
+    const profile = screen.getByRole('region', { name: 'Profile' })
     expect(within(profile).getByRole('button', { name: /upload picture/i })).toBeEnabled()
     // Nothing to remove until there is one.
     expect(within(profile).queryByRole('button', { name: /^Remove$/ })).not.toBeInTheDocument()
@@ -774,7 +839,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    const profile = screen.getByRole('region', { name: 'Profile picture' })
+    const profile = screen.getByRole('region', { name: 'Profile' })
     expect(within(profile).getByRole('button', { name: /replace picture/i })).toBeEnabled()
     fireEvent.click(within(profile).getByRole('button', { name: /^Remove$/ }))
 
@@ -803,7 +868,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
     await screen.findByText('Agency Admin')
 
-    expect(screen.queryByRole('region', { name: 'Profile picture' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Profile picture file')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /upload picture/i })).not.toBeInTheDocument()
     // The workspace's own branding is still theirs to manage from this view.
@@ -830,7 +895,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
     await screen.findByText('Agency Admin')
 
-    const profile = screen.getByRole('region', { name: 'Profile picture' })
+    const profile = screen.getByRole('region', { name: 'Profile' })
     const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'me.png', { type: 'image/png' })
     fireEvent.change(within(profile).getByLabelText('Profile picture file'), { target: { files: [file] } })
 
@@ -873,7 +938,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
     await screen.findByText('Agency Admin')
 
-    const profile = screen.getByRole('region', { name: 'Profile picture' })
+    const profile = screen.getByRole('region', { name: 'Profile' })
     fireEvent.click(within(profile).getByRole('button', { name: /^Remove$/ }))
 
     await waitFor(() => expect(mockedRemoveAvatar).toHaveBeenCalledWith(workspaceId, avatarPath))
@@ -962,7 +1027,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
     await screen.findByText('Agency Admin')
 
-    expect(screen.queryByRole('region', { name: 'Profile picture' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Profile picture file')).not.toBeInTheDocument()
   })
 
@@ -987,7 +1052,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByRole('region', { name: 'Profile picture' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Profile' })).toBeInTheDocument()
   })
 
   // No membership anywhere means no picture to set, and the workspace id the
@@ -1006,7 +1071,7 @@ describe('WorkspaceStaff', () => {
     renderPage(workspaceId)
     await screen.findByText('Agency Admin')
 
-    expect(screen.queryByRole('region', { name: 'Profile picture' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
   })
 
   it('generates a one-time password and requires confirmation before closing it', async () => {
@@ -1170,9 +1235,10 @@ describe('WorkspaceStaff', () => {
      * The order is the viewer's own in every view, never the viewed
      * workspace's, and the card says so.
      */
-    expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
-    expect(screen.getByText(/Only you see it, and it is saved in this browser/i)).toBeInTheDocument()
+    expect(screen.getByText(/Only you see this order/i)).toBeInTheDocument()
+    expect(screen.getByText(/It is saved in this browser/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     // Sign out lives in the menu on the person's avatar.
@@ -1393,13 +1459,13 @@ describe('WorkspaceStaff', () => {
       renderPage()
       // The workspace runs real clients, so the identity its prospects see is
       // its own to set rather than a platform default.
-      expect(await screen.findByRole('heading', { name: 'Client-facing brand' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Client branding' })).toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
     })
 
     it('sends the platform roster to the platform tools instead of offering an invite', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Team' })
+      await screen.findByRole('heading', { name: 'Team & access' })
       expect(screen.queryByRole('button', { name: 'Invite' })).not.toBeInTheDocument()
       const links = screen.getAllByRole('link', { name: /Manage workspaces/ })
       expect(links.length).toBeGreaterThan(0)
@@ -1408,7 +1474,7 @@ describe('WorkspaceStaff', () => {
 
     it('offers no action on a platform operator account', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Team' })
+      await screen.findByRole('heading', { name: 'Team & access' })
       // Staff mutations are refused at the SQL root for this workspace, so a
       // button here would be a promise the database will not keep.
       expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
