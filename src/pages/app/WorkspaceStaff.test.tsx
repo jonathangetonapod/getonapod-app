@@ -362,21 +362,24 @@ describe('WorkspaceStaff', () => {
     expect(field).toHaveAttribute('type', 'password')
   })
 
-  it('takes a pasted scheduler link and says it will load on the page', async () => {
+  it('saves a pasted scheduler link when the field loses focus and says it will load inline', async () => {
     renderPage()
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://calendly.com/agency/intro' } })
-    expect(screen.getByText('Not saved yet: https://calendly.com/agency/intro. Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
+    expect(screen.getByText('Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
+    // No button of its own any more.
+    expect(screen.queryByRole('button', { name: 'Save link' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save link' }))
+    fireEvent.blur(field)
     await waitFor(() => expect(vi.mocked(updateWorkspaceBookingLink)).toHaveBeenCalledWith(
       workspaceId,
       'https://calendly.com/agency/intro',
     ))
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
   })
 
-  it('accepts the embed block a scheduler puts on the clipboard', async () => {
+  it('takes the link out of the embed block a scheduler puts on the clipboard', async () => {
     renderPage()
 
     const field = await screen.findByLabelText('Booking link or embed code')
@@ -386,14 +389,14 @@ describe('WorkspaceStaff', () => {
           + ' Cal.ns["30min"]("inline", { calLink: "agency/30min" });</script>',
       },
     })
+    fireEvent.blur(field)
 
-    // The link is taken out of the snippet rather than the paste refused.
-    expect(screen.getByText(/Not saved yet: https:\/\/cal\.com\/agency\/30min/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Save link' }))
     await waitFor(() => expect(vi.mocked(updateWorkspaceBookingLink)).toHaveBeenCalledWith(
       workspaceId,
       'https://cal.com/agency/30min',
     ))
+    // The field then shows the link it saved, not the script.
+    await waitFor(() => expect(field).toHaveValue('https://cal.com/agency/30min'))
   })
 
   it('says a link it cannot frame will open in a new tab instead of refusing it', async () => {
@@ -402,8 +405,19 @@ describe('WorkspaceStaff', () => {
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://book.example.com/agency' } })
 
-    expect(screen.getByText(/This one will open in a new tab/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save link' })).not.toBeDisabled()
+    expect(screen.getByText(/This link opens in a new tab/i)).toBeInTheDocument()
+  })
+
+  it('refuses a paste with no link in it, under the field, without saving', async () => {
+    renderPage()
+
+    const field = await screen.findByLabelText('Booking link or embed code')
+    fireEvent.change(field, { target: { value: 'not a link at all' } })
+    fireEvent.blur(field)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No booking link found in that.')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(updateWorkspaceBookingLink).not.toHaveBeenCalled()
   })
 
   it('renders the owner roster and only server-authorized controls for the signed-in workspace', async () => {
@@ -563,31 +577,148 @@ describe('WorkspaceStaff', () => {
     expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(12)
   })
 
-  it('lets the workspace owner change the private workspace name and public client brand independently', async () => {
+  it('saves the workspace name on blur, with the timestamp it was read at', async () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Northstar Workspace' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save workspace name' }))
+    const name = screen.getByLabelText('Workspace name')
+    fireEvent.change(name, { target: { value: '  Northstar Workspace ' } })
+    fireEvent.blur(name)
     await waitFor(() => expect(mockedUpdateWorkspaceName).toHaveBeenCalledWith(workspaceId, {
       name: 'Northstar Workspace',
       expected_updated_at: '2026-07-22T00:25:00.000Z',
     }))
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Workspace name updated.'))
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save workspace name' })).not.toBeInTheDocument()
+  })
 
-    fireEvent.change(screen.getByLabelText('Agency name shown to clients'), { target: { value: 'Northstar Advisory' } })
+  it('refuses an empty workspace name under the field, without saving', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    const name = screen.getByLabelText('Workspace name')
+    fireEvent.change(name, { target: { value: '   ' } })
+    fireEvent.blur(name)
+
+    expect(await screen.findByText('Enter a workspace name.')).toBeInTheDocument()
+    expect(mockedUpdateWorkspaceName).not.toHaveBeenCalled()
+  })
+
+  it('saves the workspace name once typing pauses, without a blur', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderPage()
+      await screen.findByText('Agency Admin')
+
+      fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Northstar Workspace' } })
+      expect(mockedUpdateWorkspaceName).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1300)
+      await waitFor(() => expect(mockedUpdateWorkspaceName).toHaveBeenCalledTimes(1))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  /*
+   * Agency name, reply-to and both colours are one record with one
+   * timestamp. Saved one field at a time, the second save has to carry the
+   * timestamp and values the first returned, or it is refused as stale or
+   * puts back what the first just changed.
+   */
+  it('saves brand fields one at a time, each on top of the last', async () => {
+    let release: () => void = () => undefined
+    mockedUpdateClientBrand
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        release = () => resolve({
+          id: workspaceId,
+          client_brand_name: 'Northstar Advisory',
+          client_brand_primary_color: '#0D1B2A',
+          client_brand_accent_color: '#C7794F',
+          client_brand_updated_at: '2026-07-22T01:05:00.000Z',
+          client_contact_email: null,
+        })
+      }))
+      .mockResolvedValueOnce({
+        id: workspaceId,
+        client_brand_name: 'Northstar Advisory',
+        client_brand_primary_color: '#0D1B2A',
+        client_brand_accent_color: '#C7794F',
+        client_brand_updated_at: '2026-07-22T01:06:00.000Z',
+        client_contact_email: 'owner@example.com',
+      })
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    const agency = screen.getByLabelText('Agency name shown to clients')
+    fireEvent.change(agency, { target: { value: 'Northstar Advisory' } })
+    fireEvent.blur(agency)
+    fireEvent.click(screen.getByRole('button', { name: 'Use owner@example.com' }))
+
+    await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalledTimes(1))
+    expect(mockedUpdateClientBrand).toHaveBeenLastCalledWith(workspaceId, {
+      client_brand_name: 'Northstar Advisory',
+      client_brand_primary_color: '#0D1B2A',
+      client_brand_accent_color: '#C7794F',
+      client_contact_email: undefined,
+      expected_brand_updated_at: '2026-07-22T00:30:00.000Z',
+    })
+    release()
+    await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalledTimes(2))
+    expect(mockedUpdateClientBrand).toHaveBeenLastCalledWith(workspaceId, {
+      client_brand_name: 'Northstar Advisory',
+      client_brand_primary_color: '#0D1B2A',
+      client_brand_accent_color: '#C7794F',
+      client_contact_email: 'owner@example.com',
+      expected_brand_updated_at: '2026-07-22T01:05:00.000Z',
+    })
+  })
+
+  it('holds colours behind the unsaved-changes bar until Save, and Discard puts them back', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' })
+    expect(mockedUpdateClientBrand).not.toHaveBeenCalled()
+
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }))
+    expect(screen.getByLabelText('Primary color')).toHaveValue('#0D1B2A')
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
+
     fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
     fireEvent.change(screen.getByLabelText('Accent color'), { target: { value: '#E07A5F' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save client brand' }))
-
+    fireEvent.click(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalledWith(workspaceId, {
-      client_brand_name: 'Northstar Advisory',
+      client_brand_name: 'Acme Agency',
       client_brand_primary_color: '#16324F',
       client_brand_accent_color: '#E07A5F',
-      client_contact_email: '',
+      client_contact_email: undefined,
       expected_brand_updated_at: '2026-07-22T00:30:00.000Z',
     }))
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client-facing brand updated.'))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client branding saved.'))
+  })
+
+  it('asks before leaving the page with unsaved colours, and not for moving within it', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
+    // Within the page: the section menu changes only the hash.
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('link', { name: /General/ }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    // Out of it: a link to another page.
+    fireEvent.click(await screen.findByRole('link', { name: 'Manage in Client Campaigns' }))
+    expect(await screen.findByRole('alertdialog', { name: 'Leave without saving?' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Stay on this page' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Primary color')).toHaveValue('#16324F')
+
+    // The browser's own prompt covers closing and reloading the tab.
+    const unload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unload)
+    expect(unload.defaultPrevented).toBe(true)
   })
 
   /**
@@ -629,8 +760,7 @@ describe('WorkspaceStaff', () => {
 
   it('shows a saved booking link and lets it be cleared', async () => {
     // The list response used to drop booking_embed_url, so the box loaded
-    // empty and — since Save disables on an empty box — a saved link could
-    // never be removed through the UI.
+    // empty and a saved link could never be removed through the UI.
     mockedList.mockResolvedValue({
       ...ownerView,
       workspace: { ...ownerView.workspace, booking_embed_url: 'https://calendly.com/northstar/intro' },
@@ -641,13 +771,10 @@ describe('WorkspaceStaff', () => {
 
     const box = screen.getByLabelText('Booking link or embed code') as HTMLInputElement
     expect(box.value).toBe('https://calendly.com/northstar/intro')
-    // A saved link reads as saved, not as a save still in progress.
-    expect(screen.getByText('Saved. Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
+    expect(screen.getByText('Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
 
     fireEvent.change(box, { target: { value: '' } })
-    const save = screen.getByRole('button', { name: 'Save link' })
-    expect(save).not.toBeDisabled()
-    fireEvent.click(save)
+    fireEvent.blur(box)
     await waitFor(() => expect(updateWorkspaceBookingLink).toHaveBeenCalledWith(workspaceId, null))
   })
 
@@ -655,13 +782,12 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.change(
-      screen.getByLabelText('Booking link or embed code'),
-      { target: { value: 'https://calendly.com/northstar/intro' } },
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Save link' }))
+    const box = screen.getByLabelText('Booking link or embed code')
+    fireEvent.change(box, { target: { value: 'https://calendly.com/northstar/intro' } })
+    fireEvent.blur(box)
 
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Booking link saved.'))
+    await waitFor(() => expect(updateWorkspaceBookingLink).toHaveBeenCalled())
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
     expect(refreshAccount).not.toHaveBeenCalled()
   })
 
@@ -669,10 +795,12 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.change(screen.getByLabelText('Agency name shown to clients'), { target: { value: 'Northstar Advisory' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save client brand' }))
+    const agency = screen.getByLabelText('Agency name shown to clients')
+    fireEvent.change(agency, { target: { value: 'Northstar Advisory' } })
+    fireEvent.blur(agency)
 
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client-facing brand updated.'))
+    await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalled())
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
     expect(refreshAccount).not.toHaveBeenCalled()
   })
 
@@ -683,8 +811,9 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Northstar Workspace' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save workspace name' }))
+    const name = screen.getByLabelText('Workspace name')
+    fireEvent.change(name, { target: { value: 'Northstar Workspace' } })
+    fireEvent.blur(name)
 
     await waitFor(() => expect(refreshAccount).toHaveBeenCalledTimes(1))
     expect(refreshAccount).toHaveBeenCalledWith({ quiet: true })
@@ -698,7 +827,7 @@ describe('WorkspaceStaff', () => {
 
     expect(screen.getByText(/Only your team sees this/i)).toBeInTheDocument()
     expect(screen.getByText(/Clients never see it unless you type the same name/i)).toBeInTheDocument()
-    expect(screen.getByText(/Leave it empty and they see the workspace name instead/i)).toBeInTheDocument()
+    expect(screen.getByText(/The name your clients recognize/i)).toBeInTheDocument()
   })
 
   it('says what the two brand colours actually move', async () => {
@@ -716,9 +845,8 @@ describe('WorkspaceStaff', () => {
     await screen.findByText('Agency Admin')
 
     expect(screen.getByText(/Paste the scheduler link, or the whole embed code/i)).toBeInTheDocument()
-    expect(screen.getByText(/Saved on its own with Save link/i)).toBeInTheDocument()
     // Nothing typed yet, so there is no status line to read.
-    expect(screen.queryByText(/^(Saved\.|Not saved yet)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/will load inline|opens in a new tab/)).not.toBeInTheDocument()
   })
 
   it('invites through the authenticated workspace and its allowed default role', async () => {
@@ -766,13 +894,22 @@ describe('WorkspaceStaff', () => {
       { type: 'image/png' },
     )
 
+    // jsdom has no object URLs; the chosen file is previewed through one.
+    URL.createObjectURL = vi.fn(() => 'blob:preview')
+    URL.revokeObjectURL = vi.fn()
+
     fireEvent.change(screen.getByLabelText('Workspace logo file'), {
       target: { files: [file] },
     })
 
+    // Previewed, not uploaded, until the bar's Save.
+    expect(screen.getByLabelText('Client dashboard brand preview').querySelector('img')).toHaveAttribute('src', 'blob:preview')
+    expect(mockedUpdateLogo).not.toHaveBeenCalled()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' }))
+
     await waitFor(() => expect(mockedUpdateLogo).toHaveBeenCalledWith(workspaceId, file, null))
     await waitFor(() => expect(refreshAccount).toHaveBeenCalledTimes(1))
-    expect(toastSuccess).toHaveBeenCalledWith('Workspace logo updated.')
+    expect(toastSuccess).toHaveBeenCalledWith('Client branding saved.')
   })
 
   it('confirms and removes the current workspace logo', async () => {
@@ -845,6 +982,7 @@ describe('WorkspaceStaff', () => {
     const profile = screen.getByRole('region', { name: 'Profile' })
     expect(within(profile).getByRole('button', { name: /replace picture/i })).toBeEnabled()
     fireEvent.click(within(profile).getByRole('button', { name: /^Remove$/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Remove your profile picture?' })).getByRole('button', { name: 'Remove picture' }))
 
     await waitFor(() => expect(mockedRemoveAvatar).toHaveBeenCalledWith(workspaceId, avatarPath))
     await waitFor(() => expect(refreshAccount).toHaveBeenCalledTimes(1))
@@ -943,6 +1081,7 @@ describe('WorkspaceStaff', () => {
 
     const profile = screen.getByRole('region', { name: 'Profile' })
     fireEvent.click(within(profile).getByRole('button', { name: /^Remove$/ }))
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Remove your profile picture?' })).getByRole('button', { name: 'Remove picture' }))
 
     await waitFor(() => expect(mockedRemoveAvatar).toHaveBeenCalledWith(workspaceId, avatarPath))
     await waitFor(() => expect(refreshAccount).toHaveBeenCalledTimes(1))

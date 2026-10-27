@@ -11,7 +11,6 @@ import {
   Crown,
   Eye,
   EyeOff,
-  ImageIcon,
   KeyRound,
   Loader2,
   MoreHorizontal,
@@ -19,7 +18,6 @@ import {
   PanelLeft,
   Send,
   ShieldCheck,
-  Save,
   Trash2,
   Upload,
   UserCircle,
@@ -28,16 +26,18 @@ import {
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { bookingLinkFromPaste, schedulerName } from '@/lib/schedulerEmbed'
 import {
   WORKSPACE_NAV_ORGANIZE_EVENT,
-  WorkspaceBrandLogo,
   WorkspaceLayout,
 } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
 import { useSetupProgress } from '@/components/workspace/SetupChecklist'
+import { ClientBrandingSection } from '@/components/workspace/settings/ClientBrandingSection'
+import { FieldSaveError, FieldSaveStatus } from '@/components/workspace/settings/FieldSaveStatus'
 import { SettingsBillingSection } from '@/components/workspace/settings/SettingsBillingSection'
+import { UnsavedChangesPrompt } from '@/components/workspace/settings/UnsavedChangesPrompt'
+import { useAutoSaveField } from '@/components/workspace/settings/useAutoSaveField'
 import { SettingsSectionNav, type SettingsSectionGroup } from '@/components/workspace/settings/SettingsSectionNav'
 import { SettingsSetupBadge } from '@/components/workspace/settings/SettingsSetupBadge'
 import { SECTION_NAV_STATE, useActiveSection } from '@/components/workspace/settings/useActiveSection'
@@ -58,7 +58,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -68,7 +67,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   MEMBER_AVATAR_MIME_TYPES,
   memberAvatarUrl,
-  WORKSPACE_LOGO_MIME_TYPES,
   workspaceLogoUrl,
 } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
@@ -80,11 +78,7 @@ import {
   resetWorkspaceStaffTemporaryPassword,
   retryWorkspaceStaffTemporaryPassword,
   removeMemberAvatar,
-  removeWorkspaceLogo,
-  updateWorkspaceLogo,
   uploadMemberAvatar,
-  updateWorkspaceBookingLink,
-  updateWorkspaceClientBranding,
   updateWorkspaceName,
   updateWorkspaceStaffRole,
   type WorkspaceStaffInviteInput,
@@ -117,22 +111,6 @@ const emptyInvite: WorkspaceStaffInviteInput = {
   email: '',
   full_name: '',
   role: 'member',
-}
-
-const defaultClientBrand = {
-  client_brand_name: '',
-  client_brand_primary_color: '#0D1B2A',
-  client_brand_accent_color: '#C7794F',
-  client_contact_email: '',
-}
-
-function readableColor(background: string): string {
-  const color = /^#[0-9A-F]{6}$/iu.test(background) ? background.slice(1) : '0D1B2A'
-  const channels = [0, 2, 4].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16) / 255)
-  const luminance = channels
-    .map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
-    .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0)
-  return luminance > 0.42 ? '#102033' : '#FFFFFF'
 }
 
 function validateView(
@@ -319,11 +297,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   // Which member's password op is running, so the spinner lands on that row
   // rather than every row's password button at once.
   const [passwordBusyMemberId, setPasswordBusyMemberId] = useState<string | null>(null)
-  const [logoRemoveOpen, setLogoRemoveOpen] = useState(false)
-  const [workspaceNameDraft, setWorkspaceNameDraft] = useState('')
-  const [clientBrandDraft, setClientBrandDraft] = useState(defaultClientBrand)
+  const [avatarRemoveOpen, setAvatarRemoveOpen] = useState(false)
+  const [brandingUnsaved, setBrandingUnsaved] = useState(false)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
-  const logoInputRef = useRef<HTMLInputElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
@@ -456,69 +432,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     .map((part) => part[0]?.toUpperCase())
     .join('') || 'W'
 
-  /*
-   * Seed each edit form from the server, but ONLY when that field's own
-   * server value changes — not on every refetch. The staff query is
-   * invalidated by unrelated mutations (suspend a teammate, issue a
-   * password) and refetches on window focus, and a blanket reset keyed on
-   * `data` silently reverted a half-typed name, booking link, or brand the
-   * moment any of those fired. Comparing against the last-seen server value
-   * re-seeds after a genuine remote change (including one this user just
-   * saved) while leaving an in-progress edit untouched.
-   */
-  const lastServerNameRef = useRef<string | null>(null)
-  const lastServerBookingRef = useRef<string | null>(null)
-  const lastServerBrandRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!data) return
-    const serverName = data.workspace.name
-    if (lastServerNameRef.current !== serverName) {
-      lastServerNameRef.current = serverName
-      setWorkspaceNameDraft(serverName)
-    }
-    const serverBooking = data.workspace.booking_embed_url ?? ''
-    if (lastServerBookingRef.current !== serverBooking) {
-      lastServerBookingRef.current = serverBooking
-      setBookingLinkDraft(serverBooking)
-    }
-    const serverBrand = JSON.stringify([
-      data.workspace.client_brand_name,
-      data.workspace.client_brand_primary_color,
-      data.workspace.client_brand_accent_color,
-      data.workspace.client_contact_email,
-    ])
-    if (lastServerBrandRef.current !== serverBrand) {
-      lastServerBrandRef.current = serverBrand
-      setClientBrandDraft({
-        client_brand_name: data.workspace.client_brand_name,
-        client_brand_primary_color: data.workspace.client_brand_primary_color,
-        client_brand_accent_color: data.workspace.client_brand_accent_color,
-        client_contact_email: data.workspace.client_contact_email ?? '',
-      })
-    }
-  }, [data])
-
-  const workspaceNameDirty = Boolean(data) && workspaceNameDraft !== data?.workspace.name
-
-  const clientBrandDirty = Boolean(data) && (
-    clientBrandDraft.client_brand_name !== data?.workspace.client_brand_name
-    || clientBrandDraft.client_brand_primary_color.toUpperCase() !== data?.workspace.client_brand_primary_color
-    || clientBrandDraft.client_brand_accent_color.toUpperCase() !== data?.workspace.client_brand_accent_color
-    || clientBrandDraft.client_contact_email.trim() !== (data?.workspace.client_contact_email ?? '')
-  )
-
-  // Every client email takes its reply-to from this field and sends none when
-  // it is empty, so the field says so and offers the owner's address.
-  const replyToMissing = Boolean(data) && !clientBrandDraft.client_contact_email.trim()
   const ownerEmail = staff.find((member) => member.role === 'owner' && member.status === 'active')?.email ?? null
-
-  const [bookingLinkDraft, setBookingLinkDraft] = useState('')
-  // Copying "embed code" from a scheduler gives a block of script, not a URL,
-  // so the link is taken out of whatever was pasted rather than refused.
-  const bookingLinkResolved = bookingLinkFromPaste(bookingLinkDraft)
-  const bookingLinkChanged = (bookingLinkResolved ?? bookingLinkDraft.trim())
-    !== (data?.workspace.booking_embed_url ?? '')
-  const bookingLinkPreviewName = schedulerName(bookingLinkResolved)
 
   /**
    * Reload this page's own data. Cheap, and nothing outside the page moves.
@@ -563,20 +477,6 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     await refreshAccount({ quiet: true })
   }
 
-  const logoMutation = useMutation({
-    mutationFn: (file: File) => {
-      if (!data || !canManageBranding) {
-        throw new Error('You do not have permission to update workspace branding.')
-      }
-      return updateWorkspaceLogo(workspaceId, file, data.workspace.logo_path)
-    },
-    onSuccess: async () => {
-      await refreshShellIdentity()
-      toast.success('Workspace logo updated.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The workspace logo could not be uploaded.'),
-  })
-
   /*
    * The member's own picture, not the workspace's. Every active member owns
    * theirs — the server locates the row by the authenticated actor — so these
@@ -598,68 +498,34 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       return removeMemberAvatar(workspaceId, avatarPath)
     },
     onSuccess: async () => {
+      setAvatarRemoveOpen(false)
       await refreshOwnMembership()
       toast.success('Profile picture removed.')
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The profile picture could not be removed.'),
   })
 
-  const removeLogoMutation = useMutation({
-    mutationFn: () => {
-      if (!data?.workspace.logo_path || !canManageBranding) {
-        throw new Error('The workspace logo is unavailable.')
-      }
-      return removeWorkspaceLogo(workspaceId, data.workspace.logo_path)
-    },
-    onSuccess: async () => {
-      setLogoRemoveOpen(false)
-      await refreshShellIdentity()
-      toast.success('Workspace logo removed.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The workspace logo could not be removed.'),
-  })
-
-  const bookingLinkMutation = useMutation({
-    mutationFn: (nextUrl: string | null) => updateWorkspaceBookingLink(workspaceId, nextUrl),
-    onSuccess: async (_result, nextUrl) => {
-      await refreshSettings()
-      toast.success(nextUrl ? 'Booking link saved.' : 'Booking link removed.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'The booking link could not be saved.'),
-  })
-
-  const clientBrandMutation = useMutation({
-    mutationFn: () => {
-      if (!data?.workspace.client_brand_updated_at || !canManageClientBranding) {
-        throw new Error('Client-facing branding controls are not available yet.')
-      }
-      return updateWorkspaceClientBranding(workspaceId, {
-        ...clientBrandDraft,
-        expected_brand_updated_at: data.workspace.client_brand_updated_at,
-      })
-    },
-    onSuccess: async () => {
-      await refreshSettings()
-      toast.success('Client-facing brand updated.')
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Client-facing branding could not be updated.'),
-  })
-
-  const workspaceNameMutation = useMutation({
-    mutationFn: () => {
-      if (!data?.workspace.updated_at || !canManageWorkspaceName) {
+  /*
+   * Saved with the timestamp it was read at, so a stale tab cannot overwrite
+   * a newer name. Kept here rather than read from the query, because a second
+   * save can start before the refetch after the first one lands.
+   */
+  const nameUpdatedAtRef = useRef('')
+  if (data?.workspace.updated_at && Date.parse(data.workspace.updated_at) > Date.parse(nameUpdatedAtRef.current || '0')) {
+    nameUpdatedAtRef.current = data.workspace.updated_at
+  }
+  const workspaceName = useAutoSaveField({
+    serverValue: data?.workspace.name ?? '',
+    normalize: (value) => value.trim(),
+    validate: (value) => (value ? null : 'Enter a workspace name.'),
+    save: async (value) => {
+      if (!canManageWorkspaceName || !nameUpdatedAtRef.current) {
         throw new Error('Workspace name controls are not available yet.')
       }
-      return updateWorkspaceName(workspaceId, {
-        name: workspaceNameDraft,
-        expected_updated_at: data.workspace.updated_at,
-      })
-    },
-    onSuccess: async () => {
+      const saved = await updateWorkspaceName(workspaceId, { name: value, expected_updated_at: nameUpdatedAtRef.current })
+      nameUpdatedAtRef.current = saved.updated_at
       await refreshShellIdentity()
-      toast.success('Workspace name updated.')
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Workspace name could not be updated.'),
   })
 
   const inviteMutation = useMutation({
@@ -943,7 +809,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                 variant="ghost"
                                 className="text-destructive hover:text-destructive"
                                 disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
-                                onClick={() => removeAvatarMutation.mutate()}
+                                onClick={() => setAvatarRemoveOpen(true)}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />Remove
                               </Button>
@@ -997,40 +863,23 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       <CardContent className="p-0">
                         <div className="min-w-0 p-6 sm:p-7">
                           <div className="min-w-0 max-w-xl space-y-3">
-                            <Label htmlFor="workspace-name">Workspace name</Label>
+                            <div className="flex items-center justify-between gap-2">
+                              <Label htmlFor="workspace-name">Workspace name</Label>
+                              <FieldSaveStatus status={workspaceName.status} />
+                            </div>
                             <Input
                               id="workspace-name"
                               {...notACredentialField}
                               maxLength={120}
-                              value={workspaceNameDraft}
-                              disabled={!canManageWorkspaceName || workspaceNameMutation.isPending}
-                              onChange={(event) => setWorkspaceNameDraft(event.target.value)}
+                              value={workspaceName.value}
+                              disabled={!canManageWorkspaceName}
+                              onChange={(event) => workspaceName.setValue(event.target.value)}
+                              onBlur={workspaceName.onBlur}
+                              aria-invalid={workspaceName.error ? true : undefined}
+                              aria-describedby={workspaceName.error ? 'workspace-name-error' : undefined}
                             />
+                            <FieldSaveError id="workspace-name-error" error={workspaceName.error} />
                             <p className="text-xs text-muted-foreground">Only your team sees this — it names the workspace in the sidebar and in the workspace switcher. Clients never see it unless you type the same name into the client-facing brand below.</p>
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={!canManageWorkspaceName || !workspaceNameDirty || workspaceNameMutation.isPending}
-                                onClick={() => workspaceNameMutation.mutate()}
-                              >
-                                {workspaceNameMutation.isPending
-                                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  : <Save className="mr-2 h-4 w-4" />}
-                                Save workspace name
-                              </Button>
-                              {workspaceNameDirty ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={workspaceNameMutation.isPending}
-                                  onClick={() => setWorkspaceNameDraft(data.workspace.name)}
-                                >
-                                  Reset
-                                </Button>
-                              ) : null}
-                            </div>
                             {!canManageWorkspaceName ? (
                               <p className="text-sm text-muted-foreground">Workspace name controls are not available for your role.</p>
                             ) : null}
@@ -1046,344 +895,18 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       <p className="mt-1 text-sm text-muted-foreground">Control the identity clients see on dashboards and onboarding.</p>
                     </div>
 
-                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                      <CardContent className="min-w-0 p-0">
-                        <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.88fr)]">
-                          <div className="min-w-0 space-y-6 p-6 sm:p-7">
-                            <div className="space-y-2">
-                              <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
-                              <Input
-                                id="client-brand-name"
-                                {...notACredentialField}
-                                maxLength={120}
-                                value={clientBrandDraft.client_brand_name}
-                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                                onChange={(event) => setClientBrandDraft((current) => ({
-                                  ...current,
-                                  client_brand_name: event.target.value,
-                                }))}
-                                placeholder={data.workspace.name}
-                              />
-                              <p className="text-xs text-muted-foreground">The name your clients recognize, shown on their dashboards, onboarding and portal. Leave it empty and they see the workspace name instead.</p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="client-contact-email">Email clients reply to</Label>
-                              <Input
-                                id="client-contact-email"
-                                {...notACredentialField}
-                                type="email"
-                                maxLength={254}
-                                value={clientBrandDraft.client_contact_email}
-                                disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                                onChange={(event) => setClientBrandDraft((current) => ({
-                                  ...current,
-                                  client_contact_email: event.target.value,
-                                }))}
-                                placeholder="hello@youragency.com"
-                                aria-invalid={replyToMissing || undefined}
-                                aria-describedby={replyToMissing ? 'client-contact-email-warning' : undefined}
-                                className={cn(replyToMissing && 'border-amber-500 focus-visible:ring-amber-500')}
-                              />
-                              {replyToMissing ? (
-                                <div
-                                  id="client-contact-email-warning"
-                                  className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-amber-700 dark:text-amber-400"
-                                >
-                                  <span className="inline-flex items-center gap-1.5">
-                                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                                    Replies to your client emails go nowhere until you add an address.
-                                  </span>
-                                  {ownerEmail && canManageClientBranding && (
-                                    <button
-                                      type="button"
-                                      className="font-medium text-foreground underline underline-offset-2"
-                                      onClick={() => setClientBrandDraft((current) => ({ ...current, client_contact_email: ownerEmail }))}
-                                    >
-                                      Use {ownerEmail}
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">Set as the reply-to on intake invitations, reminders, shortlist and booking emails, so a client who replies reaches you.</p>
-                              )}
-                            </div>
-
-                            <div className="space-y-2">
-                              <Label htmlFor="workspace-booking-link">Booking link or embed code</Label>
-                              <div className="flex flex-col gap-2">
-                                {/* A textarea because "embed code" is a block
-                                    of script, and that is what a scheduler
-                                    puts on the clipboard. */}
-                                <Textarea
-                                  id="workspace-booking-link"
-                                  {...notACredentialField}
-                                  rows={2}
-                                  maxLength={6_000}
-                                  value={bookingLinkDraft}
-                                  disabled={!canManageClientBranding || bookingLinkMutation.isPending}
-                                  onChange={(event) => setBookingLinkDraft(event.target.value)}
-                                  placeholder="https://calendly.com/your-agency/intro — or paste the whole embed snippet"
-                                  className="font-mono text-xs"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="w-fit"
-                                  disabled={!canManageClientBranding
-                                    || bookingLinkMutation.isPending
-                                    || !bookingLinkChanged
-                                    || (Boolean(bookingLinkDraft.trim()) && !bookingLinkResolved)}
-                                  onClick={() => bookingLinkMutation.mutate(bookingLinkResolved)}
-                                >
-                                  {bookingLinkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                  Save link
-                                </Button>
-                              </div>
-                              {/* Two lines rather than one paragraph: what to
-                                  do never changes, and what will happen
-                                  changes with every keystroke. Reading the
-                                  second used to mean re-reading the first. */}
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                Paste the scheduler link, or the whole embed code it gives you — either works.
-                              </p>
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                Prospect dashboards without a call-to-action of their own show it under
-                                &ldquo;Ready to turn your shortlist into conversations?&rdquo;, instead of asking the
-                                prospect to reply to an email. Saved on its own with Save link.
-                              </p>
-                              {bookingLinkDraft.trim() ? (
-                                <p className={`text-xs leading-5 ${bookingLinkResolved ? 'text-muted-foreground' : 'text-destructive'}`}>
-                                  {/* Saved and unsaved read differently: this
-                                      line used to start "Saving" in both, so a
-                                      link saved minutes ago still looked like
-                                      a save in progress. */}
-                                  {!bookingLinkResolved
-                                    ? 'No booking link found in that. Paste the scheduler address, or the embed code it gives you.'
-                                    : !bookingLinkChanged
-                                      ? bookingLinkPreviewName
-                                        ? `Saved. ${bookingLinkPreviewName} will load inline on prospect dashboards.`
-                                        : 'Saved. This link opens in a new tab from prospect dashboards.'
-                                      : bookingLinkPreviewName
-                                        ? `Not saved yet: ${bookingLinkResolved}. ${bookingLinkPreviewName} will load inline on prospect dashboards.`
-                                        : `Not saved yet: ${bookingLinkResolved}. This one will open in a new tab. Calendly, Cal.com, SavvyCal, TidyCal, HubSpot, and Zcal load inline.`}
-                                </p>
-                              ) : null}
-                            </div>
-
-                            <div className="space-y-2">
-                              {/* Named for what they do, not where they sit in
-                                  a palette: "primary" and "accent" mean
-                                  nothing until you know which one moves. */}
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                Primary is the solid colour behind headers and buttons on a client&rsquo;s pages. Accent
-                                marks the active item — the current tab, a selected row. The live preview updates as
-                                you change them.
-                              </p>
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              {[
-                                { key: 'client_brand_primary_color' as const, label: 'Primary color' },
-                                { key: 'client_brand_accent_color' as const, label: 'Accent color' },
-                              ].map((field) => {
-                                const value = clientBrandDraft[field.key]
-                                const pickerValue = /^#[0-9A-F]{6}$/iu.test(value) ? value : '#0D1B2A'
-                                return (
-                                  <div key={field.key} className="min-w-0 space-y-2">
-                                    <Label htmlFor={field.key}>{field.label}</Label>
-                                    <div className="flex min-w-0 gap-2">
-                                      <Input
-                                        aria-label={`${field.label} picker`}
-                                        type="color"
-                                        value={pickerValue}
-                                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                                        onChange={(event) => setClientBrandDraft((current) => ({
-                                          ...current,
-                                          [field.key]: event.target.value.toUpperCase(),
-                                        }))}
-                                        className="h-10 w-12 shrink-0 cursor-pointer p-1"
-                                      />
-                                      <Input
-                                        id={field.key}
-                                        {...notACredentialField}
-                                        value={value}
-                                        maxLength={7}
-                                        spellCheck={false}
-                                        disabled={!canManageClientBranding || clientBrandMutation.isPending}
-                                        onChange={(event) => setClientBrandDraft((current) => ({
-                                          ...current,
-                                          [field.key]: event.target.value.toUpperCase(),
-                                        }))}
-                                        className="min-w-0 flex-1 font-mono uppercase"
-                                      />
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                            </div>
-
-                            <div className="border-t border-border/70 pt-6">
-                              <div className="mb-4 flex items-start gap-3">
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                                  <ImageIcon className="h-4 w-4" />
-                                </span>
-                                <div>
-                                  <p className="font-semibold">Agency logo</p>
-                                  <p className="mt-0.5 text-sm text-muted-foreground">PNG, JPEG, or WebP up to 2 MB.</p>
-                                </div>
-                              </div>
-                              <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                                <WorkspaceBrandLogo
-                                  logoUrl={logoUrl}
-                                  workspaceName={data.workspace.name}
-                                  workspaceInitials={workspaceInitials}
-                                  placement="settings"
-                                />
-                                <div className="min-w-0 space-y-3">
-                                  <p className="text-sm leading-6 text-muted-foreground">
-                                    Shown without a colored backdrop so the original artwork stays intact.
-                                  </p>
-                                  {/* A native input, not the styled one. Input's
-                                      base classes carry h-10 w-full, and cn's
-                                      tailwind-merge does not know sr-only
-                                      conflicts with a width — so both survived
-                                      and the field kept sr-only's absolute
-                                      positioning at a full 774px, anchored to
-                                      the initial containing block because no
-                                      ancestor is positioned. It stretched the
-                                      document 260px past the viewport. */}
-                                  <input
-                                    ref={logoInputRef}
-                                    id="workspace-logo"
-                                    aria-label="Workspace logo file"
-                                    type="file"
-                                    className="sr-only"
-                                    accept={WORKSPACE_LOGO_MIME_TYPES.join(',')}
-                                    disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                                    onChange={(event) => {
-                                      const file = event.currentTarget.files?.[0]
-                                      event.currentTarget.value = ''
-                                      if (file) logoMutation.mutate(file)
-                                    }}
-                                  />
-                                  <div className="flex flex-wrap gap-2">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                                      onClick={() => logoInputRef.current?.click()}
-                                    >
-                                      {logoMutation.isPending
-                                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        : <Upload className="mr-2 h-4 w-4" />}
-                                      {data.workspace.logo_path ? 'Replace logo' : 'Upload logo'}
-                                    </Button>
-                                    {data.workspace.logo_path && (
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        className="text-destructive hover:text-destructive"
-                                        disabled={!canManageBranding || logoMutation.isPending || removeLogoMutation.isPending}
-                                        onClick={() => setLogoRemoveOpen(true)}
-                                      >
-                                        <Trash2 className="mr-2 h-4 w-4" />Remove logo
-                                      </Button>
-                                    )}
-                                  </div>
-                                  {!canManageBranding && (
-                                    <p className="text-sm text-muted-foreground">Logo controls are not available for your role.</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {!canManageClientBranding ? (
-                              <p className="text-sm text-muted-foreground">Client-facing brand controls are not available for your role.</p>
-                            ) : null}
-                          </div>
-
-                          <div className="min-w-0 border-t border-border/70 bg-muted/25 p-4 sm:p-6 xl:border-l xl:border-t-0">
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Live preview</p>
-                              <Badge variant="secondary" className="rounded-full text-[10px]">Shared dashboard</Badge>
-                            </div>
-                            <div
-                              className="relative min-h-80 overflow-hidden rounded-2xl border border-white/10 p-6 shadow-sm"
-                              style={{
-                                background: `linear-gradient(135deg, ${clientBrandDraft.client_brand_primary_color} 0%, #102033 140%)`,
-                                color: readableColor(clientBrandDraft.client_brand_primary_color),
-                              }}
-                              aria-label="Client dashboard brand preview"
-                            >
-                              <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-                              <div className="relative flex items-center gap-3">
-                                {logoUrl ? (
-                                  <span className="flex h-12 w-20 items-center justify-center p-1">
-                                    <img src={logoUrl} alt="" className="max-h-full max-w-full object-contain" />
-                                  </span>
-                                ) : (
-                                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-sm font-bold ring-1 ring-white/20">
-                                    {workspaceInitials}
-                                  </span>
-                                )}
-                                <div>
-                                  <p className="font-semibold">{clientBrandDraft.client_brand_name || data.workspace.name}</p>
-                                  <p className="mt-0.5 text-xs opacity-65">Private podcast campaign</p>
-                                </div>
-                              </div>
-                              <div className="relative mt-12 max-w-sm">
-                                <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-70">Prepared for your client</p>
-                                <p className="mt-3 text-3xl font-semibold leading-tight">The right rooms for their next big ideas.</p>
-                                <span
-                                  className="mt-6 inline-flex rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
-                                  style={{
-                                    backgroundColor: clientBrandDraft.client_brand_accent_color,
-                                    color: readableColor(clientBrandDraft.client_brand_accent_color),
-                                  }}
-                                >
-                                  Review top matches
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-3 border-t border-border/70 bg-muted/15 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-                          <p className="text-xs text-muted-foreground">Brand changes apply to every client dashboard in this workspace.</p>
-                          <div className="flex flex-wrap gap-2">
-                            {clientBrandDirty ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                disabled={clientBrandMutation.isPending}
-                                onClick={() => setClientBrandDraft({
-                                  client_brand_name: data.workspace.client_brand_name,
-                                  client_brand_primary_color: data.workspace.client_brand_primary_color,
-                                  client_brand_accent_color: data.workspace.client_brand_accent_color,
-                                  client_contact_email: data.workspace.client_contact_email ?? '',
-                                })}
-                              >
-                                Reset
-                              </Button>
-                            ) : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={!canManageClientBranding || !clientBrandDirty || clientBrandMutation.isPending}
-                              onClick={() => clientBrandMutation.mutate()}
-                            >
-                              {clientBrandMutation.isPending
-                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                : <Save className="mr-2 h-4 w-4" />}
-                              Save client brand
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <ClientBrandingSection
+                      workspaceId={workspaceId}
+                      view={data}
+                      canManageBranding={canManageBranding}
+                      canManageClientBranding={canManageClientBranding}
+                      ownerEmail={ownerEmail}
+                      logoUrl={logoUrl}
+                      workspaceInitials={workspaceInitials}
+                      onSaved={refreshSettings}
+                      onLogoChanged={refreshShellIdentity}
+                      onUnsavedChange={setBrandingUnsaved}
+                    />
                   </section>
 
                   <section id="ai-keys" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="ai-keys-title">
@@ -1787,28 +1310,33 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       </Dialog>
 
       <AlertDialog
-        open={logoRemoveOpen}
-        onOpenChange={(open) => !removeLogoMutation.isPending && setLogoRemoveOpen(open)}
+        open={avatarRemoveOpen}
+        onOpenChange={(open) => !removeAvatarMutation.isPending && setAvatarRemoveOpen(open)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove workspace logo?</AlertDialogTitle>
+            <AlertDialogTitle>Remove your profile picture?</AlertDialogTitle>
             <AlertDialogDescription>
-              The workspace will return to its initials anywhere the logo is currently shown.
+              Your initials show beside your name instead until you upload a new one.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={removeLogoMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={removeAvatarMutation.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={removeLogoMutation.isPending}
-              onClick={() => removeLogoMutation.mutate()}
+              disabled={removeAvatarMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                removeAvatarMutation.mutate()
+              }}
             >
-              {removeLogoMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Remove logo
+              {removeAvatarMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Remove picture
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UnsavedChangesPrompt when={brandingUnsaved || workspaceName.unsaved} />
 
       <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => !open && !actionMutation.isPending && setConfirmation(null)}>
         <AlertDialogContent>
