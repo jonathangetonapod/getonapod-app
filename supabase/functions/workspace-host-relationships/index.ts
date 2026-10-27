@@ -90,140 +90,6 @@ function newManualPodcastId(): string {
   return `manual-${crypto.randomUUID()}`
 }
 
-interface ResolvedShow {
-  podcastId: string
-  podcastName: string | null
-  hostName: string | null
-}
-
-function text(value: unknown, max: number): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null
-}
-
-// One address may have been pitched for more than one show. Picking either is
-// worse than picking neither: a conversation filed under the wrong show is a
-// lie the operator has no reason to check. Only an unambiguous match resolves.
-function onlyShow(candidates: Array<ResolvedShow | null>): ResolvedShow | null {
-  const byId = new Map<string, ResolvedShow>()
-  for (const candidate of candidates) {
-    if (candidate && !byId.has(candidate.podcastId)) byId.set(candidate.podcastId, candidate)
-  }
-  return byId.size === 1 ? [...byId.values()][0] : null
-}
-
-// An inbound reply carries an address and nothing else. What that address
-// means — which show, which host — is already recorded in the campaign that
-// pitched it, or in the shared catalog. Resolving it here is what keeps a
-// host from entering the book twice under two different names.
-//
-// `preferredName` only disambiguates rows that already share this address in
-// the book; it never invents a match.
-async function resolveShowByEmail(
-  admin: SupabaseClient,
-  workspaceId: string,
-  email: string,
-  preferredName: string | null,
-  threadKey: string,
-): Promise<ResolvedShow | null> {
-  // 1. The book itself. An operator-curated row outranks every derived source.
-  const { data: known, error: knownError } = await admin.from('workspace_host_relationships')
-    .select('podcast_id, podcast_name, host_name')
-    .eq('workspace_id', workspaceId).eq('contact_email', email).limit(50)
-  if (knownError) {
-    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-  }
-  const knownRows = (known ?? []) as Array<Record<string, unknown>>
-  const named = preferredName
-    ? knownRows.find((row) => (
-      typeof row.podcast_name === 'string'
-      && row.podcast_name.trim().toLowerCase() === preferredName.toLowerCase()
-    ))
-    : undefined
-  const knownMatch = named ?? (knownRows.length === 1 ? knownRows[0] : null)
-  if (knownMatch && typeof knownMatch.podcast_id === 'string') {
-    return {
-      podcastId: knownMatch.podcast_id,
-      podcastName: text(knownMatch.podcast_name, 500),
-      hostName: text(knownMatch.host_name, 300),
-    }
-  }
-
-  // 2. This workspace's own outreach. Targets carry the show the address was
-  //    pitched for, across every client, which is the strongest evidence the
-  //    workspace owns about who this person is.
-  const { data: targets, error: targetsError } = await admin.from('workspace_client_campaign_targets')
-    .select('podcast_id, podcast_name, host_name')
-    .eq('workspace_id', workspaceId).eq('normalized_contact_email', email).limit(200)
-  if (targetsError) {
-    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-  }
-  const fromTargets = onlyShow(((targets ?? []) as Array<Record<string, unknown>>).map((row) => (
-    typeof row.podcast_id === 'string' && row.podcast_id
-      ? {
-        podcastId: row.podcast_id,
-        podcastName: text(row.podcast_name, 500),
-        hostName: text(row.host_name, 300),
-      }
-      : null
-  )))
-  if (fromTargets) return fromTargets
-
-  // 3. The shared catalog. This reads identity only — the show's name and its
-  //    host — and only for an address the workspace demonstrably already
-  //    holds: one its own campaigns pitched, or one on a thread its inbox
-  //    read in. The address arrives in the request body, so without that
-  //    check any manager could type an arbitrary email and learn which show
-  //    and host the shared catalog files it under.
-  const linkedByCampaign = (targets ?? []).length > 0
-  if (!linkedByCampaign && !(await emailOnWorkspaceThread(admin, workspaceId, email, threadKey))) {
-    return null
-  }
-  const { data: contacts, error: contactsError } = await admin.from('podcast_direct_contacts')
-    .select('host_name, podcasts:podcast_id (podscan_id, podcast_name, host_name)')
-    .eq('normalized_email', email).limit(50)
-  if (contactsError) {
-    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-  }
-  return onlyShow(((contacts ?? []) as Array<Record<string, unknown>>).map((row) => {
-    const show = (Array.isArray(row.podcasts) ? row.podcasts[0] : row.podcasts) as
-      Record<string, unknown> | null | undefined
-    const podscanId = text(show?.podscan_id, 200)
-    if (!podscanId) return null
-    return {
-      podcastId: podscanId,
-      podcastName: text(show?.podcast_name, 500),
-      hostName: text(row.host_name, 300) ?? text(show?.host_name, 300),
-    }
-  }))
-}
-
-
-/**
- * Whether this workspace's inbox has a thread with this address: the thread
- * being captured, or any other thread the inbox has read in.
- */
-async function emailOnWorkspaceThread(
-  admin: SupabaseClient,
-  workspaceId: string,
-  email: string,
-  threadKey: string,
-): Promise<boolean> {
-  const { data: thread, error: threadError } = await admin.from('workspace_inbox_thread_state')
-    .select('lead_email')
-    .eq('workspace_id', workspaceId).eq('thread_key', threadKey).maybeSingle()
-  if (threadError) {
-    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-  }
-  if (typeof thread?.lead_email === 'string' && thread.lead_email.trim().toLowerCase() === email) return true
-  const { data: others, error: othersError } = await admin.from('workspace_inbox_thread_state')
-    .select('thread_key')
-    .eq('workspace_id', workspaceId).eq('lead_email', email).limit(1)
-  if (othersError) {
-    throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-  }
-  return (others ?? []).length > 0
-}
-
 /**
  * Tell Instantly to stop sending to this address, or to allow it again.
  *
@@ -301,8 +167,9 @@ serve(async (req) => {
         : 0
       // Paged: a book past one page used to lose the rest without a word, and
       // the header counted only what arrived. v2 added whole-book totals; v3
-      // adds the clients, latest message and reply thread each row shows.
-      const { data, error } = await admin.rpc('workspace_host_relationship_book_v3', {
+      // adds the clients, latest message and reply thread each row shows; v4
+      // drops rows marked not a host and carries each row's snooze.
+      const { data, error } = await admin.rpc('workspace_host_relationship_book_v4', {
         p_workspace_id: workspaceId,
         p_limit: limit,
         p_offset: offset,
@@ -319,6 +186,7 @@ serve(async (req) => {
         const { count } = await admin.from('workspace_host_relationships')
           .select('podcast_id', { count: 'exact', head: true })
           .eq('workspace_id', workspaceId)
+          .is('dismissed_at', null)
         total = typeof count === 'number' ? count : offset + pageRows.length
       }
       const counts = {
@@ -546,13 +414,13 @@ serve(async (req) => {
       let existing: Record<string, unknown> | null = null
       if (requestedPodcastId) {
         const { data, error } = await admin.from('workspace_host_relationships')
-          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at')
+          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at, dismissed_at')
           .eq('workspace_id', workspaceId).eq('podcast_id', requestedPodcastId).maybeSingle()
         if (error) throw new HttpError(500, 'RELATIONSHIP_CREATE_FAILED', 'The relationship could not be created')
         existing = data as Record<string, unknown> | null
       } else if (contactEmail) {
         const { data, error } = await admin.from('workspace_host_relationships')
-          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at')
+          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at, dismissed_at')
           .eq('workspace_id', workspaceId).eq('contact_email', contactEmail).limit(50)
         if (error) throw new HttpError(500, 'RELATIONSHIP_CREATE_FAILED', 'The relationship could not be created')
         existing = ((data ?? []) as Array<Record<string, unknown>>).find((row) => (
@@ -563,7 +431,7 @@ serve(async (req) => {
         )) ?? null
       } else {
         const { data, error } = await admin.from('workspace_host_relationships')
-          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at')
+          .select('podcast_id, podcast_name, host_name, contact_email, manual_stage, summary, updated_at, dismissed_at')
           .eq('workspace_id', workspaceId).eq('podcast_name', showName).limit(1).maybeSingle()
         if (error) throw new HttpError(500, 'RELATIONSHIP_CREATE_FAILED', 'The relationship could not be created')
         existing = data as Record<string, unknown> | null
@@ -580,6 +448,12 @@ serve(async (req) => {
         if (contactEmail) changes.contact_email = contactEmail
         if (stage) changes.manual_stage = stage
         if (summary) changes.summary = summary
+        // Adding a host by hand is a deliberate act, so it brings back a row
+        // someone had marked not a host.
+        if (existing.dismissed_at) {
+          changes.dismissed_at = null
+          changes.dismissed_by = null
+        }
         const { data, error } = await admin.from('workspace_host_relationships')
           .update(changes)
           .eq('workspace_id', workspaceId).eq('podcast_id', existingId)
@@ -632,157 +506,49 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 201, { relationship: data, created: true })
     }
 
+    // Relationships are added by hand only. Saving an inbox conversation
+    // created a row for whoever replied, which is how a homeowner answering a
+    // client's solar cold email ended up in the book as a podcast host. The
+    // inbox it served is retired, so the path is closed rather than filtered.
     if (action === 'thread-capture') {
-      requireOnlyKeys(body, [
-        'action', 'workspace_id', 'podcast_id', 'podcast_name', 'host_name',
-        'contact_email', 'thread_key', 'client_id', 'provider', 'message_id',
-        'subject', 'from_email', 'to_email', 'body_text', 'received_at',
-        'campaign_id', 'campaign_name',
-      ])
+      throw new HttpError(410, 'RELATIONSHIP_CAPTURE_RETIRED', 'Relationships are added by hand. Saving inbox conversations has been retired')
+    }
+
+    if (action === 'dismiss') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'podcast_id', 'dismissed'])
       requireManager()
-      const threadKey = requireString(body.thread_key, 'thread_key', { max: 120 })
-      const requestedPodcastId = body.podcast_id === undefined || body.podcast_id === null || body.podcast_id === ''
-        ? null
-        : podcastId(body.podcast_id)
-      const showName = optionalString(body.podcast_name, 'podcast_name', 500)
-      const hostName = optionalString(body.host_name, 'host_name', 300)
-      const contactEmail = optionalString(body.contact_email, 'contact_email', 320)?.toLowerCase() ?? null
-      const captureClientId = body.client_id === undefined || body.client_id === null
-        ? null
-        : requireUuid(body.client_id, 'client_id')
-      const provider = body.provider === undefined || body.provider === null
-        ? 'instantly'
-        : requireString(body.provider, 'provider', { max: 40 })
-      if (provider !== 'instantly') {
-        throw new HttpError(400, 'INVALID_FIELD', 'provider must be instantly')
+      const showId = podcastId(body.podcast_id)
+      if (typeof body.dismissed !== 'boolean') {
+        throw new HttpError(400, 'INVALID_FIELD', 'dismissed must be true or false')
       }
-      if (captureClientId) {
-        const { data: client, error: clientError } = await admin.from('clients')
-          .select('id').eq('workspace_id', workspaceId).eq('id', captureClientId).maybeSingle()
-        if (clientError) {
-          throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-        }
-        if (!client) throw new HttpError(404, 'CLIENT_NOT_FOUND', 'Workspace client not found')
-      }
-
-      const { data: savedThread, error: savedThreadError } = await admin
-        .from('workspace_host_relationship_threads')
-        .select('podcast_id')
-        .eq('workspace_id', workspaceId).eq('thread_key', threadKey).maybeSingle()
-      if (savedThreadError) {
-        throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-      }
-
-      let showId = requestedPodcastId
-        ?? (typeof savedThread?.podcast_id === 'string' ? savedThread.podcast_id : null)
-      const resolved = showId || !contactEmail
-        ? null
-        : await resolveShowByEmail(admin, workspaceId, contactEmail, showName, threadKey)
-      showId ??= resolved?.podcastId ?? newManualPodcastId()
-      // The caller's own name wins when it has one; the resolver supplies the
-      // identity for a reply that arrived with no campaign context at all.
-      const resolvedName = showName ?? resolved?.podcastName ?? null
-      const resolvedHost = hostName ?? resolved?.hostName ?? null
-
-      const { data: current, error: currentError } = await admin.from('workspace_host_relationships')
-        .select('podcast_id, podcast_name, host_name, contact_email')
-        .eq('workspace_id', workspaceId).eq('podcast_id', showId).maybeSingle()
-      if (currentError) {
-        throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-      }
-      let relationshipCreated = false
-      if (!current) {
-        // An unnamed row is honest and repairable; a placeholder name is
-        // neither. podcast_name is how the book reconciles a host across
-        // clients, so a stand-in like "Conversation with <address>" would
-        // fork this host into a second row as soon as the show is known.
-        // Null leaves the identity patch below free to fill it in later.
-        const { error: parentError } = await admin.from('workspace_host_relationships').insert({
-          workspace_id: workspaceId,
-          podcast_id: showId,
-          podcast_name: resolvedName,
-          host_name: resolvedHost,
-          contact_email: contactEmail,
-          created_by: authContext.user.id,
-        })
-        if (parentError) {
-          throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-        }
-        relationshipCreated = true
-      } else {
-        const identityPatch: Record<string, unknown> = { updated_at: new Date().toISOString() }
-        if (!current.podcast_name && resolvedName) identityPatch.podcast_name = resolvedName
-        if (!current.host_name && resolvedHost) identityPatch.host_name = resolvedHost
-        if (!current.contact_email && contactEmail) identityPatch.contact_email = contactEmail
-        const { error: parentError } = await admin.from('workspace_host_relationships')
-          .update(identityPatch).eq('workspace_id', workspaceId).eq('podcast_id', showId)
-        if (parentError) {
-          throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-        }
-      }
-
-      const snapshot = {
-        workspace_id: workspaceId,
-        podcast_id: showId,
-        thread_key: threadKey,
-        client_id: captureClientId,
-        provider,
-        latest_message_id: optionalString(body.message_id, 'message_id', 120),
-        subject: optionalString(body.subject, 'subject', 300),
-        lead_email: contactEmail,
-        from_email: optionalString(body.from_email, 'from_email', 320),
-        to_email: optionalString(body.to_email, 'to_email', 320),
-        latest_message_body: optionalString(body.body_text, 'body_text', 20_000),
-        latest_message_at: optionalTimestamp(body.received_at, 'received_at'),
-        campaign_id: optionalString(body.campaign_id, 'campaign_id', 120),
-        campaign_name: optionalString(body.campaign_name, 'campaign_name', 300),
-        captured_by: authContext.user.id,
-        updated_at: new Date().toISOString(),
-      }
-      const { error: snapshotError } = await admin.from('workspace_host_relationship_threads')
-        .upsert(snapshot, { onConflict: 'workspace_id,thread_key' })
-      if (snapshotError) {
-        throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation could not be saved')
-      }
-      if (captureClientId) {
-        const { error: stateError } = await admin.from('workspace_inbox_thread_state').upsert({
-          workspace_id: workspaceId,
-          thread_key: threadKey,
-          client_id: captureClientId,
-          podcast_id: showId,
-          ...(contactEmail ? { lead_email: contactEmail } : {}),
-          updated_by: authContext.user.id,
+      const dismissed = body.dismissed
+      // "Not a host" hides the row and keeps it: deleting it would forget the
+      // address, and the record could come back. Undo clears the mark.
+      const { data, error } = await admin.from('workspace_host_relationships')
+        .update({
+          dismissed_at: dismissed ? new Date().toISOString() : null,
+          dismissed_by: dismissed ? authContext.user.id : null,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'workspace_id,thread_key' })
-        if (stateError) {
-          throw new HttpError(500, 'RELATIONSHIP_THREAD_FAILED', 'The conversation link could not be saved')
-        }
+        })
+        .eq('workspace_id', workspaceId).eq('podcast_id', showId)
+        .select('podcast_id, dismissed_at')
+        .maybeSingle()
+      if (error) {
+        throw new HttpError(500, 'RELATIONSHIP_SAVE_FAILED', 'The relationship could not be updated')
       }
+      if (!data) throw new HttpError(404, 'RELATIONSHIP_NOT_FOUND', 'Relationship not found')
       await writeAudit(admin, {
         workspaceId,
         actorUserId: authContext.user.id,
-        action: 'workspace.host_relationship.thread_captured',
+        action: dismissed ? 'workspace.host_relationship.dismissed' : 'workspace.host_relationship.restored',
         entityType: 'podcast',
         entityId: null,
         metadata: {
           podcast_id: showId,
-          thread_key: threadKey,
-          client_id: captureClientId,
-          provider,
-          relationship_created: relationshipCreated,
-          show_resolved_from_email: Boolean(resolved),
+          reason: 'not_a_host',
         },
       })
-      return jsonResponse(req, METHODS, 200, {
-        podcast_id: showId,
-        relationship_created: relationshipCreated,
-        thread_saved: true,
-        // Lets the caller tell an operator the row still needs a show name
-        // instead of silently leaving an unidentified record in the book.
-        show_identified: Boolean(
-          (typeof current?.podcast_name === 'string' && current.podcast_name.trim()) || resolvedName,
-        ),
-      })
+      return jsonResponse(req, METHODS, 200, { relationship: data })
     }
 
     if (action === 'upsert') {

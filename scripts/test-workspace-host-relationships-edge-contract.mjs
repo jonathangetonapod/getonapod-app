@@ -55,7 +55,7 @@ assert.match(edge, /requireAuthenticatedUser\(req\)/u)
 assert.match(edge, /workspaceCredentialIsFresh\(authContext\)/u)
 assert.match(edge, /requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
 assert.match(edge, /const MANAGER_ROLES = new Set\(\['owner', 'admin', 'platform_admin'\]\)/u)
-assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v3/u)
+assert.match(edge, /if \(action === 'list'\)[\s\S]*?workspace_host_relationship_book_v4/u)
 // The book is paged with whole-book totals; it used to stop at 500 rows
 // without saying so, and the header counted only what arrived.
 const pagingMigration = readFileSync('supabase/migrations/20261011000800_client_cap_and_relationship_paging.sql', 'utf8')
@@ -94,7 +94,7 @@ assert.match(edge, /podcast_image_url: byId \?\? byName/u)
 assert.match(edge, /function imageUrl\([\s\S]*?\^https\?:\\\/\\\/[\s\S]*?\}/u)
 assert.match(edge, /if \(action === 'detail'\)[\s\S]*?workspace_podcast_relationships_v1/u)
 
-for (const action of ['create', 'thread-capture', 'upsert', 'note-add', 'client-link', 'client-unlink']) {
+for (const action of ['create', 'dismiss', 'upsert', 'note-add', 'client-link', 'client-unlink']) {
   assert.match(
     edge,
     new RegExp(`if \\(action === '${action}'\\)[\\s\\S]*?requireManager\\(\\)`, 'u'),
@@ -108,44 +108,39 @@ assert.match(edge, /if \(action === 'create'\)[\s\S]*?newManualPodcastId\(\)/u)
 assert.match(edge, /source: 'manual_duplicate'[\s\S]*?relationship: data, created: false/u)
 assert.match(edge, /action: 'workspace\.host_relationship\.created'/u)
 
-// Saving from Master Inbox snapshots the useful message content and links the
-// control-plane thread to the same show without duplicating provider threads.
-assert.match(edge, /if \(action === 'thread-capture'\)[\s\S]*?workspace_host_relationship_threads/u)
-assert.match(edge, /onConflict: 'workspace_id,thread_key'/u)
-assert.match(edge, /workspace_inbox_thread_state[\s\S]*?podcast_id: showId/u)
-assert.match(edge, /action: 'workspace\.host_relationship\.thread_captured'/u)
+// Relationships are added by hand only. Saving an inbox conversation put
+// whoever replied into the book (a homeowner answering a client's solar cold
+// email became a "host"), so the capture path is a 410 and writes nothing.
+assert.match(
+  edge,
+  /if \(action === 'thread-capture'\) \{\s*throw new HttpError\(410, 'RELATIONSHIP_CAPTURE_RETIRED'/u,
+)
+assert.doesNotMatch(edge, /async function resolveShowByEmail\(/u)
+assert.doesNotMatch(edge, /workspace\.host_relationship\.thread_captured/u)
+assert.doesNotMatch(service, /thread-capture/u)
+// The snapshot table stays: saved threads still feed the book's last message.
 assert.match(threadCaptureMigration, /CREATE TABLE public\.workspace_host_relationship_threads/u)
 assert.match(threadCaptureMigration, /PRIMARY KEY \(workspace_id, thread_key\)/u)
-assert.match(threadCaptureMigration, /latest_message_body TEXT/u)
-assert.match(threadCaptureMigration, /workspace_host_relationship_threads_workspace_client_fk/u)
 assert.match(threadCaptureMigration, /ALTER TABLE public\.workspace_host_relationship_threads FORCE ROW LEVEL SECURITY/u)
 
-// A reply that arrives without campaign context is resolved to its show by
-// the host's address — book, then this workspace's targets, then the shared
-// catalog — and an ambiguous address resolves to nothing rather than a guess.
-assert.match(edge, /async function resolveShowByEmail\(/u)
-assert.match(edge, /function onlyShow\([\s\S]*?byId\.size === 1 \? \[\.\.\.byId\.values\(\)\]\[0\] : null/u)
-assert.match(
-  edge,
-  /resolveShowByEmail\([\s\S]*?from\('workspace_host_relationships'\)[\s\S]*?\.eq\('contact_email', email\)[\s\S]*?from\('workspace_client_campaign_targets'\)[\s\S]*?\.eq\('normalized_contact_email', email\)[\s\S]*?from\('podcast_direct_contacts'\)[\s\S]*?\.eq\('normalized_email', email\)/u,
-  'email resolution must try the book, then workspace targets, then the shared catalog',
-)
-assert.match(edge, /const resolved = showId \|\| !contactEmail\s+\? null\s+: await resolveShowByEmail\(admin, workspaceId, contactEmail, showName, threadKey\)/u)
-// The shared catalog answers only for an address this workspace already holds
-// (a campaign pitched it, or its inbox read a thread from it); otherwise any
-// manager could type an email and learn its show and host.
-assert.match(
-  edge,
-  /const linkedByCampaign = \(targets \?\? \[\]\)\.length > 0\s*if \(!linkedByCampaign && !\(await emailOnWorkspaceThread\(admin, workspaceId, email, threadKey\)\)\) \{\s*return null\s*\}\s*const \{ data: contacts, error: contactsError \} = await admin\.from\('podcast_direct_contacts'\)/u,
-)
-assert.match(edge, /async function emailOnWorkspaceThread\([\s\S]*?from\('workspace_inbox_thread_state'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.eq\('thread_key', threadKey\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.eq\('lead_email', email\)/u)
-assert.match(edge, /showId \?\?= resolved\?\.podcastId \?\? newManualPodcastId\(\)/u)
-// An unresolved capture stays unnamed. A placeholder show name would become
-// this host's identity and fork the book once the real name appears.
-assert.match(edge, /podcast_name: resolvedName,\s+host_name: resolvedHost,/u)
-assert.doesNotMatch(edge, /podcast_name is required when the conversation is not mapped to a show/u)
-assert.match(edge, /show_identified: Boolean\(/u)
-assert.match(edge, /show_resolved_from_email: Boolean\(resolved\)/u)
+// "Not a host, remove" hides a row without deleting it, so the address stays
+// known and nothing adds it back; a deliberate manual add restores it.
+const dismissMigration = readFileSync('supabase/migrations/20261030000100_relationship_dismiss_and_snooze.sql', 'utf8')
+assert.match(dismissMigration, /ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ/u)
+assert.match(dismissMigration, /ADD COLUMN IF NOT EXISTS snoozed_until TIMESTAMPTZ/u)
+assert.match(dismissMigration, /CREATE OR REPLACE FUNCTION public\.workspace_host_relationship_book_v4\(/u)
+assert.match(dismissMigration, /known AS \([\s\S]*?AND dismissed_at IS NULL[\s\S]*?\)/u)
+assert.match(dismissMigration, /staged\.snoozed_until,/u)
+assert.match(dismissMigration, /REVOKE ALL ON FUNCTION public\.workspace_host_relationship_book_v4\(UUID, INTEGER, INTEGER\) FROM PUBLIC, anon, authenticated/u)
+assert.match(dismissMigration, /GRANT EXECUTE ON FUNCTION public\.workspace_host_relationship_book_v4\(UUID, INTEGER, INTEGER\) TO service_role/u)
+assert.doesNotMatch(dismissMigration, /DELETE FROM/u)
+assert.match(edge, /admin\.rpc\('workspace_host_relationship_book_v4'/u)
+assert.match(edge, /\.eq\('workspace_id', workspaceId\)\s*\.is\('dismissed_at', null\)/u)
+assert.match(edge, /if \(action === 'dismiss'\)[\s\S]*?typeof body\.dismissed !== 'boolean'[\s\S]*?\.update\(\{[\s\S]*?dismissed_at: dismissed \?/u)
+assert.match(edge, /'workspace\.host_relationship\.dismissed' : 'workspace\.host_relationship\.restored'/u)
+assert.match(edge, /if \(existing\.dismissed_at\) \{\s*changes\.dismissed_at = null/u)
+assert.match(service, /export async function dismissHostRelationship\(/u)
+
 // An unresolved show is titled by its host or address, never by a placeholder.
 assert.doesNotMatch(page, /not identified/iu)
 assert.doesNotMatch(relationshipRow, /not identified/iu)
@@ -180,7 +175,6 @@ assert.equal(
   7,
   'text podcast ids must be stored in audit metadata, never the UUID entity_id column',
 )
-assert.match(edge, /podcast_id: showId,\s+thread_key: threadKey/u)
 assert.match(auditRepairMigration, /'workspace\.host_relationship\.client_linked'[\s\S]*?'podcast_id', relationship_client\.podcast_id/u)
 assert.match(auditRepairMigration, /'workspace\.host_relationship\.thread_captured'[\s\S]*?'thread_key', relationship_thread\.thread_key/u)
 assert.equal(

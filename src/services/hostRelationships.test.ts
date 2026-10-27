@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase'
 import {
   addHostRelationshipNote,
   addOutreachSuppression,
-  captureHostRelationshipThread,
   createHostRelationship,
+  dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
   listHostRelationships,
@@ -155,16 +155,11 @@ describe('hostRelationships service', () => {
     })
   })
 
-  it('creates manual relationships and captures durable inbox thread snapshots', async () => {
-    invoke
-      .mockResolvedValueOnce({
-        data: { relationship: { podcast_id: 'manual-one' }, created: true },
-        error: null,
-      } as never)
-      .mockResolvedValueOnce({
-        data: { podcast_id: 'show-one', relationship_created: false, thread_saved: true },
-        error: null,
-      } as never)
+  it('creates manual relationships', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { relationship: { podcast_id: 'manual-one' }, created: true },
+      error: null,
+    } as never)
 
     await expect(createHostRelationship(workspaceId, {
       podcastName: 'The Operator Room',
@@ -173,24 +168,8 @@ describe('hostRelationships service', () => {
       manualStage: 'warm',
       summary: 'Met at an event.',
     })).resolves.toEqual({ podcast_id: 'manual-one', created: true })
-    await expect(captureHostRelationshipThread(workspaceId, {
-      podcastId: 'show-one',
-      podcastName: 'Founder & Operator',
-      hostName: 'Morgan Host',
-      contactEmail: 'morgan@example.com',
-      threadKey: 'thread-one',
-      clientId,
-      messageId: 'message-one',
-      subject: 'Re: operator systems',
-      fromEmail: 'morgan@example.com',
-      toEmail: 'sdr@example.com',
-      body: 'Let us talk in Q3.',
-      receivedAt: '2026-07-21T12:00:00.000Z',
-      campaignId: 'campaign-one',
-      campaignName: 'Taylor outreach',
-    })).resolves.toEqual({ podcast_id: 'show-one', relationship_created: false, thread_saved: true })
 
-    expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-host-relationships', {
+    expect(invoke).toHaveBeenCalledWith('workspace-host-relationships', {
       body: expect.objectContaining({
         action: 'create',
         workspace_id: canonicalWorkspaceId,
@@ -198,53 +177,24 @@ describe('hostRelationships service', () => {
         contact_email: 'alex@example.com',
       }),
     })
-    expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
-      body: expect.objectContaining({
-        action: 'thread-capture',
-        workspace_id: canonicalWorkspaceId,
-        podcast_id: 'show-one',
-        thread_key: 'thread-one',
-        body_text: 'Let us talk in Q3.',
-      }),
-    })
   })
 
-  it('captures a thread with no known show without inventing a name', async () => {
-    invoke.mockResolvedValueOnce({
-      data: {
-        podcast_id: 'manual-unknown',
-        relationship_created: true,
-        thread_saved: true,
-        show_identified: false,
-      },
-      error: null,
-    } as never)
+  it('marks a row not a host, and undoes it, with the narrow dismiss action', async () => {
+    invoke.mockResolvedValue({ data: { relationship: { podcast_id: 'manual-titan' } }, error: null } as never)
 
-    // A reply with no campaign context sends podcast_name null on purpose: the
-    // server resolves the show from the address, and an unnamed row is
-    // repairable in a way a placeholder name is not.
-    await expect(captureHostRelationshipThread(workspaceId, {
-      podcastName: null,
-      hostName: null,
-      contactEmail: 'unknown-host@example.com',
-      threadKey: 'thread-two',
-    })).resolves.toEqual({
-      podcast_id: 'manual-unknown',
-      relationship_created: true,
-      thread_saved: true,
-      show_identified: false,
-    })
+    await dismissHostRelationship(workspaceId, { podcastId: 'manual-titan', dismissed: true })
+    await dismissHostRelationship(workspaceId, { podcastId: 'manual-titan', dismissed: false })
 
-    expect(invoke).toHaveBeenCalledWith('workspace-host-relationships', {
-      body: expect.objectContaining({
-        action: 'thread-capture',
+    expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-host-relationships', {
+      body: {
+        action: 'dismiss',
         workspace_id: canonicalWorkspaceId,
-        podcast_id: null,
-        podcast_name: null,
-        host_name: null,
-        contact_email: 'unknown-host@example.com',
-        thread_key: 'thread-two',
-      }),
+        podcast_id: 'manual-titan',
+        dismissed: true,
+      },
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
+      body: expect.objectContaining({ action: 'dismiss', dismissed: false }),
     })
   })
 

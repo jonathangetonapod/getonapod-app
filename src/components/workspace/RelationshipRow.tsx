@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -134,6 +135,8 @@ interface RelationshipRowProps {
   /** A next step with nowhere to link to opens the panel at the right place. */
   onNextStep: (step: RelationshipNextStep) => void
   onRename: (name: string) => Promise<void>
+  /** "Not a host, remove": hides the row; the page offers an undo. */
+  onDismiss: () => void
   onMarkDoNotContact: () => void
 }
 
@@ -149,6 +152,7 @@ export const RelationshipRow = ({
   onToggle,
   onNextStep,
   onRename,
+  onDismiss,
   onMarkDoNotContact,
 }: RelationshipRowProps) => {
   const { title, showKnown } = relationshipTitle(row)
@@ -241,6 +245,8 @@ export const RelationshipRow = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onDismiss}>Not a host, remove</DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onMarkDoNotContact}>
                 Mark as do not contact
               </DropdownMenuItem>

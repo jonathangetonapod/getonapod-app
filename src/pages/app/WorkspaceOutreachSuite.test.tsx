@@ -17,7 +17,7 @@ import {
   setWorkspaceInboxLeadInterest,
   type WorkspaceMailboxesResponse,
 } from '@/services/workspaceCampaigns'
-import { addOutreachSuppression, captureHostRelationshipThread } from '@/services/hostRelationships'
+import { addOutreachSuppression } from '@/services/hostRelationships'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/adminWorkspaces', () => ({ getAdminWorkspaceView: vi.fn(), listPodcastResearchWorkspaces: vi.fn(async () => []) }))
@@ -29,7 +29,6 @@ vi.mock('@/services/clients', () => ({
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/hostRelationships', () => ({
   addOutreachSuppression: vi.fn().mockResolvedValue(undefined),
-  captureHostRelationshipThread: vi.fn(),
 }))
 vi.mock('@/services/workspaceCampaigns', () => ({
   connectWorkspaceInstantly: vi.fn(),
@@ -66,7 +65,6 @@ const mockedClients = vi.mocked(getWorkspaceClients)
 const mockedSdrContext = vi.mocked(getWorkspaceClientSdrContext)
 const mockedCampaignOverview = vi.mocked(getWorkspaceCampaignOverview)
 const mockedMailboxes = vi.mocked(getWorkspaceMailboxes)
-const mockedCaptureRelationshipThread = vi.mocked(captureHostRelationshipThread)
 const defaultWorkspaceId = '00000000-0000-4000-8000-000000000000'
 const selectedWorkspaceId = '11111111-1111-4111-8111-111111111111'
 
@@ -194,11 +192,6 @@ describe('WorkspaceOutreachSuite', () => {
       })),
       last_synced_at: '2026-07-24T12:00:00.000Z',
       analytics_errors: [],
-    })
-    mockedCaptureRelationshipThread.mockResolvedValue({
-      podcast_id: 'show-one',
-      relationship_created: false,
-      thread_saved: true,
     })
   })
 

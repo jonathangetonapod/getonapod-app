@@ -42,6 +42,8 @@ export interface HostRelationshipSummary {
   last_thread_key?: string | null
   last_thread_client_id?: string | null
   curated: boolean
+  /** Parked until this time: out of Needs attention and Follow-up overdue. Book v4+. */
+  snoozed_until?: string | null
 }
 
 export interface HostRelationshipEvent {
@@ -223,50 +225,21 @@ export async function createHostRelationship(
   return { podcast_id: data.relationship.podcast_id, created: data.created === true }
 }
 
-export async function captureHostRelationshipThread(
+/**
+ * "Not a host, remove": hides the row from the book without deleting it, so
+ * the address stays known and is never added back behind the operator.
+ * Passing false undoes it.
+ */
+export async function dismissHostRelationship(
   workspaceId: string,
-  input: {
-    podcastId?: string | null
-    podcastName?: string | null
-    hostName?: string | null
-    contactEmail?: string | null
-    threadKey: string
-    clientId?: string | null
-    provider?: 'instantly'
-    messageId?: string | null
-    subject?: string | null
-    fromEmail?: string | null
-    toEmail?: string | null
-    body?: string | null
-    receivedAt?: string | null
-    campaignId?: string | null
-    campaignName?: string | null
-  },
-): Promise<{
-  podcast_id: string
-  relationship_created: boolean
-  thread_saved: boolean
-  show_identified?: boolean
-}> {
-  return await invokeHostRelationships({
-    action: 'thread-capture',
+  input: { podcastId: string; dismissed: boolean },
+): Promise<void> {
+  await invokeHostRelationships({
+    action: 'dismiss',
     workspace_id: workspaceId.toLowerCase(),
-    podcast_id: input.podcastId ?? null,
-    podcast_name: input.podcastName ?? null,
-    host_name: input.hostName ?? null,
-    contact_email: input.contactEmail ?? null,
-    thread_key: input.threadKey,
-    client_id: input.clientId ?? null,
-    provider: input.provider ?? 'instantly',
-    message_id: input.messageId ?? null,
-    subject: input.subject ?? null,
-    from_email: input.fromEmail ?? null,
-    to_email: input.toEmail ?? null,
-    body_text: input.body ?? null,
-    received_at: input.receivedAt ?? null,
-    campaign_id: input.campaignId ?? null,
-    campaign_name: input.campaignName ?? null,
-  }, 'The conversation could not be saved to the relationship book.')
+    podcast_id: input.podcastId,
+    dismissed: input.dismissed,
+  }, input.dismissed ? 'The host could not be removed.' : 'The host could not be restored.')
 }
 
 export async function saveHostRelationship(

@@ -9,6 +9,7 @@ import { getWorkspaceClients } from '@/services/clients'
 import {
   addHostRelationshipNote,
   createHostRelationship,
+  dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
   listHostRelationships,
@@ -36,6 +37,7 @@ vi.mock('@/services/hostRelationships', () => {
   return {
     addHostRelationshipNote: vi.fn(),
     createHostRelationship: vi.fn(),
+    dismissHostRelationship: vi.fn(),
     getHostRelationship: vi.fn(),
     linkHostRelationshipClient: vi.fn(),
     listHostRelationships,
@@ -72,6 +74,7 @@ const mockedCreate = vi.mocked(createHostRelationship)
 const mockedLinkClient = vi.mocked(linkHostRelationshipClient)
 const mockedListPage = vi.mocked(listHostRelationshipsPage)
 const mockedUnlinkClient = vi.mocked(unlinkHostRelationshipClient)
+const mockedDismiss = vi.mocked(dismissHostRelationship)
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const platformWorkspaceId = '99999999-9999-4999-8999-999999999999'
@@ -495,6 +498,21 @@ describe('WorkspaceRelationships', () => {
     }))
   })
 
+  it('removes a row that is not a host without asking, and sends the narrow dismiss', async () => {
+    mockedDismiss.mockResolvedValue(undefined)
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Not a host, remove' }))
+
+    await waitFor(() => expect(mockedDismiss).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      dismissed: true,
+    }))
+    expect(mockedSave).not.toHaveBeenCalled()
+  })
+
   it('lets a manager add a relationship before outreach exists', async () => {
     renderPage()
     await screen.findByRole('heading', { name: 'Founder & Operator' })
@@ -502,7 +520,7 @@ describe('WorkspaceRelationships', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add relationship' }))
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(
-      "Add a host before outreach starts. Once we see their email in a thread, we'll link it to the show automatically.",
+      "Add a host you're working with, by show name, email, or both.",
     )).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Add relationship' })).toBeDisabled()
     expect(within(dialog).getByText('Add a show name or a host email to continue.')).toBeVisible()
@@ -547,7 +565,7 @@ describe('WorkspaceRelationships', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: 'No hosts yet' })).toBeInTheDocument()
-    expect(screen.getByText('Hosts show up here automatically once outreach starts. You can also add one by hand.')).toBeInTheDocument()
+    expect(screen.getByText("Add the hosts you're working with. Only hosts someone adds appear here.")).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add relationship' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Search relationships')).not.toBeInTheDocument()
   })

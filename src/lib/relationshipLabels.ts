@@ -90,7 +90,7 @@ export function manualStage(manual: HostRelationshipManualStage | null | undefin
  * replies, activity takes over; otherwise a hand-added host would sit at
  * Nurturing through a live conversation and never reach the quiet banner.
  *
- * Mirrored in SQL by workspace_host_relationship_book_v3 for whole-book counts.
+ * Mirrored in SQL by workspace_host_relationship_book_v4 for whole-book counts.
  */
 export function relationshipStage(
   relationship: Pick<HostRelationshipSummary, 'derived_state' | 'manual_stage'>,

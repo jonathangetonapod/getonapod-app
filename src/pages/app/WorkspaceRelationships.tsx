@@ -73,6 +73,7 @@ import { getWorkspaceClients } from '@/services/clients'
 import {
   addHostRelationshipNote,
   createHostRelationship,
+  dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
   listHostRelationshipsPage,
@@ -422,6 +423,26 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The show name could not be saved.'),
   })
+  const dismissMutation = useMutation({
+    mutationFn: ({ podcastId, dismissed }: { podcastId: string; dismissed: boolean; title: string }) => (
+      dismissHostRelationship(workspaceId, { podcastId, dismissed })
+    ),
+    onSuccess: (_result, input) => {
+      if (input.dismissed) {
+        if (openPodcastId === input.podcastId) setOpenPodcastId(null)
+        toast.success(`${input.title} removed. It won't be added back.`, {
+          action: {
+            label: 'Undo',
+            onClick: () => dismissMutation.mutate({ ...input, dismissed: false }),
+          },
+        })
+      } else {
+        toast.success(`${input.title} restored.`)
+      }
+      invalidate(input.podcastId)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The host could not be removed.'),
+  })
   const clientMutation = useMutation({
     mutationFn: (input: { podcastId: string; clientId: string; intent: HostRelationshipClientIntent }) => (
       linkHostRelationshipClient(workspaceId, input)
@@ -710,7 +731,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             <CardContent className="flex flex-col items-center p-10 text-center">
               <h2 className="text-base font-semibold">No hosts yet</h2>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                Hosts show up here automatically once outreach starts. You can also add one by hand.
+                Add the hosts you're working with. Only hosts someone adds appear here.
               </p>
               {canManage && (
                 <Button type="button" size="sm" className="mt-4" onClick={() => setAddOpen(true)}>
@@ -756,6 +777,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     onRename={async (podcastName) => {
                       await renameMutation.mutateAsync({ podcastId: row.podcast_id, podcastName })
                     }}
+                    onDismiss={() => dismissMutation.mutate({ podcastId: row.podcast_id, dismissed: true, title })}
                     onMarkDoNotContact={() => setConfirmDoNotContact({ podcastId: row.podcast_id, title })}
                   />
                 </div>
@@ -1220,7 +1242,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
               <DialogHeader>
                 <DialogTitle>Add a relationship</DialogTitle>
                 <DialogDescription>
-                  Add a host before outreach starts. Once we see their email in a thread, we'll link it to the show automatically.
+                  Add a host you're working with, by show name, email, or both.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
