@@ -319,6 +319,9 @@ describe('WorkspaceStaff', () => {
     const field = await screen.findByLabelText('Email clients reply to')
     await waitFor(() => expect(field).toHaveFocus())
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+    // The menu marks the section the link landed in.
+    const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
+    expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('aria-current', 'location')
   })
 
   it('warns while the reply-to email is empty and offers the owner address', async () => {

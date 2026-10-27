@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
@@ -32,6 +33,24 @@ const prefersReducedMotion = () => (
 export const SettingsSectionNav = ({ groups, activeId, onSelect }: SettingsSectionNavProps) => {
   const navigate = useNavigate()
   const location = useLocation()
+  const navRef = useRef<HTMLElement>(null)
+
+  /*
+   * On a phone the tabs scroll sideways, and the highlight moves as the page
+   * scrolls, so it could land on a tab out of sight. The row is scrolled on
+   * its own: scrollIntoView would also move the page, and cancel the smooth
+   * scroll a click had started.
+   */
+  useEffect(() => {
+    const nav = navRef.current
+    const tab = nav?.querySelector<HTMLElement>('[aria-current="location"]')
+    if (!nav || !tab || nav.scrollWidth <= nav.clientWidth) return
+    const navBox = nav.getBoundingClientRect()
+    const tabBox = tab.getBoundingClientRect()
+    const gutter = 16
+    if (tabBox.left < navBox.left + gutter) nav.scrollBy({ left: tabBox.left - navBox.left - gutter, behavior: 'smooth' })
+    else if (tabBox.right > navBox.right - gutter) nav.scrollBy({ left: tabBox.right - navBox.right + gutter, behavior: 'smooth' })
+  }, [activeId])
 
   const goTo = (id: string) => {
     const section = document.getElementById(id)
@@ -49,6 +68,7 @@ export const SettingsSectionNav = ({ groups, activeId, onSelect }: SettingsSecti
 
   return (
     <nav
+      ref={navRef}
       aria-label="Settings sections"
       className={cn(
         // Phone: a full-bleed tab row under the app header.

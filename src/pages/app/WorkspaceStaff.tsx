@@ -421,17 +421,6 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const location = useLocation()
   const scrolledNavigationRef = useRef('')
   const settingsLoaded = Boolean(data)
-  useEffect(() => {
-    const target = location.hash.slice(1)
-    if (!settingsLoaded || !target || scrolledNavigationRef.current === location.key) return
-    if ((location.state as typeof SECTION_NAV_STATE | null)?.settingsSectionNav) return
-    const element = document.getElementById(decodeURIComponent(target))
-    if (!element) return
-    scrolledNavigationRef.current = location.key
-    const isField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
-    element.scrollIntoView({ block: isField ? 'center' : 'start' })
-    if (isField) element.focus({ preventScroll: true })
-  }, [location.hash, location.key, location.state, settingsLoaded])
   const staff = useMemo(
     () => (data?.members || []).filter((member) => member.status !== 'revoked'),
     [data?.members],
@@ -841,6 +830,21 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     settingsGroups.flatMap((group) => group.sections.map((section) => section.id)),
     settingsLoaded,
   )
+  // After the menu's own hook, which it tells where a link landed.
+  useEffect(() => {
+    const target = location.hash.slice(1)
+    if (!settingsLoaded || !target || scrolledNavigationRef.current === location.key) return
+    if ((location.state as typeof SECTION_NAV_STATE | null)?.settingsSectionNav) return
+    const element = document.getElementById(decodeURIComponent(target))
+    if (!element) return
+    scrolledNavigationRef.current = location.key
+    const isField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+    element.scrollIntoView({ block: isField ? 'center' : 'start' })
+    if (isField) element.focus({ preventScroll: true })
+    // The menu marks where the link landed, field or section alike.
+    const section = element.closest('section[id]')
+    if (section) selectSection(section.id)
+  }, [location.hash, location.key, location.state, settingsLoaded, selectSection])
 
   const body = !validWorkspaceId
     ? <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>The workspace address is invalid.</CardDescription></CardHeader></Card>
