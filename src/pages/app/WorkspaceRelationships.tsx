@@ -20,6 +20,11 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { OutreachSuppressionsDialog } from '@/components/workspace/OutreachSuppressionsDialog'
+import {
+  EditShowDetailsDialog,
+  SnoozeUntilDialog,
+  type ShowDetails,
+} from '@/components/workspace/RelationshipEditDialogs'
 import { RelationshipRow } from '@/components/workspace/RelationshipRow'
 import {
   WorkspaceLayout,
@@ -49,6 +54,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -64,7 +70,13 @@ import {
   type RelationshipNextStep,
   type RelationshipStage,
 } from '@/lib/relationshipLabels'
-import { FOLLOW_UP_AFTER_DAYS, followUpOverdue, needsAttention } from '@/lib/relationshipAttention'
+import {
+  FOLLOW_UP_AFTER_DAYS,
+  followUpOverdue,
+  lastMessageSender,
+  needsAttention,
+  relativeTime,
+} from '@/lib/relationshipAttention'
 import { sortRelationships, type RelationshipSort } from '@/lib/relationshipSort'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
@@ -253,6 +265,8 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
   const [clientIntent, setClientIntent] = useState<HostRelationshipClientIntent>('considering')
   const [focusClientPicker, setFocusClientPicker] = useState(false)
   const [confirmDoNotContact, setConfirmDoNotContact] = useState<{ podcastId: string; title: string } | null>(null)
+  const [snoozeTarget, setSnoozeTarget] = useState<{ podcastId: string; title: string } | null>(null)
+  const [editTarget, setEditTarget] = useState<{ podcastId: string; details: ShowDetails } | null>(null)
   const [confirmUnlink, setConfirmUnlink] = useState<{ podcastId: string; clientId: string; name: string } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [suppressionsOpen, setSuppressionsOpen] = useState(false)
@@ -417,7 +431,9 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     onSuccess: (_result, input) => {
       toast.success(input.manualStage === 'do_not_contact'
         ? 'Marked as do not contact. New pitches to this host are blocked.'
-        : 'Stage updated.')
+        : input.manualStage === 'placed'
+          ? 'Marked placed.'
+          : input.manualStage === 'not_a_fit' ? 'Marked not a fit.' : 'Stage updated.')
       invalidate(input.podcastId)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The stage could not be saved.'),
@@ -429,6 +445,31 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       invalidate(input.podcastId)
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The show name could not be saved.'),
+  })
+  const snoozeMutation = useMutation({
+    mutationFn: (input: { podcastId: string; snoozedUntil: string | null }) => saveHostRelationship(workspaceId, input),
+    onSuccess: (_result, input) => {
+      setSnoozeTarget(null)
+      toast.success(input.snoozedUntil
+        ? `Snoozed until ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(input.snoozedUntil))}.`
+        : 'Snooze cleared.')
+      invalidate(input.podcastId)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The snooze could not be saved.'),
+  })
+  const detailsMutation = useMutation({
+    mutationFn: (input: { podcastId: string; details: ShowDetails }) => saveHostRelationship(workspaceId, {
+      podcastId: input.podcastId,
+      podcastName: input.details.podcastName.trim() || null,
+      hostName: input.details.hostName.trim() || null,
+      contactEmail: input.details.contactEmail.trim() || null,
+    }),
+    onSuccess: (_result, input) => {
+      setEditTarget(null)
+      toast.success('Show details saved.')
+      invalidate(input.podcastId)
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The show details could not be saved.'),
   })
   const dismissMutation = useMutation({
     mutationFn: ({ podcastId, dismissed }: { podcastId: string; dismissed: boolean; title: string }) => (
@@ -799,6 +840,20 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                     onRename={async (podcastName) => {
                       await renameMutation.mutateAsync({ podcastId: row.podcast_id, podcastName })
                     }}
+                    onSnooze={(days) => snoozeMutation.mutate({
+                      podcastId: row.podcast_id,
+                      snoozedUntil: days === null ? null : new Date(Date.now() + days * 86_400_000).toISOString(),
+                    })}
+                    onSnoozeUntil={() => setSnoozeTarget({ podcastId: row.podcast_id, title })}
+                    onSetStage={(stage) => stageMutation.mutate({ podcastId: row.podcast_id, manualStage: stage })}
+                    onEditDetails={() => setEditTarget({
+                      podcastId: row.podcast_id,
+                      details: {
+                        podcastName: decodeFeedText(row.podcast_name ?? ''),
+                        hostName: decodeFeedText(row.host_name ?? ''),
+                        contactEmail: row.contact_email ?? '',
+                      },
+                    })}
                     onDismiss={() => dismissMutation.mutate({ podcastId: row.podcast_id, dismissed: true, title })}
                     onMarkDoNotContact={() => setConfirmDoNotContact({ podcastId: row.podcast_id, title })}
                   />
@@ -807,9 +862,12 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                 {open && (
                   <CardContent className="space-y-5 border-t pt-4">
                     {detailQuery.isLoading && (
-                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />Loading history…
-                      </p>
+                      <div className="space-y-4" role="status" aria-label="Loading history">
+                        <Skeleton className="h-9 w-72 max-w-full" />
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-4 w-2/3" />
+                        <Skeleton className="h-4 w-1/2" />
+                      </div>
                     )}
                     {detailQuery.error && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
@@ -835,6 +893,25 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                         </div>
 
                         <TabsContent value="overview" className="mt-5 space-y-6">
+                        <section className="rounded-xl border bg-muted/10 p-4" aria-labelledby={`last-message-${row.podcast_id}`}>
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 id={`last-message-${row.podcast_id}`} className="text-sm font-medium">Last message</h3>
+                            {row.last_message_body && (
+                              <p className="text-xs text-muted-foreground">
+                                {[lastMessageSender(row), relativeTime(row.last_message_at ?? row.last_contacted_at)].filter(Boolean).join(' · ')}
+                              </p>
+                            )}
+                          </div>
+                          {row.last_message_body
+                            ? <p className="mt-2 line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-foreground/80">{row.last_message_body}</p>
+                            : <p className="mt-2 text-sm text-muted-foreground">No message saved for this host yet.</p>}
+                          {detail.threads.length > 0 && (
+                            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setActiveView('threads')}>
+                              View conversation
+                            </Button>
+                          )}
+                        </section>
+
                         <section className="space-y-2">
                           <div className="flex items-center justify-between gap-3">
                             <Label htmlFor="relationship-summary">What we know about this host</Label>
@@ -1199,6 +1276,23 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             </Button>
           </div>
         )}
+
+        <SnoozeUntilDialog
+          title={snoozeTarget?.title ?? null}
+          saving={snoozeMutation.isPending}
+          onOpenChange={(open) => { if (!open) setSnoozeTarget(null) }}
+          onSave={(wakeAt) => {
+            if (snoozeTarget) snoozeMutation.mutate({ podcastId: snoozeTarget.podcastId, snoozedUntil: wakeAt.toISOString() })
+          }}
+        />
+        <EditShowDetailsDialog
+          initial={editTarget?.details ?? null}
+          saving={detailsMutation.isPending}
+          onOpenChange={(open) => { if (!open) setEditTarget(null) }}
+          onSave={(details) => {
+            if (editTarget) detailsMutation.mutate({ podcastId: editTarget.podcastId, details })
+          }}
+        />
 
         <OutreachSuppressionsDialog
           workspaceId={workspaceId}

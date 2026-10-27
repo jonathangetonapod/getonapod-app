@@ -125,6 +125,30 @@ describe('hostRelationships service', () => {
     })
   })
 
+  it('snoozes and wakes a row through the same patch, touching nothing else', async () => {
+    invoke.mockResolvedValue({ data: { relationship: { podcast_id: 'show-one' } }, error: null } as never)
+
+    await saveHostRelationship(workspaceId, { podcastId: 'show-one', snoozedUntil: '2026-08-08T12:00:00.000Z' })
+    await saveHostRelationship(workspaceId, { podcastId: 'show-one', snoozedUntil: null })
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-host-relationships', {
+      body: {
+        action: 'upsert',
+        workspace_id: canonicalWorkspaceId,
+        podcast_id: 'show-one',
+        snoozed_until: '2026-08-08T12:00:00.000Z',
+      },
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
+      body: {
+        action: 'upsert',
+        workspace_id: canonicalWorkspaceId,
+        podcast_id: 'show-one',
+        snoozed_until: null,
+      },
+    })
+  })
+
   it('uses narrow actions for interactions and client associations', async () => {
     invoke.mockResolvedValue({ data: {}, error: null } as never)
 

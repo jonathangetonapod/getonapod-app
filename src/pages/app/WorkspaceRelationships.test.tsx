@@ -502,7 +502,7 @@ describe('WorkspaceRelationships', () => {
     expect(screen.queryByRole('button', { name: 'Do not contact' })).not.toBeInTheDocument()
 
     fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mark as do not contact' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mark as do not contact…' }))
     expect(await screen.findByText('Block new pitches to this host?')).toBeInTheDocument()
     expect(mockedSave).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Block pitches' }))
@@ -526,6 +526,92 @@ describe('WorkspaceRelationships', () => {
       dismissed: true,
     }))
     expect(mockedSave).not.toHaveBeenCalled()
+  })
+
+  it('snoozes a row for a week, and marks one placed, from the row menu', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+    const before = Date.now()
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent)
+    // Do not contact stays last.
+    expect(items.at(-1)).toBe('Mark as do not contact…')
+    expect(items).toEqual(expect.arrayContaining([
+      'Snooze 3 days', 'Snooze 1 week', 'Snooze 2 weeks', 'Snooze until…',
+      'Mark placed', 'Not a fit', 'Edit show details…', 'Not a host, remove',
+    ]))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze 1 week' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
+    const [, input] = mockedSave.mock.calls[0] as [string, { podcastId: string; snoozedUntil: string }]
+    expect(input.podcastId).toBe('show-one')
+    const days = (new Date(input.snoozedUntil).getTime() - before) / 86_400_000
+    expect(days).toBeGreaterThanOrEqual(6.99)
+    expect(days).toBeLessThan(7.01)
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mark placed' }))
+    await waitFor(() => expect(mockedSave).toHaveBeenLastCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      manualStage: 'placed',
+    }))
+  })
+
+  it('shows a snoozed row as snoozed and keeps it out of Needs attention', async () => {
+    mockedList.mockResolvedValue([{ ...relationship, snoozed_until: daysAgo(-5) }])
+    renderPage()
+
+    expect(await screen.findByText(/^Snoozed until /)).toBeInTheDocument()
+    expect(screen.queryByText('Your move')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Needs attention 0' })).toBeInTheDocument()
+  })
+
+  it('edits show details in a dialog', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: 'Founder & Operator' })
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit show details…' }))
+    const show = await screen.findByLabelText('Show name')
+    expect(show).toHaveValue('Founder & Operator')
+    fireEvent.change(show, { target: { value: 'Founder and Operator' } })
+    fireEvent.change(screen.getByLabelText('Host name'), { target: { value: 'Morgan Q. Host' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'show-one',
+      podcastName: 'Founder and Operator',
+      hostName: 'Morgan Q. Host',
+      contactEmail: 'morgan@example.com',
+    }))
+  })
+
+  it('leads the overview with the last message, then notes, stage, clients and activity', async () => {
+    renderPage()
+    await openDetails('Founder & Operator')
+
+    const panel = await screen.findByRole('tabpanel')
+    const order = [
+      within(panel).getByRole('heading', { name: 'Last message' }),
+      within(panel).getByText('What we know about this host'),
+      within(panel).getByText('Stage'),
+      within(panel).getByText(/^Clients on this host/),
+      within(panel).getByRole('heading', { name: 'Recent activity' }),
+    ]
+    for (let index = 1; index < order.length; index += 1) {
+      expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    fireEvent.click(within(panel).getByRole('button', { name: 'View conversation' }))
+    expect(await screen.findByText('Saved inbox threads')).toBeInTheDocument()
+  })
+
+  it('shows skeleton rows while the history loads', async () => {
+    mockedDetail.mockReturnValue(new Promise(() => {}))
+    renderPage()
+    await openDetails('Founder & Operator')
+    expect(screen.getByRole('status', { name: 'Loading history' })).toBeInTheDocument()
+    expect(screen.queryByText('Loading history…')).not.toBeInTheDocument()
   })
 
   it('lets a manager add a relationship before outreach exists', async () => {

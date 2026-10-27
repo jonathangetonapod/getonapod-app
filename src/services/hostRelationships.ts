@@ -251,6 +251,8 @@ export async function saveHostRelationship(
     contactEmail?: string | null
     manualStage?: HostRelationshipManualStage | null
     summary?: string | null
+    /** ISO time the row wakes; null clears a snooze. */
+    snoozedUntil?: string | null
   },
 ): Promise<void> {
   const body: Record<string, unknown> = {
@@ -267,6 +269,7 @@ export async function saveHostRelationship(
   if (input.contactEmail !== undefined) body.contact_email = input.contactEmail
   if (input.manualStage !== undefined) body.manual_stage = input.manualStage
   if (input.summary !== undefined) body.summary = input.summary
+  if (input.snoozedUntil !== undefined) body.snoozed_until = input.snoozedUntil
 
   await invokeHostRelationships(body, 'The relationship could not be saved.')
 }

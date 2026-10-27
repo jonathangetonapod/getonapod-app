@@ -1,15 +1,9 @@
 import { useState, type MouseEvent } from 'react'
-import { AlarmClock, BellOff, ChevronDown, ChevronUp, Hourglass, Loader2, MoreHorizontal, Reply } from 'lucide-react'
+import { AlarmClock, BellOff, ChevronDown, ChevronUp, Hourglass, Loader2, Reply } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { RelationshipRowMenu } from '@/components/workspace/RelationshipRowMenu'
 import {
   followUpOverdue,
   isSnoozed,
@@ -154,6 +148,11 @@ interface RelationshipRowProps {
   /** A next step with nowhere to link to opens the panel at the right place. */
   onNextStep: (step: RelationshipNextStep) => void
   onRename: (name: string) => Promise<void>
+  /** Days to snooze, or null to wake the row. */
+  onSnooze: (days: number | null) => void
+  onSnoozeUntil: () => void
+  onSetStage: (stage: 'placed' | 'not_a_fit') => void
+  onEditDetails: () => void
   /** "Not a host, remove": hides the row; the page offers an undo. */
   onDismiss: () => void
   onMarkDoNotContact: () => void
@@ -171,6 +170,10 @@ export const RelationshipRow = ({
   onToggle,
   onNextStep,
   onRename,
+  onSnooze,
+  onSnoozeUntil,
+  onSetStage,
+  onEditDetails,
   onDismiss,
   onMarkDoNotContact,
 }: RelationshipRowProps) => {
@@ -180,7 +183,8 @@ export const RelationshipRow = ({
   const move = relationshipMove(row)
   // One indicator, most pressing first: a snooze silences the rest, and an
   // overdue follow-up outranks "Their move", which it would otherwise read as.
-  const indicator: Indicator | null = isSnoozed(row, now)
+  const snoozed = isSnoozed(row, now)
+  const indicator: Indicator | null = snoozed
     ? 'snoozed'
     : followUpOverdue(row, now) ? 'overdue' : move
   const nextStep = relationshipNextStep(stage, Boolean(row.last_message_body || row.last_thread_key))
@@ -204,7 +208,18 @@ export const RelationshipRow = ({
       <div className="min-w-0 flex-1 basis-48">
         {/* The status drops below a long title rather than truncating it. */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-          <h3 className="min-w-0 max-w-full truncate text-sm font-semibold leading-6">{title}</h3>
+          <h3 className="min-w-0 max-w-full truncate text-sm font-semibold leading-6">
+            {/* The title is the keyboard route into the row: Tab to it,
+                Enter opens the panel. */}
+            <button
+              type="button"
+              className="max-w-full truncate rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-expanded={open}
+              onClick={onToggle}
+            >
+              {title}
+            </button>
+          </h3>
           <div className="flex flex-wrap items-center gap-2">
             {indicator === 'snoozed' && (
               <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
@@ -259,15 +274,29 @@ export const RelationshipRow = ({
         )}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        {/* At phone width a manager's main action moves into the menu. */}
         {nextStep === 'open'
           ? (
-            <Button type="button" size="sm" variant={open ? 'secondary' : 'outline'} aria-expanded={open} onClick={onToggle}>
+            <Button
+              type="button"
+              size="sm"
+              variant={open ? 'secondary' : 'outline'}
+              aria-expanded={open}
+              className={canManage ? 'hidden sm:inline-flex' : undefined}
+              onClick={onToggle}
+            >
               {open ? 'Close' : 'Open'}
             </Button>
           )
           : (
             <>
-              <Button type="button" size="sm" variant="outline" onClick={() => onNextStep(nextStep)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={canManage ? 'hidden sm:inline-flex' : undefined}
+                onClick={() => onNextStep(nextStep)}
+              >
                 {NEXT_STEP_LABEL[nextStep]}
               </Button>
               <Button
@@ -283,22 +312,21 @@ export const RelationshipRow = ({
               </Button>
             </>
           )}
-        {canManage && stage !== 'do_not_contact' && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" size="icon" variant="ghost" className="h-8 w-8" aria-label={`More actions for ${title}`}>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onDismiss}>Not a host, remove</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onMarkDoNotContact}>
-                Mark as do not contact
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <RelationshipRowMenu
+          title={title}
+          stage={stage}
+          snoozed={snoozed}
+          canManage={canManage}
+          primaryAction={nextStep === 'open' || !canManage
+            ? null
+            : { label: NEXT_STEP_LABEL[nextStep], onSelect: () => onNextStep(nextStep) }}
+          onSnooze={onSnooze}
+          onSnoozeUntil={onSnoozeUntil}
+          onSetStage={onSetStage}
+          onEditDetails={onEditDetails}
+          onDismiss={onDismiss}
+          onMarkDoNotContact={onMarkDoNotContact}
+        />
       </div>
     </div>
   )

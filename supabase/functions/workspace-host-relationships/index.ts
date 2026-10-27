@@ -554,7 +554,7 @@ serve(async (req) => {
     if (action === 'upsert') {
       requireOnlyKeys(body, [
         'action', 'workspace_id', 'podcast_id', 'podcast_name',
-        'host_name', 'contact_email', 'manual_stage', 'summary',
+        'host_name', 'contact_email', 'manual_stage', 'summary', 'snoozed_until',
       ])
       requireManager()
       const showId = podcastId(body.podcast_id)
@@ -577,6 +577,8 @@ serve(async (req) => {
       }
       if (has('manual_stage')) changes.manual_stage = manualStage
       if (has('summary')) changes.summary = optionalString(body.summary, 'summary', 5_000)
+      // A snooze only parks the row on this page; null wakes it.
+      if (has('snoozed_until')) changes.snoozed_until = optionalTimestamp(body.snoozed_until, 'snoozed_until')
       // Existing rows use UPDATE so omitted properties are unambiguously
       // preserved. INSERT is reserved for a new relationship and stamps its
       // creator once; later edits never rewrite authorship.

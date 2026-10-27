@@ -140,6 +140,10 @@ assert.match(edge, /if \(action === 'dismiss'\)[\s\S]*?typeof body\.dismissed !=
 assert.match(edge, /'workspace\.host_relationship\.dismissed' : 'workspace\.host_relationship\.restored'/u)
 assert.match(edge, /if \(existing\.dismissed_at\) \{\s*changes\.dismissed_at = null/u)
 assert.match(service, /export async function dismissHostRelationship\(/u)
+// Snooze rides the field-preserving upsert patch; null wakes the row.
+assert.match(edge, /'manual_stage', 'summary', 'snoozed_until',\s*\]\)/u)
+assert.match(edge, /if \(has\('snoozed_until'\)\) changes\.snoozed_until = optionalTimestamp\(body\.snoozed_until, 'snoozed_until'\)/u)
+assert.match(service, /if \(input\.snoozedUntil !== undefined\) body\.snoozed_until = input\.snoozedUntil/u)
 
 // An unresolved show is titled by its host or address, never by a placeholder.
 assert.doesNotMatch(page, /not identified/iu)
