@@ -30,10 +30,19 @@ async function bootstrap(): Promise<void> {
 
   if (!suppressTelemetry) initSentry();
 
-  const [{ default: App }, { default: ErrorBoundary }] = await Promise.all([
+  const [{ default: App }, { default: ErrorBoundary }, { supabase }, { clearMailboxCaches }] = await Promise.all([
     import("./App.tsx"),
     import("./components/ErrorBoundary"),
+    import("./lib/supabase"),
+    import("./lib/mailboxCache"),
   ]);
+
+  // The mailboxes page keeps its last list in localStorage. A browser with no
+  // signed-in user keeps none: on sign-out (here or in another tab, and when a
+  // session expires) and on a load that starts signed out.
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT" || (event === "INITIAL_SESSION" && !session)) clearMailboxCaches();
+  });
 
   createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>

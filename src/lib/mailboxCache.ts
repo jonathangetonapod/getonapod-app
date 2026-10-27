@@ -7,6 +7,8 @@ import type { WorkspaceMailboxesResponse } from '@/services/workspaceCampaigns'
  * a minutes-old list is shown for what it is rather than as a blank table.
  *
  * Storage can be missing, full or blocked; every miss just means a cold load.
+ * Every stored list is removed when the browser has no signed-in user (see
+ * main.tsx), so the next person at a shared computer does not inherit it.
  */
 const PREFIX = 'goap:mailboxes:v1:'
 const MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -50,5 +52,20 @@ export function writeMailboxCache(key: string, data: WorkspaceMailboxesResponse,
     window.localStorage.setItem(key, JSON.stringify({ savedAt: now, data } satisfies CachedMailboxes))
   } catch {
     // Quota or privacy mode: the next visit loads cold, which is today's behaviour.
+  }
+}
+
+/** Remove every stored mailbox list, whoever's it was. */
+export function clearMailboxCaches(): void {
+  try {
+    const storage = window.localStorage
+    const keys: string[] = []
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index)
+      if (key?.startsWith(PREFIX)) keys.push(key)
+    }
+    for (const key of keys) storage.removeItem(key)
+  } catch {
+    // Storage that cannot be read holds nothing to remove.
   }
 }

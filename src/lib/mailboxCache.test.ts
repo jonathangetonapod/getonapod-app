@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { mailboxCacheKey, readMailboxCache, writeMailboxCache } from '@/lib/mailboxCache'
+import { clearMailboxCaches, mailboxCacheKey, readMailboxCache, writeMailboxCache } from '@/lib/mailboxCache'
 import type { WorkspaceMailboxesResponse } from '@/services/workspaceCampaigns'
 
 const key = mailboxCacheKey('user-1', 'workspace-1')
@@ -43,5 +43,15 @@ describe('mailboxCache', () => {
   it('treats unreadable storage as a cold load', () => {
     window.localStorage.setItem(key, '{not json')
     expect(readMailboxCache(key, now)).toBeNull()
+  })
+
+  it('clears every stored list, whoever it belonged to, and nothing else', () => {
+    writeMailboxCache(key, response(), now)
+    writeMailboxCache(mailboxCacheKey('user-2', 'workspace-9'), response(), now)
+    window.localStorage.setItem('unrelated', 'kept')
+    clearMailboxCaches()
+    expect(readMailboxCache(key, now)).toBeNull()
+    expect(readMailboxCache(mailboxCacheKey('user-2', 'workspace-9'), now)).toBeNull()
+    expect(window.localStorage.getItem('unrelated')).toBe('kept')
   })
 })
