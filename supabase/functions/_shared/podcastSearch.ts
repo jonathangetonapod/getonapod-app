@@ -7,12 +7,17 @@ export interface PodcastSearchEmbedding {
   usedByoKey: boolean
 }
 
+/** Semantic search is switched on for the platform (PODCAST_SEMANTIC_SEARCH_ENABLED). */
+export function isSemanticSearchEnabled(): boolean {
+  return Deno.env.get('PODCAST_SEMANTIC_SEARCH_ENABLED')?.trim().toLowerCase() === 'true'
+}
+
 export async function generatePodcastSearchEmbedding(
   search: string | null,
   apiKeyOverride?: { apiKey: string; source: 'workspace' | 'platform' } | null,
 ): Promise<PodcastSearchEmbedding | null> {
   if (!search || search.length < 3) return null
-  if (Deno.env.get('PODCAST_SEMANTIC_SEARCH_ENABLED')?.trim().toLowerCase() !== 'true') return null
+  if (!isSemanticSearchEnabled()) return null
   const apiKey = apiKeyOverride?.apiKey ?? Deno.env.get('OPENAI_API_KEY')?.trim()
   if (!apiKey) return null
 

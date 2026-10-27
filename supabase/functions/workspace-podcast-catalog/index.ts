@@ -12,7 +12,13 @@ import {
   requireUuid,
   requireWorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
-import { generatePodcastSearchEmbedding } from '../_shared/podcastSearch.ts'
+import {
+  generatePodcastSearchEmbedding,
+  isSemanticSearchEnabled,
+  normalizedSearchText,
+  rememberedSearchEmbedding,
+  rememberSearchEmbedding,
+} from '../_shared/podcastSearch.ts'
 import { logOperationCost } from '../_shared/billing.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { reservePublicRate } from '../_shared/publicRateLimit.ts'
@@ -113,43 +119,60 @@ serve(async (req) => {
     const pageSize = optionalInteger(body.page_size, 'page_size', 24, 12, 48)
 
     const context = await requireAuthenticatedUser(req)
-    const access = await requireWorkspaceFeatureAccess(context, workspaceId)
-    const openaiKey = await resolveAiKey(context.admin, workspaceId, 'openai')
-    let embeddingAllowed = true
-    if (search && search.length >= 3 && openaiKey && openaiKey.source !== 'workspace') {
-      try {
-        embeddingAllowed = await reservePublicRate(context.admin, [
-          {
-            bucket: `catalog-embed:${workspaceId}`,
-            limit: CATALOG_EMBEDDING_LIMITS.perWorkspace.limit,
-            windowSeconds: CATALOG_EMBEDDING_LIMITS.perWorkspace.windowSeconds,
-          },
-          {
-            bucket: `catalog-embed-user:${context.user.id}`,
-            limit: CATALOG_EMBEDDING_LIMITS.perUser.limit,
-            windowSeconds: CATALOG_EMBEDDING_LIMITS.perUser.windowSeconds,
-          },
+    // Browsing needs no embedding, so the AI key and the remembered embeddings
+    // are only read for a search. Those reads and the workspace check do not
+    // depend on each other and run together; nothing is spent with OpenAI
+    // until the workspace check has passed.
+    const wantsEmbedding = Boolean(search && search.length >= 3 && isSemanticSearchEnabled())
+    const [access, rememberedEmbedding, openaiKey] = await Promise.all([
+      requireWorkspaceFeatureAccess(context, workspaceId),
+      wantsEmbedding ? rememberedSearchEmbedding(context.admin, search as string) : Promise.resolve(null),
+      wantsEmbedding ? resolveAiKey(context.admin, workspaceId, 'openai') : Promise.resolve(null),
+    ])
+    // A search seen before reuses its embedding: no OpenAI call, no cost, no
+    // rate-limit slot.
+    let queryEmbedding: number[] | null = rememberedEmbedding
+    if (wantsEmbedding && !queryEmbedding) {
+      let embeddingAllowed = true
+      if (openaiKey && openaiKey.source !== 'workspace') {
+        try {
+          embeddingAllowed = await reservePublicRate(context.admin, [
+            {
+              bucket: `catalog-embed:${workspaceId}`,
+              limit: CATALOG_EMBEDDING_LIMITS.perWorkspace.limit,
+              windowSeconds: CATALOG_EMBEDDING_LIMITS.perWorkspace.windowSeconds,
+            },
+            {
+              bucket: `catalog-embed-user:${context.user.id}`,
+              limit: CATALOG_EMBEDDING_LIMITS.perUser.limit,
+              windowSeconds: CATALOG_EMBEDDING_LIMITS.perUser.windowSeconds,
+            },
+          ])
+        } catch {
+          // Keyword search still answers, so a broken limiter costs relevance,
+          // never platform spend.
+          console.error('[Podcast Catalog] Embedding rate limit unavailable; using keyword search')
+          embeddingAllowed = false
+        }
+      }
+      // Embedded as normalised text, the same text it is remembered under.
+      const searchEmbedding = embeddingAllowed
+        ? await generatePodcastSearchEmbedding(normalizedSearchText(search as string), openaiKey)
+        : null
+      if (searchEmbedding) {
+        queryEmbedding = searchEmbedding.embedding
+        await Promise.all([
+          logOperationCost(context.admin, {
+            workspaceId,
+            operationType: 'semantic_search',
+            usage: { openaiTokens: searchEmbedding.tokens },
+            usedByoKey: searchEmbedding.usedByoKey,
+            referenceKind: 'catalog_list',
+          }),
+          rememberSearchEmbedding(context.admin, search as string, searchEmbedding.embedding),
         ])
-      } catch {
-        // Keyword search still answers, so a broken limiter costs relevance,
-        // never platform spend.
-        console.error('[Podcast Catalog] Embedding rate limit unavailable; using keyword search')
-        embeddingAllowed = false
       }
     }
-    const searchEmbedding = embeddingAllowed
-      ? await generatePodcastSearchEmbedding(search, openaiKey)
-      : null
-    if (searchEmbedding) {
-      await logOperationCost(context.admin, {
-        workspaceId,
-        operationType: 'semantic_search',
-        usage: { openaiTokens: searchEmbedding.tokens },
-        usedByoKey: searchEmbedding.usedByoKey,
-        referenceKind: 'catalog_list',
-      })
-    }
-    const queryEmbedding = searchEmbedding?.embedding ?? null
     const { data, error } = await context.admin.rpc('workspace_podcast_catalog_page_v3', {
       p_search: search,
       p_category: category,
