@@ -9,6 +9,7 @@ const filterMigration = readFileSync('supabase/migrations/20260725000700_workspa
 const v3Migration = readFileSync('supabase/migrations/20261029000100_workspace_podcast_catalog_v3.sql', 'utf8')
 const scaleMigration = readFileSync('supabase/migrations/20261029000300_podcast_catalog_scale.sql', 'utf8')
 const categoryGroupsMigration = readFileSync('supabase/migrations/20261029000700_podcast_catalog_category_groups.sql', 'utf8')
+const guestsMigration = readFileSync('supabase/migrations/20261029000900_podcast_catalog_guests_filter.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/workspacePodcastCatalog.ts', 'utf8')
 const clientEditor = readFileSync('src/components/workspace/ClientShortlistEditor.tsx', 'utf8')
@@ -131,6 +132,13 @@ assert.match(categoryGroupsMigration, /string_to_array\(normalized_category, '\|
 assert.match(categoryGroupsMigration, /category_filter IS NULL OR category_keys && category_filter/u)
 assert.match(categoryGroupsMigration, /SET plan_cache_mode = force_custom_plan/u)
 assert.match(categoryGroupsMigration, /podcast_catalog_page_cache/u)
+// "Takes guests": a trailing p_guests (default 'all') in the cache key, and the
+// old signature dropped so PostgREST never sees two overloads.
+assert.match(guestsMigration, /DROP FUNCTION IF EXISTS public\.workspace_podcast_catalog_page_v3\(\s+TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, vector, TEXT, INTEGER, INTEGER\s+\);/u)
+assert.match(guestsMigration, /p_guests TEXT DEFAULT 'all'\n\)/u)
+assert.match(guestsMigration, /normalized_guests NOT IN \('all', 'yes', 'no'\)/u)
+assert.match(guestsMigration, /normalized_page_size,\s+normalized_guests\s+\)\);/u)
+assert.match(guestsMigration, /GRANT EXECUTE ON FUNCTION public\.workspace_podcast_catalog_page_v3\([\s\S]+INTEGER, INTEGER, TEXT\s+\) TO service_role;/u)
 assert.match(searchHelper, /model: EMBEDDING_MODEL/u)
 assert.match(searchHelper, /dimensions: EMBEDDING_DIMENSIONS/u)
 assert.match(shortlistEdge, /rpc\('workspace_podcast_catalog_page_v2'/u)
