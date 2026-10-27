@@ -7,6 +7,7 @@ const migration = readFileSync('supabase/migrations/20261030000300_podcast_email
 const config = readFileSync('supabase/config.toml', 'utf8')
 const fastDue = readFileSync('supabase/migrations/20261030000400_podcast_email_verify_due_fast.sql', 'utf8')
 const sendsDue = readFileSync('supabase/migrations/20261030000500_podcast_email_verify_tick_sends_due.sql', 'utf8')
+const unschedule = readFileSync('supabase/migrations/20261030000600_podcast_email_verify_tick_unschedule.sql', 'utf8')
 
 // Driven by pg_cron with a shared secret, never a user session.
 assert.match(config, /\[functions\.podcast-email-verify-tick\]\s+verify_jwt = false/u)
@@ -61,5 +62,8 @@ assert.match(sendsDue, /jsonb_agg\(due\.normalized_email\) FROM public\.podcast_
 assert.match(tick, /let dueEmails = await dueFromBody\(req\)/u)
 assert.match(tick, /if \(email\.length <= 320 && EMAIL\.test\(email\)\) unique\.add\(email\)/u)
 assert.match(tick, /if \(unique\.size >= MAX_BATCH\) break/u)
+
+// Verification is a backfill run on request: the standing schedule is removed.
+assert.match(unschedule, /PERFORM cron\.unschedule\('podcast-email-verify-tick'\)/u)
 
 console.log('podcast email verify Edge contract passed')
