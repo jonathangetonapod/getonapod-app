@@ -431,6 +431,29 @@ export async function updateClientShortlistPodcast(
   return existing ? { ...existing, ...decoded } : decoded
 }
 
+/** Shows one bulk decision request may carry. */
+export const BULK_FEEDBACK_BATCH_SIZE = 200
+
+/**
+ * Approves or passes many shows at once, the way the single update does:
+ * the decision is saved and any note the client left is kept.
+ */
+export async function setClientShortlistFeedbackBulk(
+  workspaceId: string,
+  clientId: string,
+  podcastIds: string[],
+  feedbackStatus: ClientShortlistFeedbackStatus,
+): Promise<{ updated: number }> {
+  const data = await invokeClientShortlist<{ updated: number }>({
+    action: 'bulk-feedback',
+    workspace_id: workspaceId,
+    client_id: clientId,
+    podcast_ids: podcastIds,
+    feedback_status: feedbackStatus,
+  })
+  return { updated: Number(data?.updated) || 0 }
+}
+
 export async function reorderClientShortlistFeatured(
   workspaceId: string,
   clientId: string,

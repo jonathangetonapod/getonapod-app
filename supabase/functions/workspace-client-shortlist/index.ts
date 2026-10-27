@@ -125,6 +125,8 @@ const PITCH_CATALOG_COLUMNS = `${PODCAST_VARIABLE_COLUMNS.join(', ')}, recent_ep
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
+/** Shows one bulk approve or pass may carry; the editor sends larger selections in batches. */
+const BULK_FEEDBACK_MAX = 200
 const AUTOPILOT_COLUMNS =
   'enabled, max_weekly_adds, min_score, last_run_at, last_run_added, next_run_at, last_run_error, last_run_error_at'
 const SHORTLIST_FIELDS = [
@@ -1482,6 +1484,62 @@ serve(async (req) => {
           feedback_updated_at: feedback?.updated_at || null,
         },
       })
+    }
+
+    /*
+     * One decision for many shows: the operator approving or passing a page of
+     * the shortlist at once. Saved the way the single update saves it — the
+     * decision row, keeping any note the client wrote — with one audit entry.
+     */
+    if (action === 'bulk-feedback') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'podcast_ids', 'feedback_status'])
+      const podcastIds = podcastIdList(body.podcast_ids, BULK_FEEDBACK_MAX)
+      if (podcastIds.length === 0) throw new HttpError(400, 'INVALID_FIELD', 'podcast_ids cannot be empty')
+      const feedbackStatus = body.feedback_status
+      if (feedbackStatus !== null && feedbackStatus !== 'approved' && feedbackStatus !== 'rejected') {
+        throw new HttpError(400, 'INVALID_FIELD', 'feedback_status must be approved, rejected, or null')
+      }
+      const [rowsResult, feedbackResult] = await Promise.all([
+        authContext.admin
+          .from('client_dashboard_podcasts')
+          .select('podcast_id,podcast_name')
+          .eq('client_id', clientId)
+          .in('podcast_id', podcastIds),
+        authContext.admin
+          .from('client_podcast_feedback')
+          .select('podcast_id,notes')
+          .eq('client_id', clientId)
+          .in('podcast_id', podcastIds),
+      ])
+      if (rowsResult.error || feedbackResult.error) {
+        throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The podcasts could not be checked')
+      }
+      const rows = rowsResult.data || []
+      if (rows.length !== podcastIds.length) {
+        throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Some of these podcasts are not on this client list')
+      }
+      const notesByPodcast = new Map((feedbackResult.data || []).map((row) => [row.podcast_id, row.notes]))
+      const savedAt = new Date().toISOString()
+      const { error: saveError } = await authContext.admin
+        .from('client_podcast_feedback')
+        .upsert(rows.map((row) => ({
+          client_id: clientId,
+          podcast_id: row.podcast_id,
+          podcast_name: row.podcast_name,
+          status: feedbackStatus,
+          notes: notesByPodcast.get(row.podcast_id) || null,
+          updated_at: savedAt,
+        })), { onConflict: 'client_id,podcast_id' })
+      if (saveError) throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The podcast decisions could not be saved')
+      await writeAudit(authContext.admin, {
+        workspaceId,
+        actorUserId: authContext.user.id,
+        action: 'workspace.client.shortlist.bulk_feedback',
+        entityType: 'client',
+        entityId: clientId,
+        metadata: { podcast_ids: podcastIds, feedback_status: feedbackStatus },
+      })
+      return jsonResponse(req, METHODS, 200, { updated: rows.length, feedback_status: feedbackStatus })
     }
 
     if (action === 'reorder-featured') {

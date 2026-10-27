@@ -13,6 +13,7 @@ import {
   runClientShortlistResearch,
   scoreClientShortlistFit,
   searchClientPodcastCatalog,
+  setClientShortlistFeedbackBulk,
   updateClientShortlistPodcast,
 } from '@/services/clientShortlist'
 
@@ -54,6 +55,14 @@ describe('clientShortlist service', () => {
       .resolves.toEqual({ saved: 2, estimated: 1, refunded: false })
     expect(invoke).toHaveBeenCalledWith('score-podcast-compatibility', {
       body: { workspaceId, clientId, shortlistPodcastIds: rowIds },
+    })
+  })
+
+  it('sends one bulk decision for many shows', async () => {
+    invoke.mockResolvedValueOnce({ data: { updated: 2, feedback_status: 'rejected' }, error: null } as never)
+    await expect(setClientShortlistFeedbackBulk(workspaceId, clientId, ['a', 'b'], 'rejected')).resolves.toEqual({ updated: 2 })
+    expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist', {
+      body: { action: 'bulk-feedback', workspace_id: workspaceId, client_id: clientId, podcast_ids: ['a', 'b'], feedback_status: 'rejected' },
     })
   })
 

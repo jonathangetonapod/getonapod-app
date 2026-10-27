@@ -54,6 +54,7 @@ import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
+import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
@@ -66,6 +67,7 @@ import {
 
 type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' | 'archived'
 const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'archived']
+type FitFilter = 'any' | 'at_least' | 'below' | 'unscored'
 type ListSort = 'list_order' | 'fit_desc' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
 interface ClientShortlistEditorProps {
@@ -96,6 +98,15 @@ interface ClientShortlistEditorProps {
 }
 
 const PAGE_SIZE = 10
+
+/** A threshold that is not a number yet (mid-typing) filters nothing out. */
+function matchesFitFilter(podcast: ClientShortlistPodcast, fitFilter: FitFilter, threshold: number): boolean {
+  const score = typeof podcast.fit_score === 'number' ? podcast.fit_score : null
+  if (fitFilter === 'unscored') return score === null
+  if (fitFilter === 'any' || !Number.isFinite(threshold)) return true
+  if (score === null) return false
+  return fitFilter === 'at_least' ? score >= threshold : score < threshold
+}
 
 function isWeakFit(podcast: ClientShortlistPodcast): boolean {
   return podcast.visibility === 'visible' && typeof podcast.fit_score === 'number' && podcast.fit_score < WEAK_FIT_BELOW
@@ -187,6 +198,8 @@ export function ClientShortlistEditor({
   ))
   const [sort, setSort] = useState<ListSort>('list_order')
   const [searchQuery, setSearchQuery] = useState('')
+  const [fitFilter, setFitFilter] = useState<FitFilter>('any')
+  const [fitThreshold, setFitThreshold] = useState('7')
   const [page, setPage] = useState(1)
   const [addOpen, setAddOpen] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState('')
@@ -201,6 +214,9 @@ export function ClientShortlistEditor({
   const [detailPodcast, setDetailPodcast] = useState<ClientShortlistPodcast | null>(null)
   const [operatorNotes, setOperatorNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
+  // Podcast ids ticked for a bulk decision. Cleared whenever the view
+  // changes, so an action never lands on shows the operator can no longer see.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const shortlistQueryKey = ['client-shortlist', workspaceId, clientId] as const
   const workspaceBaseHref = campaignHref.split('/client-campaigns')[0] || MY_WORKSPACE_BASE_HREF
@@ -245,7 +261,8 @@ export function ClientShortlistEditor({
     return () => window.clearTimeout(timeout)
   }, [catalogQuery])
 
-  useEffect(() => setPage(1), [filter, searchQuery, sort])
+  useEffect(() => setPage(1), [filter, searchQuery, sort, fitFilter, fitThreshold])
+  useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
   const featured = useMemo(() => podcasts
@@ -261,8 +278,10 @@ export function ClientShortlistEditor({
   }), [podcasts])
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
+    const threshold = Number.parseFloat(fitThreshold)
     const matching = podcasts.filter((podcast) => {
       if (query && !`${podcast.podcast_name} ${podcast.publisher_name || ''}`.toLowerCase().includes(query)) return false
+      if (!matchesFitFilter(podcast, fitFilter, threshold)) return false
       if (filter === 'all') return podcast.visibility === 'visible'
       if (filter === 'archived') return podcast.visibility === 'archived'
       if (podcast.visibility !== 'visible') return false
@@ -289,10 +308,17 @@ export function ClientShortlistEditor({
       }
       return left.podcast_name.localeCompare(right.podcast_name, undefined, { sensitivity: 'base' })
     })
-  }, [filter, podcasts, searchQuery, sort])
+  }, [filter, fitFilter, fitThreshold, podcasts, searchQuery, sort])
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages])
   const visiblePage = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const allSelected = filtered.length > 0 && filtered.every((podcast) => selectedIds.has(podcast.podcast_id))
+  const toggleSelected = (podcastId: string, checked: boolean) => setSelectedIds((current) => {
+    const next = new Set(current)
+    if (checked) next.add(podcastId)
+    else next.delete(podcastId)
+    return next
+  })
   const catalogResults = catalogSearchQuery.data || []
   const selectedCatalogPodcasts = Array.from(selectedCatalog.values())
 
@@ -460,6 +486,32 @@ export function ClientShortlistEditor({
                 <option value="recent_desc">Recently published</option>
                 <option value="name_asc">Name: A–Z</option>
               </select>
+              <div className="flex gap-2">
+                <select
+                  aria-label="Filter by fit score"
+                  value={fitFilter}
+                  onChange={(event) => setFitFilter(event.target.value as FitFilter)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-36"
+                >
+                  <option value="any">Any fit</option>
+                  <option value="at_least">Fit at least</option>
+                  <option value="below">Fit below</option>
+                  <option value="unscored">Not scored</option>
+                </select>
+                {(fitFilter === 'at_least' || fitFilter === 'below') && (
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={1}
+                    max={10}
+                    step={0.5}
+                    value={fitThreshold}
+                    onChange={(event) => setFitThreshold(event.target.value)}
+                    aria-label="Fit score threshold"
+                    className="w-20"
+                  />
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {([
@@ -475,7 +527,24 @@ export function ClientShortlistEditor({
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {filtered.length > 0 && (
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={(checked) => setSelectedIds(checked ? new Set(filtered.map((podcast) => podcast.podcast_id)) : new Set())}
+                aria-label={`Select all ${resultLabel(filtered.length)} in this view`}
+              />
+              Select all {resultLabel(filtered.length)} in this view
+            </label>
+          )}
+          <ShortlistBulkBar
+            workspaceId={workspaceId}
+            clientId={clientId}
+            selectedIds={Array.from(selectedIds)}
+            onClear={() => setSelectedIds(new Set())}
+            onSaved={refresh}
+          />
           {visiblePage.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center"><Search className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2 font-medium">No podcasts match this view</p><p className="text-sm text-muted-foreground">Try a different filter or add podcasts from the catalog.</p></div>
           ) : (
@@ -487,6 +556,12 @@ export function ClientShortlistEditor({
                 })
                 return (
                 <div key={podcast.podcast_id} className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center">
+                  <Checkbox
+                    className="self-start lg:self-center"
+                    checked={selectedIds.has(podcast.podcast_id)}
+                    onCheckedChange={(checked) => toggleSelected(podcast.podcast_id, checked === true)}
+                    aria-label={`Select ${podcast.podcast_name}`}
+                  />
                   <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => openPodcastDetails(podcast)} aria-label={`View details for ${podcast.podcast_name}`}>
                     <PodcastArtwork podcast={podcast} />
                     <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{podcast.prior_outreach_at && <Badge aria-label={`${podcast.podcast_name} was previously contacted`} variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
@@ -542,7 +617,7 @@ export function ClientShortlistEditor({
               })}
             </div>
           )}
-          <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 pt-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <p>Showing {visiblePage.length} of {resultLabel(filtered.length)}</p>
             {totalPages > 1 && <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</Button><span>Page {page} of {totalPages}</span><Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></div>}
           </div>

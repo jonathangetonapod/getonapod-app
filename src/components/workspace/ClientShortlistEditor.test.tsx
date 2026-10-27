@@ -8,6 +8,7 @@ import {
   getClientShortlist,
   scoreClientShortlistFit,
   searchClientPodcastCatalog,
+  setClientShortlistFeedbackBulk,
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
@@ -15,6 +16,8 @@ import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({
   FIT_SCORE_BATCH_SIZE: 20,
+  BULK_FEEDBACK_BATCH_SIZE: 200,
+  setClientShortlistFeedbackBulk: vi.fn(),
   addClientShortlistPodcasts: vi.fn(),
   getClientShortlist: vi.fn(),
   scoreClientShortlistFit: vi.fn(),
@@ -231,6 +234,59 @@ describe('ClientShortlistEditor', () => {
       '44444444-4444-4444-8444-444444444444',
       '66666666-6666-4666-8666-666666666666',
     ]))
+  })
+
+  it('approves or passes every selected show at once, and select-all follows the filter', async () => {
+    vi.mocked(setClientShortlistFeedbackBulk).mockResolvedValue({ updated: 1 })
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Operator Weekly' }))
+    expect(screen.getByText('1 show selected')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Mark approved' }))
+    await waitFor(() => expect(setClientShortlistFeedbackBulk).toHaveBeenCalledWith(workspaceId, clientId, ['podcast-two'], 'approved'))
+    await waitFor(() => expect(screen.queryByText('1 show selected')).not.toBeInTheDocument())
+
+    // "To review" holds only Operator Weekly; select-all takes the view, not the whole list.
+    fireEvent.click(screen.getByRole('button', { name: 'To review 1' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 1 podcast in this view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mark passed' }))
+    await waitFor(() => expect(setClientShortlistFeedbackBulk).toHaveBeenLastCalledWith(workspaceId, clientId, ['podcast-two'], 'rejected'))
+  })
+
+  it('clears the selection when the view changes', async () => {
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Operator Weekly' }))
+    expect(screen.getByText('1 show selected')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approved 1' }))
+    expect(screen.queryByText('1 show selected')).not.toBeInTheDocument()
+  })
+
+  it('filters shows above or below a fit score, or the unscored ones', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      fit_profile: { hash: 'current', ready: true },
+      podcasts: [
+        podcast({ fit_score: 3, fit_source: 'ai', fit_profile_hash: 'current', fit_scored_at: '2026-10-27T00:00:00.000Z' }),
+        podcast({ id: '44444444-4444-4444-8444-444444444444', podcast_id: 'podcast-two', podcast_name: 'Operator Weekly', is_featured: false, featured_order: null, fit_score: 8, fit_source: 'ai', fit_profile_hash: 'current', fit_scored_at: '2026-10-27T00:00:00.000Z' }),
+        podcast({ id: '66666666-6666-4666-8666-666666666666', podcast_id: 'podcast-three', podcast_name: 'Exit Ready', is_featured: false, featured_order: null }),
+      ],
+    })
+    renderEditor()
+    await screen.findByText('Exit Ready')
+    const names = () => ['Founder Stories', 'Operator Weekly', 'Exit Ready'].filter((name) => screen.queryAllByText(name).length > 0)
+
+    fireEvent.change(screen.getByLabelText('Filter by fit score'), { target: { value: 'at_least' } })
+    fireEvent.change(screen.getByLabelText('Fit score threshold'), { target: { value: '7' } })
+    expect(names()).toEqual(['Operator Weekly'])
+
+    fireEvent.change(screen.getByLabelText('Filter by fit score'), { target: { value: 'below' } })
+    expect(names()).toEqual(['Founder Stories'])
+
+    fireEvent.change(screen.getByLabelText('Filter by fit score'), { target: { value: 'unscored' } })
+    expect(names()).toEqual(['Exit Ready'])
+    expect(screen.getByRole('checkbox', { name: 'Select all 1 podcast in this view' })).toBeInTheDocument()
   })
 
   it('will not score a client with nothing on file to score against', async () => {

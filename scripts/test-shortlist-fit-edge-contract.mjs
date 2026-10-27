@@ -47,6 +47,14 @@ for (const file of [
   assert.doesNotMatch(readFileSync(file, 'utf8'), /fit_(score|reasoning|concerns)/u, `${file} must not expose fit scores`)
 }
 
+// Bulk approve/pass: capped, every show checked against this client's list
+// before anything is saved, notes kept, one audit entry.
+assert.match(shortlist, /const BULK_FEEDBACK_MAX = 200/u)
+assert.match(shortlist, /podcastIdList\(body\.podcast_ids, BULK_FEEDBACK_MAX\)/u)
+assert.match(shortlist, /if \(rows\.length !== podcastIds\.length\) \{\s*\n\s*throw new HttpError\(404, 'PODCAST_NOT_FOUND'/u)
+assert.match(shortlist, /notes: notesByPodcast\.get\(row\.podcast_id\) \|\| null/u)
+assert.match(shortlist, /action: 'workspace\.client\.shortlist\.bulk_feedback'/u)
+
 assert.match(migration, /CHECK \(fit_score IS NULL OR \(fit_score >= 1 AND fit_score <= 10\)\)/u)
 assert.match(migration, /CHECK \(fit_source IS NULL OR fit_source IN \('ai', 'estimate'\)\)/u)
 
