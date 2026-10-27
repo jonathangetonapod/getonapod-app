@@ -5,6 +5,7 @@ const tick = readFileSync('supabase/functions/podcast-email-verify-tick/index.ts
 const tableMigration = readFileSync('supabase/migrations/20261029001100_podcast_email_verifications.sql', 'utf8')
 const migration = readFileSync('supabase/migrations/20261030000300_podcast_email_verify_tick.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
+const fastDue = readFileSync('supabase/migrations/20261030000400_podcast_email_verify_due_fast.sql', 'utf8')
 
 // Driven by pg_cron with a shared secret, never a user session.
 assert.match(config, /\[functions\.podcast-email-verify-tick\]\s+verify_jwt = false/u)
@@ -45,5 +46,11 @@ assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.podcast_email_verific
 // Every 10 minutes, and only once both vault secrets exist.
 assert.match(migration, /'podcast-email-verify-tick',\s+'\*\/10 \* \* \* \*'/u)
 assert.match(migration, /HAVING count\(\*\) = 2/u)
+
+// The due list fits PostgREST's statement timeout: single-address fields are not
+// split, and each address is looked up by primary key before de-duplication.
+assert.match(fastDue, /podcast\.podscan_email !~ '\[,;\[:space:\]\]'/u)
+assert.match(fastDue, /NOT EXISTS \(\s+SELECT 1 FROM public\.podcast_email_verifications verification/u)
+assert.match(fastDue, /GRANT EXECUTE ON FUNCTION public\.podcast_email_verification_due\(INTEGER\) TO service_role;/u)
 
 console.log('podcast email verify Edge contract passed')
