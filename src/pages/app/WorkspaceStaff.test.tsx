@@ -532,15 +532,18 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Client branding', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Team & access', level: 2 })).toBeInTheDocument()
+    // The count lives in the heading; the three stat tiles that repeated it are gone.
+    expect(screen.getByRole('heading', { name: 'Team & access · 2 members', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByText('Total users')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pending access')).not.toBeInTheDocument()
     // The way out sits inside the settings body under its own heading, not
     // floating after the grid where nothing pointed at it.
     expect(screen.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close workspace' })).toBeInTheDocument()
     expect(screen.getByLabelText('Primary color')).toHaveClass('min-w-0', 'flex-1')
-    expect(screen.getByRole('table')).toHaveClass('min-w-[52rem]')
+    expect(screen.getByRole('table')).toHaveClass('min-w-[44rem]')
     expect(screen.getByText('Manage the people who can access your workspace.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
     expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
     const table = screen.getByRole('table')
     expect(within(table).getByText('Owner')).toBeInTheDocument()
@@ -622,6 +625,54 @@ describe('WorkspaceStaff', () => {
     expect(await within(billing).findByText('Founding member')).toBeInTheDocument()
     expect(within(billing).getByText('10 credits')).toBeInTheDocument()
     expect(within(billing).getByRole('link', { name: 'Manage billing' })).toHaveAttribute('href', '/app/settings/billing')
+  })
+
+  it('stacks the team on a narrow screen, with every action in view', async () => {
+    // The setup's matchMedia is a read-only vi.fn(); its implementation is
+    // swapped for this test and put back after.
+    const original = vi.mocked(window.matchMedia).getMockImplementation()
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      matches: query === '(max-width: 1279px)',
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }) as never)
+    try {
+      renderPage()
+      const list = await screen.findByRole('list', { name: 'Team members' })
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      const admin = within(list).getByText('Agency Admin').closest('li') as HTMLElement
+      expect(within(admin).getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
+      expect(within(admin).getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
+      // The owner cannot be removed from here, by themselves or anyone.
+      const owner = within(list).getByText('Workspace Owner').closest('li') as HTMLElement
+      expect(within(owner).queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
+    } finally {
+      if (original) vi.mocked(window.matchMedia).mockImplementation(original)
+    }
+  })
+
+  it('offers to resend an invite that is still being set up', async () => {
+    mockedList.mockResolvedValue({
+      ...ownerView,
+      members: [...ownerView.members, {
+        ...admin,
+        id: '99999999-9999-4999-8999-999999999999',
+        email: 'new@example.com',
+        full_name: null,
+        role: 'member',
+        status: 'provisioning',
+        accepted_at: null,
+        allowed_actions: ['retry_invite', 'revoke'],
+      }],
+    })
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    expect(screen.getByRole('heading', { name: 'Team & access · 3 members, 1 pending', level: 2 })).toBeInTheDocument()
+    openRowMenu('new@example.com')
+    expect(await screen.findByRole('menuitem', { name: 'Resend invite' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Remove/ })).toBeInTheDocument()
   })
 
   it('marks an expired invite and puts sending a new one in the open', async () => {
@@ -992,7 +1043,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(dialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -1375,7 +1426,7 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -1521,7 +1572,7 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
     expect(screen.getByText(/Only you see this order/i)).toBeInTheDocument()
     expect(screen.getByText(/It is saved in this browser/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     // Sign out lives in the menu on the person's avatar.
     expect(screen.getByRole('button', { name: /^Account menu: / })).toBeEnabled()
@@ -1532,7 +1583,7 @@ describe('WorkspaceStaff', () => {
       `/app/workspaces/${workspaceId}/settings`,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'Platform Invite' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'platform-invite@example.com' } })
@@ -1747,8 +1798,8 @@ describe('WorkspaceStaff', () => {
 
     it('sends the platform roster to the platform tools instead of offering an invite', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Team & access' })
-      expect(screen.queryByRole('button', { name: 'Invite' })).not.toBeInTheDocument()
+      await screen.findByRole('heading', { name: /^Team & access/ })
+      expect(screen.queryByRole('button', { name: 'Invite member' })).not.toBeInTheDocument()
       const links = screen.getAllByRole('link', { name: /Manage workspaces/ })
       expect(links.length).toBeGreaterThan(0)
       for (const link of links) expect(link).toHaveAttribute('href', '/app/manage-workspaces')
@@ -1756,7 +1807,7 @@ describe('WorkspaceStaff', () => {
 
     it('offers no action on a platform operator account', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: 'Team & access' })
+      await screen.findByRole('heading', { name: /^Team & access/ })
       // Staff mutations are refused at the SQL root for this workspace, so a
       // button here would be a promise the database will not keep.
       expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()

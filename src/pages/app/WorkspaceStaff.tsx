@@ -63,6 +63,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { notACredentialField } from '@/lib/formAutofill'
+import { plural } from '@/lib/plural'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   MEMBER_AVATAR_MIME_TYPES,
@@ -433,6 +435,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     .join('') || 'W'
 
   const ownerEmail = staff.find((member) => member.role === 'owner' && member.status === 'active')?.email ?? null
+  // Below 1280px the team table does not fit beside the menu, so the people
+  // stack instead; one or the other, never both in the page.
+  const stackTeam = useMediaQuery('(max-width: 1279px)')
+  const pendingCount = staff.filter((member) => member.status === 'invited' || member.status === 'provisioning').length
 
   /**
    * Reload this page's own data. Cheap, and nothing outside the page moves.
@@ -712,6 +718,132 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     if (section) selectSection(section.id)
   }, [location.hash, location.key, location.state, settingsLoaded, selectSection])
 
+  /*
+   * One person's status and actions, shared by the table and by the stacked
+   * list a phone gets instead: the table needs 52rem, and on a phone its
+   * status and actions sat behind a sideways scroll nobody would find.
+   */
+  const memberStatus = (member: WorkspaceStaffMember) => {
+    const state = memberState(member)
+    return (
+      <>
+        <Badge variant={state.tone}>{state.label}</Badge>
+        {state.detail && (
+          <p className={cn('mt-1 max-w-48 text-xs', state.expired ? 'font-medium text-destructive' : 'text-muted-foreground')}>
+            {state.detail}
+          </p>
+        )}
+        {member.pending_review && <p className="mt-1 max-w-44 text-xs text-destructive">Provider reconciliation requires review.</p>}
+      </>
+    )
+  }
+
+  const memberActions = (member: WorkspaceStaffMember) => {
+    const manageable = member.allowed_actions.length > 0
+    const busy = actionMutation.isPending || passwordBusy || member.pending_review
+    const state = memberState(member)
+    const allows = (action: WorkspaceStaffMember['allowed_actions'][number]) => member.allowed_actions.includes(action)
+    const rowPasswordBusy = passwordBusy && passwordBusyMemberId === member.id
+    const accessActions = [allows('suspend'), allows('reactivate')].some(Boolean)
+    const signInActions = [allows('reset_password'), allows('retry_password'), allows('retry_invite')].some(Boolean)
+    const dangerActions = [allows('transfer_owner') && capabilities.can_transfer_owner, allows('revoke')].some(Boolean)
+    const hasMenu = accessActions || signInActions || dangerActions
+    return (
+      member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Owner</span> : manageable ? (
+        <div className="inline-flex flex-wrap items-center justify-end gap-2">
+          {/* An expired invite gets its one obvious
+              next step in the open, not behind the
+              menu: the person is locked out until
+              somebody presses it. */}
+          {state.expired && allows('retry_invite') && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}>
+              <Send className="mr-2 h-4 w-4" />Send a new invite
+            </Button>
+          )}
+          {state.expired && !allows('retry_invite') && (allows('retry_password') || allows('reset_password')) && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => allows('retry_password')
+                ? void issueTemporaryPassword({ mode: 'retry', member })
+                : setConfirmation({ action: 'reset_password', member })}
+            >
+              {rowPasswordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+              Issue a new password
+            </Button>
+          )}
+          {allows('update_role') && capabilities.can_update_roles && (
+            <Select value={member.role} disabled={busy} onValueChange={(role: 'admin' | 'member') => setConfirmation({ action: 'update_role', member, role })}>
+              <SelectTrigger className="h-9 w-28" aria-label={`Change role for ${member.email}`}><SelectValue /></SelectTrigger>
+              <SelectContent align="end"><RoleOption role="admin" /><RoleOption role="member" /></SelectContent>
+            </Select>
+          )}
+          {hasMenu && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy} aria-label={`More actions for ${member.email}`}>
+                  {rowPasswordBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {accessActions && (
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Access</DropdownMenuLabel>
+                    {allows('suspend') && (
+                      <DropdownMenuItem onSelect={() => setConfirmation({ action: 'suspend', member })}>Suspend</DropdownMenuItem>
+                    )}
+                    {allows('reactivate') && (
+                      <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reactivate', member })}>Reactivate</DropdownMenuItem>
+                    )}
+                  </DropdownMenuGroup>
+                )}
+                {signInActions && (
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Sign-in</DropdownMenuLabel>
+                    {allows('reset_password') && (
+                      <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reset_password', member })}>Reset password</DropdownMenuItem>
+                    )}
+                    {allows('retry_password') && (
+                      <DropdownMenuItem onSelect={() => void issueTemporaryPassword({ mode: 'retry', member })}>Generate password</DropdownMenuItem>
+                    )}
+                    {allows('retry_invite') && (
+                      <DropdownMenuItem onSelect={() => actionMutation.mutate({ action: 'retry_invite', member })}>Resend invite</DropdownMenuItem>
+                    )}
+                  </DropdownMenuGroup>
+                )}
+                {dangerActions && (
+                  <>
+                    {(accessActions || signInActions) && <DropdownMenuSeparator />}
+                    <DropdownMenuGroup>
+                      {allows('transfer_owner') && capabilities.can_transfer_owner && (
+                        <DropdownMenuItem onSelect={() => setConfirmation({ action: 'transfer_owner', member })}>
+                          <Crown className="mr-2 h-4 w-4" />Make owner
+                        </DropdownMenuItem>
+                      )}
+                      {allows('revoke') && (
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmation({ action: 'revoke', member })}>
+                          <Trash2 className="mr-2 h-4 w-4" />Remove
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuGroup>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      ) : null
+    )
+  }
+
+  const memberRole = (member: WorkspaceStaffMember) => (
+    <div className="flex items-center gap-2">
+      {member.role === 'owner' ? <Crown className="h-4 w-4 text-amber-600" /> : member.role === 'admin' ? <ShieldCheck className="h-4 w-4 text-primary" /> : null}
+      <Badge variant="outline" className="capitalize">{member.role}</Badge>
+    </div>
+  )
+
   const body = !validWorkspaceId
     ? <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>The workspace address is invalid.</CardDescription></CardHeader></Card>
     : staffQuery.isLoading
@@ -947,7 +1079,15 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   <section id="workspace-access" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-access-title">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                       <div>
-                        <h2 id="workspace-access-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Team &amp; access</h2>
+                        {/* The count in the heading, where the three stat
+                            tiles used to repeat it at the size of a headline. */}
+                        <h2 id="workspace-access-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">
+                          Team &amp; access
+                          <span className="text-base font-normal tracking-normal text-muted-foreground">
+                            {' · '}{plural(staff.length, 'member')}
+                            {pendingCount > 0 && `, ${pendingCount} pending`}
+                          </span>
+                        </h2>
                         <p className="mt-1 text-sm text-muted-foreground">
                           Manage the people who can access your workspace.
                         </p>
@@ -965,165 +1105,61 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             setInviteOpen(true)
                           }}
                         >
-                          <UserPlus className="mr-2 h-4 w-4" />Invite
+                          <UserPlus className="mr-2 h-4 w-4" />Invite member
                         </Button>
                       )}
-                    </div>
-
-                    <div className="grid grid-cols-3 divide-x overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
-                      <div className="px-3 py-4 sm:px-5">
-                        <p className="text-xs text-muted-foreground">Total users</p>
-                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.length}</p>
-                      </div>
-                      <div className="px-3 py-4 sm:px-5">
-                        <p className="text-xs text-muted-foreground">Active</p>
-                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.filter((member) => member.status === 'active').length}</p>
-                      </div>
-                      <div className="px-3 py-4 sm:px-5">
-                        <p className="text-xs text-muted-foreground">Pending access</p>
-                        <p className="mt-1 text-2xl font-semibold tracking-tight">{staff.filter((member) => member.status === 'invited' || member.status === 'provisioning').length}</p>
-                      </div>
                     </div>
 
                     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
                       <CardHeader className="border-b border-border/70 bg-muted/15">
                         <CardDescription>
                           {platformRoster
-                            ? <>These are platform operator accounts, listed here for reference. They are managed by the platform allowlist rather than invited into a workspace — open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link> to create a workspace or change a tenant owner's access.</>
+                            ? <>These are the people who run the platform. They are added on the platform side, not invited here. To create a workspace or change who owns one, open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link>.</>
                             : 'Team members are separate from client portal users, which are managed inside each client.'}
                         </CardDescription>
                         {!platformRoster && <RolesCaption roles={['admin', 'member', 'owner']} className="pt-2" />}
                       </CardHeader>
                       <CardContent className="min-w-0 p-0">
+                        {/* A phone gets the same people stacked: name, then
+                            role and status, then the actions, all in view. */}
+                        {stackTeam ? (
+                        <ul className="divide-y divide-border/70" aria-label="Team members">
+                          {staff.map((member) => (
+                            <li key={member.id} className="space-y-3 p-4">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{member.full_name || 'Invited user'}</p>
+                                <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+                              </div>
+                              <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                                {memberRole(member)}
+                                <div>{memberStatus(member)}</div>
+                                <p className="text-xs text-muted-foreground">Added {formatDate(member.accepted_at || member.invited_at)}</p>
+                              </div>
+                              <div className="flex justify-start [&>div]:justify-start">{memberActions(member)}</div>
+                            </li>
+                          ))}
+                        </ul>
+                        ) : (
                         <div className="max-w-full overflow-hidden">
-                    <Table className="min-w-[52rem]">
+                    <Table className="min-w-[44rem]">
                       <TableHeader className="bg-muted/30"><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined / added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                       <TableBody>
-                        {staff.map((member) => {
-                          const manageable = member.allowed_actions.length > 0
-                          const busy = actionMutation.isPending || passwordBusy || member.pending_review
-                          const state = memberState(member)
-                          const allows = (action: WorkspaceStaffMember['allowed_actions'][number]) => member.allowed_actions.includes(action)
-                          const rowPasswordBusy = passwordBusy && passwordBusyMemberId === member.id
-                          const accessActions = [allows('suspend'), allows('reactivate')].some(Boolean)
-                          const signInActions = [allows('reset_password'), allows('retry_password'), allows('retry_invite')].some(Boolean)
-                          const dangerActions = [allows('transfer_owner') && capabilities.can_transfer_owner, allows('revoke')].some(Boolean)
-                          const hasMenu = accessActions || signInActions || dangerActions
-                          return (
-                            <TableRow key={member.id}>
-                              <TableCell>
-                                <div className="font-medium">{member.full_name || 'Invited user'}</div>
-                                <div className="text-sm text-muted-foreground">{member.email}</div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {member.role === 'owner' ? <Crown className="h-4 w-4 text-amber-600" /> : member.role === 'admin' ? <ShieldCheck className="h-4 w-4 text-primary" /> : null}
-                                  <Badge variant="outline" className="capitalize">{member.role}</Badge>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant={state.tone}>{state.label}</Badge>
-                                {state.detail && (
-                                  <p className={cn('mt-1 max-w-48 text-xs', state.expired ? 'font-medium text-destructive' : 'text-muted-foreground')}>
-                                    {state.detail}
-                                  </p>
-                                )}
-                                {member.pending_review && <p className="mt-1 max-w-44 text-xs text-destructive">Provider reconciliation requires review.</p>}
-                              </TableCell>
-                              <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
-                              <TableCell className="text-right">
-                                {member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Owner</span> : manageable ? (
-                                  <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                                    {/* An expired invite gets its one obvious
-                                        next step in the open, not behind the
-                                        menu: the person is locked out until
-                                        somebody presses it. */}
-                                    {state.expired && allows('retry_invite') && (
-                                      <Button size="sm" variant="outline" disabled={busy} onClick={() => actionMutation.mutate({ action: 'retry_invite', member })}>
-                                        <Send className="mr-2 h-4 w-4" />Send a new invite
-                                      </Button>
-                                    )}
-                                    {state.expired && !allows('retry_invite') && (allows('retry_password') || allows('reset_password')) && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={busy}
-                                        onClick={() => allows('retry_password')
-                                          ? void issueTemporaryPassword({ mode: 'retry', member })
-                                          : setConfirmation({ action: 'reset_password', member })}
-                                      >
-                                        {rowPasswordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                                        Issue a new password
-                                      </Button>
-                                    )}
-                                    {allows('update_role') && capabilities.can_update_roles && (
-                                      <Select value={member.role} disabled={busy} onValueChange={(role: 'admin' | 'member') => setConfirmation({ action: 'update_role', member, role })}>
-                                        <SelectTrigger className="h-9 w-28" aria-label={`Change role for ${member.email}`}><SelectValue /></SelectTrigger>
-                                        <SelectContent align="end"><RoleOption role="admin" /><RoleOption role="member" /></SelectContent>
-                                      </Select>
-                                    )}
-                                    {hasMenu && (
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy} aria-label={`More actions for ${member.email}`}>
-                                            {rowPasswordBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-56">
-                                          {accessActions && (
-                                            <DropdownMenuGroup>
-                                              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Access</DropdownMenuLabel>
-                                              {allows('suspend') && (
-                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'suspend', member })}>Suspend</DropdownMenuItem>
-                                              )}
-                                              {allows('reactivate') && (
-                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reactivate', member })}>Reactivate</DropdownMenuItem>
-                                              )}
-                                            </DropdownMenuGroup>
-                                          )}
-                                          {signInActions && (
-                                            <DropdownMenuGroup>
-                                              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Sign-in</DropdownMenuLabel>
-                                              {allows('reset_password') && (
-                                                <DropdownMenuItem onSelect={() => setConfirmation({ action: 'reset_password', member })}>Reset password</DropdownMenuItem>
-                                              )}
-                                              {allows('retry_password') && (
-                                                <DropdownMenuItem onSelect={() => void issueTemporaryPassword({ mode: 'retry', member })}>Generate password</DropdownMenuItem>
-                                              )}
-                                              {allows('retry_invite') && (
-                                                <DropdownMenuItem onSelect={() => actionMutation.mutate({ action: 'retry_invite', member })}>Retry invite</DropdownMenuItem>
-                                              )}
-                                            </DropdownMenuGroup>
-                                          )}
-                                          {dangerActions && (
-                                            <>
-                                              {(accessActions || signInActions) && <DropdownMenuSeparator />}
-                                              <DropdownMenuGroup>
-                                                {allows('transfer_owner') && capabilities.can_transfer_owner && (
-                                                  <DropdownMenuItem onSelect={() => setConfirmation({ action: 'transfer_owner', member })}>
-                                                    <Crown className="mr-2 h-4 w-4" />Make owner
-                                                  </DropdownMenuItem>
-                                                )}
-                                                {allows('revoke') && (
-                                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirmation({ action: 'revoke', member })}>
-                                                    <Trash2 className="mr-2 h-4 w-4" />Remove
-                                                  </DropdownMenuItem>
-                                                )}
-                                              </DropdownMenuGroup>
-                                            </>
-                                          )}
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    )}
-                                  </div>
-                                ) : null}
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
+                        {staff.map((member) => (
+                          <TableRow key={member.id}>
+                            <TableCell>
+                              <div className="font-medium">{member.full_name || 'Invited user'}</div>
+                              <div className="text-sm text-muted-foreground">{member.email}</div>
+                            </TableCell>
+                            <TableCell>{memberRole(member)}</TableCell>
+                            <TableCell>{memberStatus(member)}</TableCell>
+                            <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
+                            <TableCell className="text-right">{memberActions(member)}</TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                         </div>
+                        )}
                       </CardContent>
                     </Card>
                   </section>
