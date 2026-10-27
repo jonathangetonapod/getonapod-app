@@ -140,6 +140,27 @@ assert.match(edge, /if \(action === 'dismiss'\)[\s\S]*?typeof body\.dismissed !=
 assert.match(edge, /'workspace\.host_relationship\.dismissed' : 'workspace\.host_relationship\.restored'/u)
 assert.match(edge, /if \(existing\.dismissed_at\) \{\s*changes\.dismissed_at = null/u)
 assert.match(service, /export async function dismissHostRelationship\(/u)
+// A row known only by address shows the show its address points to, matched
+// at read time and never saved. The shared catalog answers only for an
+// address this workspace already holds, so typing an email into the book
+// cannot reveal what the catalog files it under; a domain match uses only
+// this workspace's own pitches and never a mailbox provider's domain.
+assert.match(edge, /async function matchShowsByEmail\(/u)
+assert.match(edge, /function uniqueShows\([\s\S]*?if \(shows\.size === 1\)/u)
+assert.match(
+  edge,
+  /matchShowsByEmail\([\s\S]*?from\('workspace_client_campaign_targets'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)\.in\('normalized_contact_email', emails\)[\s\S]*?from\('workspace_inbox_thread_state'\)[\s\S]*?const catalogEmails = emails\.filter\(\(email\) => !matches\.has\(email\) && held\.has\(email\)\)[\s\S]*?from\('podcast_direct_contacts'\)/u,
+)
+assert.match(edge, /!SHARED_MAIL_DOMAINS\.has\(domain\)/u)
+assert.match(edge, /\/\^\[a-z0-9-\]\+\(\\\.\[a-z0-9-\]\+\)\+\$\/u\.test\(domain\)/u)
+assert.match(edge, /\.eq\('workspace_id', workspaceId\)\.like\('normalized_contact_email', `%@\$\{domain\}`\)/u)
+assert.match(edge, /show_matched: true,/u)
+assert.doesNotMatch(
+  edge.slice(edge.indexOf('async function matchShowsByEmail('), edge.indexOf('serve(async')),
+  /\.(?:update|insert|upsert|delete)\(/u,
+  'matching a show by email must never write the row',
+)
+
 // Snooze rides the field-preserving upsert patch; null wakes the row.
 assert.match(edge, /'manual_stage', 'summary', 'snoozed_until',\s*\]\)/u)
 assert.match(edge, /if \(has\('snoozed_until'\)\) changes\.snoozed_until = optionalTimestamp\(body\.snoozed_until, 'snoozed_until'\)/u)

@@ -90,6 +90,131 @@ function newManualPodcastId(): string {
   return `manual-${crypto.randomUUID()}`
 }
 
+interface MatchedShow {
+  podcastId: string
+  podcastName: string | null
+  hostName: string | null
+}
+
+function text(value: unknown, max: number): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null
+}
+
+/**
+ * One show per address, or nothing. An address pitched for two shows matches
+ * neither: a host shown under the wrong show is worse than one left unnamed.
+ */
+function uniqueShows(rows: Array<{ key: string; show: MatchedShow | null }>): Map<string, MatchedShow> {
+  const byKey = new Map<string, Map<string, MatchedShow>>()
+  for (const { key, show } of rows) {
+    if (!show) continue
+    const shows = byKey.get(key) ?? new Map<string, MatchedShow>()
+    if (!shows.has(show.podcastId)) shows.set(show.podcastId, show)
+    byKey.set(key, shows)
+  }
+  const unique = new Map<string, MatchedShow>()
+  for (const [key, shows] of byKey) {
+    if (shows.size === 1) unique.set(key, [...shows.values()][0])
+  }
+  return unique
+}
+
+// Mailbox providers, where sharing a domain says nothing about sharing a show.
+const SHARED_MAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'ymail.com', 'outlook.com', 'hotmail.com', 'live.com',
+  'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'gmx.com',
+  'gmx.net', 'yandex.com', 'zoho.com', 'mail.com', 'fastmail.com', 'hey.com', 'comcast.net',
+])
+const MAX_DOMAIN_LOOKUPS = 20
+
+/**
+ * The show behind each address that has none on its row, so a host added by
+ * email alone shows its show name and cover.
+ *
+ * In order: this workspace's own pitches to that address; then the shared
+ * catalog, but only for an address the workspace already holds (its
+ * campaigns pitched it or its inbox read it), so typing an email into the
+ * book never reveals what the catalog files it under; then this workspace's
+ * own pitches to the same company domain. Read-only: the row is not changed,
+ * and naming the show by hand always wins.
+ */
+async function matchShowsByEmail(
+  admin: SupabaseClient,
+  workspaceId: string,
+  emails: string[],
+): Promise<Map<string, MatchedShow>> {
+  const matches = new Map<string, MatchedShow>()
+  if (emails.length === 0) return matches
+  const targetShow = (row: Record<string, unknown>): MatchedShow | null => (
+    typeof row.podcast_id === 'string' && row.podcast_id
+      ? { podcastId: row.podcast_id, podcastName: text(row.podcast_name, 500), hostName: text(row.host_name, 300) }
+      : null
+  )
+
+  const { data: targets } = await admin.from('workspace_client_campaign_targets')
+    .select('podcast_id, podcast_name, host_name, normalized_contact_email')
+    .eq('workspace_id', workspaceId).in('normalized_contact_email', emails).limit(2_000)
+  const targetRows = (targets ?? []) as Array<Record<string, unknown>>
+  const pitched = new Set(targetRows.map((row) => String(row.normalized_contact_email)))
+  for (const [email, show] of uniqueShows(targetRows.map((row) => ({
+    key: String(row.normalized_contact_email),
+    show: targetShow(row),
+  })))) {
+    if (show.podcastName) matches.set(email, show)
+  }
+
+  const { data: threads } = await admin.from('workspace_inbox_thread_state')
+    .select('lead_email')
+    .eq('workspace_id', workspaceId).in('lead_email', emails).limit(2_000)
+  const held = new Set([...pitched, ...((threads ?? []) as Array<Record<string, unknown>>)
+    .flatMap((row) => typeof row.lead_email === 'string' ? [row.lead_email.trim().toLowerCase()] : [])])
+  const catalogEmails = emails.filter((email) => !matches.has(email) && held.has(email))
+  if (catalogEmails.length > 0) {
+    const { data: contacts } = await admin.from('podcast_direct_contacts')
+      .select('normalized_email, host_name, podcasts:podcast_id (podscan_id, podcast_name, host_name)')
+      .in('normalized_email', catalogEmails).limit(2_000)
+    for (const [email, show] of uniqueShows(((contacts ?? []) as Array<Record<string, unknown>>).map((row) => {
+      const podcast = (Array.isArray(row.podcasts) ? row.podcasts[0] : row.podcasts) as
+        Record<string, unknown> | null | undefined
+      const podscanId = text(podcast?.podscan_id, 200)
+      return {
+        key: String(row.normalized_email),
+        show: podscanId
+          ? {
+            podcastId: podscanId,
+            podcastName: text(podcast?.podcast_name, 500),
+            hostName: text(row.host_name, 300) ?? text(podcast?.host_name, 300),
+          }
+          : null,
+      }
+    }))) {
+      if (show.podcastName) matches.set(email, show)
+    }
+  }
+
+  // A domain is only checked when it is a company's own: the pattern below
+  // can then hold no LIKE wildcard, and a freemail domain matches nothing.
+  const domains = [...new Set(emails.filter((email) => !matches.has(email)).map((email) => email.split('@')[1] ?? ''))]
+    .filter((domain) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/u.test(domain) && !SHARED_MAIL_DOMAINS.has(domain))
+    .slice(0, MAX_DOMAIN_LOOKUPS)
+  for (const domain of domains) {
+    const { data: sameDomain } = await admin.from('workspace_client_campaign_targets')
+      .select('podcast_id, podcast_name, host_name')
+      .eq('workspace_id', workspaceId).like('normalized_contact_email', `%@${domain}`).limit(200)
+    const show = uniqueShows(((sameDomain ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      key: domain,
+      show: targetShow(row),
+    }))).get(domain)
+    if (!show?.podcastName) continue
+    for (const email of emails) {
+      // A domain match names the show, not the person: the host on that
+      // pitch may be someone else at the same company.
+      if (!matches.has(email) && email.endsWith(`@${domain}`)) matches.set(email, { ...show, hostName: null })
+    }
+  }
+  return matches
+}
+
 /**
  * Tell Instantly to stop sending to this address, or to allow it again.
  *
@@ -204,7 +329,23 @@ serve(async (req) => {
         } = row
         return rest
       })
-      const showIds = relationships.flatMap((row) => typeof row.podcast_id === 'string' ? [row.podcast_id] : [])
+      // Rows known only by address get the show their address points to.
+      const unnamedEmails = [...new Set(relationships.flatMap((row) => (
+        (typeof row.podcast_name !== 'string' || row.podcast_name.trim() === '')
+        && typeof row.contact_email === 'string' && row.contact_email.includes('@')
+          ? [row.contact_email.trim().toLowerCase()]
+          : []
+      )))]
+      const matchedShows = await matchShowsByEmail(admin, workspaceId, unnamedEmails)
+      const matchFor = (row: Record<string, unknown>): MatchedShow | null => (
+        (typeof row.podcast_name !== 'string' || row.podcast_name.trim() === '') && typeof row.contact_email === 'string'
+          ? matchedShows.get(row.contact_email.trim().toLowerCase()) ?? null
+          : null
+      )
+      const showIds = [...new Set([
+        ...relationships.flatMap((row) => typeof row.podcast_id === 'string' ? [row.podcast_id] : []),
+        ...[...matchedShows.values()].map((show) => show.podcastId),
+      ])]
       const artworkByShow = new Map<string, string>()
       if (showIds.length > 0) {
         const { data: artworkRows } = await admin.from('podcasts')
@@ -253,6 +394,16 @@ serve(async (req) => {
           const byName = typeof row.podcast_name === 'string'
             ? artworkByName.get(row.podcast_name.trim()) ?? null
             : null
+          const matched = matchFor(row)
+          if (matched) {
+            return {
+              ...row,
+              podcast_name: matched.podcastName,
+              host_name: typeof row.host_name === 'string' && row.host_name.trim() ? row.host_name : matched.hostName,
+              podcast_image_url: byId ?? artworkByShow.get(matched.podcastId) ?? null,
+              show_matched: true,
+            }
+          }
           return { ...row, podcast_image_url: byId ?? byName }
         }),
         total,

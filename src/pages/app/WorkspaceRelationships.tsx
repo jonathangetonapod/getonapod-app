@@ -821,10 +821,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
             const { title } = relationshipTitle(row)
             const storedStage = manualStage(row.manual_stage)
             const shownStage = relationshipStage(row)
-            const contactLine = [
-              relationshipTitle(row).showKnown ? decodeFeedText(row.host_name ?? '').trim() : null,
-              row.contact_email && row.contact_email !== title ? row.contact_email : null,
-            ].filter(Boolean).join(' · ')
             return (
               <Card
                 key={row.podcast_id}
@@ -923,7 +919,6 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                               </span>
                             )}
                           </div>
-                          {contactLine && <p className="text-xs text-muted-foreground">{contactLine}</p>}
                           {canManage
                             ? (
                               <Textarea

@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react'
-import { AlarmClock, BellOff, ChevronDown, ChevronUp, Hourglass, Loader2, Reply } from 'lucide-react'
+import { AlarmClock, BellOff, Check, ChevronDown, ChevronUp, Hourglass, Loader2, Pencil, Reply, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,7 @@ import {
   relationshipTitle,
   type RelationshipNextStep,
 } from '@/lib/relationshipLabels'
+import { decodeFeedText } from '@/lib/feedText'
 import type { HostRelationshipSummary } from '@/services/hostRelationships'
 
 /** Clients shown as chips before the rest collapse into "+N". */
@@ -86,14 +87,15 @@ const ShowNameEditor = ({ title, onSave }: { title: string; onSave: (name: strin
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // An empty field waiting to be filled, not a link that goes somewhere.
   if (!editing) {
     return (
       <button
         type="button"
-        className="text-xs font-medium text-primary hover:underline"
+        className="mt-1 inline-flex items-center gap-1.5 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:border-solid hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => { setDraft(''); setEditing(true) }}
       >
-        Name this show
+        <Pencil className="h-3 w-3" aria-hidden="true" />Name this show
       </button>
     )
   }
@@ -134,7 +136,18 @@ const ShowNameEditor = ({ title, onSave }: { title: string; onSave: (name: strin
           }
         }}
       />
-      {saving && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Saving" />}
+      {saving
+        ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-label="Saving" />
+        : (
+          <>
+            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="Save show name" disabled={!draft.trim()} onClick={() => void save()}>
+              <Check className="h-4 w-4" />
+            </Button>
+            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="Cancel" onClick={() => setEditing(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        )}
     </div>
   )
 }
@@ -193,6 +206,10 @@ export const RelationshipRow = ({
   const snippet = messageSnippet(row.last_message_body)
   const messageAge = relativeTime(row.last_message_at ?? row.last_contacted_at, now)
   const sender = lastMessageSender(row)
+  // The show is the title; who to write to sits under it.
+  const hostName = decodeFeedText(row.host_name ?? '').trim()
+  const email = (row.contact_email ?? '').trim()
+  const identityLine = [hostName !== title ? hostName : '', email !== title ? email : ''].filter(Boolean).join(' · ')
 
   // The whole row opens the panel; its own controls keep their own meaning.
   const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -238,6 +255,10 @@ export const RelationshipRow = ({
             <Badge variant="outline" className={status.className}>{statusText(status)}</Badge>
           </div>
         </div>
+        {identityLine && <p className="truncate text-xs text-muted-foreground">{identityLine}</p>}
+        {row.show_matched && (
+          <p className="text-[11px] text-muted-foreground">Show matched from this host's email. Edit show details to confirm it.</p>
+        )}
         {!showKnown && canManage && <ShowNameEditor title={title} onSave={onRename} />}
         <p className="mt-0.5 line-clamp-3 text-xs leading-5 text-foreground/80 sm:line-clamp-1">
           {snippet

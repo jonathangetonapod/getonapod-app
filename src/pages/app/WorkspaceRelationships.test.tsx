@@ -485,6 +485,46 @@ describe('WorkspaceRelationships', () => {
     expect(mockedDetail).not.toHaveBeenCalled()
   })
 
+  it('titles a row by its show, with the host and address underneath', async () => {
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Founder & Operator' })).toBeInTheDocument()
+    expect(screen.getByText('Morgan Host · morgan@example.com')).toBeInTheDocument()
+  })
+
+  it('says when a show was matched from the address rather than named', async () => {
+    mockedList.mockResolvedValue([{
+      ...relationship,
+      podcast_id: 'manual-matched',
+      podcast_name: 'Matched Show',
+      host_name: null,
+      contact_email: 'host@matchedshow.com',
+      show_matched: true,
+    }])
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Matched Show' })).toBeInTheDocument()
+    expect(screen.getByText('host@matchedshow.com')).toBeInTheDocument()
+    expect(screen.getByText("Show matched from this host's email. Edit show details to confirm it.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Name this show' })).not.toBeInTheDocument()
+  })
+
+  it('names a show inline and saves it with the check button', async () => {
+    mockedList.mockResolvedValue([
+      { ...relationship, podcast_id: 'manual-email', podcast_name: null, host_name: null, contact_email: 'unknown-host@example.com' },
+    ])
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Name this show' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Show name for unknown-host@example.com' }), {
+      target: { value: 'The Unknown Hour' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save show name' }))
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledWith(workspaceId, {
+      podcastId: 'manual-email',
+      podcastName: 'The Unknown Hour',
+    }))
+  })
+
   it('falls back to initials when a cover will not load', async () => {
     const { container } = renderPage()
     await screen.findByRole('heading', { name: 'Founder & Operator' })

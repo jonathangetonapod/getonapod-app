@@ -44,6 +44,11 @@ export interface HostRelationshipSummary {
   curated: boolean
   /** Parked until this time: out of Needs attention and Follow-up overdue. Book v4+. */
   snoozed_until?: string | null
+  /**
+   * The show name and cover came from matching this row's address to a show,
+   * not from the row itself. Nothing is saved until someone confirms it.
+   */
+  show_matched?: boolean
 }
 
 export interface HostRelationshipEvent {
