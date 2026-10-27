@@ -14,6 +14,7 @@ import {
   podcastInitials,
   podcastRating,
 } from '@/lib/podcastCatalogDisplay'
+import { categoryDisplayNames } from '@/lib/podcastCategories'
 import { cn } from '@/lib/utils'
 import { openOnEnter, ROW_COLUMNS, ROW_LAYOUT, type PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
 
@@ -32,7 +33,7 @@ export const PodcastCatalogRow = ({
   onOpenDetails,
   onCopyEmail,
 }: PodcastResultProps) => {
-  const categories = categoryNames(podcast).slice(0, 2)
+  const categories = categoryDisplayNames(categoryNames(podcast)).slice(0, 2)
   const email = podcastEmailStatus(podcast)
   const domain = emailDomain(email.email)
   const rating = podcastRating(podcast)

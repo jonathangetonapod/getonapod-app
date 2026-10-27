@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
 import { PodcastPrimaryAction, type PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { categoryNames, languageName, podcastEmailStatus, podcastInitials, regionName } from '@/lib/podcastCatalogDisplay'
+import { categoryDisplayNames } from '@/lib/podcastCategories'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import type { RelationshipBadge } from '@/lib/relationshipLabels'
 import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCatalog'
@@ -46,7 +47,7 @@ export function PodcastCatalogDetailsDialog({
 }: PodcastCatalogDetailsDialogProps) {
   if (!podcast) return null
 
-  const categories = categoryNames(podcast)
+  const categories = categoryDisplayNames(categoryNames(podcast))
   const email = podcastEmailStatus(podcast)
   const publicUrl = safeExternalUrl(podcast.podcast_url || podcast.website || '')
   const feedUrl = safeExternalUrl(podcast.rss_feed || '')

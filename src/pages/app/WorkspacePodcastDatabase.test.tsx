@@ -639,6 +639,41 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.getByText('Region: United Kingdom')).toBeInTheDocument()
   })
 
+  // Categories read by their proper names, professional ones first, and the
+  // halves of Apple's split categories are one choice that sends both codes.
+  it('names and groups categories in the filter and on the rows', async () => {
+    mockedCatalog.mockResolvedValue({
+      ...catalogResponse,
+      categories: ['sports', 'culture', 'business', 'society', 'mental'],
+      items: [{
+        ...catalogResponse.items[0],
+        podcast_categories: [
+          { category_id: 'society', category_name: 'society' },
+          { category_id: 'culture', category_name: 'culture' },
+          { category_id: 'business', category_name: 'business' },
+        ],
+      }],
+    } as never)
+    renderPage()
+    const row = within(await screen.findByRole('listitem', { name: 'The Founder Show' }))
+    expect(row.getByText('Business')).toBeInTheDocument()
+    expect(row.getByText('Society & Culture')).toBeInTheDocument()
+    expect(row.queryByText('society')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any category' }))
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
+    expect(options).toEqual(['Any category', 'Business', 'Mental Health', 'Society & Culture', 'Sports'])
+    expect(screen.getByText('Business & professional')).toBeInTheDocument()
+    expect(screen.getByText('Other topics')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: 'Society & Culture' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ category: 'society|culture' }),
+      expect.anything(),
+    ))
+    expect(screen.getByText('Category: Society & Culture')).toBeInTheDocument()
+  })
+
   // The catalog function rejects a search longer than 120 characters.
   it('caps the search box at the length the catalog accepts', async () => {
     renderPage()

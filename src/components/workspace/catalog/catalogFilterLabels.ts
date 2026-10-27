@@ -1,4 +1,4 @@
-import { decodeFeedText } from '@/lib/feedText'
+import { categoryFilterLabel } from '@/lib/podcastCategories'
 import type {
   WorkspacePodcastCatalogActivityFilter,
   WorkspacePodcastCatalogAudienceFilter,
@@ -82,7 +82,7 @@ export const SORT_HINTS: Partial<Record<WorkspacePodcastCatalogSort, string>> = 
   relevance: 'Closest match to the search first',
 }
 
-/** The catalog spells some categories with entities; the value stays as sent. */
+/** A category filter value by its proper name ("health|fitness" reads "Health & Fitness"). */
 export function categoryLabel(value: string): string {
-  return value === 'all' ? 'Any category' : decodeFeedText(value).replace(/\s+/gu, ' ').trim()
+  return categoryFilterLabel(value)
 }

@@ -15,6 +15,7 @@ import {
   podcastInitials,
   podcastRating,
 } from '@/lib/podcastCatalogDisplay'
+import { categoryDisplayNames } from '@/lib/podcastCategories'
 import { cn } from '@/lib/utils'
 
 /** "5.6M audience · Apple 4.4 · Last episode Feb 2026", leaving out what is unknown. */
@@ -44,7 +45,7 @@ export const PodcastCatalogCard = ({
   onOpenDetails,
   onCopyEmail,
 }: PodcastResultProps) => {
-  const categories = categoryNames(podcast)
+  const categories = categoryDisplayNames(categoryNames(podcast))
   const email = podcastEmailStatus(podcast)
   const stats = statLine(podcast)
   return (

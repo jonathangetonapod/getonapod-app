@@ -1,4 +1,4 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   ACTIVITY_LABELS,
   ACTIVITY_OPTIONS,
@@ -9,6 +9,7 @@ import {
 } from '@/components/workspace/catalog/catalogFilterLabels'
 import { DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
 import { languageName, regionName } from '@/lib/podcastCatalogDisplay'
+import { categoryFilterGroups } from '@/lib/podcastCategories'
 
 export type ParamsUpdate = (patch: Partial<PodcastCatalogParams>, options?: { replace?: boolean }) => void
 
@@ -54,6 +55,34 @@ const LocaleSelect = ({
   )
 }
 
+/*
+ * The categories a B2B client is pitched on first, then everything else, each
+ * by its proper name. A value chosen earlier (an older address that names a
+ * single code) stays selectable even when it is no longer a choice.
+ */
+const CategoryOptions = ({ codes, selected }: { codes: string[]; selected: string }) => {
+  const { professional, other } = categoryFilterGroups(codes)
+  const known = [...professional, ...other].some((choice) => choice.value === selected)
+  return (
+    <>
+      {selected !== 'all' && !known && <SelectItem value={selected}>{categoryLabel(selected)}</SelectItem>}
+      {professional.length > 0 && (
+        <SelectGroup>
+          <SelectLabel className="text-xs font-medium text-muted-foreground">Business &amp; professional</SelectLabel>
+          {professional.map((choice) => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}
+        </SelectGroup>
+      )}
+      {professional.length > 0 && other.length > 0 && <SelectSeparator />}
+      {other.length > 0 && (
+        <SelectGroup>
+          <SelectLabel className="text-xs font-medium text-muted-foreground">Other topics</SelectLabel>
+          {other.map((choice) => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}
+        </SelectGroup>
+      )}
+    </>
+  )
+}
+
 export const FilterControls = ({
   params,
   update,
@@ -74,7 +103,7 @@ export const FilterControls = ({
       </SelectTrigger>
       <SelectContent className="max-h-80">
         <SelectItem value="all">Any category</SelectItem>
-        {categories.map((option) => <SelectItem key={option} value={option}>{categoryLabel(option)}</SelectItem>)}
+        <CategoryOptions codes={categories} selected={params.category} />
       </SelectContent>
     </Select>
     <Select value={params.contact} onValueChange={(contact: PodcastCatalogParams['contact']) => update({ contact })}>
