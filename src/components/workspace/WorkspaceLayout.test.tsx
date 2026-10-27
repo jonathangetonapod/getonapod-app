@@ -807,7 +807,8 @@ describe('WorkspaceLayout', () => {
 
     expect(screen.getByText('Workspace switcher')).toBeInTheDocument()
     expect(screen.getByText('Workspace switcher').closest('header')).not.toBeNull()
-    expect(screen.getAllByText('My Workspace').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Get On A Pod').length).toBeGreaterThan(0)
+    expect(screen.queryByText('My Workspace')).not.toBeInTheDocument()
     expect(screen.getByText('owner')).toBeInTheDocument()
     expect(screen.queryByText('platform owner')).not.toBeInTheDocument()
   })

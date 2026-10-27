@@ -49,7 +49,7 @@ describe('WorkspaceSwitcher', () => {
     ])
   })
 
-  it('navigates from My Workspace to the same module in a selected workspace', async () => {
+  it('navigates from the default workspace to the same module in a selected workspace', async () => {
     renderSwitcher()
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
@@ -83,16 +83,17 @@ describe('WorkspaceSwitcher', () => {
     renderSwitcher({ initialPath: '/app/clients' })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
-    expect(trigger).toHaveTextContent('My Workspace')
+    // The saved name, not a fixed alias: renaming it in Settings has to show here.
+    expect(trigger).toHaveTextContent('Get On A Pod')
     fireEvent.click(trigger)
-    expect(await screen.findByText('Get On A Pod')).toBeInTheDocument()
+    expect(await screen.findByText('Your workspace')).toBeInTheDocument()
   })
 
   it('moves the retired admin prospect address into the selected workspace Studio', async () => {
     renderSwitcher({ initialPath: '/admin/prospect-dashboards' })
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
-    expect(trigger).toHaveTextContent('My Workspace')
+    expect(trigger).toHaveTextContent('Get On A Pod')
     fireEvent.click(trigger)
     fireEvent.click(await screen.findByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(
@@ -133,7 +134,7 @@ describe('WorkspaceSwitcher', () => {
 
     const trigger = await screen.findByRole('combobox', { name: 'Select a workspace' })
     fireEvent.click(trigger)
-    fireEvent.click((await screen.findAllByText('My Workspace')).at(-1) as HTMLElement)
+    fireEvent.click((await screen.findAllByText('Get On A Pod')).at(-1) as HTMLElement)
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/app/onboarding'))
   })
 

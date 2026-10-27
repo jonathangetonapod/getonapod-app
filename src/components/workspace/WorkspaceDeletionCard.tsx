@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/AuthContext'
 import { deleteWorkspace } from '@/services/workspaceDeletion'
 import { PLATFORM_SUPPORT_EMAIL } from '@/lib/config'
+import { notACredentialField } from '@/lib/formAutofill'
 
 interface WorkspaceDeletionCardProps {
   workspaceId: string
@@ -116,6 +117,7 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
               <Label htmlFor="workspace-close-reason">Anything we should know? (optional)</Label>
               <Textarea
                 id="workspace-close-reason"
+                {...notACredentialField}
                 value={reason}
                 maxLength={500}
                 disabled={close.isPending}
@@ -130,8 +132,8 @@ export function WorkspaceDeletionCard({ workspaceId, workspaceName }: WorkspaceD
               </Label>
               <Input
                 id="workspace-close-confirm"
+                {...notACredentialField}
                 value={confirmation}
-                autoComplete="off"
                 disabled={close.isPending}
                 onChange={(event) => setConfirmation(event.target.value)}
               />

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, KeyRound, Loader2, Trash2 } from 'lucide-react'
+import { ExternalLink, Eye, EyeOff, KeyRound, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { notACredentialField } from '@/lib/formAutofill'
 import {
   clearWorkspaceAiKey,
   getWorkspaceAiKeys,
@@ -48,6 +49,8 @@ const PROVIDERS: Array<{ id: KeyProvider; label: string; placeholder: string; us
 export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: string; queryScope: readonly unknown[] }) {
   const queryClient = useQueryClient()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  // Hidden by default, revealable to check a paste before saving it.
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   // Removing a key silently moves the workspace back onto platform credits, so
   // it is confirmed rather than done on one click.
   const [removing, setRemoving] = useState<KeyProvider | null>(null)
@@ -130,17 +133,32 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
                   </a>
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="flex-1">
+                  <div className="relative flex-1">
                     <Label htmlFor={`ai-key-${provider.id}`} className="sr-only">{provider.label} API key</Label>
+                    {/* A provider key, not this person's password: kept out of
+                        password managers so they neither fill nor save it. */}
                     <Input
                       id={`ai-key-${provider.id}`}
-                      type="password"
-                      autoComplete="off"
+                      type={revealed[provider.id] ? 'text' : 'password'}
+                      {...notACredentialField}
+                      spellCheck={false}
                       placeholder={status?.configured ? 'Enter a new key to replace the saved one' : provider.placeholder}
                       value={drafts[provider.id] ?? ''}
                       onChange={(event) => setDrafts((current) => ({ ...current, [provider.id]: event.target.value }))}
                       disabled={busy}
+                      className="pr-10 font-mono"
                     />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-10 w-10 text-muted-foreground"
+                      aria-label={revealed[provider.id] ? `Hide ${provider.label} key` : `Show ${provider.label} key`}
+                      aria-pressed={Boolean(revealed[provider.id])}
+                      onClick={() => setRevealed((current) => ({ ...current, [provider.id]: !current[provider.id] }))}
+                    >
+                      {revealed[provider.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                   </div>
                   <Button
                     type="button"

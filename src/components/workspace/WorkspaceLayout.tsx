@@ -498,9 +498,6 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
     ? listedPlatformWorkspace?.name || platformWorkspace.workspaceName
     : platformWorkspace?.workspaceName
   const workspaceName = platformWorkspaceName || workspace?.name || 'Workspace'
-  const workspaceDisplayName = isPlatformAdmin && !platformWorkspace && workspace?.is_default
-    ? 'My Workspace'
-    : workspaceName
   const logoUrl = platformWorkspace
     ? platformWorkspace.logoUrl
       || workspaceLogoUrl(listedPlatformWorkspace?.id, listedPlatformWorkspace?.logo_path, listedPlatformWorkspace?.logo_updated_at)
@@ -593,14 +590,13 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
   const activeNavItem = visibleNavItems.find(isNavItemActive)
   /*
    * Under the workspace name: the page the person is on, which is the thing
-   * the old "Workspace dashboard" filler pretended to be. When the alias "My
-   * Workspace" is shown, the real name stays as the fallback so the platform
-   * owner can still see which workspace that is.
+   * the old "Workspace dashboard" filler pretended to be. The default
+   * workspace is named by its saved name like any other; it used to show a
+   * fixed "My Workspace" alias, so renaming it in Settings changed nothing the
+   * owner could see.
    */
-  const pageName = hidePageName ? '' : activeNavItem?.name
-  const workspaceSubtitle = pageName
-    || (workspaceDisplayName === workspaceName ? '' : workspaceName)
-  const headerTitle = hidePageName ? '' : activeNavItem?.name || workspaceDisplayName
+  const workspaceSubtitle = hidePageName ? '' : activeNavItem?.name
+  const headerTitle = hidePageName ? '' : activeNavItem?.name || workspaceName
 
   /*
    * The working client. One choice in the header that every client-scoped
@@ -859,7 +855,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
             {/* Not a heading: every page has its own h1, and this name repeats
                 on all of them. */}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold tracking-tight">{workspaceDisplayName}</p>
+              <p className="truncate text-sm font-bold tracking-tight">{workspaceName}</p>
               {workspaceSubtitle && (
                 <p className="truncate text-xs font-medium text-muted-foreground">{workspaceSubtitle}</p>
               )}

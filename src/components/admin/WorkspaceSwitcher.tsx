@@ -71,9 +71,7 @@ export const WorkspaceSwitcher = () => {
                   ? 'Loading workspaces…'
                   : workspacesQuery.error
                     ? 'Workspaces unavailable'
-                    : selected?.is_default
-                      ? 'My Workspace'
-                      : selected?.name || 'Select workspace…'}
+                    : selected?.name || 'Select workspace…'}
               </span>
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -88,7 +86,7 @@ export const WorkspaceSwitcher = () => {
                 {workspaces.map((workspace) => (
                   <CommandItem
                     key={workspace.id}
-                    value={`${workspace.is_default ? 'My Workspace' : workspace.name} ${workspace.name} ${workspace.slug}`}
+                    value={`${workspace.name} ${workspace.slug}`}
                     onSelect={() => {
                       setOpen(false)
                       const baseHref = workspace.is_default
@@ -100,10 +98,10 @@ export const WorkspaceSwitcher = () => {
                     <Check className={cn('mr-2 h-4 w-4', selectedId === workspace.id ? 'opacity-100' : 'opacity-0')} />
                     <span className="min-w-0 flex-1 overflow-hidden">
                       <span className="block truncate">
-                        {workspace.is_default ? 'My Workspace' : workspace.name}
+                        {workspace.name}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {workspace.is_default ? workspace.name : workspace.slug}
+                        {workspace.is_default ? 'Your workspace' : workspace.slug}
                       </span>
                     </span>
                   </CommandItem>

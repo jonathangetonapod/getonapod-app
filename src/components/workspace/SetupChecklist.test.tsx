@@ -71,7 +71,7 @@ function primeAllDone() {
   })
   vi.mocked(listWorkspaceOnboarding).mockResolvedValue({ templates: [{ status: 'draft' }] } as never)
   vi.mocked(listWorkspaceStaff).mockResolvedValue({
-    workspace: { client_brand_name: '' },
+    workspace: { client_brand_name: '', client_contact_email: 'hello@acme.test' },
     members: [{ status: 'active' }],
   } as never)
   vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({ has_subscription: true, balance: 0 } as never)
@@ -99,7 +99,7 @@ describe('SetupChecklist', () => {
     renderChecklist()
 
     expect(await screen.findByText('Setup complete')).toBeInTheDocument()
-    expect(screen.getByText('4 of 4 required steps done')).toBeInTheDocument()
+    expect(screen.getByText('5 of 5 required steps done')).toBeInTheDocument()
     // Optional steps still list, with their tag, whether or not they are done.
     expect(screen.getByText('Invite your team').closest('li')).toHaveAttribute('data-done', 'false')
     expect(screen.getByRole('link', { name: 'Open Invite your team' })).toHaveAttribute('href', '/app/settings#workspace-access')
@@ -121,13 +121,28 @@ describe('SetupChecklist', () => {
 
     expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
     expect(screen.getByText('Required steps are marked. Optional ones can wait.')).toBeInTheDocument()
-    expect(screen.getByText('3 of 4 required steps done')).toBeInTheDocument()
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
     const step = screen.getByText('Connect a sending mailbox to a client').closest('li')
     expect(step).toHaveAttribute('data-done', 'false')
     expect(step).toHaveTextContent('Required')
     expect(screen.getByRole('link', { name: 'Open Connect a sending mailbox to a client' })).toHaveAttribute('href', '/app/mailboxes')
     expect(screen.getByText('Connect Instantly').closest('li')).toHaveAttribute('data-done', 'true')
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
+  })
+
+  it('holds setup open while the reply-to email is empty', async () => {
+    vi.mocked(listWorkspaceStaff).mockResolvedValue({
+      workspace: { client_brand_name: '', client_contact_email: null },
+      members: [{ status: 'active' }],
+    } as never)
+    renderChecklist()
+
+    expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
+    const step = screen.getByText('Set the email clients reply to').closest('li')
+    expect(step).toHaveAttribute('data-done', 'false')
+    expect(step).toHaveTextContent('Required')
+    expect(screen.getByRole('link', { name: 'Open Set the email clients reply to' })).toHaveAttribute('href', '/app/settings#client-contact-email')
   })
 
   // A failed read is not a step left undone: telling an agency to connect
@@ -140,7 +155,7 @@ describe('SetupChecklist', () => {
     const step = screen.getByText('Add your first client').closest('li')
     expect(step).toHaveAttribute('data-done', 'unknown')
     expect(step).toHaveTextContent('Could not be checked right now')
-    expect(screen.getByText('3 of 4 required steps done (1 could not be checked)')).toBeInTheDocument()
+    expect(screen.getByText('4 of 5 required steps done (1 could not be checked)')).toBeInTheDocument()
     expect(screen.queryByText('Clients could not be loaded.')).not.toBeInTheDocument()
   })
 
@@ -171,13 +186,13 @@ describe('SetupChecklist', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss Connect a sending mailbox to a client' }))
 
     expect(await screen.findByText('Setup complete')).toBeInTheDocument()
-    expect(screen.getByText('3 of 4 required steps done, 1 dismissed')).toBeInTheDocument()
+    expect(screen.getByText('4 of 5 required steps done, 1 dismissed')).toBeInTheDocument()
     expect(screen.queryByText('Connect a sending mailbox to a client')).not.toBeInTheDocument()
     expect(JSON.parse(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`))).toEqual(['mailbox'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 dismissed step' }))
     expect(await screen.findByText('Connect a sending mailbox to a client')).toBeInTheDocument()
-    expect(screen.getByText('3 of 4 required steps done')).toBeInTheDocument()
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
     expect(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`)).toBeNull()
   })
 

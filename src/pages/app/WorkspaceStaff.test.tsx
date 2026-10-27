@@ -318,12 +318,50 @@ describe('WorkspaceStaff', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
   })
 
+  it('warns while the reply-to email is empty and offers the owner address', async () => {
+    renderPage()
+
+    const field = await screen.findByLabelText('Email clients reply to')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByText('Replies to your client emails go nowhere until you add an address.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use owner@example.com' }))
+    expect(field).toHaveValue('owner@example.com')
+    expect(field).not.toHaveAttribute('aria-invalid')
+    expect(screen.queryByText(/go nowhere/)).not.toBeInTheDocument()
+  })
+
+  // 1Password offered a login for "Agency name shown to clients".
+  it('keeps password managers off the fields that are not credentials', async () => {
+    renderPage()
+    await screen.findByText('Agency Admin')
+
+    for (const label of ['Workspace name', 'Agency name shown to clients', 'Email clients reply to', 'Booking link or embed code']) {
+      const field = screen.getByLabelText(label)
+      expect(field).toHaveAttribute('autocomplete', 'off')
+      expect(field).toHaveAttribute('data-1p-ignore', 'true')
+      expect(field).toHaveAttribute('data-lpignore', 'true')
+    }
+  })
+
+  it('hides an API key as it is typed and reveals it on request', async () => {
+    renderPage()
+
+    const field = await screen.findByLabelText('Anthropic (Claude) API key')
+    expect(field).toHaveAttribute('type', 'password')
+    expect(field).toHaveAttribute('autocomplete', 'off')
+    fireEvent.click(screen.getByRole('button', { name: 'Show Anthropic (Claude) key' }))
+    expect(field).toHaveAttribute('type', 'text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Anthropic (Claude) key' }))
+    expect(field).toHaveAttribute('type', 'password')
+  })
+
   it('takes a pasted scheduler link and says it will load on the page', async () => {
     renderPage()
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://calendly.com/agency/intro' } })
-    expect(screen.getByText(/Calendly loads on the page itself/)).toBeInTheDocument()
+    expect(screen.getByText('Not saved yet: https://calendly.com/agency/intro. Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Save link' }))
     await waitFor(() => expect(vi.mocked(updateWorkspaceBookingLink)).toHaveBeenCalledWith(
@@ -344,7 +382,7 @@ describe('WorkspaceStaff', () => {
     })
 
     // The link is taken out of the snippet rather than the paste refused.
-    expect(screen.getByText(/Saving https:\/\/cal\.com\/agency\/30min/)).toBeInTheDocument()
+    expect(screen.getByText(/Not saved yet: https:\/\/cal\.com\/agency\/30min/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Save link' }))
     await waitFor(() => expect(vi.mocked(updateWorkspaceBookingLink)).toHaveBeenCalledWith(
       workspaceId,
@@ -358,7 +396,7 @@ describe('WorkspaceStaff', () => {
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://book.example.com/agency' } })
 
-    expect(screen.getByText(/opens in a new tab/i)).toBeInTheDocument()
+    expect(screen.getByText(/This one will open in a new tab/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save link' })).not.toBeDisabled()
   })
 
@@ -413,10 +451,10 @@ describe('WorkspaceStaff', () => {
     const status = screen.getByTestId('instantly-status')
     await waitFor(() => expect(status).toHaveTextContent('Connected to Acme Sending · Manage in Client Campaigns'))
     expect(within(status).getByRole('link', { name: 'Manage in Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
-    // Instantly connected and credits in hand, but no client and no linked
-    // mailbox: two of four, linking to the clients page where the full
-    // checklist lives.
-    expect(await screen.findByRole('link', { name: /Setup: 2 of 4 required steps done/ })).toHaveAttribute('href', '/app/clients')
+    // Instantly connected and credits in hand, but no client, no linked
+    // mailbox and no reply-to address: two of five, linking to the clients
+    // page where the full checklist lives.
+    expect(await screen.findByRole('link', { name: /Setup: 2 of 5 required steps done/ })).toHaveAttribute('href', '/app/clients')
     expect(screen.queryByText('Workspace active')).not.toBeInTheDocument()
   })
 
@@ -535,6 +573,8 @@ describe('WorkspaceStaff', () => {
 
     const box = screen.getByLabelText('Booking link or embed code') as HTMLInputElement
     expect(box.value).toBe('https://calendly.com/northstar/intro')
+    // A saved link reads as saved, not as a save still in progress.
+    expect(screen.getByText('Saved. Calendly will load inline on prospect dashboards.')).toBeInTheDocument()
 
     fireEvent.change(box, { target: { value: '' } })
     const save = screen.getByRole('button', { name: 'Save link' })
@@ -610,7 +650,7 @@ describe('WorkspaceStaff', () => {
     expect(screen.getByText(/Paste the scheduler link, or the whole embed code/i)).toBeInTheDocument()
     expect(screen.getByText(/Saved on its own with Save link/i)).toBeInTheDocument()
     // Nothing typed yet, so there is no status line to read.
-    expect(screen.queryByText(/^Saving /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^(Saved\.|Not saved yet)/)).not.toBeInTheDocument()
   })
 
   it('invites through the authenticated workspace and its allowed default role', async () => {
@@ -1132,7 +1172,7 @@ describe('WorkspaceStaff', () => {
      */
     expect(screen.getByRole('heading', { name: 'Sidebar navigation', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
-    expect(screen.getByText(/the order is yours rather than the workspace's/i)).toBeInTheDocument()
+    expect(screen.getByText(/Only you see it, and it is saved in this browser/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Invite' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     // Sign out lives in the menu on the person's avatar.

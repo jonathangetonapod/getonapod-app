@@ -58,6 +58,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { notACredentialField } from '@/lib/formAutofill'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   MEMBER_AVATAR_MIME_TYPES,
@@ -507,6 +508,11 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     || clientBrandDraft.client_contact_email.trim() !== (data?.workspace.client_contact_email ?? '')
   )
 
+  // Every client email takes its reply-to from this field and sends none when
+  // it is empty, so the field says so and offers the owner's address.
+  const replyToMissing = Boolean(data) && !clientBrandDraft.client_contact_email.trim()
+  const ownerEmail = staff.find((member) => member.role === 'owner' && member.status === 'active')?.email ?? null
+
   const [bookingLinkDraft, setBookingLinkDraft] = useState('')
   // Copying "embed code" from a scheduler gives a block of script, not a URL,
   // so the link is taken out of whatever was pasted rather than refused.
@@ -534,6 +540,9 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
    */
   const refreshShellIdentity = async () => {
     await refreshSettings()
+    // The workspace switcher reads its own list rather than the account, so
+    // it kept the old name until that list went stale on its own.
+    await queryClient.invalidateQueries({ queryKey: ['platform', user?.id || 'unknown', 'switchable-workspaces'] })
     if (!isPlatformWorkspace) await refreshAccount({ quiet: true })
   }
 
@@ -985,6 +994,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                             <Label htmlFor="workspace-name">Workspace name</Label>
                             <Input
                               id="workspace-name"
+                              {...notACredentialField}
                               maxLength={120}
                               value={workspaceNameDraft}
                               disabled={!canManageWorkspaceName || workspaceNameMutation.isPending}
@@ -1044,7 +1054,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                 <Badge variant="secondary" className="rounded-full text-[10px]">Owner preference</Badge>
                               </div>
                               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                                Drag pages into the order that works for you. The order is yours rather than the workspace's — it is kept against your own account and workspace on this browser, so it follows you into any workspace you open.
+                                Drag pages into the order that works for you. Only you see it, and it is saved in this browser, so another browser or device starts with the default order.
                               </p>
                             </div>
                           </div>
@@ -1080,6 +1090,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
                               <Input
                                 id="client-brand-name"
+                                {...notACredentialField}
                                 maxLength={120}
                                 value={clientBrandDraft.client_brand_name}
                                 disabled={!canManageClientBranding || clientBrandMutation.isPending}
@@ -1096,6 +1107,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               <Label htmlFor="client-contact-email">Email clients reply to</Label>
                               <Input
                                 id="client-contact-email"
+                                {...notACredentialField}
                                 type="email"
                                 maxLength={254}
                                 value={clientBrandDraft.client_contact_email}
@@ -1105,8 +1117,32 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                   client_contact_email: event.target.value,
                                 }))}
                                 placeholder="hello@youragency.com"
+                                aria-invalid={replyToMissing || undefined}
+                                aria-describedby={replyToMissing ? 'client-contact-email-warning' : undefined}
+                                className={cn(replyToMissing && 'border-amber-500 focus-visible:ring-amber-500')}
                               />
-                              <p className="text-xs text-muted-foreground">Set as the reply-to on intake invitations, reminders, shortlist and booking emails, so a client who replies reaches you. Leave it empty and replies go nowhere.</p>
+                              {replyToMissing ? (
+                                <div
+                                  id="client-contact-email-warning"
+                                  className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-amber-700 dark:text-amber-400"
+                                >
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                    Replies to your client emails go nowhere until you add an address.
+                                  </span>
+                                  {ownerEmail && canManageClientBranding && (
+                                    <button
+                                      type="button"
+                                      className="font-medium text-foreground underline underline-offset-2"
+                                      onClick={() => setClientBrandDraft((current) => ({ ...current, client_contact_email: ownerEmail }))}
+                                    >
+                                      Use {ownerEmail}
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">Set as the reply-to on intake invitations, reminders, shortlist and booking emails, so a client who replies reaches you.</p>
+                              )}
                             </div>
 
                             <div className="space-y-2">
@@ -1117,6 +1153,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                     puts on the clipboard. */}
                                 <Textarea
                                   id="workspace-booking-link"
+                                  {...notACredentialField}
                                   rows={2}
                                   maxLength={6_000}
                                   value={bookingLinkDraft}
@@ -1153,11 +1190,19 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               </p>
                               {bookingLinkDraft.trim() ? (
                                 <p className={`text-xs leading-5 ${bookingLinkResolved ? 'text-muted-foreground' : 'text-destructive'}`}>
+                                  {/* Saved and unsaved read differently: this
+                                      line used to start "Saving" in both, so a
+                                      link saved minutes ago still looked like
+                                      a save in progress. */}
                                   {!bookingLinkResolved
                                     ? 'No booking link found in that. Paste the scheduler address, or the embed code it gives you.'
-                                    : bookingLinkPreviewName
-                                      ? `Saving ${bookingLinkResolved} — ${bookingLinkPreviewName} loads on the page itself.`
-                                      : `Saving ${bookingLinkResolved} — this one opens in a new tab. Calendly, Cal.com, SavvyCal, TidyCal, HubSpot, and Zcal load on the page itself.`}
+                                    : !bookingLinkChanged
+                                      ? bookingLinkPreviewName
+                                        ? `Saved. ${bookingLinkPreviewName} will load inline on prospect dashboards.`
+                                        : 'Saved. This link opens in a new tab from prospect dashboards.'
+                                      : bookingLinkPreviewName
+                                        ? `Not saved yet: ${bookingLinkResolved}. ${bookingLinkPreviewName} will load inline on prospect dashboards.`
+                                        : `Not saved yet: ${bookingLinkResolved}. This one will open in a new tab. Calendly, Cal.com, SavvyCal, TidyCal, HubSpot, and Zcal load inline.`}
                                 </p>
                               ) : null}
                             </div>
@@ -1168,8 +1213,8 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                   nothing until you know which one moves. */}
                               <p className="text-xs leading-5 text-muted-foreground">
                                 Primary is the solid colour behind headers and buttons on a client&rsquo;s pages. Accent
-                                marks the active item — the current tab, a selected row. The live preview on the right
-                                updates as you change them.
+                                marks the active item — the current tab, a selected row. The live preview updates as
+                                you change them.
                               </p>
                             <div className="grid gap-4 sm:grid-cols-2">
                               {[
@@ -1195,6 +1240,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                                       />
                                       <Input
                                         id={field.key}
+                                        {...notACredentialField}
                                         value={value}
                                         maxLength={7}
                                         spellCheck={false}
@@ -1630,8 +1676,8 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2"><Label htmlFor="staff-name">Full name</Label><Input id="staff-name" value={invite.full_name || ''} maxLength={120} disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, full_name: event.target.value }))} /></div>
-            <div className="space-y-2"><Label htmlFor="staff-email">Email</Label><Input id="staff-email" type="email" value={invite.email} maxLength={254} autoComplete="off" disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></div>
+            <div className="space-y-2"><Label htmlFor="staff-name">Full name</Label><Input id="staff-name" {...notACredentialField} value={invite.full_name || ''} maxLength={120} disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, full_name: event.target.value }))} /></div>
+            <div className="space-y-2"><Label htmlFor="staff-email">Email</Label><Input id="staff-email" type="email" {...notACredentialField} value={invite.email} maxLength={254} disabled={inviteBusy} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></div>
             <div className="space-y-2">
               <Label htmlFor="staff-role">Role</Label>
               <Select value={invite.role} disabled={inviteBusy} onValueChange={(role: 'admin' | 'member') => setInvite((current) => ({ ...current, role }))}>

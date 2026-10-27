@@ -175,6 +175,16 @@ export function useSetupProgress({
       unknown: staffUnknown,
     },
     {
+      // Every client email carries this as its reply-to, and the server
+      // sends none when it is empty, so a client's reply goes nowhere.
+      key: 'reply-to',
+      label: 'Set the email clients reply to',
+      href: `${baseHref}/settings#client-contact-email`,
+      required: true,
+      done: Boolean(staff?.workspace.client_contact_email?.trim()),
+      unknown: staffUnknown,
+    },
+    {
       key: 'instantly',
       label: 'Connect Instantly',
       href: `${baseHref}/client-campaigns`,
