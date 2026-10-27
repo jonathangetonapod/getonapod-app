@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/contexts/AuthContext'
+import { mailboxCacheKey, readMailboxCache, writeMailboxCache } from '@/lib/mailboxCache'
 import WorkspaceOutreachSuite, { type OutreachWorkspaceModule } from '@/pages/app/WorkspaceOutreachSuite'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { getWorkspaceClients, getWorkspaceClientSdrContext } from '@/services/clients'
@@ -14,6 +15,7 @@ import {
   getWorkspaceInboxThreadMessages,
   setWorkspaceMailboxClient,
   setWorkspaceInboxLeadInterest,
+  type WorkspaceMailboxesResponse,
 } from '@/services/workspaceCampaigns'
 import { addOutreachSuppression, captureHostRelationshipThread } from '@/services/hostRelationships'
 
@@ -93,6 +95,8 @@ function renderPage(module: OutreachWorkspaceModule, platformWorkspaceId?: strin
 
 describe('WorkspaceOutreachSuite', () => {
   beforeEach(() => {
+    // The page keeps the last mailbox list in localStorage; each test starts cold.
+    window.localStorage.clear()
     vi.clearAllMocks()
     vi.mocked(getWorkspaceInboxThreads).mockResolvedValue({ connected: true, threads: [] })
     mockedUseAuth.mockReturnValue({
@@ -236,6 +240,27 @@ describe('WorkspaceOutreachSuite', () => {
     expect(screen.queryByText('Mailbox health signals')).not.toBeInTheDocument()
     expect(screen.queryByText(/layout preview/i)).not.toBeInTheDocument()
     expect(mockedMailboxes).toHaveBeenCalledWith(defaultWorkspaceId)
+  })
+
+  it('draws the last mailbox list at once while the live one loads, then stores the new one', async () => {
+    // The default list from beforeEach, read back before the live call is held open.
+    const base = await getWorkspaceMailboxes(defaultWorkspaceId)
+    mockedMailboxes.mockClear()
+    const cached = { ...base, last_synced_at: new Date(Date.now() - 5 * 60_000).toISOString() }
+    const storageKey = mailboxCacheKey('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', defaultWorkspaceId)
+    writeMailboxCache(storageKey, cached, Date.now() - 5 * 60_000)
+    let finish: (value: WorkspaceMailboxesResponse) => void = () => undefined
+    mockedMailboxes.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    renderPage('mailboxes')
+
+    const table = screen.getByRole('table', { name: 'Mailbox accounts' })
+    expect(within(table).getByText('admin@solaraccountreview.help')).toBeInTheDocument()
+    // Older than staleTime, so it is refreshed straight away behind the table.
+    await waitFor(() => expect(mockedMailboxes).toHaveBeenCalledWith(defaultWorkspaceId))
+
+    const fresh = { ...base, last_synced_at: new Date().toISOString() }
+    finish(fresh)
+    await waitFor(() => expect(readMailboxCache(storageKey)?.data.last_synced_at).toBe(fresh.last_synced_at))
   })
 
   /*

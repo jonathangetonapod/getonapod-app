@@ -1013,6 +1013,15 @@ assert.match(mailboxesAction[0], /campaigns: linksByEmail\.get\(account\.email\.
 // Same reason as above: sliced to the next action, not to a named neighbour.
 // Anchored on the handler's own if-line: the action name also appears in the
 // generic client gate's unassign exemption above it.
+// The mailbox page waits on this whole action. The workspace's own campaign
+// rows are read while Instantly answers, and the account snapshot is written
+// alongside the analytics requests rather than ahead of them.
+assert.match(
+  mailboxesAction[0],
+  /const senderLinksRead = readMailboxSenderLinks\(context\.admin, workspaceId\);[\s\S]*?await listInstantlyAccounts\(apiKey\)[\s\S]*?await senderLinksRead;/u,
+)
+assert.match(mailboxesAction[0], /Promise\.allSettled\(\[\s*saveAccountsSnapshot\(/u)
+
 const assignAction = edge.match(/if \(action === "mailbox-assign"\) \{[\s\S]*?\n {4}if \(action ===/u)
 assert.ok(assignAction, 'mailbox-assign action must exist')
 assert.match(assignAction[0], /requireCampaignManager\(access\)/u)

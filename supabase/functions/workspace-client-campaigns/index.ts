@@ -1235,12 +1235,54 @@ async function freshOrSnapshotAccounts(
   }
 }
 
+interface MailboxSenderCampaign {
+  id: string;
+  client_id: string;
+  name: string;
+  status: string;
+  sender_accounts: string[] | null;
+  timezone: string | null;
+  daily_limit: number | null;
+}
+
+async function readMailboxSenderLinks(
+  admin: AuthContext["admin"],
+  workspaceId: string,
+): Promise<{
+  campaignRows: MailboxSenderCampaign[];
+  clientNames: Map<string, string>;
+}> {
+  const { data: senderRows } = await admin
+    .from("workspace_client_campaigns")
+    .select(
+      "id, client_id, name, status, sender_accounts, timezone, daily_limit",
+    )
+    .eq("workspace_id", workspaceId)
+    .limit(MAX_ANALYTICS_REFRESH_CAMPAIGNS);
+  const campaignRows = (senderRows || []) as unknown as MailboxSenderCampaign[];
+  const clientNames = await readClientNames(
+    admin,
+    workspaceId,
+    campaignRows.map((campaign) => campaign.client_id),
+  );
+  return { campaignRows, clientNames };
+}
+
 async function refreshProviderAccounts(
   admin: AuthContext["admin"],
   connection: ConnectionRow,
   apiKey: string,
 ): Promise<InstantlyAccountSummary[]> {
   const accounts = await listInstantlyAccounts(apiKey);
+  await saveAccountsSnapshot(admin, connection, accounts);
+  return accounts;
+}
+
+async function saveAccountsSnapshot(
+  admin: AuthContext["admin"],
+  connection: ConnectionRow,
+  accounts: InstantlyAccountSummary[],
+): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await admin
     .from("workspace_instantly_integrations")
@@ -1259,7 +1301,6 @@ async function refreshProviderAccounts(
       "The Instantly connection could not be updated",
     );
   }
-  return accounts;
 }
 
 async function ensureLocalCampaign(
@@ -3146,12 +3187,14 @@ serve(async (req) => {
         });
       }
 
+      // Which client each mailbox actually sends for, and the timezone its day
+      // is measured in. Both come from campaign rows this workspace already
+      // owns, so they are read while Instantly answers rather than after it.
+      const senderLinksRead = readMailboxSenderLinks(context.admin, workspaceId);
+      // Settled here so an early return below cannot leave it unhandled.
+      senderLinksRead.catch(() => undefined);
       const apiKey = await integrationApiKey(connection, false);
-      const accounts = await refreshProviderAccounts(
-        context.admin,
-        connection,
-        apiKey,
-      ).catch((error) => {
+      const accounts = await listInstantlyAccounts(apiKey).catch((error) => {
         if (error instanceof InstantlyApiError) {
           // A rejected or under-scoped key is a connection state, not a
           // request failure — the page renders it as "reconnect Instantly".
@@ -3175,28 +3218,7 @@ serve(async (req) => {
         });
       }
       const emails = accounts.map((account) => account.email);
-      // Which client each mailbox actually sends for, and the timezone its day
-      // is measured in. Both come from campaign rows this workspace already
-      // owns, so neither costs a provider call.
-      const { data: senderRows } = await context.admin
-        .from("workspace_client_campaigns")
-        .select("id, client_id, name, status, sender_accounts, timezone, daily_limit")
-        .eq("workspace_id", workspaceId)
-        .limit(MAX_ANALYTICS_REFRESH_CAMPAIGNS);
-      const campaignRows = (senderRows || []) as unknown as Array<{
-        id: string;
-        client_id: string;
-        name: string;
-        status: string;
-        sender_accounts: string[] | null;
-        timezone: string | null;
-        daily_limit: number | null;
-      }>;
-      const clientNames = await readClientNames(
-        context.admin,
-        workspaceId,
-        campaignRows.map((campaign) => campaign.client_id),
-      );
+      const { campaignRows, clientNames } = await senderLinksRead;
       const linksByEmail = new Map<string, Array<Record<string, unknown>>>();
       for (const campaign of campaignRows) {
         // The write path dedupes, but a legacy or externally-written row can
@@ -3224,13 +3246,17 @@ serve(async (req) => {
       const workspaceTimeZone = commonCampaignTimeZone(
         campaignRows.map((campaign) => campaign.timezone),
       );
-      const [dailyResult, warmupResult] = await Promise.allSettled([
+      // The snapshot other actions verify against is written alongside the
+      // analytics requests instead of ahead of them.
+      const [snapshotResult, dailyResult, warmupResult] = await Promise.allSettled([
+        saveAccountsSnapshot(context.admin, connection, accounts),
         getInstantlyAccountSendHistory(apiKey, emails, {
           days: SEND_HISTORY_DAYS,
           timeZone: workspaceTimeZone,
         }),
         getInstantlyWarmupAnalytics(apiKey, emails),
       ]);
+      if (snapshotResult.status === "rejected") throw snapshotResult.reason;
       const sendHistory = dailyResult.status === "fulfilled"
         ? dailyResult.value
         : new Map<string, AccountSendDay[]>();

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -25,6 +25,7 @@ import {
 } from '@/lib/workspaceRoutes'
 import { getAdminWorkspaceView } from '@/services/adminWorkspaces'
 import { getWorkspaceClients } from '@/services/clients'
+import { mailboxCacheKey, readMailboxCache, writeMailboxCache } from '@/lib/mailboxCache'
 import {
   getWorkspaceMailboxes,
   type WorkspaceMailboxAccount,
@@ -118,6 +119,13 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
     retry: false,
   })
   const mailboxWorkspaceId = isSelectedWorkspace ? selectedWorkspaceId : workspace?.id || ''
+  const mailboxStorageKey = mailboxCacheKey(user?.id || 'unknown', mailboxWorkspaceId || 'missing')
+  // Read once per key: the last list draws immediately and is refetched at
+  // once when older than staleTime.
+  const cachedMailboxes = useMemo(
+    () => (module === 'mailboxes' && user?.id ? readMailboxCache(mailboxStorageKey) : null),
+    [module, user?.id, mailboxStorageKey],
+  )
   const mailboxesQuery = useQuery({
     queryKey: [
       isSelectedWorkspace ? 'platform' : 'tenant',
@@ -126,7 +134,13 @@ const WorkspaceOutreachSuite = ({ module, platformWorkspaceId }: WorkspaceOutrea
       mailboxWorkspaceId || 'missing',
       'mailboxes',
     ],
-    queryFn: () => getWorkspaceMailboxes(mailboxWorkspaceId),
+    queryFn: async () => {
+      const data = await getWorkspaceMailboxes(mailboxWorkspaceId)
+      if (user?.id) writeMailboxCache(mailboxStorageKey, data)
+      return data
+    },
+    initialData: cachedMailboxes?.data,
+    initialDataUpdatedAt: cachedMailboxes?.savedAt,
     enabled: module === 'mailboxes'
       && UUID_PATTERN.test(mailboxWorkspaceId)
       && (!isSelectedWorkspace || Boolean(selectedWorkspaceQuery.data?.workspace)),
