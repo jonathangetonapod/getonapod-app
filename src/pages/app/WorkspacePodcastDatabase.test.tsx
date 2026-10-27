@@ -153,7 +153,7 @@ describe('WorkspacePodcastDatabase', () => {
     await screen.findByText('The Founder Show')
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Any email status' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Verified email' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Unlocked direct contact' }))
     fireEvent.click(screen.getByRole('combobox', { name: 'Still publishing' }))
     // Still publishing already means an episode in 90 days, so that is not offered twice.
     expect(screen.queryByRole('option', { name: 'Published in 90 days' })).not.toBeInTheDocument()
@@ -166,7 +166,7 @@ describe('WorkspacePodcastDatabase', () => {
       expect.objectContaining({ contact: 'direct', activity: 'last_180_days', audience: '10k_50k', page: 1 }),
       expect.anything(),
     ))
-    expect(screen.getByText('Email: Verified email')).toBeInTheDocument()
+    expect(screen.getByText('Email: Unlocked direct contact')).toBeInTheDocument()
     expect(screen.getByText('Activity: Published in 6 months')).toBeInTheDocument()
     expect(screen.getByText('Audience: 10K to 50K')).toBeInTheDocument()
   })
@@ -192,9 +192,9 @@ describe('WorkspacePodcastDatabase', () => {
     expect(screen.queryByText('Public email')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Any email status' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Deliverable or verified' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Valid email (deliverable)' }))
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'verified', page: 1 }), expect.anything()))
-    expect(screen.getByText('Email: Deliverable or verified')).toBeInTheDocument()
+    expect(screen.getByText('Email: Valid email (deliverable)')).toBeInTheDocument()
   })
 
   // Podscan's guest flag narrows the list on request; untouched, every format shows.
@@ -227,7 +227,7 @@ describe('WorkspacePodcastDatabase', () => {
     await screen.findByText('The Founder Show')
     expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'any' }), expect.anything())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Email: Public or verified' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Email: Has an email' }))
     await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(workspaceId, expect.objectContaining({ contact: 'all' }), expect.anything()))
   })
 

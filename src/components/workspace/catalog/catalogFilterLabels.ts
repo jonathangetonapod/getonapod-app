@@ -12,12 +12,15 @@ import type {
  * active-filter chips and the accessible names all say the same thing.
  */
 
+// In the order the Email filter lists them. "Valid email" (a mailbox confirmed to
+// accept mail, or an unlocked contact) is the one people want most, so it leads;
+// an unlocked contact is a paid direct-host lookup, not a checked public inbox.
 export const CONTACT_LABELS: Record<WorkspacePodcastCatalogContactFilter, string> = {
   all: 'Any email status',
-  any: 'Public or verified',
-  verified: 'Deliverable or verified',
-  direct: 'Verified email',
-  free: 'Public email',
+  verified: 'Valid email (deliverable)',
+  any: 'Has an email',
+  free: 'Public email (unchecked or catch-all)',
+  direct: 'Unlocked direct contact',
   none: 'No email',
 }
 
