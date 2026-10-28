@@ -14,7 +14,7 @@ import {
 } from '@/services/workspaceCampaigns'
 import { listWorkspaceOnboarding } from '@/services/workspaceOnboarding'
 import {
-  getWorkspaceBillingOverview,
+  getWorkspaceSubscriptionOverview,
   listWorkspaceStaff,
   type WorkspaceStaffView,
 } from '@/services/workspaceStaff'
@@ -155,7 +155,7 @@ export function useSetupProgress({
   })
   const billingQuery = useQuery({
     queryKey: ['setup-checklist', workspaceId, 'billing'],
-    queryFn: quietly(() => getWorkspaceBillingOverview(workspaceId)),
+    queryFn: quietly(() => getWorkspaceSubscriptionOverview(workspaceId)),
     ...common,
   })
 
@@ -218,10 +218,11 @@ export function useSetupProgress({
     },
     {
       key: 'billing',
-      label: 'Check your plan and credits',
+      label: 'Activate your workspace subscription',
       href: `${baseHref}/settings/billing`,
       required: true,
-      done: billingQuery.data?.has_subscription === true || (billingQuery.data?.balance ?? 0) > 0,
+      done: ['active', 'comped'].includes(billingQuery.data?.billing_status ?? '')
+        || (billingQuery.data?.billing_status === 'trialing' && Date.parse(billingQuery.data.trial_ends_at ?? '') > Date.now()),
       unknown: billingQuery.data === null,
     },
     {

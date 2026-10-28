@@ -46,7 +46,7 @@ describe('matchesFilter', () => {
     expect(matchesFilter(ending, 'ending', NOW)).toBe(true)
     expect(matchesFilter(ended, 'ending', NOW)).toBe(false)
     expect(matchesFilter(ended, 'attention', NOW)).toBe(true)
-    expect(matchesFilter(low, 'low', NOW)).toBe(true)
+    expect(matchesFilter(low, 'low', NOW)).toBe(false)
     expect(matchesFilter(row(), 'attention', NOW)).toBe(false)
   })
 
@@ -81,7 +81,7 @@ describe('portfolioSummary', () => {
     expect(summary).toMatchObject({
       trialing: 3,
       trialsEndingSoon: 1,
-      needsAttention: 3,
+      needsAttention: 2,
       creditsOutstanding: 410,
       creditsUsedThisMonth: 10,
     })

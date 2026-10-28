@@ -58,7 +58,7 @@ import { checkPitchCopy } from '@/lib/pitchQuality'
 import { campaignErrorGuidance, campaignErrorReport, errorCode, errorStatus } from '@/lib/campaignErrorGuidance'
 import { MY_WORKSPACE_BASE_HREF, workspaceModuleHref } from '@/lib/workspaceRoutes'
 import { safeExternalUrl } from '@/lib/externalUrl'
-import { CREDIT_COSTS, creditCostSuffix, creditsLabel } from '@/lib/creditCosts'
+import { creditCostSuffix } from '@/lib/creditCosts'
 import {
   type ClientShortlistEmailUnlockStageId,
   type ClientShortlistPodcast,
@@ -1246,7 +1246,7 @@ export function ClientCampaignPrep({
     if (!relationshipCanProceed) {
       toast.info(relationshipSuppressed
         ? 'This host is marked do not contact in Relationships.'
-        : 'Review and confirm the relationship warning before using research credits.')
+        : 'Review and confirm the relationship warning before running research.')
       return
     }
     if (promptDirty) {
@@ -1621,7 +1621,7 @@ export function ClientCampaignPrep({
                                 : 'Warning: this podcast already has relationship history'}
                             </p>
                             <p className="mt-1 text-xs leading-5 text-amber-900/85">
-                              Review the CRM history before continuing. Nothing that can use research credits, pitch credits, or external contact enrichment will run until this check is complete.
+                              Review the CRM history before continuing. Research, pitch generation and contact enrichment will wait until this check is complete.
                             </p>
                             {podcast.agency_relationship?.podcast_id && (
                               <p className="mt-1 text-[11px] text-amber-900/70">CRM match · Podcast ID {podcast.agency_relationship.podcast_id}</p>
@@ -1778,7 +1778,7 @@ export function ClientCampaignPrep({
                       <div>
                         <div className="mb-5 flex gap-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-sky-950">
                           <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
-                          <div><p className="text-sm font-semibold">One shared contact network</p><p className="mt-1 text-xs leading-5 text-sky-900/80">Free Podscan inboxes and verified direct contacts are shared across the Database. If this podcast has already been unlocked, it is reused for 0 credits.</p></div>
+                          <div><p className="text-sm font-semibold">One shared contact network</p><p className="mt-1 text-xs leading-5 text-sky-900/80">Free Podscan inboxes and verified direct contacts are shared across the Database. An existing verified contact can be reused without another provider lookup.</p></div>
                         </div>
                         <p className="text-sm font-semibold">Choose an email path</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Podscan supplies the free show inbox; the robust route identifies and verifies a direct host contact.</p>
@@ -1820,7 +1820,7 @@ export function ClientCampaignPrep({
                               setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
                             }}
                           >
-                            <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">0 app credits</Badge></div>
+                            <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">Provider billed</Badge></div>
                             <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
                             <p className="mt-2 text-xs leading-5 text-muted-foreground">Claude searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
                             <p className="mt-3 text-xs leading-5 text-violet-800">Uses your Claude API key. Anthropic bills API usage to your account.</p>
@@ -1840,8 +1840,8 @@ export function ClientCampaignPrep({
                           }}
                         >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><PenLine className="h-4 w-4" /></span>
-                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Enter an email manually</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Use a host or producer email you found yourself. No credits are used.</span></span>
-                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">0 credits</Badge>{emailRoute === 'manual' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
+                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Enter an email manually</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Use a host or producer email you found yourself. No provider lookup is needed.</span></span>
+                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">Included</Badge>{emailRoute === 'manual' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
                         </button>
 
                         {emailRoute === 'manual' && (
@@ -1867,15 +1867,15 @@ export function ClientCampaignPrep({
                       {emailRoute === 'waterfall' && (
                         <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
                           {emailAlreadyUnlocked ? (
-                            <div><p className="text-sm font-semibold">Shared verified contact · 0 app credits</p><p className="mt-1 text-xs text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p></div>
+                            <div><p className="text-sm font-semibold">Shared verified contact</p><p className="mt-1 text-xs text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p></div>
                           ) : emailSearchRunning ? (
                             <div role="status"><p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" />Direct email search in progress</p><div className="mt-3 space-y-2">{visibleEmailUnlockSteps.map((step) => <p key={step.id} className="text-xs">{step.status === 'complete' ? '✓ ' : step.status === 'active' ? '→ ' : ''}{step.title}</p>)}</div></div>
                           ) : (
-                            <div><p className="text-sm font-semibold">Claude + Blitz · 0 app credits</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Claude finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
+                            <div><p className="text-sm font-semibold">Your Claude + Blitz accounts</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Claude finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
                           )}
                           {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && <a className="mt-3 block break-all text-sm text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a>}
                           {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
-                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· 0 app credits</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your Claude API key. Anthropic API charges apply; no app credits are used.' : 'Connect your Claude API key in workspace settings to start. No app credits are used.'}</p></div>
+                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your provider accounts</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your Claude and Blitz accounts. Provider charges apply.' : 'Connect your Claude and Blitz keys in workspace settings to start.'}</p></div>
                           )}
                         </div>
                       )}
@@ -1901,7 +1901,7 @@ export function ClientCampaignPrep({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">Step 2</Badge>
-                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">{byoAi ? 'Included' : `${creditsLabel(CREDIT_COSTS.research_run)} per run`}</Badge>
+                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">Your Anthropic account</Badge>
                           </div>
                           <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research and Pitch</h3>
                           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>

@@ -6,7 +6,7 @@ const portal = readFileSync('supabase/functions/workspace-billing-portal/index.t
 // Manager-gated on the workspace being billed, with a fresh credential.
 assert.match(portal, /requireAuthenticatedUser\(req\)/u)
 assert.match(portal, /workspaceCredentialIsFresh\(authContext\)/u)
-assert.match(portal, /requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
+assert.match(portal, /requireWorkspaceFeatureAccess\(authContext, workspaceId, \{ billingRecovery: true \}\)/u)
 assert.match(portal, /MANAGER_ROLES\.has\(access\.role\)/u)
 assert.match(portal, /requireOnlyKeys\(body, \['action', 'workspace_id'\]\)/u)
 
@@ -51,6 +51,12 @@ assert.match(portal, /const reason = requireString\(body\.reason, 'reason', \{ m
 assert.match(portal, /const actionKey = requireUuid\(body\.action_key, 'action_key'\)/u)
 assert.match(portal, /stripeKey, `\$\{actionKey\}:price`\)/u)
 assert.match(portal, /'Idempotency-Key': idempotencyKey/u)
+// The workspace-wide customer key must use the same parameters when a
+// different owner/admin retries after Stripe succeeded but the DB write failed.
+const customerCreation = portal.slice(portal.indexOf('if (!customerId) {'), portal.indexOf("customerId = typeof customer.id"))
+assert.match(customerCreation, /const customerParams = new URLSearchParams\(\{\s*'metadata\[workspace_id\]': workspaceId,\s*\}\)/u)
+assert.match(customerCreation, /stripePost\('customers', customerParams, stripeKey, `workspace-customer:\$\{workspaceId\}`\)/u)
+assert.doesNotMatch(customerCreation, /authContext\.user|customerParams\.set/u)
 // Complimentary is never sold: credits only, never a Stripe price.
 assert.match(portal, /This plan is never sold, so it has no price to set/u)
 // The admin sees how many workspaces a change reaches.
@@ -97,7 +103,7 @@ const webhook = readFileSync('supabase/functions/workspace-subscription-webhook/
 // A plan carries what it gives, not only what it costs. Applied with the plan,
 // or a workspace that downgraded keeps the dearer allowance and goes on
 // spending it — credits are granted from that column.
-assert.match(webhook, /update\.monthly_credit_allowance = plan\.monthly_credit_allowance/u)
+assert.match(webhook, /update\.monthly_credit_allowance = 0/u)
 // A portal cancellation lands as an update with the subscription still active,
 // so the status alone cannot show that a plan is on its way out.
 assert.match(webhook, /update\.cancel_at_period_end/u)
@@ -171,3 +177,7 @@ assert.doesNotMatch(migration, /FOR (?:INSERT|UPDATE|DELETE|ALL)/u)
 assert.match(migration, /CREATE UNIQUE INDEX.*billing_plans_stripe_price_id_key/su)
 
 console.log('Billing portal edge contract checks passed')
+
+assert.match(portal, /'features\[subscription_update\]\[enabled\]': 'false'/u)
+assert.match(portal, /'features\[subscription_cancel\]\[mode\]': 'at_period_end'/u)
+assert.match(portal, /configuration: configurationId/u)

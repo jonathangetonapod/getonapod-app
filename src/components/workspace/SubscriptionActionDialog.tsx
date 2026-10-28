@@ -71,13 +71,14 @@ export const SubscriptionActionDialog = ({
 
   const trialEnd = extension === 'custom' ? customTrialEnd(customDate) : extendedTrialEnd(billing.trial_ends_at, extension)
   const periodEnd = billing.current_period_end ? formatDate(billing.current_period_end) : 'the end of the current period'
-  const plan = plans.find((candidate) => candidate.plan_key === planKey)
+  const plan = purchasable.find((candidate) => candidate.plan_key === planKey
+    && (operation !== 'change_plan' || candidate.plan_key !== billing.plan_key))
 
   const summary: Record<SubscriptionOperation, string> = {
     extend_trial: trialEnd
       ? `The trial will end ${formatDate(trialEnd)}${billing.trial_ends_at ? ` instead of ${formatDate(billing.trial_ends_at)}` : ''}.`
       : 'Choose a date within the next year.',
-    change_plan: billing.has_subscription
+    change_plan: !plan ? 'No alternative plan is available for this workspace.' : billing.has_subscription
       ? `Switches to ${planLabel(planKey)} now. Stripe prorates the rest of this period.`
       : `Moves the workspace to ${planLabel(planKey)}. Nothing is charged until it subscribes.`,
     make_comped: billing.has_subscription
@@ -91,7 +92,7 @@ export const SubscriptionActionDialog = ({
 
   const ready = reason !== ''
     && (operation !== 'extend_trial' || trialEnd !== null)
-    && (operation !== 'change_plan' && operation !== 'checkout_link' ? true : Boolean(planKey))
+    && (operation !== 'change_plan' && operation !== 'checkout_link' ? true : Boolean(plan))
 
   const mutation = useMutation({
     mutationFn: () => runSubscriptionAction(workspaceId, {

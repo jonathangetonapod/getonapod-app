@@ -325,7 +325,7 @@ describe('WorkspaceProspectDashboards stale build', () => {
 
     expect(await screen.findByText(/previous build did not finish/i)).toBeInTheDocument()
     // The cost is on the button once it can be clicked again.
-    const buttons = screen.getAllByRole('button', { name: 'Build shortlist · 5 credits' })
+    const buttons = screen.getAllByRole('button', { name: 'Build shortlist · Your provider account' })
     expect(buttons.length).toBeGreaterThan(0)
     for (const button of buttons) expect(button).toBeEnabled()
   })

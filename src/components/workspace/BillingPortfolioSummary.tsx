@@ -12,12 +12,10 @@ export const BillingPortfolioSummary = ({ summary }: BillingPortfolioSummaryProp
     { label: 'MRR', value: dollars.format(summary.mrrCents / 100) },
     { label: 'Paying / Trialing', value: `${summary.paying} / ${summary.trialing}` },
     { label: 'Trials ending in 7 days', value: summary.trialsEndingSoon.toLocaleString() },
-    { label: 'Credits outstanding', value: summary.creditsOutstanding.toLocaleString() },
-    { label: 'Credits used this month', value: summary.creditsUsedThisMonth.toLocaleString() },
     { label: 'Needs attention', value: summary.needsAttention.toLocaleString() },
   ]
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {cards.map((card) => (
         <div key={card.label} className="rounded-lg border bg-muted/20 p-3">
           <dt className="text-xs text-muted-foreground">{card.label}</dt>

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { runInNewContext } from 'node:vm'
 
 const source = readFileSync('supabase/functions/manage-workspace-staff/index.ts', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
@@ -709,6 +710,36 @@ assert.match(subscriptionAdmin, /proration_behavior: "create_prorations"/u)
 // The checkout link is a bearer credential: it goes back to the admin, never into the audit log.
 assert.match(subscriptionAdmin, /result = \{ plan_key: target\.plan_key, expires_at: expiresAt, emailed, owner_email: ownerEmail \|\| null \};/u)
 assert.match(source, /headers\["Idempotency-Key"\] = idempotencyKey;/u)
+
+// Extending a cancelled workspace restores access under the subscription gate.
+// Execute the handler branch with its IO stubbed, including the guard that
+// prevents changing a live Stripe subscription's own trial dates.
+const trialActionStart = subscriptionAdmin.indexOf('if (operation === "extend_trial") {')
+const trialAction = subscriptionAdmin.slice(
+  trialActionStart + 'if (operation === "extend_trial") {'.length,
+  subscriptionAdmin.indexOf('} else if (operation === "change_plan")', trialActionStart),
+)
+assert.ok(trialActionStart >= 0 && trialAction.includes('writeProfile'))
+const until = new Date(Date.now() + 7 * 86_400_000).toISOString()
+for (const [billingStatus, expected] of [
+  ['suspended', 'trialing'], ['past_due', 'trialing'], ['trialing', 'trialing'],
+  ['active', undefined], ['comped', undefined], [undefined, 'trialing'],
+]) {
+  const writes = []
+  await runInNewContext(`(async () => { let result; ${trialAction}; return result })()`, {
+    liveSubscription: false,
+    profile: billingStatus ? { billing_status: billingStatus } : null,
+    body: { trial_ends_at: until },
+    writeProfile: async (fields) => writes.push(fields),
+  })
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].trial_ends_at, until)
+  assert.equal(writes[0].billing_status, expected, `trial extension for ${billingStatus}`)
+}
+await assert.rejects(runInNewContext(`(async () => { let result; ${trialAction}; return result })()`, {
+  liveSubscription: true,
+  HttpError: class extends Error { constructor(status, code) { super(code); this.status = status } },
+}), { message: 'SUBSCRIPTION_EXISTS' })
 
 // The webhook keeps an admin-comped workspace comped while its subscription runs out.
 const subscriptionWebhook = readFileSync('supabase/functions/workspace-subscription-webhook/index.ts', 'utf8')

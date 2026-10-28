@@ -16,6 +16,7 @@ import {
   requireOnlyKeys,
   requireString,
   requireUuid,
+  requireWorkspaceFeatureAccess,
   workspaceCredentialIsFresh,
 } from "../_shared/workspaceAuth.ts";
 
@@ -495,6 +496,11 @@ serve(async (req) => {
       );
     }
 
+    // Existing resources remain readable during billing recovery; changing
+    // content, publishing it, or deleting it requires an active entitlement.
+    if (action !== "list") {
+      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+    }
     const { data, error } = await admin.rpc(
       "workspace_guest_resource_operation_v1",
       {

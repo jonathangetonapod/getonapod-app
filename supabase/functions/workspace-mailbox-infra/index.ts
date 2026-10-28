@@ -1,7 +1,6 @@
 // Workspace mailbox infrastructure (Winnr-backed): buy sending domains and
 // warmed mailboxes in-app, track provisioning, and export to Instantly.
-// Manager-gated; the platform Winnr account is scoped per workspace with a
-// workspace:<id> tag on every domain.
+// Manager-gated; provider work uses the workspace's own Winnr account.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -22,7 +21,7 @@ import {
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { readStoredAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
@@ -481,19 +480,22 @@ serve(async (req) => {
     }
     const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
     requireManager(access)
-    // Workspace Winnr key wins; the platform token is the fallback. Orders on
-    // a workspace key skip platform credits — that workspace pays Winnr.
-    const winnrKey = await resolveAiKey(authContext.admin, workspaceId, 'winnr')
-    if (!winnrKey) {
-      // Purchasing needs a Winnr account; the overview still renders so the
-      // card can explain exactly what to connect.
-      if (action === 'infra-overview') {
+    // The disconnected overview is a local setup state, not a provider call.
+    // A strict provider resolver would reject it before the UI can explain
+    // which account to connect. Operational actions still require that key.
+    if (action === 'infra-overview') {
+      requireOnlyKeys(body, ['action', 'workspace_id'])
+      const stored = await readStoredAiKey(authContext.admin, workspaceId, 'winnr')
+      if (!stored.apiKey) {
         return jsonResponse(req, METHODS, 200, {
           winnr_connected: false,
           domains: [],
           orders: [],
         })
       }
+    }
+    const winnrKey = await resolveAiKey(authContext.admin, workspaceId, 'winnr')
+    if (!winnrKey) {
       throw new HttpError(
         409,
         'WINNR_NOT_CONNECTED',

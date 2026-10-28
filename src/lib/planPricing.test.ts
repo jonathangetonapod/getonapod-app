@@ -29,12 +29,7 @@ describe('planChangeSummary', () => {
   })
 
   it('separates an allowance change from who receives it', () => {
-    expect(planChangeSummary(standard, { cents: 9900, credits: 400, applyToExisting: false })).toEqual([
-      'Credits each month: 300 → 400.',
-      'Workspaces already on the plan keep their current credits until their subscription next changes.',
-    ])
-    expect(planChangeSummary(standard, { cents: 9900, credits: 400, applyToExisting: true })[1])
-      .toMatch(/^5 workspaces on Standard get 400 credits from their next monthly grant/u)
+    expect(planChangeSummary(standard, { cents: 9900, credits: 0, applyToExisting: false })).toEqual([])
   })
 
   it('never mentions a price for a plan that is not sold', () => {

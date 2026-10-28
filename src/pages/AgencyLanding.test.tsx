@@ -57,10 +57,9 @@ describe('AgencyLanding', () => {
   // drift from what a click actually costs.
   it('prices the plans in shortlists, from the credit table', () => {
     renderPage()
-    expect(screen.getByText(/about 4 client shortlists a month, at 25 credits each/iu)).toBeInTheDocument()
-    expect(screen.getByText(/about 12 client shortlists a month, at 25 credits each/iu)).toBeInTheDocument()
-    expect(screen.getByText(/start on founding member; upgrading keeps everything/iu)).toBeInTheDocument()
-    expect(screen.getByText(/built from the outreach we run for our own clients/iu)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'One workspace. $99 a month.' })).toBeInTheDocument()
+    expect(screen.getByText('Unlimited clients and team members')).toBeInTheDocument()
+    expect(screen.queryByText(/credits a month/)).not.toBeInTheDocument()
   })
 
   it('gives the submit button a name of its own', () => {

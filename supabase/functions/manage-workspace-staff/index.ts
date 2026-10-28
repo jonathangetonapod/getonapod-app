@@ -3180,9 +3180,51 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, result);
     }
 
+    if (["credits-grant", "credits-adjust", "billing-allowance-set", "billing-autorefill-set"].includes(action)) {
+      throw new HttpError(410, "CREDIT_BILLING_RETIRED", "Credit billing has ended. Historical transactions remain available in the ledger.");
+    }
+
+    if (action === "subscription-overview") {
+      requireOnlyKeys(body, ["action", "workspace_id"]);
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
+      if (!["owner", "admin", "platform_admin"].includes(access.role)) {
+        throw new HttpError(403, "WORKSPACE_ACCESS_REQUIRED", "Workspace manager access is required");
+      }
+      const [profileResult, workspaceResult, plansResult] = await Promise.all([
+        admin.from("workspace_billing_profiles")
+          .select("plan_key,billing_status,stripe_customer_id,stripe_subscription_id,cancel_at_period_end,current_period_end,trial_ends_at")
+          .eq("workspace_id", workspaceId).maybeSingle(),
+        admin.from("workspaces").select("created_at").eq("id", workspaceId).maybeSingle(),
+        admin.from("billing_plans").select("plan_key,base_price_cents,is_purchasable"),
+      ]);
+      if (profileResult.error || workspaceResult.error || plansResult.error || !workspaceResult.data) {
+        throw new HttpError(503, "BILLING_UNAVAILABLE", "Your subscription could not be loaded");
+      }
+      const profile = profileResult.data;
+      const subscribed = Boolean(profile?.stripe_subscription_id);
+      // Unsubscribed legacy profiles buy the single current plan, not the retired offer.
+      const planKey = subscribed || profile?.billing_status === "comped" ? profile!.plan_key : "standard";
+      const plan = (plansResult.data ?? []).find((row) => row.plan_key === planKey);
+      const actualPrice = subscribed ? await stripeSubscriptionPriceCents(profile!.stripe_subscription_id!) : null;
+      return jsonResponse(req, METHODS, 200, {
+        success: true,
+        billing: {
+          plan_key: planKey,
+          billing_status: profile?.billing_status ?? "trialing",
+          has_subscription: subscribed,
+          has_billing_customer: Boolean(profile?.stripe_customer_id),
+          subscription_price_cents: actualPrice,
+          plan_base_price_cents: plan?.base_price_cents ?? null,
+          cancel_at_period_end: profile?.cancel_at_period_end === true,
+          current_period_end: profile?.current_period_end ?? null,
+          trial_ends_at: effectiveTrialEndsAt(profile?.trial_ends_at, workspaceResult.data.created_at),
+        },
+      });
+    }
+
     if (action === "billing-overview") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
-      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!["owner", "admin", "platform_admin"].includes(access.role)) {
         throw new HttpError(403, "WORKSPACE_ACCESS_REQUIRED", "Workspace manager access is required");
       }
@@ -3272,7 +3314,7 @@ serve(async (req) => {
         hasSavedCard = stripeAnswer === null ? Boolean(cardProofResult.data) : stripeAnswer;
       }
 
-      const planKey = profileResult.data?.plan_key ?? "founding_member";
+      const planKey = profileResult.data?.plan_key ?? "standard";
       const plan = (plansResult.data ?? []).find((row) => row.plan_key === planKey);
       const subscriptionId = typeof profileResult.data?.stripe_subscription_id === "string"
         ? profileResult.data.stripe_subscription_id
@@ -3325,7 +3367,7 @@ serve(async (req) => {
       const nextMonthStart = new Date(monthStart);
       nextMonthStart.setUTCMonth(nextMonthStart.getUTCMonth() + 1);
       const nextAllowanceAt = ["trialing", "active", "comped"].includes(String(allowanceStatus))
-        && (profileResult.data?.monthly_credit_allowance ?? 100) > 0
+        && (0) > 0
         ? nextMonthStart.toISOString()
         : null;
       const currentPrices: Record<string, number> = {};
@@ -3339,7 +3381,7 @@ serve(async (req) => {
         billing: {
           plan_key: planKey,
           billing_status: profileResult.data?.billing_status ?? "trialing",
-          base_price_cents: profileResult.data?.base_price_cents ?? 3900,
+          base_price_cents: profileResult.data?.base_price_cents ?? 9900,
           // What this workspace pays: Stripe's answer when it has a
           // subscription, null otherwise. Compared against plan_base_price_cents
           // to tell a grandfathered price from the current one.
@@ -3356,8 +3398,8 @@ serve(async (req) => {
           // 3 to match workspace_client_operation_v2, which is what actually
           // enforces it when a workspace has no billing profile yet.
           included_active_clients: profileResult.data?.included_active_clients ?? 3,
-          monthly_credit_allowance: profileResult.data?.monthly_credit_allowance ?? 100,
-          enforcement_enabled: Deno.env.get("CREDIT_ENFORCEMENT_ENABLED")?.trim() === "true",
+          monthly_credit_allowance: 0,
+          enforcement_enabled: false,
           // Debits net of refunds. Summing every negative row counted an
           // admin removing mistaken credits, and an allowance lapsing, as the
           // workspace "using" credits — an adjustment could flip the usage bar
@@ -3371,6 +3413,7 @@ serve(async (req) => {
             ), 0)),
           // Whether there is a subscription to manage, not which one. The id
           // itself is a Stripe identifier and the browser has no use for it.
+          has_billing_customer: Boolean(profileResult.data?.stripe_customer_id),
           has_subscription: typeof profileResult.data?.stripe_subscription_id === "string"
             && profileResult.data.stripe_subscription_id.length > 0,
           // Only to a platform admin, and only so the dashboard can be opened
@@ -3439,7 +3482,7 @@ serve(async (req) => {
 
     if (action === "credits-grant") {
       requireOnlyKeys(body, ["action", "workspace_id", "amount", "reason", "note", "grant_key"]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -3490,7 +3533,7 @@ serve(async (req) => {
 
     if (action === "billing-autorefill-set") {
       requireOnlyKeys(body, ["action", "workspace_id", "threshold_credits", "pack_credits", "monthly_cap_cents"]);
-      const refillAccess = await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      const refillAccess = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       // The workspace's own managers, not only a platform admin: this is their
       // card and their decision.
       if (!["owner", "admin", "platform_admin"].includes(refillAccess.role)) {
@@ -3573,7 +3616,7 @@ serve(async (req) => {
 
     if (action === "billing-portfolio") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -3760,7 +3803,7 @@ serve(async (req) => {
 
       return jsonResponse(req, METHODS, 200, {
         success: true,
-        enforcement_enabled: Deno.env.get("CREDIT_ENFORCEMENT_ENABLED")?.trim() === "true",
+        enforcement_enabled: false,
         workspaces: rows,
       });
     }
@@ -3769,7 +3812,7 @@ serve(async (req) => {
       requireOnlyKeys(body, [
         "action", "workspace_id", "operation", "reason", "note", "action_key", "trial_ends_at", "plan_key", "email_owner",
       ]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -3851,7 +3894,14 @@ serve(async (req) => {
           throw new HttpError(400, "INVALID_TRIAL_END", "Choose a trial end within the next year");
         }
         const trialEndsAt = new Date(until).toISOString();
-        await writeProfile({ trial_ends_at: trialEndsAt });
+        // A cancelled workspace keeps a suspended profile after its Stripe
+        // subscription is removed. Extending the date must also restore trial
+        // access, without downgrading a manually active or complimentary account.
+        const keepAccessStatus = profile?.billing_status === "active" || profile?.billing_status === "comped";
+        await writeProfile({
+          trial_ends_at: trialEndsAt,
+          ...(keepAccessStatus ? {} : { billing_status: "trialing" }),
+        });
         result = { trial_ends_at: trialEndsAt, from_trial_ends_at: profile?.trial_ends_at ?? null };
       } else if (operation === "change_plan") {
         const target = purchasablePlan(requireString(body.plan_key, "plan_key", { max: 40 }));
@@ -4012,7 +4062,7 @@ serve(async (req) => {
 
     if (action === "credits-ledger") {
       requireOnlyKeys(body, ["action", "workspace_id", "type", "page"]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -4118,7 +4168,7 @@ serve(async (req) => {
 
     if (action === "credits-adjust") {
       requireOnlyKeys(body, ["action", "workspace_id", "amount", "reason", "note", "adjustment_key"]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -4171,7 +4221,7 @@ serve(async (req) => {
 
     if (action === "billing-allowance-set") {
       requireOnlyKeys(body, ["action", "workspace_id", "monthly_credit_allowance", "reason", "note"]);
-      await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!platformAdmin) {
         throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
       }
@@ -4229,7 +4279,7 @@ serve(async (req) => {
 
 
     if (action === "ai-keys-status" || action === "ai-keys-set" || action === "ai-keys-clear" || action === "ai-keys-test") {
-      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId);
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!["owner", "platform_admin"].includes(access.role)) {
         throw new HttpError(403, "WORKSPACE_OWNER_REQUIRED", "Workspace owner access is required");
       }
@@ -4246,8 +4296,8 @@ serve(async (req) => {
       if (action === "ai-keys-test") {
         requireOnlyKeys(body, ["action", "workspace_id", "provider"]);
         const provider = requireProvider(body.provider);
-        if (provider === "winnr") {
-          throw new HttpError(400, "AI_KEY_TEST_UNSUPPORTED", "Winnr keys cannot be tested here");
+        if (!["anthropic", "openai"].includes(provider)) {
+          throw new HttpError(400, "AI_KEY_TEST_UNSUPPORTED", "This provider does not support a connection test here");
         }
         const stored = await readStoredAiKey(admin, workspaceId, provider);
         if (!stored.configured) {
@@ -4265,7 +4315,7 @@ serve(async (req) => {
         if (apiKey.trim().length < 20) {
           throw new HttpError(400, "INVALID_API_KEY", "The API key looks incomplete");
         }
-        const valid = await probeAiKey(provider, apiKey.trim());
+        const valid = !["anthropic", "openai"].includes(provider) || await probeAiKey(provider, apiKey.trim());
         if (!valid) {
           throw new HttpError(422, "API_KEY_REJECTED", "The provider rejected this API key");
         }

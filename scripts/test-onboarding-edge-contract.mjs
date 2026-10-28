@@ -19,6 +19,11 @@ assert.doesNotMatch(config, /process-onboarding-reminders/u)
 
 assert.match(staff, /requireAuthenticatedUser\(req\)/u)
 assert.match(staff, /workspaceCredentialIsFresh\(context\)/u)
+// Read-only staff recovery stays available; starting onboarding (which may
+// create a client) and all other staff mutations must pass the paid gate.
+assert.match(staff, /if \(!\['list', 'detail', 'get_link'\]\.includes\(action\)\) \{\s+await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
+assert.ok(staff.indexOf('await requireWorkspaceFeatureAccess(context, workspaceId)') < staff.indexOf("if (action === 'start')"))
+assert.doesNotMatch(client, /requireWorkspaceFeatureAccess\(/u, 'public capability submissions do not require staff billing access')
 assert.match(staff, /workspace_onboarding_staff_list_v1/u)
 assert.match(staff, /workspace_onboarding_start_v1/u)
 assert.match(staff, /workspace_onboarding_approve_v1/u)

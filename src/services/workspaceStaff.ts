@@ -883,6 +883,8 @@ export interface WorkspaceAiKeysView {
   anthropic: WorkspaceAiKeyStatus
   openai: WorkspaceAiKeyStatus
   winnr: WorkspaceAiKeyStatus
+  blitz?: WorkspaceAiKeyStatus
+  podscan?: WorkspaceAiKeyStatus
 }
 
 function parseAiKeyStatus(value: unknown): WorkspaceAiKeyStatus {
@@ -908,12 +910,14 @@ export async function getWorkspaceAiKeys(workspaceId: string): Promise<Workspace
     anthropic: parseAiKeyStatus(data.providers?.anthropic),
     openai: parseAiKeyStatus(data.providers?.openai),
     winnr: parseAiKeyStatus(data.providers?.winnr),
+    blitz: parseAiKeyStatus(data.providers?.blitz),
+    podscan: parseAiKeyStatus(data.providers?.podscan),
   }
 }
 
 export async function setWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai' | 'winnr',
+  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
   apiKey: string,
 ): Promise<void> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
@@ -926,7 +930,7 @@ export async function setWorkspaceAiKey(
 
 export async function clearWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai' | 'winnr',
+  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
 ): Promise<void> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke(
@@ -945,7 +949,7 @@ export type WorkspaceAiKeyTestResult = 'valid' | 'invalid' | 'unreachable'
  */
 export async function testWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai',
+  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
 ): Promise<WorkspaceAiKeyTestResult> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke(
@@ -958,7 +962,21 @@ export async function testWorkspaceAiKey(
   return data.result
 }
 
+export type WorkspaceSubscriptionOverview = Pick<WorkspaceBillingOverview,
+  'plan_key' | 'billing_status' | 'has_subscription' | 'has_billing_customer' |
+  'subscription_price_cents' | 'plan_base_price_cents' | 'cancel_at_period_end' |
+  'current_period_end' | 'trial_ends_at'>
+
+export async function getWorkspaceSubscriptionOverview(workspaceId: string): Promise<WorkspaceSubscriptionOverview> {
+  const data = await invoke({ action: 'subscription-overview', workspace_id: canonicalUuid(workspaceId, 'Workspace ID') }, 'Your subscription could not be loaded.') as {
+    success?: boolean; billing?: WorkspaceSubscriptionOverview
+  }
+  if (data?.success !== true || !data.billing) throw new Error('Your subscription could not be loaded.')
+  return data.billing
+}
+
 export interface WorkspaceBillingOverview {
+  has_billing_customer?: boolean
   plan_key: string
   billing_status: string
   /**

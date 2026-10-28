@@ -98,7 +98,7 @@ export function BillingPortfolio({ workspaceId, onSelect }: BillingPortfolioProp
           Most urgent first. Open a row to manage that workspace.
           <InfoTip topic="needs attention">
             A workspace needs attention when a payment failed, its trial ended without a subscription, its trial ends
-            within 7 days, or its balance is under 20% of its monthly credits. Ties sort by balance, lowest first.
+            within 7 days. Workspaces with the same urgency sort by name.
           </InfoTip>
         </CardDescription>
       </CardHeader>

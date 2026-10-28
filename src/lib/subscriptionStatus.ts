@@ -11,6 +11,7 @@ export interface SubscriptionStatusView {
 }
 
 const STATUS_VIEW: Record<string, SubscriptionStatusView> = {
+  suspended: { label: 'Inactive', className: 'border-amber-200 bg-amber-50 text-amber-900', note: 'Start a subscription to resume workspace operations.' },
   active: {
     label: 'Active',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
@@ -24,7 +25,7 @@ const STATUS_VIEW: Record<string, SubscriptionStatusView> = {
   comped: {
     label: 'Comped',
     className: 'border-violet-200 bg-violet-50 text-violet-900',
-    note: 'Given the plan without charge. Still receives its monthly allowance.',
+    note: 'Workspace access is provided at no charge.',
   },
   past_due: {
     label: 'Past due',
@@ -34,17 +35,17 @@ const STATUS_VIEW: Record<string, SubscriptionStatusView> = {
   paused: {
     label: 'Paused',
     className: 'border-amber-200 bg-amber-50 text-amber-900',
-    note: 'Collection is paused at Stripe. No allowance is granted while paused.',
+    note: 'Collection is paused at Stripe.',
   },
   canceled: {
     label: 'Cancelled',
     className: 'border-destructive/30 bg-destructive/5 text-destructive',
-    note: 'No longer subscribed. The monthly allowance has stopped.',
+    note: 'No longer subscribed. Start a plan to resume workspace operations.',
   },
   cancelled: {
     label: 'Cancelled',
     className: 'border-destructive/30 bg-destructive/5 text-destructive',
-    note: 'No longer subscribed. The monthly allowance has stopped.',
+    note: 'No longer subscribed. Start a plan to resume workspace operations.',
   },
 }
 
@@ -58,7 +59,7 @@ export function subscriptionStatusView(status: string): SubscriptionStatusView {
 
 const PLAN_LABELS: Record<string, string> = {
   founding_member: 'Founding member',
-  standard: 'Standard',
+  standard: 'Workspace',
   comped: 'Complimentary',
 }
 

@@ -49,8 +49,8 @@ describe('workspaceAttention', () => {
     }
   })
 
-  it('flags a balance below 20% of the monthly allowance, not at it', () => {
-    expect(workspaceAttention({ ...healthy, balance: 19 }, NOW).reasons).toEqual(['low_balance'])
+  it('ignores historical balances when assessing subscription health', () => {
+    expect(workspaceAttention({ ...healthy, balance: 19 }, NOW).reasons).toEqual([])
     expect(workspaceAttention({ ...healthy, balance: 20 }, NOW).needsAttention).toBe(false)
     // Nothing to be a fraction of.
     expect(workspaceAttention({ ...healthy, balance: 0, monthly_credit_allowance: 0 }, NOW).needsAttention).toBe(false)
@@ -58,7 +58,7 @@ describe('workspaceAttention', () => {
 
   it('reports every reason, most urgent first', () => {
     const row = { ...healthy, billing_status: 'past_due', balance: 5 }
-    expect(workspaceAttention(row, NOW)).toMatchObject({ reasons: ['payment_failed', 'low_balance'], rank: 0 })
+    expect(workspaceAttention(row, NOW)).toMatchObject({ reasons: ['payment_failed'], rank: 0 })
   })
 
   it('treats a missing trial end as no trial deadline', () => {
@@ -68,7 +68,7 @@ describe('workspaceAttention', () => {
 })
 
 describe('compareByAttention', () => {
-  it('sorts most urgent first, then by balance ascending', () => {
+  it('sorts most urgent first, then by workspace name', () => {
     const rows: AttentionInput[] = [
       { ...healthy, name: 'Rich and fine', balance: 900 },
       { ...healthy, name: 'Low', balance: 10 },
@@ -81,8 +81,8 @@ describe('compareByAttention', () => {
     const sorted = [...rows].sort((left, right) => compareByAttention(left, right, NOW)).map((row) => row.name)
     expect(sorted).toEqual([
       'Card failed',
-      'Ended, poorer',
       'Ended',
+      'Ended, poorer',
       'Ending',
       'Low',
       'Poor and fine',

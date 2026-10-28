@@ -4,7 +4,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { AccessRequestForm } from '@/components/landing/AccessRequestForm'
 import { Chrome, Shot } from '@/components/landing/Shot'
 import PageSEO from '@/components/seo/PageSEO'
-import { CREDIT_COSTS } from '@/lib/creditCosts'
 import '@/styles/agencyLanding.css'
 
 /** Whether to hold still. Read on use, and safe with no window and no matchMedia. */
@@ -77,54 +76,11 @@ const PORTAL_ACTIVITY = [
  * so every button here goes to the same form as the rest of the page, and
  * nothing touches the retired checkout.
  */
-const PER_CLIENT_MONTHLY = '$39'
-
-/*
- * What a credit buys, in the unit an agency thinks in. A client shortlist is
- * one prospect page build plus research on roughly ten shows, priced from the
- * same table every button in the app quotes, so the number here moves when
- * the ledger does.
- */
-const SHOWS_PER_SHORTLIST = 10
-const CREDITS_PER_SHORTLIST = CREDIT_COSTS.dashboard_build + CREDIT_COSTS.research_run * SHOWS_PER_SHORTLIST
-const shortlistsFor = (credits: number) => Math.floor(credits / CREDITS_PER_SHORTLIST)
-
-interface Plan {
-  name: string
-  price: string
-  monthlyCredits: number
-  who: string
-  includes: string[]
-  featured?: boolean
-}
-
-const PLANS: Plan[] = [
-  {
-    name: 'Founding member',
-    price: '$39',
-    monthlyCredits: 100,
-    who: 'For a freelancer, or an agency with its first client on the platform.',
-    includes: [
-      'One active client included',
-      'Podcast discovery and shortlists',
-      'Drafted three-email pitches',
-      'Client portal on your own domain',
-    ],
-    featured: true,
-  },
-  {
-    name: 'Standard',
-    price: '$99',
-    monthlyCredits: 300,
-    who: 'For a team: three times the research credits.',
-    includes: [
-      'One active client included',
-      'Everything in Founding member',
-      'Three times the monthly credits',
-      'Staff accounts for your team',
-    ],
-  },
-]
+const PLANS = [{
+  name: 'Workspace', price: '$99', featured: true,
+  who: 'One subscription for your whole agency. Connect your own provider accounts.',
+  includes: ['Unlimited clients and team members', 'Podcast discovery and shortlists', 'Research, pitches and campaigns', 'Client portals'],
+}]
 
 const FAQ = [
   {
@@ -145,7 +101,7 @@ const FAQ = [
   },
   {
     q: 'I am just starting out. Too early?',
-    a: 'No. Founding member is $39 a month with one client included, and the finder, pitches and portal are all there from your first day.',
+    a: 'The workspace plan is $99 a month with unlimited clients and team members. Connected providers bill usage separately.',
   },
 ]
 
@@ -327,8 +283,8 @@ const AgencyLanding = () => {
           <div className="gp-wrap">
             <div className="gp-sec-head">
               <span className="gp-eyebrow">Pricing</span>
-              <h2>From $39 a month.</h2>
-              <p>Two plans, the same platform. You pay for the clients you actually run.</p>
+              <h2>One workspace. $99 a month.</h2>
+              <p>Unlimited clients and team members. Bring your own provider accounts.</p>
             </div>
 
             <div className="gp-plans">
@@ -337,10 +293,6 @@ const AgencyLanding = () => {
                   <h3>{plan.name}</h3>
                   <p className="gp-plan-price">
                     {plan.price}<span> a month</span>
-                  </p>
-                  <p className="gp-plan-credits">{plan.monthlyCredits} credits a month</p>
-                  <p className="gp-plan-unit">
-                    About {shortlistsFor(plan.monthlyCredits)} client shortlists a month, at {CREDITS_PER_SHORTLIST} credits each.
                   </p>
                   <p className="gp-plan-who">{plan.who}</p>
                   <ul className="gp-plan-list">
@@ -352,10 +304,7 @@ const AgencyLanding = () => {
             </div>
 
             <p className="gp-plan-note">
-              Each additional active client is {PER_CLIENT_MONTHLY} a month. Credits pay for research,
-              contact finding and prospect page builds; a typical client shortlist uses
-              about {CREDITS_PER_SHORTLIST}. Sending goes through your own mailboxes, so there is nothing
-              here for the emails themselves.
+              AI, enrichment and sending providers bill your connected accounts directly. No app credit packs or per-client fees.
             </p>
             <p className="gp-plan-note">Not sure? Start on Founding member; upgrading keeps everything.</p>
           </div>

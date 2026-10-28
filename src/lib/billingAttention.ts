@@ -65,9 +65,7 @@ export function workspaceAttention(input: AttentionInput, now: number = Date.now
     else if (trialEnd - now <= TRIAL_WARNING_DAYS * DAY_MS) found.add('trial_ending')
   }
 
-  if (input.monthly_credit_allowance > 0 && input.balance < input.monthly_credit_allowance * LOW_BALANCE_SHARE) {
-    found.add('low_balance')
-  }
+
 
   const reasons = REASON_ORDER.filter((reason) => found.has(reason))
   return {
@@ -81,7 +79,6 @@ export function workspaceAttention(input: AttentionInput, now: number = Date.now
 export function compareByAttention(left: AttentionInput, right: AttentionInput, now: number = Date.now()): number {
   const rankDifference = workspaceAttention(left, now).rank - workspaceAttention(right, now).rank
   if (rankDifference !== 0) return rankDifference
-  if (left.balance !== right.balance) return left.balance - right.balance
   return (left.name ?? '').localeCompare(right.name ?? '')
 }
 

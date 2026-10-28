@@ -6,11 +6,8 @@ import { ArrowLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
 import { PlatformWorkspaceBillingHeader } from '@/components/workspace/PlatformWorkspaceBillingHeader'
-import { WorkspaceCreditAdjustment } from '@/components/workspace/WorkspaceCreditAdjustment'
 import { WorkspaceCreditLedger } from '@/components/workspace/WorkspaceCreditLedger'
-import { WorkspaceCreditGrantPreview } from '@/components/workspace/WorkspaceCreditGrantPreview'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
-import { WorkspaceMonthlyAllowance } from '@/components/workspace/WorkspaceMonthlyAllowance'
 import { WorkspaceSubscriptionStatus } from '@/components/workspace/WorkspaceSubscriptionStatus'
 import { listWorkspaceStaff } from '@/services/workspaceStaff'
 
@@ -80,18 +77,7 @@ const PlatformBillingWorkspace = () => {
                 ownerEmail={owner?.email ?? null}
               />
             </header>
-            <WorkspaceCreditGrantPreview
-              workspaceId={workspaceId}
-              workspaceName={workspaceName}
-              ownerName={ownerName}
-              ownerEmail={owner?.email ?? null}
-            />
-            {/* A grant is a one-off; this is what arrives every month without
-                anyone doing anything. */}
-            <WorkspaceMonthlyAllowance workspaceId={workspaceId} workspaceName={workspaceName} />
-            {/* The correction to a grant, and the subscription that decides
-                what this workspace is paying in the first place. */}
-            <WorkspaceCreditAdjustment workspaceId={workspaceId} workspaceName={workspaceName} />
+            <p className="text-sm text-muted-foreground">Flat subscription with customer-owned provider accounts. The ledger below is historical and retained for reconciliation.</p>
             <WorkspaceCreditLedger workspaceId={workspaceId} />
             <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} ownerEmail={owner?.email ?? null} />
           </div>

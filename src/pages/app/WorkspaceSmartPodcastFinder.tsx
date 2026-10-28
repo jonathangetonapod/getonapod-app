@@ -46,11 +46,10 @@ import {
 } from '@/lib/finderScan'
 import { getFinderScan, saveFinderScan } from '@/services/finderScans'
 import { normalizePodscanQuery } from '@/lib/podcastResearch'
-import { CREDIT_COSTS, creditsLabel } from '@/lib/creditCosts'
+import { CREDIT_COSTS } from '@/lib/creditCosts'
 import { PLATFORM_SUPPORT_EMAIL } from '@/lib/config'
 import { DEFAULT_FINDER_FILTERS, type FinderFilters } from '@/lib/finderFilters'
 import { readWorkingClient } from '@/lib/workingClient'
-import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
 import {
   podscanFailureReason,
   scanFailureCreditLine,
@@ -298,27 +297,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const byoAnthropic = Boolean(contextQuery.data?.ai_keys?.anthropic)
   const plannedQueryCount = customKeywords.length
     + (includeAiStrategy ? (aiStrategyLoaded ? aiQueries.length : MAX_QUERIES) : 0)
-  const maxScanCredits = plannedQueryCount * PAGES_PER_QUERY * CREDIT_COSTS.podscan_lookup
-    + (byoAnthropic ? 0 : CREDIT_COSTS.compatibility_scoring * scoringUnits + (draftsStrategy ? CREDIT_COSTS.query_generation : 0))
-  const scanCostLabel = maxScanCredits > 0 ? `Up to ${creditsLabel(maxScanCredits)}` : 'Included'
-
-  // The same balance the header chip reads, under the same query key, so
-  // showing it here costs no extra request.
-  const canViewBalance = Boolean(isPlatformAdmin) || membership?.role === 'owner' || membership?.role === 'admin'
-  const billingQuery = useQuery({
-    queryKey: ['workspace-billing-overview', workspaceId],
-    queryFn: () => getWorkspaceBillingOverview(workspaceId),
-    enabled: Boolean(workspaceId) && canViewBalance,
-    retry: false,
-    staleTime: 120_000,
-  })
-  const billingHref = isPlatformWorkspace
-    ? `/app/platform/billing?workspace=${workspaceId}`
-    : '/app/settings/billing'
-  const creditBalance = billingQuery.data && billingQuery.data.enforcement_enabled !== false
-    ? billingQuery.data.balance
-    : null
-  const balanceShort = creditBalance !== null && creditBalance < maxScanCredits
+  const scanCostLabel = 'Billed to your provider accounts'
 
   const requestClient = () => {
     setPickerHighlighted(true)
@@ -860,16 +839,10 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
                 {selectedClient && (
                   <p
                     id="finder-scan-cost"
-                    className={balanceShort ? 'text-xs text-amber-800 dark:text-amber-300' : 'text-xs text-muted-foreground'}
+                    className="text-xs text-muted-foreground"
                   >
                     {scanCostLabel}
-                    {creditBalance !== null && ` · ${creditBalance.toLocaleString()} left`}
-                    {balanceShort && (
-                      <>
-                        {'. '}
-                        <Link className="font-medium underline underline-offset-2" to={billingHref}>Add credits</Link>
-                      </>
-                    )}
+
                   </p>
                 )}
               </div>

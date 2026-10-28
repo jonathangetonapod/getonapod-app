@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { planLabel, subscriptionStatusView } from '@/lib/subscriptionStatus'
-import { getWorkspaceBillingOverview } from '@/services/workspaceStaff'
+import { getWorkspaceSubscriptionOverview } from '@/services/workspaceStaff'
 
 interface SettingsBillingSectionProps {
   workspaceId: string
@@ -23,8 +23,8 @@ interface SettingsBillingSectionProps {
  */
 export const SettingsBillingSection = ({ workspaceId, billingHref }: SettingsBillingSectionProps) => {
   const overviewQuery = useQuery({
-    queryKey: ['workspace-billing-overview', workspaceId],
-    queryFn: () => getWorkspaceBillingOverview(workspaceId),
+    queryKey: ['workspace-subscription-overview', workspaceId],
+    queryFn: () => getWorkspaceSubscriptionOverview(workspaceId),
     enabled: Boolean(workspaceId),
     retry: false,
     staleTime: 120_000,
@@ -50,8 +50,8 @@ export const SettingsBillingSection = ({ workspaceId, billingHref }: SettingsBil
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Credit balance</dt>
-              <dd className="mt-1 font-semibold">{overview.balance.toLocaleString()} credits</dd>
+              <dt className="text-xs text-muted-foreground">Includes</dt>
+              <dd className="mt-1 font-semibold">Unlimited clients & team members</dd>
             </div>
           </dl>
         ) : (

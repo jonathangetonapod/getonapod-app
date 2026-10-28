@@ -1,3 +1,4 @@
+import { requireWorkspaceSubscription } from '../_shared/workspaceAuth.ts'
 // Master Inbox nudge tick. Invoked by pg_cron via pg_net every 30 minutes
 // with a shared secret — no user JWT (verify_jwt = false). Each tick walks
 // replied conversations whose staged nudge plan has a due step, confirms
@@ -104,7 +105,7 @@ serve(async (req) => {
   // Audit rows attribute automated sends to the workspace owner, matching
   // the autopilot tick's convention for system actions.
   // deno-lint-ignore no-explicit-any
-  const ownerByWorkspace = new Map<string, any>()
+  const ownerByWorkspace = new Map<string, { user_id: string | null } | null>()
   const sentByWorkspace = new Map<string, number>()
   let totalSent = 0
   let hostReplies = 0
@@ -165,6 +166,7 @@ serve(async (req) => {
     }
 
     try {
+      await requireWorkspaceSubscription(admin, raw.workspace_id)
       if (!ownerByWorkspace.has(raw.workspace_id)) {
         const { data: owner } = await admin
           .from('workspace_memberships')

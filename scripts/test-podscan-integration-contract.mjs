@@ -45,13 +45,13 @@ assert.match(proxy, /headers\.set\('X-Credits-Charged', String\(creditsCharged\)
 assert.match(proxy, /headers\.set\('X-Credits-Refunded', String\(creditsRefunded\)\)/u)
 assert.match(proxy, /if \(error instanceof PodscanRateLimitError\) \{[\s\S]*?headers\.set\('Retry-After', error\.retryAfter\)/u)
 // The browser retries; the proxy never does, so retries are not doubled.
-assert.match(proxy, /return await podscanFetch\(path, \{ params \}\)/u)
+assert.match(proxy, /return await podscanFetch\(path, \{ params, apiKey \}\)/u)
 
 // Autopilot: the search rules live in _shared/autopilotSearch.ts (tested
 // there); the tick must use them, inside its run budget.
 assert.match(autopilot, /await searchAcrossQueries\(\s+queries,/u)
 assert.match(autopilot, /throw new PodscanSearchError\(podscanSearchFailureKind\(error\)\)/u)
-assert.match(autopilot, /\{ params, retries: 2, deadlineAt \}/u)
+assert.match(autopilot, /\{ params, retries: 2, deadlineAt, apiKey \}/u)
 assert.match(autopilot, /const RUN_BUDGET_MS = 140_000/u)
 assert.match(autopilot, /if \(Date\.now\(\) >= captureDeadline\) break/u)
 assert.match(autopilot, /error\.kind === 'refused'[\s\S]*?retryMs: ACTION_RETRY_MS/u)

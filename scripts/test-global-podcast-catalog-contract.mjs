@@ -84,21 +84,16 @@ assert.match(freeEmailLookup, /\.from\('podcast_emails'\)[\s\S]*?\.upsert/u)
 // per show, and an unchecked address costs a bounce against the sender's
 // reputation — more expensive than the verification call that prevents it.
 assert.match(clientShortlist, /const DIRECT_CONTACT_FRESH_DAYS = 90/u)
-assert.match(
-  clientShortlist,
-  /const stale = !Number\.isFinite\(verifiedAt\)\s+\|\| Date\.now\(\) - verifiedAt > DIRECT_CONTACT_FRESH_DAYS \* DAY_MS/u,
-)
-// A fresh contact is still returned without touching a provider.
-assert.match(clientShortlist, /if \(!stale\) \{\s+await clearProgress\(\)\s+return jsonResponse\(req, METHODS, 200, \{ email_unlock: buildUnlockedPayload\(existingContact, 0\) \}\)/u)
-// A stale contact is re-checked, and a successful re-check costs nothing: the
-// RPC only permits a charge on a show's first global unlock.
-assert.match(
-  clientShortlist,
-  /const recheck = await verifyEmailWithInstantly\(revalidationKey, existingContact\.email\)[\s\S]*?record_global_podcast_direct_contact_v1[\s\S]*?\}, 0, \{ revalidated: true \}\)/u,
-)
-// A failed re-check retires the row rather than deleting it, then falls through
-// to a replacement search.
-assert.match(clientShortlist, /expire_global_podcast_direct_contact_v1/u)
+// Fresh contacts return before either customer-owned provider is called.
+const emailSearchStart = clientShortlist.indexOf("if (action === 'email-search-run')")
+const emailSearchEnd = clientShortlist.indexOf("if (action === ", emailSearchStart + 1)
+const emailSearch = clientShortlist.slice(emailSearchStart, emailSearchEnd === -1 ? undefined : emailSearchEnd)
+assert.match(emailSearch, /existingContact\?\.email && Number\.isFinite\(verifiedAt\)[\s\S]*?Date\.now\(\) - verifiedAt <= DIRECT_CONTACT_FRESH_DAYS \* DAY_MS/u)
+assert.match(emailSearch, /email_unlock: unlocked\(existingContact\.email/u)
+assert.ok(emailSearch.indexOf('email_unlock: unlocked(existingContact.email') < emailSearch.indexOf('const blitzKey'))
+// Stale entries can be refreshed through the customer's Claude/Blitz accounts.
+assert.match(emailSearch, /discoverHostLinkedin\(/u)
+assert.match(emailSearch, /findBlitzEmail\(blitzKey, profile\)/u)
 assert.match(reverificationMigration, /UPDATE public\.podcast_direct_contacts contact\s+SET verification_status = 'invalid'/u)
 assert.doesNotMatch(
   reverificationMigration,
@@ -113,14 +108,10 @@ assert.match(
   reverificationMigration,
   /GRANT EXECUTE ON FUNCTION public\.expire_global_podcast_direct_contact_v1\(TEXT\)\s+TO service_role;/u,
 )
-// With no way to re-verify, the address is still handed over — withholding a
-// contact the workspace already owns helps nobody — but flagged, never silent.
-assert.match(
-  clientShortlist,
-  /if \(!revalidationKey\) \{[\s\S]*?stale: true,[\s\S]*?not been re-checked in over 90 days/u,
-)
+// Existing stale contacts remain labeled and refreshes disclose provider billing.
+assert.match(clientShortlist, /stale: !Number\.isFinite\(Date\.parse\(directContact\.last_verified_at\)\)/u)
 assert.match(prepDialog, /const contactIsStale = emailAlreadyUnlocked && storedEmailUnlock\?\.stale === true/u)
-assert.match(prepDialog, /contactIsStale \? 'Direct email out of date' : 'Direct email ready'/u)
-assert.match(prepDialog, /contactIsStale \? 'Re-check costs 0 credits'/u)
+assert.match(prepDialog, /contactIsStale \? 'This contact needs a fresh lookup before outreach\.'/u)
+assert.match(prepDialog, /Your provider accounts/u)
 
 process.stdout.write('Global podcast catalog contract checks passed.\n')

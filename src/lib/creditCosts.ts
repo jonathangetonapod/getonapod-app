@@ -1,13 +1,4 @@
-/**
- * What each metered operation costs, for display before the click.
- *
- * The ledger prices from public.operation_credit_costs (seeded in the
- * migrations named below); this is the ONE frontend copy, so a button in the
- * finder, the inbox and the prospect studio all quote the same number. The
- * billing page prefers the live prices the overview returns and falls back to
- * these. A workspace running on its own AI key is not charged, so callers pass
- * `byo` to say so.
- */
+/** Operation names retained for analytics. Flat subscriptions have no app-credit prices. */
 export type MeteredOperation =
   | 'research_run'
   | 'email_unlock_identify'
@@ -22,21 +13,20 @@ export type MeteredOperation =
   | 'mailbox_domain_purchase'
   | 'mailbox_monthly'
 
-// Seeded and re-priced across the migrations; scripts/test-credit-costs-sync
-// replays every operation_credit_costs insert in order and pins these values.
+// Zeroed by the flat-subscription migration; historical ledger entries keep their original amounts.
 export const CREDIT_COSTS: Record<MeteredOperation, number> = {
-  research_run: 2,
+  research_run: 0,
   email_unlock_identify: 0,
   email_unlock_find: 0,
-  email_unlock_verify: 1,
-  dashboard_build: 5,
-  query_generation: 1,
-  compatibility_scoring: 1,
-  podscan_lookup: 1,
+  email_unlock_verify: 0,
+  dashboard_build: 0,
+  query_generation: 0,
+  compatibility_scoring: 0,
+  podscan_lookup: 0,
   semantic_search: 0,
-  pitch_profile: 3,
-  mailbox_domain_purchase: 20,
-  mailbox_monthly: 5,
+  pitch_profile: 0,
+  mailbox_domain_purchase: 0,
+  mailbox_monthly: 0,
 }
 
 /** Plain names for the price list, the usage table and the ledger. */
@@ -71,10 +61,9 @@ export function creditCostSuffix(
   operation: MeteredOperation,
   options: { byo?: boolean; units?: number } = {},
 ): string {
-  if (options.byo) return '· Included'
-  const credits = CREDIT_COSTS[operation] * Math.max(1, options.units ?? 1)
-  if (credits <= 0) return '· Included'
-  return options.units && options.units > 1 ? `· up to ${creditsLabel(credits)}` : `· ${creditsLabel(credits)}`
+  void operation
+  void options
+  return '· Your provider account'
 }
 
 /**
@@ -82,8 +71,5 @@ export function creditCostSuffix(
  * the header tooltip moves when the ledger does.
  */
 export function oneCreditBuys(): string {
-  const singles = (Object.keys(CREDIT_COSTS) as MeteredOperation[])
-    .filter((operation) => CREDIT_COSTS[operation] === 1)
-    .map((operation) => OPERATION_NAMES[operation].charAt(0).toLowerCase() + OPERATION_NAMES[operation].slice(1))
-  return `One credit covers one of: ${singles.join('; ')}. Researching a podcast takes ${creditsLabel(CREDIT_COSTS.research_run)}.`
+  return 'Historical credit balance. Workspace subscriptions now use customer-owned provider accounts.'
 }

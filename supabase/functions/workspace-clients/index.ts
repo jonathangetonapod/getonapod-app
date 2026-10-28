@@ -1239,7 +1239,9 @@ serve(async (req) => {
     }
 
     if (action === 'list') {
-      await requireWorkspaceFeatureAccess(authContext, workspaceId)
+      // Settings and the setup checklist need this read during payment recovery.
+      // Operational mutations below still require the subscription entitlement.
+      await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true })
       const { data: clients, error: clientsError } = await admin
         .from('clients')
         .select('id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,ai_sdr_profile,ai_sdr_profile_updated_at,created_at,updated_at')
@@ -1267,10 +1269,9 @@ serve(async (req) => {
       })
     }
 
-    // The plan's active-client cap is enforced inside
-    // workspace_client_operation_v2 (20261011000800), under a workspace row
-    // lock, on create-as-active and on any move to active. A separate read
-    // here could not stop two concurrent creates taking the last seat.
+    // The RPC validates actor/tenant ownership, but subscription entitlement
+    // belongs to this boundary. The remaining actions are create/update/delete.
+    await requireWorkspaceFeatureAccess(authContext, workspaceId)
     const { data, error } = await admin.rpc('workspace_client_operation_v2', {
       p_action: action,
       p_workspace_id: workspaceId,

@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-clients/index.ts', 'utf8')
+// Billing recovery can still read the client list for settings/checklists,
+// while the service-role mutation RPC must be preceded by entitlement checks.
+assert.match(edge, /if \(action === 'list'\) \{[\s\S]{0,300}?await requireWorkspaceFeatureAccess\(authContext, workspaceId, \{ billingRecovery: true \}\)/u)
+assert.match(edge, /await requireWorkspaceFeatureAccess\(authContext, workspaceId\)\s+const \{ data, error \} = await admin\.rpc\('workspace_client_operation_v2'/u)
 const exportEdge = readFileSync('supabase/functions/export-to-google-sheets/index.ts', 'utf8')
 const shortlistEdge = readFileSync('supabase/functions/workspace-client-shortlist/index.ts', 'utf8')
 const publicDashboardEdge = readFileSync('supabase/functions/public-client-dashboard/index.ts', 'utf8')
@@ -97,6 +101,13 @@ assert.match(shortlistEdge, /\.from\('clients'\)[\s\S]*?\.eq\('id', clientId\)[\
 assert.match(shortlistEdge, /if \(action === 'list'\)[\s\S]*?if \(action === 'catalog-search'\)[\s\S]*?if \(action === 'add'\)[\s\S]*?if \(action === 'update'\)[\s\S]*?if \(action === 'reorder-featured'\)/u)
 assert.match(shortlistEdge, /archived_at = visibility === 'archived'[\s\S]*?archived_by = visibility === 'archived'/u)
 
+// Keyword-only searches must not require an OpenAI account. Only semantic
+// searches resolve a tenant key; there is no platform-key fallback.
+const catalogSearchAction = shortlistActionSource('catalog-search')
+assert.match(catalogSearchAction, /const wantsEmbedding = query\.length >= 3 && isSemanticSearchEnabled\(\)/u)
+assert.match(catalogSearchAction, /const searchEmbedding = wantsEmbedding\s+\? await generatePodcastSearchEmbedding\(query, await resolveAiKey\(authContext\.admin, workspaceId, 'openai'\)\)\s+: null/u)
+assert.match(catalogSearchAction, /p_query_embedding: queryEmbedding/u)
+
 // Every pitch-preparation path checks the canonical podcast relationship
 // before a credit charge or external provider call. Prior history requires an
 // explicit acknowledgement; do-not-contact remains non-overridable.
@@ -146,13 +157,14 @@ assert.match(shortlistEdge, /await logOperationCost\(authContext\.admin, \{[\s\S
 // Contact discovery uses only the workspace Claude key and Blitz, without app credits.
 assert.match(emailSearchAction, /readStoredAiKey\(authContext.admin, workspaceId, 'anthropic'\)/u)
 assert.match(emailSearchAction, /CLAUDE_KEY_REQUIRED/u)
-assert.match(emailSearchAction, /BLITZ_API_KEY/u)
+assert.match(emailSearchAction, /resolveAiKey\(authContext\.admin, workspaceId, 'blitz'\)/u)
+assert.doesNotMatch(emailSearchAction, /Deno\.env\.get\('BLITZ_API_KEY'\)/u)
 assert.match(emailSearchAction, /EMAIL_SEARCH_ALREADY_RUNNING/u)
 assert.match(emailSearchAction, /discoverHostLinkedin\(/u)
 assert.match(emailSearchAction, /findBlitzEmail\(blitzKey, profile\)/u)
 assert.match(emailSearchAction, /p_provider: 'blitz', p_provider_reference: profile/u)
 assert.match(emailSearchAction, /claim.eq\('email_unlock_progress', JSON.stringify\(previous\)\)/u)
-assert.doesNotMatch(emailSearchAction, /chargeCredits\(|resolveAiKey\(|instantlyRequest|buildEmailCandidates/u)
+assert.doesNotMatch(emailSearchAction, /chargeCredits\(|instantlyRequest|buildEmailCandidates/u)
 assert.match(emailSearchAction, /credit_cost: 0/u)
 assert.ok(emailSearchAction.indexOf('CLAUDE_KEY_REQUIRED') < emailSearchAction.indexOf('const startedAt'))
 

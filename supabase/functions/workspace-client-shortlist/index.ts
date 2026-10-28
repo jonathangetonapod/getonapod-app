@@ -17,7 +17,7 @@ import {
   type AuthContext,
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
-import { generatePodcastSearchEmbedding } from '../_shared/podcastSearch.ts'
+import { generatePodcastSearchEmbedding, isSemanticSearchEnabled } from '../_shared/podcastSearch.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { readStoredAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
@@ -1052,8 +1052,12 @@ serve(async (req) => {
     if (action === 'catalog-search') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'query'])
       const query = requireString(body.query, 'query', { min: 2, max: 120 })
-      const openaiKey = await resolveAiKey(authContext.admin, workspaceId, 'openai')
-      const searchEmbedding = await generatePodcastSearchEmbedding(query, openaiKey)
+      // Short searches and installations with semantic search disabled only
+      // read the catalog. Do not require a provider key for that SQL path.
+      const wantsEmbedding = query.length >= 3 && isSemanticSearchEnabled()
+      const searchEmbedding = wantsEmbedding
+        ? await generatePodcastSearchEmbedding(query, await resolveAiKey(authContext.admin, workspaceId, 'openai'))
+        : null
       if (searchEmbedding) {
         await logOperationCost(authContext.admin, {
           workspaceId,
@@ -1235,7 +1239,7 @@ serve(async (req) => {
         // opens or research runs (both call ensureEpisodesCaptured).
         for (const podcastId of addedPodcastIds.slice(0, 5)) {
           try {
-            await ensureEpisodesCaptured(authContext.admin, podcastId)
+            await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
           } catch (_error) {
             // A Podscan hiccup never fails the add.
           }
@@ -1531,7 +1535,7 @@ serve(async (req) => {
         body.relationship_acknowledged === true,
       )
 
-      const { captured: refreshed, fetched } = await refreshEpisodesCapture(authContext.admin, podcastId)
+      const { captured: refreshed, fetched } = await refreshEpisodesCapture(authContext.admin, podcastId, undefined, { apiKey: (await resolveAiKey(authContext.admin, workspaceId, 'podscan'))!.apiKey })
 
       // Charged after the read, never before: a provider outage returns
       // fetched=false, and a workspace must not pay for episodes it did not
@@ -1604,7 +1608,7 @@ serve(async (req) => {
         podcastId,
         body.relationship_acknowledged === true,
       )
-      const captured = await ensureEpisodesCaptured(authContext.admin, podcastId)
+      const captured = await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
       return jsonResponse(req, METHODS, 200, {
         // The full stored shape (minus transcript): title, description, urls,
         // duration, hosts, guests, summary, keywords, topics.
@@ -1946,7 +1950,7 @@ serve(async (req) => {
 
         // Stored episode capture: Podscan is only hit when the capture is
         // missing or stale, so research reruns are free of provider calls.
-        const captured = await ensureEpisodesCaptured(authContext.admin, shortlistRow.podcast_id)
+        const captured = await ensureEpisodesCaptured(authContext.admin, shortlistRow.podcast_id, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
         const firstEpisode = captured?.episodes[0] ?? null
         // Every podcast-sourced variable in the registry, rendered by its
         // declared type. Typing matters here: a raw false or 0 handed to the
@@ -2413,7 +2417,7 @@ serve(async (req) => {
       // No platform Claude fallback, no credit charge, no Instantly requirement.
       const claudeKey = await readStoredAiKey(authContext.admin, workspaceId, 'anthropic')
       if (!claudeKey.apiKey) throw new HttpError(409, 'CLAUDE_KEY_REQUIRED', 'Connect your Claude API key in workspace settings to find a host contact. No app credits are used.')
-      const blitzKey = Deno.env.get('BLITZ_API_KEY')?.trim()
+      const blitzKey = (await resolveAiKey(authContext.admin, workspaceId, 'blitz'))?.apiKey
       if (!blitzKey) throw new HttpError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', 'The email provider is not configured. Contact your administrator.')
 
       const previous = shortlistRow.email_unlock_progress as Record<string, unknown> | null

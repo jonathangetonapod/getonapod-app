@@ -15,7 +15,6 @@ export const PORTFOLIO_FILTERS: Array<{ value: PortfolioFilter; label: string }>
   { value: 'attention', label: 'Needs attention' },
   { value: 'trialing', label: 'Trialing' },
   { value: 'ending', label: 'Ending in 7 days' },
-  { value: 'low', label: 'Low balance' },
   { value: 'paying', label: 'Paying' },
 ]
 

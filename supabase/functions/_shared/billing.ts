@@ -1,9 +1,7 @@
-// Credit metering runtime. Cost logging is always on; credit charging is
-// gated by CREDIT_ENFORCEMENT_ENABLED so the ledger can be dry-run against
-// real traffic before any workspace is actually charged. Operations executed
-// with a workspace-owned (BYO) provider key are never charged.
+// Flat subscriptions never debit app credits. Keep the operation vocabulary,
+// cost telemetry and historical refund support for in-flight legacy work.
 
-import { createAdminClient, HttpError } from './workspaceAuth.ts'
+import { createAdminClient } from './workspaceAuth.ts'
 
 export type MeteredOperation =
   | 'research_run'
@@ -35,7 +33,7 @@ const USD_PER_OPENAI_TOKEN = 0.00000002
 const USD_PER_PODSCAN_CALL = 0.002
 
 export function enforcementEnabled(): boolean {
-  return Deno.env.get('CREDIT_ENFORCEMENT_ENABLED')?.trim() === 'true'
+  return false
 }
 
 export function estimatedCostUsd(usage: TokenUsage): number {
@@ -44,61 +42,6 @@ export function estimatedCostUsd(usage: TokenUsage): number {
     + (usage.openaiTokens ?? 0) * USD_PER_OPENAI_TOKEN
     + (usage.podscanCalls ?? 0) * USD_PER_PODSCAN_CALL
   return Math.round(total * 1_000_000) / 1_000_000
-}
-
-async function ensureMonthlyAllowance(
-  admin: ReturnType<typeof createAdminClient>,
-  workspaceId: string,
-): Promise<void> {
-  const { data: profile, error: profileError } = await admin
-    .from('workspace_billing_profiles')
-    .select('monthly_credit_allowance, billing_status')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-  if (profileError) {
-    throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Billing is temporarily unavailable')
-  }
-
-  let allowance = profile?.monthly_credit_allowance
-  if (profile === null) {
-    const { error: insertError } = await admin
-      .from('workspace_billing_profiles')
-      .upsert({ workspace_id: workspaceId }, { onConflict: 'workspace_id', ignoreDuplicates: true })
-    if (insertError) {
-      throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Billing is temporarily unavailable')
-    }
-    // Matches the column default. A literal here that disagrees with the
-    // schema is how a workspace silently lands on the wrong plan.
-    allowance = 100
-  }
-  if (typeof allowance !== 'number' || allowance < 1) return
-  // A workspace that cancelled keeps its plan's allowance on the row, because
-  // that column describes the plan rather than the subscription. Granting from
-  // it regardless meant a cancelled workspace was topped up every month for
-  // ever. No profile is a workspace that has never been billed — the trial
-  // case — which still gets its allowance.
-  const payable = profile === null
-    || ['trialing', 'active', 'comped'].includes(String(profile.billing_status ?? 'trialing'))
-  if (!payable) return
-
-  const period = new Date().toISOString().slice(0, 7)
-  const endOfNextMonth = new Date(Date.UTC(
-    new Date().getUTCFullYear(),
-    new Date().getUTCMonth() + 2,
-    1,
-  )).toISOString()
-  const { error: grantError } = await admin.rpc('grant_workspace_credits_v1', {
-    p_workspace_id: workspaceId,
-    p_source: 'monthly_allowance',
-    p_amount: allowance,
-    p_expires_at: endOfNextMonth,
-    p_reference_kind: 'allowance_period',
-    p_reference_id: period,
-    p_idempotency_key: `allowance:${workspaceId}:${period}`,
-  })
-  if (grantError) {
-    throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Billing is temporarily unavailable')
-  }
 }
 
 /**
@@ -123,10 +66,7 @@ export function retryWindowKey(parts: Array<string | null | undefined>, windowMs
   return `${parts.filter(Boolean).join(':')}:w${bucket}`
 }
 
-// Charge BEFORE the provider call so an empty balance never gets a free ride.
-// Throws HttpError(402, 'INSUFFICIENT_CREDITS') when the balance cannot cover
-// the operation. Returns the charged amount (0 when enforcement is off or the
-// operation ran on a workspace-owned key).
+// Compatibility interface for existing callers. No new lots or debits are written.
 export async function chargeCredits(
   admin: ReturnType<typeof createAdminClient>,
   input: {
@@ -140,37 +80,11 @@ export async function chargeCredits(
     byoKeyUsed?: boolean
   },
 ): Promise<{ charged: number; entryId: string | null; replayed: boolean }> {
-  if (!enforcementEnabled() || input.byoKeyUsed) return { charged: 0, entryId: null, replayed: false }
-
-  await ensureMonthlyAllowance(admin, input.workspaceId)
-
-  const { data, error } = await admin.rpc('spend_workspace_credits_v1', {
-    p_workspace_id: input.workspaceId,
-    p_operation_type: input.operationType,
-    p_reference_kind: input.referenceKind ?? null,
-    p_reference_id: input.referenceId ?? null,
-    p_client_id: input.clientId ?? null,
-    p_actor_user_id: input.actorUserId ?? null,
-    p_idempotency_key: input.idempotencyKey ?? null,
-  })
-  if (error) {
-    if ((error.message ?? '').includes('INSUFFICIENT_CREDITS')) {
-      throw new HttpError(402, 'INSUFFICIENT_CREDITS', 'Not enough credits for this operation. Top up in workspace billing.')
-    }
-    throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Billing is temporarily unavailable')
-  }
-  const result = data as { charged?: number; entry_id?: string; idempotent?: boolean } | null
-  return {
-    charged: typeof result?.charged === 'number' ? result.charged : 0,
-    entryId: typeof result?.entry_id === 'string' ? result.entry_id : null,
-    /*
-     * A replay names an EARLIER debit — possibly for work already delivered.
-     * Callers that refund on failure must refund only fresh charges: a retry
-     * that replays and then fails must not claw back the first attempt's paid
-     * work.
-     */
-    replayed: result?.idempotent === true,
-  }
+  // Compatibility shim for existing operation callers. Historical refund paths
+  // remain available, but flat subscriptions never create new credit debits.
+  void admin
+  void input
+  return { charged: 0, entryId: null, replayed: false }
 }
 
 /**

@@ -19,7 +19,7 @@ The current product is invite-only:
 - Public workspace registration is disabled.
 - A private workspace has one owner plus optional admins and members.
 - Workspace users and client portal users are separate identities.
-- Workspace operations are metered in credits, with a monthly allowance, self-serve top-ups, and optional automatic refills.
+- Workspaces use a flat subscription and customer-owned provider accounts. Credit purchases, allowances, and automatic refills are retired.
 - The platform owner stays signed in as the platform owner while managing a selected workspace; there is no owner impersonation.
 
 ## Core workflows
@@ -66,7 +66,7 @@ Workspace branding controls the agency name, logo, primary color, and accent col
 | Mailboxes | Available | Sending-account health, warmup state, and per-client assignment; domain and mailbox costs are metered |
 | Guest Resources | Available | Workspace-authored resources for all clients or selected clients |
 | Settings | Available to owners/admins | Team access, credentials, client-facing brand, agency name, booking link, own profile picture, and own sidebar order |
-| Billing & credits | Available to owners/admins | Balance, plan, invoices, credit packs, and automatic top-ups |
+| Billing | Available to owners/admins | Subscription, payment recovery, invoices, and provider connections |
 | Prospect Studio | Available | Workspace-scoped prospect dashboards, shortlist building, publication review, and prospect photos |
 | Podcast Database | Available | Shared-catalog browsing, per-show details, relationship history, and adding shows to either a client shortlist or a prospect dashboard |
 | Client Podcast System | Available | Recording, scheduled, and going-live operations per client |
@@ -153,59 +153,32 @@ Client Campaigns currently synchronizes on an explicit operator action; webhook-
 
 Legacy Bison/Clay outreach code remains in the repository for operator history. It is global-provider code and must not be wired into workspace routes without the same ownership, event-ledger, and isolation guarantees.
 
-## Credits and billing
+## Workspace billing
 
-Every operation that costs the platform money — an AI research run, a contact
-lookup, a dashboard build, a mailbox — is metered in credits against the
-workspace that caused it. The point is that an agency's spend is visible and
-bounded before an invoice arrives, not after.
+New customers subscribe to one Standard workspace plan at $99 USD/month, with
+unlimited clients and team members. Existing subscribers retain their actual
+Stripe prices. AI, live discovery, enrichment and sending usage is billed by the
+customer's connected providers. Tenant requests do not fall back to platform keys.
 
-**Enforcement is a switch.** `CREDIT_ENFORCEMENT_ENABLED` decides whether
-charging happens at all. With it off, every operation runs and records nothing;
-with it on, an empty balance stops the work with a `402`. Turning it off is the
-rollback for anything credit-related, and it takes effect without a redeploy.
+The user portal at `/app/settings/billing` shows the subscription, renewal or
+cancellation timing, payment recovery, invoices, and encrypted provider keys.
+Owners and administrators manage billing; owners and platform administrators
+manage credentials. An expired trial or inactive subscription blocks operational
+features while leaving billing and account recovery available.
 
-**Balances are derived, never stored.** A grant creates a *lot* with an optional
-expiry; the balance is the sum of what remains in unexpired lots. The ledger is
-append-only and explains every movement:
+Credit checkout, refills, allowances and application credit debits are retired.
+`CREDIT_ENFORCEMENT_ENABLED` no longer enables charges. Existing credit lots,
+ledger entries and Stripe references remain available for reconciliation, and
+the signed historical credit webhook still handles late events, refunds and
+disputes. Purchased balances require a customer settlement policy.
 
-| Entry | Written when |
-| --- | --- |
-| `grant` | monthly allowance, a purchase, or an admin grant |
-| `debit` | an operation charged, FIFO by expiry so the soonest to lapse is spent first |
-| `refund` | a charge taken before work that then failed, returned to the exact lots it came from |
-| `expiry` | a lot passing its date, recorded by a daily sweep so the journal still reconciles |
-| `adjustment` | an admin removing credits, taken newest-first so a correction claws back what was just given |
+Platform billing at `/app/platform/billing` retains subscription administration,
+plan pricing and historical ledger access. Tenant query keys must include the
+viewed workspace ID: `workspace` and `membership` in `AuthContext` refer to the
+viewer's own workspace and must not be used for another tenant's billing.
 
-**Where money is decided.** Charging happens *before* the provider call, so an
-empty balance never gets a free ride — which is why a failed operation must be
-refundable. Granting from a purchase happens only in the Stripe webhook: the
-payment event is what proves money arrived, and a second grant path would let
-credits exist for a payment that later failed.
-
-**Automatic top-ups** are opt-in per workspace, and only offered where Stripe
-holds a saved card. Checkout attaches a customer and asks to keep the card, which
-is also what puts the consent in front of the person paying; without that Stripe
-refuses an off-session charge. The refill tick charges and stops — the webhook
-grants — and is bounded to one refill per workspace per day, skipping any
-workspace whose payments are already failing.
-
-Platform administration lives at `/app/platform/billing`: a portfolio of every
-workspace worst-first, plan pricing, one-off grants, adjustments, the monthly
-allowance, and each workspace's subscription status.
-
-**The balance follows the work.** The header chip shows the balance of the
-workspace on screen, including to a platform admin viewing a tenant — supporting
-an agency means knowing whether they are about to run out. Reading and acting are
-separate: the chip leads a member to their own `/app/settings/billing`, and a
-platform admin to `/app/platform/billing`, because acting on somebody else's
-credit happens there. The low-balance warning banner stays tenant-only; it is a
-prompt to top up, and the top-up is not on that screen. Anything else in the
-shell that reads tenant data must take the *viewed* workspace id explicitly —
-`workspace` and `membership` in `AuthContext` are always the viewer's own — and
-must scope its query key by workspace, because the query client is a singleton
-cleared only when the signed-in user changes, not when a platform admin switches
-which tenant they are looking at.
+See [the pricing model](docs/pricing-model.md) for provider roles, deployment
+order, access rules and historical-credit handling.
 
 ## Custom domains
 
@@ -285,9 +258,9 @@ often the work may be *considered*, not how often it happens.
 | `inbox-nudge-tick` | every 30 min | Stage follow-up nudges |
 | `campaign-sync-tick` | every 30 min | Refresh campaign analytics from the provider |
 | `workspace-domain-tick` | every 10 min | Re-check custom domains, including ones already serving |
-| `workspace-credit-refill` | hourly | Buy a credit pack for a workspace that opted in and fell below its threshold |
-| `workspace-monthly-allowance` | daily | Grant each workspace its monthly credits, keyed per period so a missed day is made good |
-| `workspace-credit-expiry` | daily | Zero lapsed credit lots and record the expiry |
+| `workspace-credit-refill` | retired | Unscheduled; credit sales are disabled |
+| `workspace-monthly-allowance` | retired | Unscheduled; allowances are disabled |
+| `workspace-credit-expiry` | retired | Unscheduled; historical balances are retained |
 | `workspace-purge` | daily 03:17 | Remove workspaces whose thirty-day recovery window has closed |
 
 ## Identity and authorization
@@ -572,9 +545,9 @@ Provider credentials belong in Supabase secret storage or the authorized operato
 
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_DB_PASSWORD`
-- `PODSCAN_API_KEY` — podcast and episode data for the whole discovery and research path
-- `ANTHROPIC_API_KEY` — every AI feature depends on it (research, pitch writing, inbox drafting, autopilot scoring). A workspace may supply its own key instead; this is the platform fallback. Validate a replacement against `GET /v1/models` before relying on it — a rejected key surfaces as features that quietly do nothing.
-- `OPENAI_API_KEY` — embeddings for semantic podcast search
+- `PODSCAN_API_KEY` — platform catalog maintenance; tenant live discovery uses the workspace Podscan key
+- `ANTHROPIC_API_KEY` — platform-scoped maintenance only; tenant AI features require a workspace-owned key
+- `OPENAI_API_KEY` — platform-scoped embeddings; tenant semantic search requires a workspace-owned key
 - `RESEND_API_KEY`
 - `ACCESS_REQUEST_NOTIFY_EMAIL` — where an access request from the public landing page is emailed. Optional: the request is recorded in `workspace_access_requests` either way, so an unset value means the queue is only visible in the table, never that a request was lost
 - `ONBOARDING_CAPABILITY_SECRET`
@@ -584,8 +557,8 @@ Provider credentials belong in Supabase secret storage or the authorized operato
   data is never removed
 - Google service-account credentials
 - `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` (at least 32 random characters; server-side encryption key)
-- `STRIPE_SECRET_KEY`, `STRIPE_CREDIT_WEBHOOK_SECRET`, `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` — credit purchases, automatic top-ups, and subscription state
-- `CREDIT_ENFORCEMENT_ENABLED` — `true` charges for metered work; anything else records nothing. The rollback for the credit system, and it needs no redeploy
+- `STRIPE_SECRET_KEY`, `STRIPE_CREDIT_WEBHOOK_SECRET`, `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` — subscriptions, hosted billing, and historical credit payment events
+- `CREDIT_ENFORCEMENT_ENABLED` — retired; ignored by flat subscription billing
 - `CUSTOM_DOMAIN_PROVIDER` — `cloudflare` or `railway`, for *new* tenant domains only
 - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_SAAS_FALLBACK_ORIGIN`, `CLOUDFLARE_SAAS_WORKER` — custom hostname issuance and the worker route each one needs. Scope the token to SSL and Certificates plus Workers Routes on the one zone; nothing here needs account-wide access
 - `RAILWAY_API_TOKEN`, `RAILWAY_PROJECT_ID`, `RAILWAY_SERVICE_ID`, `RAILWAY_ENVIRONMENT_ID` — legacy custom domains
@@ -699,12 +672,13 @@ proxied — orange cloud on Cloudflare — the provider cannot see the value it
 validates against, and waiting never resolves it. The record must be DNS-only
 until the certificate issues.
 
-### An operation fails with `INSUFFICIENT_CREDITS`
+### An operation asks for billing or a provider connection
 
-The workspace balance is empty and enforcement is on. Grant credits from
-`/app/platform/billing`, raise the monthly allowance, or set
-`CREDIT_ENFORCEMENT_ENABLED` to something other than `true` to stop charging
-entirely while the cause is investigated.
+`SUBSCRIPTION_REQUIRED` means the workspace needs an active subscription,
+complimentary access, or an unexpired trial. Open `/app/settings/billing` to
+recover payment or subscribe. `PROVIDER_KEY_REQUIRED` means the workspace owner
+must connect the provider used by that feature. An `INSUFFICIENT_CREDITS` error
+indicates stale deployed code: credit debits have been retired.
 
 ### A workspace page says “unavailable”
 

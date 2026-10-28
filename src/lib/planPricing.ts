@@ -31,7 +31,6 @@ export function creditsFromDraft(value: string): number | null {
 export function planChangeSummary(plan: BillingPlan, change: PlanChange): string[] {
   const lines: string[] = []
   const subscribers = plan.subscriber_count ?? 0
-  const workspaces = plan.workspace_count ?? 0
 
   if (plan.is_purchasable) {
     if (!plan.stripe_price_id) {
@@ -45,16 +44,6 @@ export function planChangeSummary(plan: BillingPlan, change: PlanChange): string
     }
   }
 
-  if (change.credits !== plan.monthly_credit_allowance) {
-    lines.push(`Credits each month: ${plan.monthly_credit_allowance.toLocaleString()} → ${change.credits.toLocaleString()}.`)
-  }
-  if (change.applyToExisting) {
-    lines.push(workspaces === 0
-      ? `No workspaces are on ${plan.display_name} yet.`
-      : `${count(workspaces, 'workspace', 'workspaces')} on ${plan.display_name} get ${change.credits.toLocaleString()} credits from their next monthly grant, replacing any set by hand. Price is unchanged for them.`)
-  } else if (change.credits !== plan.monthly_credit_allowance && workspaces > 0) {
-    lines.push('Workspaces already on the plan keep their current credits until their subscription next changes.')
-  }
   return lines
 }
 

@@ -51,7 +51,7 @@ const expectedNavigation = [
   'Mailboxes',
   'Relationships',
   'University',
-  'Billing & credits',
+  'Billing',
   'Settings',
 ]
 
@@ -142,7 +142,7 @@ describe('WorkspaceLayout', () => {
     renderLayout()
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
-    expect(within(navigation).getByRole('link', { name: 'Billing & credits' }))
+    expect(within(navigation).getByRole('link', { name: 'Billing' }))
       .toHaveAttribute('href', '/app/settings/billing')
   })
 
@@ -157,7 +157,7 @@ describe('WorkspaceLayout', () => {
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     // That route is not workspace-scoped, so showing it would link to a page
     // that does not exist for the workspace being viewed.
-    expect(within(navigation).queryByRole('link', { name: 'Billing & credits' })).toBeNull()
+    expect(within(navigation).queryByRole('link', { name: 'Billing' })).toBeNull()
   })
 
   it('matches the complete navigation order and enables settings for an owner', () => {
@@ -225,7 +225,7 @@ describe('WorkspaceLayout', () => {
       'workspace-nav-group-other',
     ])
     expect(within(navigation).getByRole('list', { name: 'Find' })).toHaveTextContent('Podcast FinderPodcast DatabaseProspect Studio')
-    expect(within(navigation).getByRole('list', { name: 'Other' })).toHaveTextContent('UniversityBilling & creditsSettings')
+    expect(within(navigation).getByRole('list', { name: 'Other' })).toHaveTextContent('UniversityBillingSettings')
     unmount()
 
     window.localStorage.setItem(
@@ -282,7 +282,7 @@ describe('WorkspaceLayout', () => {
     ))).toEqual([
       'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Pipeline',
       'Clients', 'Client Campaigns', 'Relationships', 'Mailboxes', 'University',
-      'Billing & credits', 'Settings',
+      'Billing', 'Settings',
     ])
   })
 
@@ -514,7 +514,7 @@ describe('WorkspaceLayout', () => {
     // Appending put the new module below Settings — where nobody looks.
     // A complete prior order gets it at its default position instead.
     expect(labels.indexOf('University')).toBeGreaterThan(-1)
-    expect(labels.indexOf('University')).toBeLessThan(labels.indexOf('Billing & credits'))
+    expect(labels.indexOf('University')).toBeLessThan(labels.indexOf('Billing'))
     expect(labels[0]).toBe('Clients')
   })
 
@@ -540,7 +540,7 @@ describe('WorkspaceLayout', () => {
     )
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
-    expect(within(navigation).getByRole('link', { name: 'Billing & credits' })).toHaveAttribute('aria-current', 'page')
+    expect(within(navigation).getByRole('link', { name: 'Billing' })).toHaveAttribute('aria-current', 'page')
     expect(within(navigation).getByRole('link', { name: 'Settings' })).not.toHaveAttribute('aria-current')
   })
 
@@ -587,51 +587,19 @@ describe('WorkspaceLayout', () => {
    * platform billing screen rather than the agency's own.
    */
   it('reads the viewed workspace balance and sends it to the platform screen', async () => {
-    mockedUseAuth.mockReturnValue({
-      user: { email: 'platform@example.com' },
-      workspace: { id: workspaceId, name: 'Acme Workspace' },
-      membership: null,
-      isPlatformAdmin: true,
-      signOut,
-    } as never)
-    mockedBillingOverview.mockResolvedValue({
-      enforcement_enabled: true,
-      monthly_credit_allowance: 100,
-      balance: 850,
-    } as never)
-
-    renderLayout({
-      workspaceId: viewedWorkspaceId,
-      workspaceName: 'Selected Workspace',
-      logoUrl: null,
-      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
-    })
-
-    const chip = await screen.findByRole('link', { name: /850 credits remaining/i })
-    // Straight to this agency's page under billing administration.
-    expect(chip).toHaveAttribute('href', `/app/platform/billing/workspaces/${viewedWorkspaceId}`)
-    // Theirs, not the admin's own.
-    expect(mockedBillingOverview).toHaveBeenCalledWith(viewedWorkspaceId)
-    expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
+    renderLayout()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   // Settings is about the workspace, not a client, and its balance has a
   // section on the page itself.
   it('drops the working client on Settings and points the balance at its billing section', async () => {
-    mockedUseAuth.mockReturnValue({
-      user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'owner@example.com' },
-      workspace: { id: workspaceId, name: 'Acme', is_default: false },
-      membership: { full_name: 'Owner', role: 'owner' },
-      isPlatformAdmin: false,
-      signOut,
-    } as never)
-    mockedBillingOverview.mockResolvedValue({ enforcement_enabled: true, monthly_credit_allowance: 100, balance: 400 } as never)
-
-    renderLayout(undefined, '/app/settings')
-
-    expect(await screen.findByRole('link', { name: /400 credits remaining/i })).toHaveAttribute('href', '/app/settings#billing')
-    expect(screen.queryByRole('combobox', { name: 'Working client' })).toBeNull()
-    expect(screen.queryByText('Working on')).toBeNull()
+    renderLayout()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   // Platform administration acts on every workspace: a working client and the
@@ -962,41 +930,17 @@ describe('WorkspaceLayout', () => {
   // A balance is a number about nothing while nothing is being charged, on
   // either side of the shell.
   it('shows no chip in a tenant shell while enforcement is off', async () => {
-    mockedBillingOverview.mockResolvedValue({
-      enforcement_enabled: false,
-      monthly_credit_allowance: 100,
-      balance: 850,
-    } as never)
-
     renderLayout()
-
-    await waitFor(() => expect(mockedBillingOverview).toHaveBeenCalledWith(workspaceId))
     expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   it('shows no chip in a platform shell while enforcement is off', async () => {
-    mockedUseAuth.mockReturnValue({
-      user: { email: 'platform@example.com' },
-      workspace: { id: workspaceId, name: 'Acme Workspace' },
-      membership: null,
-      isPlatformAdmin: true,
-      signOut,
-    } as never)
-    mockedBillingOverview.mockResolvedValue({
-      enforcement_enabled: false,
-      monthly_credit_allowance: 100,
-      balance: 850,
-    } as never)
-
-    renderLayout({
-      workspaceId: viewedWorkspaceId,
-      workspaceName: 'Selected Workspace',
-      logoUrl: null,
-      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
-    })
-
-    await waitFor(() => expect(mockedBillingOverview).toHaveBeenCalledWith(viewedWorkspaceId))
+    renderLayout()
     expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   /*
@@ -1006,48 +950,17 @@ describe('WorkspaceLayout', () => {
    * the tenant is nearly out.
    */
   it('shows a nearly-empty tenant both the chip and the top-up banner', async () => {
-    mockedBillingOverview.mockResolvedValue({
-      enforcement_enabled: true,
-      monthly_credit_allowance: 100,
-      balance: 4,
-    } as never)
-
     renderLayout()
-
-    await screen.findByRole('link', { name: /4 credits remaining/i })
-    expect(await screen.findByRole('link', { name: /top up/i })).toHaveAttribute(
-      'href',
-      '/app/settings/billing',
-    )
-    expect(screen.getByText(/4 credits left/i)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   it('gives a platform admin the number without the top-up banner', async () => {
-    mockedUseAuth.mockReturnValue({
-      user: { email: 'platform@example.com' },
-      workspace: { id: workspaceId, name: 'Acme Workspace' },
-      membership: null,
-      isPlatformAdmin: true,
-      signOut,
-    } as never)
-    mockedBillingOverview.mockResolvedValue({
-      enforcement_enabled: true,
-      monthly_credit_allowance: 100,
-      balance: 4,
-    } as never)
-
-    renderLayout({
-      workspaceId: viewedWorkspaceId,
-      workspaceName: 'Selected Workspace',
-      logoUrl: null,
-      baseHref: `/app/workspaces/${viewedWorkspaceId}`,
-    })
-
-    // The number is theirs to know, and it reads as a problem.
-    const chip = await screen.findByRole('link', { name: /4 credits remaining/i })
-    expect(chip.className).toMatch(/destructive/)
-    expect(screen.queryByRole('link', { name: /top up/i })).not.toBeInTheDocument()
-    expect(screen.queryByText(/credits left/i)).not.toBeInTheDocument()
+    renderLayout()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 
   /*
@@ -1056,45 +969,9 @@ describe('WorkspaceLayout', () => {
    * agency's name is worse than no number at all.
    */
   it('moves the balance with the workspace being viewed', async () => {
-    mockedUseAuth.mockReturnValue({
-      user: { email: 'platform@example.com' },
-      workspace: { id: workspaceId, name: 'Acme Workspace' },
-      membership: null,
-      isPlatformAdmin: true,
-      signOut,
-    } as never)
-    mockedBillingOverview.mockImplementation(((id: string) => Promise.resolve({
-      enforcement_enabled: true,
-      monthly_credit_allowance: 100,
-      balance: id === viewedWorkspaceId ? 850 : 12,
-    })) as never)
-
-    const secondWorkspaceId = '33333333-3333-4333-8333-333333333333'
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const shellFor = (id: string) => (
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={[`/app/workspaces/${id}/clients`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <WorkspaceLayout
-            platformWorkspace={{
-              workspaceId: id,
-              workspaceName: 'Selected Workspace',
-              logoUrl: null,
-              baseHref: `/app/workspaces/${id}`,
-            }}
-          >
-            <div>Module content</div>
-          </WorkspaceLayout>
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
-
-    const { rerender } = render(shellFor(viewedWorkspaceId))
-    await screen.findByRole('link', { name: /850 credits remaining/i })
-
-    rerender(shellFor(secondWorkspaceId))
-    await screen.findByRole('link', { name: /12 credits remaining/i })
-    expect(screen.queryByText('850')).not.toBeInTheDocument()
-    expect(mockedBillingOverview).toHaveBeenCalledWith(secondWorkspaceId)
-    expect(mockedBillingOverview).not.toHaveBeenCalledWith(workspaceId)
+    renderLayout()
+    expect(screen.queryByRole('link', { name: /credits remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Buy credits|Add credits/i)).not.toBeInTheDocument()
+    expect(mockedBillingOverview).not.toHaveBeenCalled()
   })
 })

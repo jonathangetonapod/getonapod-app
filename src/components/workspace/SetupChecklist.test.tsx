@@ -6,7 +6,7 @@ import { SetupChecklist } from '@/components/workspace/SetupChecklist'
 import { getWorkspaceClients } from '@/services/clients'
 import { getWorkspaceCampaignOverview, getWorkspaceMailboxes } from '@/services/workspaceCampaigns'
 import { listWorkspaceOnboarding } from '@/services/workspaceOnboarding'
-import { getWorkspaceBillingOverview, listWorkspaceStaff } from '@/services/workspaceStaff'
+import { getWorkspaceSubscriptionOverview, listWorkspaceStaff } from '@/services/workspaceStaff'
 
 vi.mock('@/services/clients', () => ({ getWorkspaceClients: vi.fn() }))
 vi.mock('@/services/workspaceCampaigns', () => ({
@@ -15,7 +15,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
 }))
 vi.mock('@/services/workspaceOnboarding', () => ({ listWorkspaceOnboarding: vi.fn() }))
 vi.mock('@/services/workspaceStaff', () => ({
-  getWorkspaceBillingOverview: vi.fn(),
+  getWorkspaceSubscriptionOverview: vi.fn(),
   listWorkspaceStaff: vi.fn(),
 }))
 
@@ -74,7 +74,7 @@ function primeAllDone() {
     workspace: { client_brand_name: '', client_contact_email: 'hello@acme.test' },
     members: [{ status: 'active' }],
   } as never)
-  vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({ has_subscription: true, balance: 0 } as never)
+  vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ has_subscription: true, billing_status: 'active' } as never)
 }
 
 function renderChecklist(canManage = true) {
@@ -130,6 +130,24 @@ describe('SetupChecklist', () => {
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
   })
 
+  it.each(['past_due', 'suspended'])('keeps billing incomplete for a %s workspace even with a Stripe subscription', async (billingStatus) => {
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ has_subscription: true, billing_status: billingStatus } as never)
+    renderChecklist()
+
+    expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
+    expect(screen.getByText('Activate your workspace subscription').closest('li')).toHaveAttribute('data-done', 'false')
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Activate your workspace subscription' })).toHaveAttribute('href', '/app/settings/billing')
+  })
+
+  it('recognizes manually active access without a Stripe subscription', async () => {
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ has_subscription: false, billing_status: 'active' } as never)
+    renderChecklist()
+
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
+    expect(screen.getByText('Activate your workspace subscription').closest('li')).toHaveAttribute('data-done', 'true')
+  })
+
   it('holds setup open while the reply-to email is empty', async () => {
     vi.mocked(listWorkspaceStaff).mockResolvedValue({
       workspace: { client_brand_name: '', client_contact_email: null },
@@ -161,14 +179,14 @@ describe('SetupChecklist', () => {
 
   it('waits for every read before showing the card', async () => {
     let releaseBilling: (value: unknown) => void = () => undefined
-    vi.mocked(getWorkspaceBillingOverview).mockImplementation(() => new Promise((resolve) => { releaseBilling = resolve }) as never)
+    vi.mocked(getWorkspaceSubscriptionOverview).mockImplementation(() => new Promise((resolve) => { releaseBilling = resolve }) as never)
     renderChecklist()
 
     await waitFor(() => expect(getWorkspaceClients).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument()
 
-    releaseBilling({ has_subscription: true, balance: 0 })
+    releaseBilling({ has_subscription: true, billing_status: 'active' })
     expect(await screen.findByText('Setup complete')).toBeInTheDocument()
   })
 

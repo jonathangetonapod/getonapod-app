@@ -1,3 +1,4 @@
+import { requireWorkspaceSubscription } from '../_shared/workspaceAuth.ts'
 // Master Inbox auto-enrollment tick. Invoked by pg_cron via pg_net every 15
 // minutes with a shared secret — no user JWT (verify_jwt = false). For each
 // client whose SDR mode is auto_draft (or a legacy auto_send row), every new
@@ -155,6 +156,7 @@ serve(async (req) => {
       .eq('workspace_id', workspaceId)
 
     try {
+      await requireWorkspaceSubscription(admin, workspaceId)
       const apiKey = await decryptInstantlyApiKey({
         ciphertext: String(integration.api_key_ciphertext),
         iv: String(integration.api_key_iv),

@@ -44,7 +44,7 @@ describe('PlatformPlanPricing', () => {
   it('shows each plan at the price it is actually sold at', async () => {
     renderPanel()
     expect(await screen.findByLabelText('Per month (USD)', { selector: '#plan-price-standard' })).toHaveValue('99.00')
-    expect(screen.getByLabelText('Credits/month', { selector: '#plan-credits-standard' })).toHaveValue('300')
+    expect(screen.queryByLabelText('Credits/month')).not.toBeInTheDocument()
   })
 
   // Saving used to go straight to Stripe. Now it shows who is affected first.
@@ -63,7 +63,7 @@ describe('PlatformPlanPricing', () => {
     await chooseReason(dialog)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save Standard' }))
 
-    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('standard', 11_900, 300, {
+    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('standard', 11_900, 0, {
       applyToExistingSubscribers: false,
       reason: 'contract_adjustment',
       note: '',
@@ -73,17 +73,9 @@ describe('PlatformPlanPricing', () => {
 
   it('names the live count of workspaces the allowance would reach, and that it is credits only', async () => {
     renderPanel()
-    expect(await screen.findByLabelText('Also give existing subscribers (4) the new credit allowance')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Credits/month', { selector: '#plan-credits-standard' }), { target: { value: '400' } })
-    fireEvent.click(screen.getByLabelText('Also give existing subscribers (4) the new credit allowance'))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[2])
-
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('Credits each month: 300 → 400.')).toBeInTheDocument()
-    expect(within(dialog).getByText(/4 workspaces on Standard get 400 credits .* Price is unchanged for them\./u)).toBeInTheDocument()
-    // The price did not move, so nothing is said about subscribers' prices.
-    expect(within(dialog).queryByText(/New subscribers only/u)).not.toBeInTheDocument()
+    await screen.findByText('Standard')
+    expect(screen.queryByLabelText('Credits/month')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
 
   it('can create the first price at the amount already shown', async () => {
@@ -104,16 +96,7 @@ describe('PlatformPlanPricing', () => {
     renderPanel()
     await screen.findByText('Complimentary')
     expect(screen.queryByLabelText('Per month (USD)', { selector: '#plan-price-comped' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Credits/month', { selector: '#plan-credits-comped' })).toHaveValue('100')
-    expect(screen.getByText('Never sold')).toBeInTheDocument()
-    expect(screen.queryByText(/Set a price to create one in Stripe/u)).not.toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Credits/month', { selector: '#plan-credits-comped' }), { target: { value: '150' } })
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0])
-    const dialog = screen.getByRole('dialog')
-    await chooseReason(dialog)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Complimentary' }))
-    await waitFor(() => expect(mockedUpdate).toHaveBeenCalledWith('comped', 0, 150, expect.objectContaining({ reason: 'contract_adjustment' })))
+    expect(screen.getAllByRole('button', { name: 'Save' })[0]).toBeDisabled()
   })
 
   it('shows Stripe price IDs with a copy button and a link to the price', async () => {

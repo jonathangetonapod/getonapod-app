@@ -38,6 +38,7 @@ assert.match(dockerfile, /node scripts\/validate-public-supabase-config\.mjs/u)
 assert.match(dockerfile, /node scripts\/validate-browser-bundle\.mjs dist/u)
 assert.match(dockerfile, /COPY --chown=node:node scripts\/scan-release-secrets\.mjs/u)
 assert.match(dockerfile, /COPY --chown=node:node scripts\/validate-browser-bundle\.mjs/u)
+assert.match(dockerfile.slice(dockerfile.indexOf('AS runtime')), /COPY --chown=node:node package\.json package-lock\.json \.\//u)
 assert.match(dockerfile, /^USER node$/mu)
 assert.match(dockerfile, /^CMD \["npm", "start"\]$/mu)
 

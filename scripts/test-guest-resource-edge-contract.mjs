@@ -73,6 +73,9 @@ for (const forbidden of [
 assert.match(management, /const authContext = await requireAuthenticatedUser\(req\)/u)
 assert.match(management, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
 assert.match(management, /"workspace_guest_resource_operation_v1"/u)
+// Resource lists stay readable during recovery, but content writes (including
+// publish-through-update) cannot bypass the subscription gate via the RPC.
+assert.match(management, /if \(action !== "list"\) \{\s+await requireWorkspaceFeatureAccess\(authContext, workspaceId\);\s+\}\s+const \{ data, error \} = await admin\.rpc\(\s+"workspace_guest_resource_operation_v1"/u)
 assert.match(management, /p_workspace_id: workspaceId,[\s\S]*?p_actor_user_id: user\.id,[\s\S]*?p_token_issued_at: tokenIssuedAt/u)
 assert.match(management, /data === null \? null : resourceDto\(data\)/u, 'delete must accept the RPC JSON null result without parsing another row')
 assert.match(migration, /CREATE OR REPLACE FUNCTION public\.platform_workspace_guest_resource_mutation_v1\([\s\S]*?actor_role := public\.workspace_staff_actor_role_v1\([\s\S]*?IF actor_role <> 'platform_admin'/u)

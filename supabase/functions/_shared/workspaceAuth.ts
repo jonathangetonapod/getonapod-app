@@ -84,7 +84,7 @@ interface WorkspaceFeatureMembership {
 
 export interface AuditEvent {
   workspaceId?: string | null
-  actorUserId: string
+  actorUserId: string | null
   action: string
   entityType: string
   entityId?: string | null
@@ -227,9 +227,16 @@ function membershipCredentialMatches(
  * A platform administrator can enter another active workspace, but receives no
  * feature-level capability beyond that explicit workspace access.
  */
+export async function requireWorkspaceSubscription(admin: SupabaseClient, workspaceId: string): Promise<void> {
+  const { data, error } = await admin.rpc('workspace_subscription_access_v1', { p_workspace_id: workspaceId })
+  if (error) throw new HttpError(503, 'BILLING_UNAVAILABLE', 'Subscription access could not be checked. Try again shortly.')
+  if (data !== true) throw new HttpError(402, 'SUBSCRIPTION_REQUIRED', 'Your workspace needs an active subscription. Open Billing to start a plan or update payment details.')
+}
+
 export async function requireWorkspaceFeatureAccess(
   context: AuthContext,
   workspaceId: string,
+  options: { billingRecovery?: boolean } = {},
 ): Promise<WorkspaceFeatureAccess> {
   if (!workspaceCredentialIsFresh(context)) {
     throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
@@ -286,6 +293,7 @@ export async function requireWorkspaceFeatureAccess(
       && context.tokenIssuedAt >= membershipEpoch
       && membershipCredentialMatches(context, targetMembership)
     ) {
+      if (!options.billingRecovery && !context.platformAdmin) await requireWorkspaceSubscription(context.admin, workspaceId)
       return { workspace, role: targetMembership.role }
     }
   }

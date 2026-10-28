@@ -62,10 +62,9 @@ const PlatformBilling = () => {
             </Badge>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Billing administration</h1>
             <p className="mt-2 flex items-center gap-1.5 text-muted-foreground">
-              Plan prices, and every workspace&rsquo;s credits and subscription.
+              Plan prices and workspace subscriptions.
               <InfoTip topic="billing administration">
-                What each plan costs across the platform, plus each workspace&rsquo;s credits, monthly allowance and
-                subscription. A workspace&rsquo;s own invoices and card live on its billing page, not here.
+                What each plan costs across the platform, plus each workspace&rsquo;s subscription. A workspace&rsquo;s own invoices and card live on its billing page, not here.
               </InfoTip>
             </p>
           </div>

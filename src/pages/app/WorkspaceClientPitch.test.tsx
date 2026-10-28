@@ -289,23 +289,23 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
-    expect(screen.getByText('Claude + Blitz · 0 app credits')).toBeInTheDocument()
+    expect(screen.getByText('Your Claude + Blitz accounts')).toBeInTheDocument()
     expect(screen.queryByText('1 credit on success')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· 0 app credits')
+    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· Your provider accounts')
 
     // Back on the free inbox, so research is unlocked.
     fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
-    expect(screen.getByText('Included')).toBeInTheDocument()
+    expect(screen.getByText('Your Anthropic account')).toBeInTheDocument()
     expect(screen.queryByText('2 credits per run')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Regenerate/ })).toHaveTextContent('· Included')
+    expect(screen.getByRole('button', { name: /^Regenerate/ })).toHaveTextContent('· Your provider account')
   })
 
   it('requires a workspace Claude key without offering app credits as a substitute', async () => {
     await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
     expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeDisabled()
-    expect(screen.getByText(/Connect your Claude API key in workspace settings/)).toBeInTheDocument()
+    expect(screen.getByText(/Connect your Claude and Blitz keys in workspace settings/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
     expect(vi.mocked(runClientShortlistEmailSearch)).not.toHaveBeenCalled()
   })
@@ -369,7 +369,7 @@ describe('WorkspaceClientPitch', () => {
 
     expect(await screen.findByText("Warning: you've reached out to this podcast already")).toBeInTheDocument()
     expect(screen.getByText('CRM match · Podcast ID podcast-one')).toBeInTheDocument()
-    expect(screen.getByText(/Nothing that can use research credits, pitch credits, or external contact enrichment will run/i)).toBeInTheDocument()
+    expect(screen.getByText(/Research, pitch generation and contact enrichment will wait/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
     expect(vi.mocked(ensureClientShortlistEpisodes)).not.toHaveBeenCalled()
 
@@ -498,10 +498,10 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByText('hello@founderstories.fm')).toBeInTheDocument()
     expect(screen.getByText('Free · Podscan')).toBeInTheDocument()
     expect(screen.getByText('One shared contact network')).toBeInTheDocument()
-    expect(screen.getByText(/it is reused for 0 credits/i)).toBeInTheDocument()
+    expect(screen.getByText(/An existing verified contact can be reused/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Enter email manually' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByText('0 app credits')).toBeInTheDocument()
+    expect(screen.getByText('Provider billed')).toBeInTheDocument()
     expect(screen.getByText(/Claude searches for the host’s personal LinkedIn profile/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
@@ -541,7 +541,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     // A run charges research credits, so the step says so. It used to claim
     // the opposite to a customer who was being billed for it.
-    expect(screen.getByText('Included')).toBeInTheDocument()
+    expect(screen.getByText('Your Anthropic account')).toBeInTheDocument()
     expect(screen.queryByText('Included with your plan')).not.toBeInTheDocument()
     expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument()
     const researchStepsButton = screen.getByRole('button', { name: 'View steps' })
@@ -876,7 +876,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
 
-    expect(await screen.findByText('Shared verified contact · 0 app credits')).toBeInTheDocument()
+    expect(await screen.findByText('Shared verified contact')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('This contact is already available across the Database.')).toBeInTheDocument()
     expect(screen.queryByText('direct@founderstories.fm')).not.toBeInTheDocument()

@@ -46,7 +46,7 @@ export const PlatformWorkspaceBillingHeader = ({
         </div>
       </div>
       <div className="shrink-0 sm:text-right">
-        <p className="text-xs text-muted-foreground">Balance</p>
+        <p className="text-xs text-muted-foreground">Historical credit balance</p>
         <p className="text-3xl font-semibold tabular-nums" aria-live="polite">
           {billing
             ? billing.balance.toLocaleString()

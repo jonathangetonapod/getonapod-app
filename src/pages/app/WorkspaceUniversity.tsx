@@ -87,7 +87,7 @@ const CATEGORY_META: Array<{ id: UniversityCategory; label: string; segment: str
   { id: 'client_campaigns', label: 'Client Campaigns', segment: 'client-campaigns' },
   { id: 'relationships', label: 'Relationships', segment: 'relationships' },
   { id: 'mailboxes', label: 'Mailboxes', segment: 'mailboxes' },
-  { id: 'billing', label: 'Billing & credits', segment: 'settings/billing' },
+  { id: 'billing', label: 'Billing', segment: 'settings/billing' },
   { id: 'settings', label: 'Settings', segment: 'settings' },
   { id: 'other', label: 'More', segment: null },
 ]

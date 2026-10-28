@@ -40,7 +40,9 @@ WORKDIR /app
 RUN test "$(node --version)" = "v22.22.2" \
   && test "$(npm --version)" = "10.9.7"
 
-COPY package.json package-lock.json ./
+# Local uploads can preserve owner-only source permissions. The runtime user
+# must own its package metadata as well as the scripts and built assets.
+COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force
 

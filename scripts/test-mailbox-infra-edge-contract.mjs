@@ -8,9 +8,13 @@ assert.match(edge, /const authContext = await requireAuthenticatedUser\(req\)/u)
 assert.match(edge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
 assert.match(edge, /const access = await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?requireManager\(access\)/u)
 
-// Winnr access: workspace BYO key first, platform env fallback — resolved
-// server-side, never from the request. BYO orders skip platform credits.
+// Winnr access: operational calls require a workspace-owned key, resolved
+// server-side. The local disconnected overview remains available without one.
 assert.match(edge, /resolveAiKey\(authContext\.admin, workspaceId, 'winnr'\)/u)
+const disconnectedOverview = edge.slice(edge.indexOf("if (action === 'infra-overview')"), edge.indexOf('const winnrKey ='))
+assert.match(disconnectedOverview, /readStoredAiKey\(authContext\.admin, workspaceId, 'winnr'\)/u)
+assert.match(disconnectedOverview, /if \(!stored\.apiKey\) \{\s+return jsonResponse\(req, METHODS, 200, \{\s+winnr_connected: false/u)
+assert.doesNotMatch(disconnectedOverview, /resolveAiKey|winnrRequest|Deno\.env/u)
 assert.match(edge, /const usingWorkspaceKey = winnrKey\.source === 'workspace'/u)
 assert.match(edge, /byoKeyUsed: usingWorkspaceKey/u)
 assert.doesNotMatch(edge, /body\.(?:token|api_key|winnr)/u)

@@ -3,10 +3,10 @@
 // one credential-storage pattern in the codebase. Operations that run on a
 // workspace key are not charged platform credits.
 
-import { createAdminClient, HttpError } from './workspaceAuth.ts'
+import { createAdminClient, HttpError, requireWorkspaceSubscription } from './workspaceAuth.ts'
 import { decryptInstantlyApiKey, encryptInstantlyApiKey } from './instantly.ts'
 
-export type AiProvider = 'anthropic' | 'openai' | 'winnr'
+export type AiProvider = 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan'
 
 export interface ResolvedAiKey {
   apiKey: string
@@ -17,11 +17,13 @@ const PLATFORM_ENV: Record<AiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   winnr: 'WINNR_API_TOKEN',
+  blitz: 'BLITZ_API_KEY',
+  podscan: 'PODSCAN_API_KEY',
 }
 
 export function requireProvider(value: unknown): AiProvider {
-  if (value === 'anthropic' || value === 'openai' || value === 'winnr') return value
-  throw new HttpError(400, 'INVALID_PROVIDER', 'provider must be anthropic, openai, or winnr')
+  if (value === 'anthropic' || value === 'openai' || value === 'winnr' || value === 'blitz' || value === 'podscan') return value
+  throw new HttpError(400, 'INVALID_PROVIDER', 'Unknown provider')
 }
 
 export async function storeWorkspaceAiKey(
@@ -78,10 +80,12 @@ export async function workspaceAiKeyStatus(
     anthropic: { configured: false, last_four: null, updated_at: null },
     openai: { configured: false, last_four: null, updated_at: null },
     winnr: { configured: false, last_four: null, updated_at: null },
+    blitz: { configured: false, last_four: null, updated_at: null },
+    podscan: { configured: false, last_four: null, updated_at: null },
   }
   for (const row of (data ?? []) as Array<{ provider?: unknown; api_key_last_four?: unknown; updated_at?: unknown }>) {
     const provider = row.provider
-    if (provider === 'anthropic' || provider === 'openai' || provider === 'winnr') {
+    if (provider === 'anthropic' || provider === 'openai' || provider === 'winnr' || provider === 'blitz' || provider === 'podscan') {
       status[provider] = {
         configured: true,
         last_four: typeof row.api_key_last_four === 'string' ? row.api_key_last_four : null,
@@ -92,17 +96,18 @@ export async function workspaceAiKeyStatus(
   return status
 }
 
-// Workspace key when configured and decryptable, platform env key otherwise.
-// A corrupt stored credential degrades to the platform key rather than
-// breaking the product feature.
+// Tenant operations require their own key. Platform keys are reserved for
+// explicitly platform-scoped maintenance (workspaceId = null).
 export async function resolveAiKey(
   admin: ReturnType<typeof createAdminClient>,
   workspaceId: string | null,
   provider: AiProvider,
 ): Promise<ResolvedAiKey | null> {
   if (workspaceId) {
+    await requireWorkspaceSubscription(admin, workspaceId)
     const stored = await readStoredAiKey(admin, workspaceId, provider)
     if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
+    throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', `Connect a valid ${provider} key in Settings to use this feature. Your provider bills usage directly.`)
   }
   const platformKey = Deno.env.get(PLATFORM_ENV[provider])?.trim()
   if (platformKey) return { apiKey: platformKey, source: 'platform' }

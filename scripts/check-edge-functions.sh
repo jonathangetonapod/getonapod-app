@@ -49,13 +49,14 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   --frozen \
   --lock=deno.lock \
   --node-modules-dir=none \
-  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL \
+  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL,ANTHROPIC_API_KEY,CREDIT_ENFORCEMENT_ENABLED \
   supabase/functions/_shared/accountContextDto.test.ts \
   supabase/functions/_shared/auditEntity.test.ts \
   supabase/functions/_shared/clientFitProfile.test.ts \
   supabase/functions/_shared/compatibilityPrompt.test.ts \
   supabase/functions/_shared/cors.test.ts \
   supabase/functions/_shared/finderScans.test.ts \
+  supabase/functions/_shared/flatBilling.test.ts \
   supabase/functions/_shared/fitExplanations.test.ts \
   supabase/functions/_shared/guestResourceContent.test.ts \
   supabase/functions/_shared/inboxSdr.test.ts \

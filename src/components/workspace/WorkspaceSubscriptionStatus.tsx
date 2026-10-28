@@ -56,11 +56,14 @@ export function WorkspaceSubscriptionStatus({ workspaceId, workspaceName, ownerE
   const renewal = renewalLine(billing ?? {}, formatDate)
   const customerId = billing?.stripe_customer_id ?? null
   const subscribed = billing?.has_subscription === true
+  const hasAlternativePlan = (plansQuery.data ?? []).some((plan) =>
+    plan.is_purchasable && plan.plan_key !== 'comped' && plan.plan_key !== billing?.plan_key,
+  )
 
   // What each action needs to make sense. A disabled button says why.
   const actions: Array<{ operation: SubscriptionOperation; disabled: string | null }> = [
     { operation: 'extend_trial', disabled: subscribed ? 'Subscribed: there is no trial to extend.' : null },
-    { operation: 'change_plan', disabled: null },
+    { operation: 'change_plan', disabled: hasAlternativePlan ? null : 'No other plan is available for this workspace.' },
     { operation: 'make_comped', disabled: status === 'comped' ? 'Already complimentary.' : null },
     { operation: 'checkout_link', disabled: subscribed ? 'Already subscribed.' : null },
     {

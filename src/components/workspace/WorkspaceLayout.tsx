@@ -43,10 +43,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
-import { CreditBalanceChip } from '@/components/workspace/CreditBalanceChip'
 import { JoinRequestsBadge } from '@/components/workspace/JoinRequestsBadge'
 import { describeWaitingJoinRequests, useWaitingJoinRequests } from '@/hooks/useWaitingJoinRequests'
-import { CreditBalanceWarning } from '@/components/workspace/CreditBalanceWarning'
 import { WorkspaceSwitcher } from '@/components/admin/WorkspaceSwitcher'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -98,7 +96,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   // "where do I buy credits" should not require knowing that credits live
   // under a settings sub-page. Owner/admin only, and hidden when a platform
   // admin is viewing a tenant, because that route is not workspace-scoped.
-  { id: 'billing', name: 'Billing & credits', segment: 'settings/billing', icon: CreditCard, enabled: false },
+  { id: 'billing', name: 'Billing', segment: 'settings/billing', icon: CreditCard, enabled: false },
   { id: 'settings', name: 'Settings', segment: 'settings', icon: Settings, enabled: false },
 ]
 
@@ -1081,23 +1079,8 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
                 and not on their own billing page. The tenant rides along in
                 the address so the top-up lands on the agency whose number was
                 just clicked. */}
-            {onPlatformPage ? (
-              <Badge variant="outline" className="h-9 gap-1.5 whitespace-nowrap border-violet-300 bg-violet-50 px-3 text-violet-900">
-                <ShieldCheck className="h-4 w-4" aria-hidden="true" />Platform admin
-              </Badge>
-            ) : platformWorkspace ? (
-              <CreditBalanceChip
-                workspaceId={platformWorkspace.workspaceId}
-                canViewBalance={isPlatformAdmin}
-                billingHref={platformBillingWorkspaceHref(platformWorkspace.workspaceId)}
-              />
-            ) : workspace?.id && (
-              <CreditBalanceChip
-                workspaceId={workspace.id}
-                canViewBalance={membership?.role === 'owner' || membership?.role === 'admin'}
-                // On Settings, the balance is a section on the same page.
-                billingHref={location.pathname === '/app/settings' ? '/app/settings#billing' : '/app/settings/billing'}
-              />
+            {onPlatformPage && (
+              <Badge variant="outline" className="h-9 gap-1.5 px-3"><ShieldCheck className="h-4 w-4" />Platform admin</Badge>
             )}
             {isPlatformAdmin && !adminControlsInDrawer && (
               // Relative, so the waiting-count bubble can sit on the corner.
@@ -1132,7 +1115,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
                     </Link>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Billing administration: plans, credit grants and allowances</TooltipContent>
+                <TooltipContent>Billing administration: plans and subscriptions</TooltipContent>
               </Tooltip>
             )}
             {isPlatformAdmin && !adminControlsInDrawer && (
@@ -1146,12 +1129,7 @@ export const WorkspaceLayout = ({ children, platformWorkspace, hidePageName = fa
         {/* Above the page rather than inside billing: the person who needs to
             know is mid-task somewhere else entirely. Platform admins viewing a
             tenant are excluded — it is not their balance to act on. */}
-        {!platformWorkspace && workspace?.id && (
-          <CreditBalanceWarning
-            workspaceId={workspace.id}
-            canManageBilling={membership?.role === 'owner' || membership?.role === 'admin'}
-          />
-        )}
+
 
         {/* A tenant's shell looks exactly like the admin's own, which is the
             point of it, and also how an admin edits the wrong agency. This

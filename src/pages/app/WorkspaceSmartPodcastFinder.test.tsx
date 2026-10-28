@@ -224,7 +224,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
     // (18 lookups), five scoring requests for up to 100 podcasts, and one
     // credit to draft the AI strategy not loaded yet.
     expect(await screen.findByRole('button', { name: 'Scan podcasts for Taylor Client' })).toBeInTheDocument()
-    expect(await screen.findByText('Up to 24 credits · 200 left')).toBeInTheDocument()
+    expect(await screen.findByText('Billed to your provider accounts')).toBeInTheDocument()
     await waitFor(() =>
       expect(vi.mocked(getWorkspaceResearchContext)).toHaveBeenCalledWith(viewedWorkspaceId, clientId))
     expect(vi.mocked(getWorkspaceResearchContext)).not.toHaveBeenCalledWith(workspaceId, clientId)
@@ -715,8 +715,8 @@ describe('WorkspaceSmartPodcastFinder', () => {
     vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({ balance: 3, enforcement_enabled: true, monthly_credit_allowance: 500 } as never)
     renderFinder()
 
-    expect(await screen.findByText(/Up to 24 credits · 3 left/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Add credits' })).toHaveAttribute('href', '/app/settings/billing')
+    expect(await screen.findByText(/Billed to your provider accounts/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Add credits' })).not.toBeInTheDocument()
   })
 
   it('labels keyword estimates and ranks them below AI scores', async () => {
@@ -770,7 +770,7 @@ describe('WorkspaceSmartPodcastFinder', () => {
     expect(scan.queries).toEqual(['founder stories'])
     expect(scan.found_count).toBe(3)
     // Strategy 1 + one index page 1 + one scoring request 1.
-    expect(scan.credits_used).toBe(3)
+    expect(scan.credits_used).toBe(0)
     expect(scan.results.map((result) => [result.podcast.podcast_id, result.score, result.estimated])).toEqual([
       ['pd-high', 92, false],
       ['pd-catalog', 88, false],

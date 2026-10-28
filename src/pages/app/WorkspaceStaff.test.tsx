@@ -24,7 +24,7 @@ import {
   updateWorkspaceStaffRole,
   type WorkspaceStaffMember,
   type WorkspaceStaffView,
-  getWorkspaceBillingOverview,
+  getWorkspaceSubscriptionOverview,
   getWorkspaceAiKeys,
   grantWorkspaceCredits,
   setWorkspaceAiKey,
@@ -56,7 +56,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   setWorkspaceAiKey: vi.fn(),
   clearWorkspaceAiKey: vi.fn(),
   testWorkspaceAiKey: vi.fn(),
-  getWorkspaceBillingOverview: vi.fn(),
+  getWorkspaceSubscriptionOverview: vi.fn(),
   grantWorkspaceCredits: vi.fn(),
   inviteWorkspaceStaff: vi.fn(),
   listWorkspaceStaff: vi.fn(),
@@ -205,9 +205,10 @@ describe('WorkspaceStaff', () => {
       openai: { configured: false, last_four: null, updated_at: null },
       winnr: { configured: false, last_four: null, updated_at: null },
     })
-    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({
       plan_key: 'founding_member',
       billing_status: 'trialing',
+      trial_ends_at: '2099-01-01T00:00:00Z',
       base_price_cents: 3900,
       per_client_price_cents: 3900,
       included_active_clients: 1,
@@ -219,7 +220,7 @@ describe('WorkspaceStaff', () => {
       usage_this_month: {},
       prices: {},
       recent_activity: [],
-    })
+    } as never)
     vi.mocked(grantWorkspaceCredits).mockResolvedValue({ granted: 100, balance: 110 })
     vi.mocked(getWorkspaceClients).mockResolvedValue([])
     vi.mocked(getWorkspaceCampaignOverview).mockResolvedValue({
@@ -415,23 +416,30 @@ describe('WorkspaceStaff', () => {
       expect(await screen.findByText('Testing a saved key is not available yet.')).toBeInTheDocument()
     })
 
-    it('shows the platform credits a key would have covered this month', async () => {
-      vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
-        plan_key: 'founding_member',
-        billing_status: 'active',
-        balance: 500,
-        ledger_usage_this_month: {
-          research_run: { credits: 200, refunds: 0 },
-          query_generation: { credits: 112, refunds: 0 },
-          podscan_lookup: { credits: 30, refunds: 0 },
-        },
-      } as never)
+    it('explains provider usage without legacy credit estimates', async () => {
       renderPage()
+      expect(await screen.findByText(/^Used for podcast research, pitch writing and inbox replies/)).toBeInTheDocument()
+      expect(screen.queryByText(/platform credits on/)).not.toBeInTheDocument()
+  })
 
-      expect(await screen.findByText('Used 312 platform credits on Claude tasks this month.')).toBeInTheDocument()
-      // Database search costs nothing, so there is no line to show for it.
-      expect(screen.queryByText(/on database searches this month/)).not.toBeInTheDocument()
-      expect(screen.getByText(/^Used for podcast research, pitch writing and inbox replies\./)).toBeInTheDocument()
+    it('keeps optional providers behind a clearly labeled disclosure', async () => {
+      renderPage()
+      await screen.findByLabelText('Anthropic (Claude) API key')
+      expect(screen.queryByLabelText('Podscan API key')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Additional providers/ }))
+      expect(screen.getByLabelText('Podscan API key')).toBeInTheDocument()
+      expect(screen.getByLabelText('Blitz API key')).toBeInTheDocument()
+      expect(screen.getByLabelText('Winnr API key')).toBeInTheDocument()
+    })
+
+    it('does not show empty key forms when connection status cannot be loaded', async () => {
+      vi.mocked(getWorkspaceAiKeys).mockRejectedValue(new Error('offline'))
+      renderPage()
+      expect(await screen.findByText(/couldn’t load your provider connections/)).toBeInTheDocument()
+      expect(screen.queryByLabelText('Anthropic (Claude) API key')).not.toBeInTheDocument()
+      savedAnthropic()
+      fireEvent.click(screen.getByRole('button', { name: 'Retry connections' }))
+      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
     })
 
     it('saves a new key with an explicit save, then shows it masked', async () => {
@@ -627,7 +635,7 @@ describe('WorkspaceStaff', () => {
 
     const billing = await screen.findByRole('region', { name: 'Billing' })
     expect(await within(billing).findByText('Founding member')).toBeInTheDocument()
-    expect(within(billing).getByText('10 credits')).toBeInTheDocument()
+    expect(within(billing).getByText('Unlimited clients & team members')).toBeInTheDocument()
     expect(within(billing).getByRole('link', { name: 'Manage billing' })).toHaveAttribute('href', '/app/settings/billing')
   })
 

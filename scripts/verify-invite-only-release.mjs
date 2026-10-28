@@ -82,7 +82,10 @@ const EXPECTED_COUNTS = Object.freeze({
   // rejected key from an unreachable provider (2026-10-27).
   // 195 with _shared/clientFitProfile.ts and its test: shortlist fit scores
   // read the bio, guest brief and intake answers (2026-10-27).
-  edgeTypeScriptFiles: 195,
+  // 198: reconcile the 197 tracked files and add flatBilling.test.ts for
+  // subscription access and retirement of credit debits.
+  // 200 with catalogContacts.ts and its tests from the current main branch.
+  edgeTypeScriptFiles: 200,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

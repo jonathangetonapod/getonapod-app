@@ -5,9 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { AiKeyProvider } from '@/lib/aiKeyUsage'
+type AiKeyProvider = keyof import('@/services/workspaceStaff').WorkspaceAiKeysView
 import { notACredentialField } from '@/lib/formAutofill'
-import { plural } from '@/lib/plural'
 import {
   testWorkspaceAiKey,
   type WorkspaceAiKeyStatus,
@@ -20,17 +19,14 @@ export interface AiKeyProviderInfo {
   /** What the provider's keys start with, for showing a saved one masked. */
   keyPrefix: string
   usedFor: string
-  /** The work it pays for, as it reads after "credits on". */
-  workName: string
   consoleUrl: string
+  optional?: boolean
 }
 
 interface AiKeyRowProps {
   workspaceId: string
   provider: AiKeyProviderInfo
   status: WorkspaceAiKeyStatus | null
-  /** Platform credits this month on work this key would pay for. */
-  creditsThisMonth: number
   busy: boolean
   saving: boolean
   onSave: (apiKey: string) => Promise<void>
@@ -41,7 +37,7 @@ type TestOutcome = WorkspaceAiKeyTestResult | 'unavailable'
 
 const TEST_COPY: Record<TestOutcome, string> = {
   valid: 'Valid. The provider accepted this key.',
-  invalid: 'Invalid. The provider rejected this key. Replace it, or remove it to use platform credits.',
+  invalid: 'Invalid. The provider rejected this key. Replace it to resume the features it powers.',
   unreachable: 'The provider did not answer, so the key could not be checked. Try again in a minute.',
   unavailable: 'Testing a saved key is not available yet.',
 }
@@ -55,7 +51,6 @@ export const AiKeyRow = ({
   workspaceId,
   provider,
   status,
-  creditsThisMonth,
   busy,
   saving,
   onSave,
@@ -91,12 +86,12 @@ export const AiKeyRow = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-medium">{provider.label}</p>
         {configured
-          ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Your key</Badge>
-          : <Badge variant="outline">Using platform credits</Badge>}
+          ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Connected</Badge>
+          : <Badge variant="outline">{provider.optional ? 'Optional' : 'Not connected'}</Badge>}
       </div>
       <p className="text-sm text-muted-foreground">
         {provider.usedFor}{' '}
-        <a
+        {provider.consoleUrl && <a
           href={provider.consoleUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -104,13 +99,9 @@ export const AiKeyRow = ({
         >
           Get a key<ExternalLink className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only"> (opens in a new tab)</span>
-        </a>
+        </a>}
       </p>
-      {!configured && creditsThisMonth > 0 && (
-        <p className="text-sm">
-          Used {plural(creditsThisMonth, 'platform credit')} on {provider.workName} this month.
-        </p>
-      )}
+
 
       {configured && !replacing && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -119,10 +110,10 @@ export const AiKeyRow = ({
           </code>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={busy} onClick={() => setReplacing(true)}>Replace</Button>
-            <Button type="button" variant="outline" disabled={busy || testMutation.isPending} onClick={() => testMutation.mutate()}>
+            {['anthropic', 'openai'].includes(provider.id) && <Button type="button" variant="outline" disabled={busy || testMutation.isPending} onClick={() => testMutation.mutate()}>
               {testMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
               Test key
-            </Button>
+            </Button>}
             <Button type="button" variant="outline" disabled={busy} onClick={onRemove}>
               <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remove
             </Button>
@@ -131,7 +122,7 @@ export const AiKeyRow = ({
       )}
 
       {editing && (
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (!busy && draft.trim()) void save().catch(() => undefined) }}>
           <div className="relative flex-1">
             <Label htmlFor={inputId} className="sr-only">{provider.label} API key</Label>
             {/* A provider key, not this person's password: kept out of
@@ -141,7 +132,7 @@ export const AiKeyRow = ({
               type={revealed ? 'text' : 'password'}
               {...notACredentialField}
               spellCheck={false}
-              placeholder={`${provider.keyPrefix}…`}
+              placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : 'Paste your API key'}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               disabled={busy}
@@ -159,8 +150,8 @@ export const AiKeyRow = ({
               {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
-          <Button type="button" disabled={busy || !draft.trim()} onClick={() => void save().catch(() => undefined)}>
-            {saving ? 'Verifying…' : 'Save key'}
+          <Button type="submit" disabled={busy || !draft.trim()}>
+            {saving ? 'Saving…' : 'Save key'}
           </Button>
           {replacing && (
             <Button
@@ -176,7 +167,7 @@ export const AiKeyRow = ({
               Cancel
             </Button>
           )}
-        </div>
+        </form>
       )}
 
       {outcome && configured && !replacing && (

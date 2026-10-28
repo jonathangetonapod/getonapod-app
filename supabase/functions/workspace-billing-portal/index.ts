@@ -133,33 +133,20 @@ async function stripeGet(path: string, key: string): Promise<Record<string, unkn
   return payload
 }
 
-/**
- * Repoints the Customer Portal at the plans' current prices.
- *
- * Creating a Price does not put it in the portal: the configuration lists
- * prices by id, so a plan repointed without this keeps offering the old amount
- * to anyone switching. Stripe's default configuration is the one the portal
- * uses when a session names none, so that is the one kept in step.
- */
+/** Keep hosted payment recovery and cancellation aligned with the flat plan. */
 async function syncPortalConfiguration(
   plans: BillingPlan[],
   stripeKey: string,
 ): Promise<string | null> {
-  const sellable = plans.filter((plan) => plan.is_purchasable && plan.stripe_price_id)
-  if (sellable.length === 0) return null
-
+  // A single plan has nothing to switch between. Preserve legacy prices and
+  // expose payment recovery, invoice history and end-of-period cancellation.
+  void plans
   const params: Record<string, string> = {
-    'features[subscription_update][enabled]': 'true',
-    'features[subscription_update][default_allowed_updates][]': 'price',
-    'features[subscription_update][proration_behavior]': 'create_prorations',
+    'features[subscription_update][enabled]': 'false',
     'features[subscription_cancel][enabled]': 'true',
+    'features[subscription_cancel][mode]': 'at_period_end',
     'features[payment_method_update][enabled]': 'true',
     'features[invoice_history][enabled]': 'true',
-  }
-  for (const [index, plan] of sellable.entries()) {
-    const price = await stripeGet(`prices/${plan.stripe_price_id}`, stripeKey)
-    params[`features[subscription_update][products][${index}][product]`] = String(price.product ?? '')
-    params[`features[subscription_update][products][${index}][prices][]`] = String(plan.stripe_price_id)
   }
 
   const existing = await stripeGet('billing_portal/configurations?is_default=true&limit=1', stripeKey)
@@ -197,6 +184,9 @@ async function handlePlanAdministration(
   const reason = requireString(body.reason, 'reason', { min: 1, max: 60 })
   const note = body.note === undefined ? '' : requireString(body.note, 'note', { min: 0, max: 500 })
   const actionKey = requireUuid(body.action_key, 'action_key')
+  if ((body.monthly_credit_allowance !== undefined && body.monthly_credit_allowance !== 0) || body.apply_to_existing_subscribers === true) {
+    throw new HttpError(410, 'CREDIT_BILLING_RETIRED', 'Monthly credit allowances are retired')
+  }
   if (body.apply_to_existing_subscribers !== undefined && typeof body.apply_to_existing_subscribers !== 'boolean') {
     throw new HttpError(400, 'INVALID_FIELD', 'apply_to_existing_subscribers must be true or false')
   }
@@ -468,7 +458,7 @@ serve(async (req) => {
     if (!workspaceCredentialIsFresh(authContext)) {
       throw new HttpError(401, 'CREDENTIAL_STALE', 'Sign in again to continue')
     }
-    const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
+    const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true })
     if (!MANAGER_ROLES.has(access.role)) {
       throw new HttpError(403, 'FORBIDDEN', 'Workspace manager access is required')
     }
@@ -500,13 +490,14 @@ serve(async (req) => {
       ? profile.stripe_customer_id
       : ''
     if (!customerId) {
+      // Every manager must send the same creation parameters under the
+      // workspace-wide idempotency key. Stripe collects the billing email in
+      // checkout; using the current caller's email makes cross-manager retries
+      // fail with an idempotency mismatch after a lost database write.
       const customerParams = new URLSearchParams({
         'metadata[workspace_id]': workspaceId,
       })
-      if (typeof authContext.user.email === 'string' && authContext.user.email.includes('@')) {
-        customerParams.set('email', authContext.user.email)
-      }
-      const customer = await stripePost('customers', customerParams, stripeKey)
+      const customer = await stripePost('customers', customerParams, stripeKey, `workspace-customer:${workspaceId}`)
       customerId = typeof customer.id === 'string' ? customer.id : ''
       if (!customerId) {
         throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
@@ -532,9 +523,11 @@ serve(async (req) => {
     const billingBase = `${appUrl()}/app/settings/billing`
 
     if (action === 'portal-create') {
+      const configurationId = await syncPortalConfiguration([], stripeKey)
+      if (!configurationId) throw new HttpError(503, 'PORTAL_UNAVAILABLE', 'Billing settings are temporarily unavailable')
       const session = await stripePost(
         'billing_portal/sessions',
-        new URLSearchParams({ customer: customerId, return_url: billingBase }),
+        new URLSearchParams({ customer: customerId, return_url: billingBase, configuration: configurationId }),
         stripeKey,
       )
       const url = typeof session.url === 'string' ? session.url : ''

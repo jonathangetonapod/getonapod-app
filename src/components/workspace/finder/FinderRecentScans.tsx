@@ -56,7 +56,7 @@ export const FinderRecentScans = ({ workspaceId, clientId, clientName, finderHre
                   <p className="text-xs text-muted-foreground">
                     {scan.match_count.toLocaleString()} {scan.match_count === 1 ? 'match' : 'matches'}
                     {' · '}
-                    {scan.credits_used > 0 ? `${creditsLabel(scan.credits_used)} used` : 'No credits used'}
+                    {scan.credits_used > 0 ? `${creditsLabel(scan.credits_used)} used` : 'Provider account usage'}
                   </p>
                 </div>
                 {scan.id === openScanId ? (

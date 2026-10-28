@@ -31,7 +31,7 @@ export function PlatformPlanPricing() {
             A new price applies to new subscribers only.
             <InfoTip topic="plan pricing">
               Stripe prices cannot be edited, so saving creates a new price and points the plan at it. Existing
-              subscribers keep the price they signed up at. Credits change for them only if you tick the box.
+              subscribers keep the price they signed up at. Provider usage is billed to each workspace’s own accounts.
             </InfoTip>
           </CardDescription>
         </CardHeader>

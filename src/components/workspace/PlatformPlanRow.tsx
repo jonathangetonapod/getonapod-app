@@ -4,11 +4,10 @@ import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PlanChangeConfirmDialog } from '@/components/workspace/PlanChangeConfirmDialog'
-import { centsFromDollars, creditsFromDraft, stripePriceUrl } from '@/lib/planPricing'
+import { centsFromDollars, stripePriceUrl } from '@/lib/planPricing'
 import type { BillingPlan } from '@/services/workspaceStaff'
 
 interface PlatformPlanRowProps {
@@ -22,10 +21,8 @@ interface PlatformPlanRowProps {
  */
 export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
   const [priceDraft, setPriceDraft] = useState<string | null>(null)
-  const [creditsDraft, setCreditsDraft] = useState<string | null>(null)
   // Off by default: giving workspaces that already pay a different allowance
   // is never a side effect of a save.
-  const [applyToExisting, setApplyToExisting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   // The dialog unmounts on close; focus goes back to Save rather than the body.
   const saveRef = useRef<HTMLButtonElement | null>(null)
@@ -36,23 +33,18 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
 
   const sold = plan.is_purchasable
   const dollars = priceDraft ?? (plan.base_price_cents / 100).toFixed(2)
-  const creditsText = creditsDraft ?? String(plan.monthly_credit_allowance ?? 0)
   const cents = sold ? centsFromDollars(dollars) : plan.base_price_cents
-  const credits = creditsFromDraft(creditsText)
+  const credits = 0
+  const applyToExisting = false
   // A plan never priced in Stripe has to be savable at the amount it shows:
   // that save is what creates its first Price.
   const changed = cents !== null && credits !== null && (
     cents !== plan.base_price_cents
-    || credits !== plan.monthly_credit_allowance
     || (sold && !plan.stripe_price_id)
-    || applyToExisting
   )
-  const workspaces = plan.workspace_count ?? 0
 
   const reset = () => {
     setPriceDraft(null)
-    setCreditsDraft(null)
-    setApplyToExisting(false)
     setConfirming(false)
   }
 
@@ -70,7 +62,7 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-semibold">{plan.display_name}</p>
-          {!sold && <Badge variant="secondary">Never sold</Badge>}
+          {!sold && <Badge variant="secondary">Not available for new subscriptions</Badge>}
           {sold && !plan.stripe_price_id && (
             <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900">No Stripe price yet</Badge>
           )}
@@ -99,25 +91,11 @@ export const PlatformPlanRow = ({ plan }: PlatformPlanRowProps) => {
               <Input id={`plan-price-${plan.plan_key}`} inputMode="decimal" className="w-32" value={dollars} onChange={(event) => setPriceDraft(event.target.value)} />
             </div>
           )}
-          <div className="space-y-1">
-            <Label htmlFor={`plan-credits-${plan.plan_key}`} className="text-xs">Credits/month</Label>
-            <Input id={`plan-credits-${plan.plan_key}`} inputMode="numeric" className="w-28" value={creditsText} onChange={(event) => setCreditsDraft(event.target.value)} />
-          </div>
-          <Button ref={saveRef} type="button" size="sm" disabled={!changed} onClick={() => setConfirming(true)}>
+          <Button ref={saveRef} type="button" size="sm" disabled={!sold || !changed} onClick={() => setConfirming(true)}>
             Save
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id={`plan-apply-existing-${plan.plan_key}`}
-            checked={applyToExisting}
-            onCheckedChange={(checked) => setApplyToExisting(checked === true)}
-          />
-          {/* Credits only: a subscriber's price is Stripe's and never moves here. */}
-          <Label htmlFor={`plan-apply-existing-${plan.plan_key}`} className="text-xs font-normal">
-            Also give existing subscribers ({workspaces}) the new credit allowance
-          </Label>
-        </div>
+
       </div>
 
       {confirming && cents !== null && credits !== null && (

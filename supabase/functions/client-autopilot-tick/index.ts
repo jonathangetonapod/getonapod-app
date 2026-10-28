@@ -180,7 +180,7 @@ async function anthropicJsonOnce(
 }
 
 /** Throws PodscanSearchError when the index could not be searched. */
-async function searchPodscan(query: string, deadlineAt: number): Promise<CandidatePodcast[]> {
+async function searchPodscan(query: string, deadlineAt: number, apiKey: string): Promise<CandidatePodcast[]> {
   const minPostedAt = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const params = new URLSearchParams({
     query,
@@ -195,7 +195,7 @@ async function searchPodscan(query: string, deadlineAt: number): Promise<Candida
   try {
     payload = (await podscanFetch<{ podcasts?: Array<Record<string, unknown>> } | null>(
       '/podcasts/search',
-      { params, retries: 2, deadlineAt },
+      { params, retries: 2, deadlineAt, apiKey },
     )).data
   } catch (error) {
     throw new PodscanSearchError(podscanSearchFailureKind(error))
@@ -329,6 +329,7 @@ serve(async (req) => {
       return json(200, { processed: 1, skipped: 'missing bio' })
     }
 
+    const podscanKey = (await resolveAiKey(admin, due.workspace_id, 'podscan'))!
     const anthropicKey = await resolveAiKey(admin, due.workspace_id, 'anthropic')
     if (!anthropicKey) {
       await recordFailure({ message: 'No AI key is available for this workspace. Autopilot will retry.', retryMs: ACTION_RETRY_MS })
@@ -378,7 +379,7 @@ serve(async (req) => {
       queries,
       (query) => {
         podscanCalls += 1
-        return searchPodscan(query, searchDeadline)
+        return searchPodscan(query, searchDeadline, podscanKey.apiKey)
       },
       { spacingMs: 600 },
     )
@@ -505,7 +506,7 @@ serve(async (req) => {
         // needs their episodes.
         if (Date.now() >= captureDeadline) break
         try {
-          await ensureEpisodesCaptured(admin, String(row.podcast_id), { deadlineAt: captureDeadline })
+          await ensureEpisodesCaptured(admin, String(row.podcast_id), { deadlineAt: captureDeadline, apiKey: podscanKey.apiKey })
         } catch (_error) {
           // Ignore — the next flow that needs episodes retries.
         }

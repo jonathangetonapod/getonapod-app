@@ -1057,7 +1057,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       </h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {canManageAiKeys
-                          ? 'Optional. Add your own key to bill AI usage to your provider instead of using platform credits.'
+                          ? 'Connect your provider accounts to enable AI features. Providers bill usage directly.'
                           : 'The services this workspace is connected to.'}
                       </p>
                     </div>

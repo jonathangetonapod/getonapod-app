@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Existing catalog JSON client accepts legacy episode shapes. */
 // Best-effort recent-episode fetch from Podscan for the research pipeline,
 // plus fetch-once persistence on the global podcast catalog. Research must
 // degrade gracefully — every failure path returns [] / stored data and the
@@ -212,7 +213,6 @@ function newestIso(values: Array<string | null>): string | null {
 }
 
 // deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 
 /**
  * The stored capture, without ever calling Podscan.
@@ -278,8 +278,9 @@ export async function refreshEpisodesCapture(
   admin: any,
   podscanId: string,
   freeWindowMs = REFRESH_FREE_WINDOW_MS,
+  fetchOptions: EpisodeFetchOptions = {},
 ): Promise<CaptureOutcome> {
-  return captureEpisodes(admin, podscanId, freeWindowMs)
+  return captureEpisodes(admin, podscanId, freeWindowMs, fetchOptions)
 }
 
 async function captureEpisodes(

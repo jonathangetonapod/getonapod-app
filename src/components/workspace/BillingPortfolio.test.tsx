@@ -70,8 +70,8 @@ describe('BillingPortfolio', () => {
     renderPortfolio()
 
     await screen.findByText('Sam Bylett')
-    expect(rowNames()).toEqual(['Lindsey Huettner', 'Sam Bylett', 'Ending soon', 'Low', 'Fine', 'Payer'])
-    expect(card('Needs attention').getByText('4')).toBeInTheDocument()
+    expect(rowNames()).toEqual(['Lindsey Huettner', 'Sam Bylett', 'Ending soon', 'Fine', 'Low', 'Payer'])
+    expect(card('Needs attention').getByText('3')).toBeInTheDocument()
     expect(screen.getAllByText('Trial ended')).toHaveLength(2)
   })
 
@@ -82,8 +82,8 @@ describe('BillingPortfolio', () => {
     expect(card('MRR').getByText('$29')).toBeInTheDocument()
     expect(card('Paying / Trialing').getByText('1 / 5')).toBeInTheDocument()
     expect(card('Trials ending in 7 days').getByText('1')).toBeInTheDocument()
-    expect(card('Credits outstanding').getByText('1,460')).toBeInTheDocument()
-    expect(card('Credits used this month').getByText('40')).toBeInTheDocument()
+    expect(screen.queryByText('Credits outstanding')).not.toBeInTheDocument()
+    expect(screen.queryByText('Credits used this month')).not.toBeInTheDocument()
   })
 
   it('shows the new columns with right-aligned numbers', async () => {
@@ -93,7 +93,7 @@ describe('BillingPortfolio', () => {
     expect(within(payer).getByText('Subscribed')).toBeInTheDocument()
     expect(within(payer).getByText('Yes')).toBeInTheDocument()
     expect(within(payer).getByText('Never')).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: 'Credits used (month)' })).toHaveClass('text-right')
+    expect(screen.queryByRole('columnheader', { name: 'Credits used (month)' })).not.toBeInTheDocument()
     expect(screen.queryByText('Spent this month')).not.toBeInTheDocument()
 
     const ending = screen.getByText('Ending soon').closest('tr') as HTMLElement
@@ -116,8 +116,7 @@ describe('BillingPortfolio', () => {
     expect(screen.getByRole('button', { name: /Ending in 7 days/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('location')).toHaveTextContent('filter=ending')
 
-    fireEvent.click(screen.getByRole('button', { name: /Low balance/ }))
-    expect(rowNames()).toEqual(['Low'])
+    expect(screen.queryByRole('button', { name: /Low balance/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Paying/ }))
     expect(rowNames()).toEqual(['Payer'])
     expect(within(screen.getByRole('button', { name: /^All/ })).getByText('6')).toBeInTheDocument()
@@ -153,17 +152,9 @@ describe('BillingPortfolio', () => {
   })
 
   it('tags an allowance that differs from the plan default', async () => {
-    vi.mocked(getBillingPortfolio).mockResolvedValue({
-      enforcementEnabled: true,
-      workspaces: [
-        row({ name: 'Get On A Pod', monthly_credit_allowance: 150, plan_monthly_credit_allowance: 100 }),
-        row({ name: 'On default' }),
-      ],
-    })
     renderPortfolio()
-
-    const tagged = await screen.findByText('Override')
-    expect(tagged.closest('tr')?.querySelector('td')?.textContent).toBe('Get On A Pod')
-    expect(screen.getAllByText('Override')).toHaveLength(1)
+    await screen.findByText('Payer')
+    expect(screen.queryByText('Override')).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Credits' })).not.toBeInTheDocument()
   })
 })

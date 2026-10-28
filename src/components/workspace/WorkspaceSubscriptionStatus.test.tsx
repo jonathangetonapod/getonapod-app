@@ -86,7 +86,7 @@ describe('WorkspaceSubscriptionStatus', () => {
     renderCard()
 
     expect(await screen.findByText('Paused')).toBeInTheDocument()
-    expect(screen.getByText(/No allowance is granted while paused/i)).toBeInTheDocument()
+    expect(screen.getByText(/Collection is paused at Stripe/i)).toBeInTheDocument()
   })
 
   it('says a cancellation is coming while the status still reads active', async () => {
@@ -164,6 +164,27 @@ describe('WorkspaceSubscriptionStatus', () => {
     expect(await screen.findByRole('button', { name: 'Extend trial' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Send checkout link' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeDisabled()
+  })
+
+  it.each(['standard', 'founding_member'])('only enables plan changes for %s when a purchasable alternative exists', async (planKey) => {
+    vi.mocked(listBillingPlans).mockResolvedValue([
+      { plan_key: 'founding_member', display_name: 'Founding member', base_price_cents: 4900, monthly_credit_allowance: 0, stripe_price_id: 'price_a', is_purchasable: false },
+      { plan_key: 'standard', display_name: 'Standard', base_price_cents: 9900, monthly_credit_allowance: 0, stripe_price_id: 'price_b', is_purchasable: true },
+    ])
+    vi.mocked(getWorkspaceBillingOverview).mockResolvedValue({
+      billing_status: 'active', plan_key: planKey, has_subscription: true,
+    } as never)
+    renderCard()
+
+    const changePlan = await screen.findByRole('button', { name: 'Change plan' })
+    if (planKey === 'standard') {
+      expect(changePlan).toBeDisabled()
+      expect(changePlan).toHaveAttribute('title', 'No other plan is available for this workspace.')
+      fireEvent.click(changePlan)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    } else {
+      await waitFor(() => expect(changePlan).toBeEnabled())
+    }
   })
 
   // The dialog unmounts on close; focus used to fall to the page body.

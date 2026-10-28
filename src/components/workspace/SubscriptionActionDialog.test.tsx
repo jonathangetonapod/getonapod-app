@@ -24,7 +24,7 @@ const trialing = {
   current_period_end: null,
 } as unknown as WorkspaceBillingOverview
 
-function renderDialog(operation: SubscriptionOperation, billing = trialing, ownerEmail: string | null = 'sam@quantisedmedia.com') {
+function renderDialog(operation: SubscriptionOperation, billing = trialing, ownerEmail: string | null = 'sam@quantisedmedia.com', availablePlans = plans) {
   const onClose = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
@@ -33,7 +33,7 @@ function renderDialog(operation: SubscriptionOperation, billing = trialing, owne
         workspaceId={workspaceId}
         workspaceName="Sam Bylett"
         billing={billing}
-        plans={plans}
+        plans={availablePlans}
         ownerEmail={ownerEmail}
         onClose={onClose}
       />
@@ -86,7 +86,18 @@ describe('SubscriptionActionDialog', () => {
 
   it('says a subscriber is switched now and prorated', () => {
     renderDialog('change_plan', { ...trialing, has_subscription: true, billing_status: 'active' } as WorkspaceBillingOverview)
-    expect(screen.getByText(/Switches to Standard now\. Stripe prorates the rest of this period\./u)).toBeInTheDocument()
+    expect(screen.getByText(/Switches to Workspace now\. Stripe prorates the rest of this period\./u)).toBeInTheDocument()
+  })
+
+  it('does not name a retired plan or allow confirmation when no alternative is available', async () => {
+    const singlePlan = plans.map((plan) => ({ ...plan, is_purchasable: plan.plan_key === 'standard' }))
+    const { dialog } = renderDialog('change_plan', { ...trialing, plan_key: 'standard', has_subscription: true, billing_status: 'active' }, null, singlePlan)
+
+    expect(within(dialog).getByText('No alternative plan is available for this workspace.')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Switches to Founding member/)).not.toBeInTheDocument()
+    await chooseReason(dialog)
+    expect(within(dialog).getByRole('button', { name: 'Change plan' })).toBeDisabled()
+    expect(mockedRun).not.toHaveBeenCalled()
   })
 
   it('creates a checkout link, emails the owner, and shows the link to copy', async () => {

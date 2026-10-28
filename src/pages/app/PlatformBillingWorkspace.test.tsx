@@ -91,7 +91,8 @@ describe('PlatformBillingWorkspace', () => {
   it('carries every per-workspace card', async () => {
     renderPage()
 
-    expect(await screen.findByRole('region', { name: 'Workspace credits' })).toBeInTheDocument()
+    expect(await screen.findByText(/ledger below is historical/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Workspace credits' })).not.toBeInTheDocument()
     expect(screen.getByText('Subscription')).toBeInTheDocument()
   })
 

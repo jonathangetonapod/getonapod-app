@@ -215,13 +215,14 @@ serve(async (req) => {
     update.current_period_end = null
   } else {
     update.stripe_subscription_id = subscriptionId
+    if (typeof subscription.trial_end === 'number') update.trial_ends_at = new Date(subscription.trial_end * 1000).toISOString()
 
     // A portal cancellation takes effect at period end, and arrives as an
     // update with the subscription still active. Recorded, or a plan on its way
     // out is indistinguishable from one that is staying.
     update.cancel_at_period_end = subscription.cancel_at_period_end === true
-    const periodEnd = typeof subscription.current_period_end === 'number'
-      ? subscription.current_period_end
+    const periodEnd = typeof (subscription.current_period_end ?? (subscription.items as { data?: Array<{ current_period_end?: number }> } | undefined)?.data?.[0]?.current_period_end) === 'number'
+      ? Number(subscription.current_period_end ?? (subscription.items as { data?: Array<{ current_period_end?: number }> } | undefined)?.data?.[0]?.current_period_end)
       : null
     update.current_period_end = periodEnd === null
       ? null
@@ -251,7 +252,7 @@ serve(async (req) => {
       // What the plan gives, applied with the plan. Without this a workspace
       // moving to the cheaper plan kept the dearer allowance and went on
       // spending it, because credits are granted from this column.
-      update.monthly_credit_allowance = plan.monthly_credit_allowance
+      update.monthly_credit_allowance = 0
       update.base_price_cents = plan.base_price_cents
       update.per_client_price_cents = plan.per_client_price_cents
       update.included_active_clients = plan.included_active_clients

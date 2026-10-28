@@ -12,6 +12,7 @@ import {
   requireOnlyKeys,
   requireString,
   requireUuid,
+  requireWorkspaceFeatureAccess,
   workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
@@ -352,6 +353,13 @@ serve(async (req) => {
     }
     const { admin, user, tokenIssuedAt } = context
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
+    // Staff may read existing onboarding during recovery. Starting intake can
+    // create a client, and the remaining staff actions mutate content, access,
+    // or invitations, so they require the same entitlement as client writes.
+    // Public capability submissions are handled separately by client-onboarding.
+    if (!['list', 'detail', 'get_link'].includes(action)) {
+      await requireWorkspaceFeatureAccess(context, workspaceId)
+    }
     // The origin this workspace's clients should be sent to. Branding the page
     // means nothing while the email that delivers it names the platform.
     const linkOrigin = await workspaceLinkOrigin(admin, workspaceId)

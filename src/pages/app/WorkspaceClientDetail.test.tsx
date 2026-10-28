@@ -549,7 +549,7 @@ describe('WorkspaceClientDetail', () => {
     mockedDetail.mockResolvedValueOnce({ ...empty, ai_keys: { anthropic: true, openai: false } })
     const first = renderPageWithHandle(`/app/clients/${clientId}?tab=brief`)
     const brief = await screen.findByTestId('client-host-brief')
-    expect(within(brief).getByRole('button', { name: 'Generate from profile' })).toBeInTheDocument()
+    expect(within(brief).getByRole('button', { name: /Generate from profile/ })).toBeInTheDocument()
     expect(within(brief).getByText('0 of 4 required')).toBeInTheDocument()
     // The old pair of brief buttons is gone.
     expect(screen.queryByRole('button', { name: /Draft brief/ })).not.toBeInTheDocument()
@@ -558,7 +558,7 @@ describe('WorkspaceClientDetail', () => {
 
     mockedDetail.mockResolvedValueOnce(empty)
     renderPage(`/app/clients/${clientId}?tab=brief`)
-    expect(await screen.findByRole('button', { name: 'Generate from profile · 3 credits' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Generate from profile · Your provider account' })).toBeInTheDocument()
   })
 
   it('generates every empty section as a draft, then approves sections into a ready brief', async () => {
@@ -596,7 +596,7 @@ describe('WorkspaceClientDetail', () => {
       ...empty,
       client: { ...empty.client, ai_sdr_profile: drafted, ai_sdr_profile_updated_at: '2026-07-24T00:00:00.000Z' },
     })
-    fireEvent.click(within(brief).getByRole('button', { name: 'Generate from profile · 3 credits' }))
+    fireEvent.click(within(brief).getByRole('button', { name: 'Generate from profile · Your provider account' }))
     await waitFor(() => expect(mockedUpdateSdrProfile).toHaveBeenCalledWith(
       workspaceId,
       clientId,

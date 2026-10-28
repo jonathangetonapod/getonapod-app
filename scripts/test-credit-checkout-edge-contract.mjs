@@ -2,38 +2,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const checkout = readFileSync('supabase/functions/workspace-credit-checkout/index.ts', 'utf8')
-// Manager-gated, fixed server-side packs, credits granted only by the webhook.
-assert.match(checkout, /requireAuthenticatedUser\(req\)/u)
-assert.match(checkout, /requireWorkspaceFeatureAccess\(authContext, workspaceId\)/u)
-assert.match(checkout, /MANAGER_ROLES\.has\(access\.role\)/u)
-// The prices moved to _shared so an automatic refill could read them without
-// importing — and so executing — the checkout function.
-const packs = readFileSync('supabase/functions/_shared/creditPacks.ts', 'utf8')
-assert.match(packs, /export const CREDIT_PACKS = \{/u)
-assert.match(checkout, /export \{ CREDIT_PACKS \} from '\.\.\/_shared\/creditPacks\.ts'/u)
-assert.doesNotMatch(checkout, /grant_workspace_credits/u)
-assert.doesNotMatch(checkout, /body\.(?:amount|credits|price)/u)
-assert.match(checkout, /'metadata\[workspace_id\]': workspaceId/u)
-// Promotion codes are entered and validated on Stripe's page. The pack size
-// still comes from metadata, so a discount must never be able to change it.
-assert.match(checkout, /allow_promotion_codes: 'true'/u)
-assert.match(checkout, /'metadata\[credits\]': String\(pack\.credits\)/u)
-
-// workspace_audit_log.entity_id is a UUID column. A Stripe session id is not a
-// UUID, and passing it made the insert fail, which failed the whole request
-// after the session had been created — checkout was unusable. The Stripe id
-// belongs in metadata; entity_id gets something that is actually a UUID.
-assert.match(checkout, /entityId: workspaceId,/u)
-assert.doesNotMatch(checkout, /entityId: payload\.id/u)
-assert.match(checkout, /stripe_session_id: payload\.id/u)
-
-// The audit runs after Stripe has been called, so it must not be able to fail
-// the request: the session exists either way, and a 500 here strands a customer
-// who has already been sent through checkout. That is how this broke. writeAudit
-// records without throwing; writeAuditOrRefuse is the pre-effect form and would
-// reintroduce exactly the fault.
-assert.match(checkout, /await writeAudit\(/u)
-assert.doesNotMatch(checkout, /writeAuditOrRefuse/u)
+// Old URLs cannot create new charges, even for authenticated legacy clients.
+assert.match(checkout, /410/u)
+assert.match(checkout, /CREDIT_BILLING_RETIRED/u)
+assert.doesNotMatch(checkout, /fetch\(|grant_workspace_credits/u)
+const refill = readFileSync('supabase/functions/workspace-credit-refill-tick/index.ts', 'utf8')
+assert.match(refill, /410/u)
+assert.doesNotMatch(refill, /fetch\(|payment_intents/u)
 
 const webhook = readFileSync('supabase/functions/stripe-credit-webhook/index.ts', 'utf8')
 // Signature-verified with replay tolerance; idempotent grant keyed on event id.
@@ -99,73 +74,11 @@ assert.match(reversal, /REVOKE ALL ON FUNCTION public\.reverse_workspace_credit_
 assert.match(reversal, /taken := LEAST\(wanted, lot\.remaining\)/u)
 assert.match(reversal, /CREATE UNIQUE INDEX IF NOT EXISTS workspace_credit_lots_stripe_payment_ref_uidx/u)
 
+// Historical payment processing remains enabled after sales are retired.
 const config = readFileSync('supabase/config.toml', 'utf8')
-const billingPage = readFileSync('src/pages/app/WorkspaceBilling.tsx', 'utf8')
-assert.match(config, /\[functions\.workspace-credit-checkout\]\nverify_jwt = true/u)
 assert.match(config, /\[functions\.stripe-credit-webhook\]\nverify_jwt = false/u)
-
-process.stdout.write('Credit checkout edge contract checks passed\n')
-
-// The billing page must advertise exactly what the server charges. It once
-// carried two pack lists — one wired to checkout at $0.98/credit, and a second,
-// unwired card offering $0.39 with a button that only said billing "will be
-// connected". A customer comparing them saw the cheaper one that did nothing.
-const packSource = packs.match(/export const CREDIT_PACKS = \{[\s\S]*?\n\} as const/u)
-assert.ok(packSource, 'CREDIT_PACKS must be declared')
-const serverPacks = [...packSource[0].matchAll(/(\w+): \{ credits: ([\d_]+), amount_cents: ([\d_]+)/gu)]
-  .map(([, key, credits, cents]) => ({
-    key,
-    credits: Number(credits.replace(/_/gu, '')),
-    cents: Number(cents.replace(/_/gu, '')),
-  }))
-assert.equal(serverPacks.length, 3)
-// The prices come from ONE frontend catalog now (src/lib/creditPacks.ts),
-// shared by the billing page and the auto-refill card and pinned to the
-// server by test-credit-packs-sync — so a shown price cannot diverge from the
-// charged one, and the billing page must consume that catalog rather than
-// re-declare its own.
-const frontendPacks = readFileSync('src/lib/creditPacks.ts', 'utf8').replace(/_/gu, '')
-assert.match(billingPage, /import \{ CREDIT_PACKS[^}]*\} from '@\/lib\/creditPacks'/u,
-  'the billing page must import the shared credit-pack catalog, not hardcode prices')
-for (const pack of serverPacks) {
-  assert.match(
-    frontendPacks,
-    new RegExp(`key: '${pack.key}', credits: ${pack.credits}, amountCents: ${pack.cents}`, 'u'),
-    `the frontend catalog must show ${pack.key} as ${pack.credits} credits for ${pack.cents} cents`,
-  )
-}
-// Buying more never costs more per credit than the plan's included rate, or a
-// top-up is a penalty for needing one.
-const PLAN_RATE = 29 / 100
-let previousRate = Infinity
-for (const pack of serverPacks) {
-  const rate = (pack.cents / 100) / pack.credits
-  assert.ok(rate <= PLAN_RATE + 1e-9, `${pack.key} costs more per credit than the plan`)
-  assert.ok(rate <= previousRate + 1e-9, `${pack.key} must not cost more per credit than a smaller pack`)
-  previousRate = rate
-}
-// And nothing may advertise a price the server cannot honour.
-assert.doesNotMatch(billingPage, /Secure checkout will be connected/u)
-assert.doesNotMatch(billingPage, /waterfallCreditPacks/u)
-
-// The purchase chain, end to end: a session is created here, the credits are
-// granted by the webhook, and the page waits for that rather than assuming it.
-const creditWebhook = readFileSync('supabase/functions/stripe-credit-webhook/index.ts', 'utf8')
-const workspaceLayout = readFileSync('src/components/workspace/WorkspaceLayout.tsx', 'utf8')
-
-// Only a signed, completed session may grant credits, and only once.
-assert.match(creditWebhook, /STRIPE_CREDIT_WEBHOOK_SECRET/u)
-assert.match(creditWebhook, /event\.type !== 'checkout\.session\.completed'/u)
-assert.match(creditWebhook, /grant_workspace_credits_v1/u)
-assert.match(creditWebhook, /p_idempotency_key/u)
-
-// Buying credits is reachable from the main navigation, not only from inside
-// a settings sub-page.
-assert.match(workspaceLayout, /id: 'billing', name: 'Billing & credits', segment: 'settings\/billing'/u)
-assert.match(workspaceLayout, /item\.id !== 'billing'/u)
-
-// A payment can succeed while the webhook never lands, which leaves a paid
-// balance that never moves. Saying so beats letting somebody pay twice.
-assert.match(billingPage, /setAwaitingCredits\(true\)/u)
-assert.match(billingPage, /refetchInterval: awaitingCredits/u)
-assert.match(billingPage, /contact support rather than paying again/u)
+const page = readFileSync('src/pages/app/WorkspaceBilling.tsx', 'utf8')
+assert.doesNotMatch(page, /createWorkspaceCreditCheckout|setWorkspaceAutoRefill|CreditPackPicker/u)
+assert.match(page, /getWorkspaceSubscriptionOverview/u)
+assert.match(page, /confirmationPending/u)
+console.log('Retired credit checkout and historical webhook contracts passed')

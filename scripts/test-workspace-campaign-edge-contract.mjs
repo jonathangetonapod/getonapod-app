@@ -1118,10 +1118,10 @@ assert.deepEqual(checkedPromptIds(workspacePromptMigration), edgePromptIds)
 // for one client and unsavable for the workspace it belongs to.
 assert.deepEqual(checkedPromptIds(clientPromptMigration), edgePromptIds)
 
-// Research charges credits per run and the badge says so, priced from the
-// one frontend copy of the ledger prices (pinned to the migrations by
-// test-credit-costs-sync) rather than a literal that could drift.
-assert.match(prepDialog, /\{creditsLabel\(CREDIT_COSTS\.research_run\)\} per run/u)
+// Research uses the customer's connected provider account and never quotes
+// an application-credit price in the pitch dialog.
+assert.match(prepDialog, /creditCostSuffix\('research_run', \{ byo: byoAi \}\)/u)
+assert.doesNotMatch(prepDialog, /creditsLabel\(CREDIT_COSTS\.research_run\)/u)
 assert.doesNotMatch(prepDialog, /included with your plan/iu)
 
 // Contact discovery uses live web search independently of pitch prompt overrides.

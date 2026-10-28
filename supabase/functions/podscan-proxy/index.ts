@@ -1,3 +1,4 @@
+import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -92,9 +93,9 @@ function searchParams(value: unknown): URLSearchParams {
   return params
 }
 
-async function fetchPodscan(path: string, params?: URLSearchParams): Promise<PodscanFetchResult> {
+async function fetchPodscan(path: string, params?: URLSearchParams, apiKey?: string): Promise<PodscanFetchResult> {
   // No retries here: the browser decides, and each retry is its own charge.
-  return await podscanFetch(path, { params })
+  return await podscanFetch(path, { params, apiKey })
 }
 
 /**
@@ -212,7 +213,8 @@ serve(async (req) => {
     } else {
       await requirePlatformAdmin(req)
     }
-    const fetched = await fetchPodscan(request.path, request.params)
+    const apiKey = metering ? (await resolveAiKey(metering.admin, metering.workspaceId, 'podscan'))?.apiKey : undefined
+    const fetched = await fetchPodscan(request.path, request.params, apiKey)
     const { result, removed } = request.listKey
       ? dropDuplicateShows(fetched, request.listKey)
       : { result: fetched, removed: 0 }

@@ -101,6 +101,6 @@ describe('scanFailureCreditLine', () => {
 
   it('names what was spent and what could not be refunded', () => {
     expect(scanFailureCreditLine({ strategy: 1, successfulLookups: 2, refunded: 0, unrefunded: 1 }))
-      .toBe('This scan used 3 credits: 1 for the AI search strategy and 2 for the searches that worked. The strategy is saved for your next try. 1 credit could not be refunded automatically. Contact support and we will put it back.')
+      .toBe('This scan used 1 credit: 1 for the AI search strategy. The strategy is saved for your next try. 1 credit could not be refunded automatically. Contact support and we will put it back.')
   })
 })
