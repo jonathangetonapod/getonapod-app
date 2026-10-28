@@ -6,7 +6,7 @@ import { formatDay, type PodcastEmailStatus } from '@/lib/podcastCatalogDisplay'
 import { cn } from '@/lib/utils'
 
 const CHIP: Record<PodcastEmailStatus['state'], { label: string; className: string }> = {
-  verified: { label: 'Unlocked contact', className: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50' },
+  verified: { label: 'Verified host email', className: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50' },
   deliverable: { label: 'Deliverable email', className: 'border-emerald-200 bg-white text-emerald-800 hover:bg-white' },
   catch_all: { label: 'Catch-all email', className: 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-50' },
   public: { label: 'Public email', className: 'border-border bg-muted text-foreground hover:bg-muted' },
@@ -16,7 +16,7 @@ const CHIP: Record<PodcastEmailStatus['state'], { label: string; className: stri
 function chipHint(status: PodcastEmailStatus): string | null {
   if (status.state === 'verified') {
     const checked = formatDay(status.verifiedAt)
-    return checked ? `Unlocked direct contact. Checked ${checked}.` : 'Unlocked direct contact.'
+    return checked ? `Verified direct contact. Checked ${checked}.` : 'Verified direct contact.'
   }
   if (status.state === 'deliverable') return 'Published by the show. The mailbox is confirmed to accept mail.'
   if (status.state === 'catch_all') return 'Published by the show. Its mail server accepts every address, so this inbox cannot be confirmed.'

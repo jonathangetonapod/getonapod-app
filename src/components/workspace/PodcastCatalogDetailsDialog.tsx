@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
+import { PodcastContacts } from '@/components/workspace/catalog/PodcastContact'
 import { PodcastPrimaryAction, type PodcastPrimaryActionState } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { categoryNames, languageName, podcastEmailStatus, regionName } from '@/lib/podcastCatalogDisplay'
 import { categoryDisplayNames } from '@/lib/podcastCategories'
@@ -19,6 +19,7 @@ interface PodcastCatalogDetailsDialogProps {
   onClose: () => void
   /** The same primary action the row offers, so adding never means closing this first. */
   action?: PodcastPrimaryActionState
+  onFindHostEmail?: () => void
   onCopyEmail?: (email: string) => void
 }
 
@@ -44,6 +45,7 @@ export function PodcastCatalogDetailsDialog({
   onClose,
   action,
   onCopyEmail,
+  onFindHostEmail,
 }: PodcastCatalogDetailsDialogProps) {
   if (!podcast) return null
 
@@ -129,8 +131,7 @@ export function PodcastCatalogDetailsDialog({
           </dl>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium">Contact</p>
-            <PodcastEmailLine status={email} onCopy={(address) => onCopyEmail?.(address)} />
+            <PodcastContacts podcast={podcast} onCopy={(address) => onCopyEmail?.(address)} onFind={onFindHostEmail} />
           </div>
 
           {/* Why this row is in a shared catalogue at all: somebody's shortlist

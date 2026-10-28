@@ -490,7 +490,7 @@ describe('WorkspacePodcastDatabase', () => {
   it('switches between the list and cards and remembers the choice', async () => {
     renderPage()
     expect(await screen.findByRole('listitem', { name: 'The Founder Show' })).toBeInTheDocument()
-    expect(screen.queryByText('show@example.com')).not.toBeInTheDocument()
+    expect(screen.getAllByText('show@example.com').length).toBeGreaterThan(0)
 
     fireEvent.mouseDown(screen.getByRole('radio', { name: 'Cards' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Cards' }))
@@ -652,7 +652,7 @@ describe('WorkspacePodcastDatabase', () => {
     renderPage()
     const row = within(await screen.findByRole('listitem', { name: 'The Founder Show' }))
     expect(row.getByText('72')).toBeInTheDocument()
-    expect(row.getByText('@example.com')).toBeInTheDocument()
+    expect(row.getAllByText('show@example.com').length).toBeGreaterThan(0)
     expect(row.getByRole('button', { name: 'The Founder Show' })).toHaveAttribute('title', 'The Founder Show')
 
     expect(screen.getByRole('button', { name: 'Sort by Audience' })).toBeInTheDocument()

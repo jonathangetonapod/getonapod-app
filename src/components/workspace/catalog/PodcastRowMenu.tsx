@@ -12,7 +12,6 @@ import type { WorkspacePodcastCatalogItem } from '@/services/workspacePodcastCat
 /** The secondary moves on a show, kept behind one button so the row has one primary. */
 export const PodcastRowMenu = ({
   podcast,
-  email,
   onOpenDetails,
   onCopyEmail,
 }: {
@@ -34,9 +33,11 @@ export const PodcastRowMenu = ({
         <DropdownMenuItem onSelect={onOpenDetails}>
           <Info className="mr-2 h-4 w-4" aria-hidden="true" />See details
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={!email} onSelect={() => { if (email) onCopyEmail(email) }}>
-          <Copy className="mr-2 h-4 w-4" aria-hidden="true" />Copy email
-        </DropdownMenuItem>
+        {([
+          ['podcast inbox', podcast.free_podscan_email], ['host email', podcast.direct_email],
+        ] as const).map(([label, address]) => <DropdownMenuItem key={label} disabled={!address} onSelect={() => { if (address) onCopyEmail(address) }}>
+          <Copy className="mr-2 h-4 w-4" aria-hidden="true" />Copy {label}
+        </DropdownMenuItem>)}
         {showUrl ? (
           <DropdownMenuItem asChild>
             <a href={showUrl} target="_blank" rel="noreferrer"><ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />Open show</a>

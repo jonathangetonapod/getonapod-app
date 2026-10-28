@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { PodcastEmailLine } from '@/components/workspace/catalog/PodcastEmailChip'
+import { PodcastContacts } from './PodcastContact'
 import { PodcastPrimaryAction } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { PodcastRowMenu } from '@/components/workspace/catalog/PodcastRowMenu'
 import { openOnEnter, type PodcastResultProps } from '@/components/workspace/catalog/podcastResult'
@@ -43,6 +43,7 @@ export const PodcastCatalogCard = ({
   action,
   onOpenDetails,
   onCopyEmail,
+  onFindHostEmail,
 }: PodcastResultProps) => {
   const categories = categoryDisplayNames(categoryNames(podcast))
   const email = podcastEmailStatus(podcast)
@@ -112,7 +113,7 @@ export const PodcastCatalogCard = ({
         {stats && <p className="text-xs text-muted-foreground">{stats}</p>}
 
         <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <PodcastEmailLine status={email} onCopy={onCopyEmail} />
+          <PodcastContacts podcast={podcast} onCopy={onCopyEmail} onFind={onFindHostEmail} />
           <PodcastPrimaryAction action={action} podcastName={podcast.podcast_name} className="self-end sm:self-auto" />
         </div>
       </CardContent>

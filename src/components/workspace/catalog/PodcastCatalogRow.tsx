@@ -2,12 +2,11 @@ import { PodcastArtwork } from '@/components/workspace/catalog/PodcastArtwork'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { PodcastEmailChip } from '@/components/workspace/catalog/PodcastEmailChip'
+import { PodcastContact, PodcastContacts } from './PodcastContact'
 import { PodcastPrimaryAction } from '@/components/workspace/catalog/PodcastPrimaryAction'
 import { PodcastRowMenu } from '@/components/workspace/catalog/PodcastRowMenu'
 import {
   categoryNames,
-  emailDomain,
   formatAudience,
   formatRelativeAge,
   podcastEmailStatus,
@@ -31,10 +30,10 @@ export const PodcastCatalogRow = ({
   action,
   onOpenDetails,
   onCopyEmail,
+  onFindHostEmail,
 }: PodcastResultProps) => {
   const categories = categoryDisplayNames(categoryNames(podcast)).slice(0, 2)
   const email = podcastEmailStatus(podcast)
-  const domain = emailDomain(email.email)
   const rating = podcastRating(podcast)
   const lastEpisode = formatRelativeAge(podcast.last_posted_at)
   const host = podcast.host_name || podcast.publisher_name
@@ -82,7 +81,7 @@ export const PodcastCatalogRow = ({
           )}
         </div>
         <p className="truncate text-xs text-muted-foreground" title={host || undefined}>{host || 'Host not listed'}</p>
-        <PodcastEmailChip status={email} className="mt-1 md:hidden" />
+        <div className="mt-2 md:hidden"><PodcastContacts podcast={podcast} onCopy={onCopyEmail} onFind={onFindHostEmail} /></div>
       </div>
       <div className={cn(ROW_COLUMNS.categories, 'gap-1 overflow-hidden')}>
         {categories.map((name) => (
@@ -106,12 +105,9 @@ export const PodcastCatalogRow = ({
       </div>
       <p className={cn(ROW_COLUMNS.reach, 'text-sm tabular-nums text-muted-foreground')}>{podcast.podcast_reach_score ?? '—'}</p>
       <p className={cn(ROW_COLUMNS.lastEpisode, 'text-sm text-muted-foreground')}>{lastEpisode || '—'}</p>
-      {/* The chip says what kind of address it is, the domain says whose,
-          the same two facts the card gives with the full address. */}
-      <div className={cn(ROW_COLUMNS.email, 'hidden md:block')}>
-        <PodcastEmailChip status={email} />
-        {domain && <p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={domain}>@{domain}</p>}
-      </div>
+      {(['inbox', 'host'] as const).map(kind => <div key={kind} className={cn(ROW_COLUMNS.email, 'hidden md:block')}>
+        <PodcastContact podcast={podcast} kind={kind} onCopy={onCopyEmail} onFind={onFindHostEmail} />
+      </div>)}
       <div className={ROW_COLUMNS.action}>
         <PodcastPrimaryAction action={action} podcastName={podcast.podcast_name} />
       </div>

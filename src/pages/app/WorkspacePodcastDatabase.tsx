@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { FindHostEmailDialog } from '@/components/workspace/catalog/FindHostEmailDialog'
 import { PodcastCatalogCard } from '@/components/workspace/catalog/PodcastCatalogCard'
 import { PodcastCatalogPagination } from '@/components/workspace/catalog/PodcastCatalogPagination'
 import { PodcastCatalogRow } from '@/components/workspace/catalog/PodcastCatalogRow'
@@ -97,6 +98,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
   const resultsRef = useRef<HTMLDivElement>(null)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [findEmailPodcast, setFindEmailPodcast] = useState<WorkspacePodcastCatalogItem | null>(null)
   // What the add dialog is adding: the bulk selection, or the one show whose
   // button opened it.
   const [dialogPodcasts, setDialogPodcasts] = useState<WorkspacePodcastCatalogItem[]>([])
@@ -398,6 +400,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     onSelectedChange: (checked) => togglePodcast(podcast, checked),
     action: primaryAction(podcast),
     onOpenDetails: () => setDetailsPodcast(podcast),
+    onFindHostEmail: canAddToClient ? () => setFindEmailPodcast(podcast) : undefined,
     onCopyEmail: (email) => void copyEmail(email),
   })
 
@@ -569,7 +572,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
                   the row menu and buttons look broken. */}
               <div className={refreshing ? 'opacity-35 transition-opacity' : 'transition-opacity'} aria-busy={refreshing}>
                 {view === 'list' ? (
-                  <Card className="overflow-hidden">
+                  <Card className="overflow-x-auto">
                     <PodcastCatalogRowHeader selectable={canAddToClient} sort={sort} onSortChange={(next) => update({ sort: next })} />
                     <ul className="divide-y">
                       {podcasts.map((podcast) => <PodcastCatalogRow key={podcast.podcast_id} {...resultProps(podcast)} />)}
@@ -620,10 +623,15 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         </>
       )}
 
+      {findEmailPodcast && canAddToClient && <FindHostEmailDialog
+        podcast={findEmailPodcast} clients={activeClients} defaultClientId={targetClientId}
+        workspaceId={workspaceId} baseHref={baseHref} onClose={() => setFindEmailPodcast(null)}
+      />}
       <PodcastCatalogDetailsDialog
         podcast={detailsPodcast}
         relationship={detailsPodcast ? relationshipsByPodcastId.get(detailsPodcast.podcast_id) ?? null : null}
         onClose={() => setDetailsPodcast(null)}
+        onFindHostEmail={detailsPodcast && canAddToClient ? () => { setFindEmailPodcast(detailsPodcast); setDetailsPodcast(null) } : undefined}
         // Members without add rights already see See details; it would only reopen this.
         action={detailsPodcast && canAddToClient ? primaryAction(detailsPodcast) : undefined}
         onCopyEmail={(email) => void copyEmail(email)}

@@ -32,10 +32,9 @@ export function toShortlistPodcast(podcast: WorkspacePodcastCatalogItem): Client
     podcast_categories: shortlistCategories(podcast),
     language: podcast.language,
     region: podcast.region,
-    // Prefer the paid, verified direct contact; a show can have one with no
-    // free email, and taking only the free field dropped the best contact
-    // the workspace paid to verify.
-    podcast_email: podcast.direct_email || podcast.free_podscan_email,
+    // This field feeds Podscan metadata during catalog merge. The direct
+    // contact remains in its own global record and is read by the pitch flow.
+    podcast_email: podcast.free_podscan_email,
     rss_feed: podcast.rss_feed,
   }
 }

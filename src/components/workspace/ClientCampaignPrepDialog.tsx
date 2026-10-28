@@ -1556,7 +1556,9 @@ export function ClientCampaignPrep({
   const headerContent = (
         <div className={page ? undefined : 'text-left'}>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="mr-1 h-3 w-3" />Approved podcast</Badge>
+            {podcast?.feedback_status === 'approved'
+              ? <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="mr-1 h-3 w-3" />Approved podcast</Badge>
+              : <Badge variant="outline">{podcast?.feedback_status === 'rejected' ? 'Passed podcast' : 'Not yet reviewed'}</Badge>}
             <Badge variant="secondary">Pitch workspace</Badge>
             {campaign && <Badge variant="outline">{campaign.name}</Badge>}
           </div>

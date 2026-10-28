@@ -257,6 +257,13 @@ describe('WorkspaceClientPitch', () => {
     })
   })
 
+  it('does not label an unreviewed catalog addition as approved', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({ client: { id: clientId, name: 'Taylor Client' }, podcasts: [podcast({ feedback_status: null })] } as never)
+    await renderPage()
+    expect(screen.getByText('Not yet reviewed')).toBeInTheDocument()
+    expect(screen.queryByText('Approved podcast')).not.toBeInTheDocument()
+  })
+
   it('shows a loading state, then says when the podcast is not on the shortlist', async () => {
     renderRoutes(`/app/clients/${clientId}/podcasts/not-on-the-list/pitch`)
 

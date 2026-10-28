@@ -1,3 +1,4 @@
+import { ContactHeading } from './PodcastContact'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -96,7 +97,7 @@ export const PodcastCatalogRowHeader = ({
     {NUMBER_COLUMNS.map((column) => (
       <ColumnSortButton key={column.sort} column={column} sort={sort} onSortChange={onSortChange} />
     ))}
-    <span className={ROW_COLUMNS.email}>Email</span>
+    {(['inbox', 'host'] as const).map(kind => <span key={kind} className={ROW_COLUMNS.email}><ContactHeading kind={kind} /></span>)}
     <span className={ROW_COLUMNS.action} />
     <span className={ROW_COLUMNS.menu} />
   </div>
@@ -119,7 +120,7 @@ export const PodcastCatalogRowSkeleton = ({ selectable }: { selectable: boolean 
     <Skeleton className={cn(ROW_COLUMNS.rating, 'h-4')} />
     <Skeleton className={cn(ROW_COLUMNS.reach, 'h-4')} />
     <Skeleton className={cn(ROW_COLUMNS.lastEpisode, 'h-4')} />
-    <div className={cn(ROW_COLUMNS.email, 'hidden md:block')}><Skeleton className="h-5 w-24" /></div>
+    {['inbox', 'host'].map(kind => <div key={kind} className={cn(ROW_COLUMNS.email, 'hidden md:block')}><Skeleton className="h-5 w-24" /></div>)}
     <div className={ROW_COLUMNS.action}><Skeleton className="h-8 w-24 md:w-32" /></div>
     <div className={ROW_COLUMNS.menu}><Skeleton className="h-8 w-8" /></div>
   </div>

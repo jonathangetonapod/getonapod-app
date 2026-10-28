@@ -1,3 +1,4 @@
+import { withCurrentCatalogContacts, type CatalogDirectContact } from '../_shared/catalogContacts.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -193,13 +194,30 @@ serve(async (req) => {
       throw new HttpError(500, 'PODCAST_CATALOG_UNAVAILABLE', 'The shared podcast catalog could not be loaded')
     }
 
+    // Keep both email sources in the existing catalog payload. Enrich only
+    // this page with the saved personal profile, after workspace access checks.
+    const catalogPage = data as Record<string, unknown>
+    const items = Array.isArray(catalogPage.items) ? catalogPage.items as Array<Record<string, unknown>> : []
+    const ids = items.map(item => item.podcast_id).filter((id): id is string => typeof id === 'string')
+    let currentContacts: CatalogDirectContact[] = []
+    if (ids.length) {
+      const { data: contacts, error: contactsError } = await context.admin
+        .from('podcast_direct_contacts')
+        .select('email,last_verified_at,provider_reference,podcast:podcasts!inner(podscan_id)')
+        .eq('verification_status', 'verified')
+        .in('podcast.podscan_id', ids)
+      if (contactsError) throw new HttpError(500, 'PODCAST_CATALOG_UNAVAILABLE', 'The shared podcast contacts could not be loaded')
+      currentContacts = (contacts ?? []) as unknown as CatalogDirectContact[]
+    }
+
     return jsonResponse(req, METHODS, 200, {
       workspace: {
         id: access.workspace.id,
         name: access.workspace.name,
       },
       search_mode: search ? (queryEmbedding ? 'hybrid' : 'keyword') : 'browse',
-      ...data as Record<string, unknown>,
+      ...catalogPage,
+      items: withCurrentCatalogContacts(items, currentContacts),
     })
   } catch (error) {
     return errorResponse(req, METHODS, error)

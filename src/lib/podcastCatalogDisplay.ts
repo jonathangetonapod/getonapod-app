@@ -42,6 +42,16 @@ export function podcastEmailStatus(podcast: WorkspacePodcastCatalogItem): Podcas
   if (podcast.direct_email) {
     return { state: 'verified', email: podcast.direct_email, verifiedAt: podcast.direct_verified_at }
   }
+  return podcastInboxStatus(podcast)
+}
+
+export function podcastHostEmailStatus(podcast: WorkspacePodcastCatalogItem): PodcastEmailStatus {
+  return podcast.direct_email
+    ? { state: 'verified', email: podcast.direct_email, verifiedAt: podcast.direct_verified_at }
+    : { state: 'none', email: null, verifiedAt: null }
+}
+
+export function podcastInboxStatus(podcast: WorkspacePodcastCatalogItem): PodcastEmailStatus {
   if (podcast.free_podscan_email) {
     const state = podcast.email_verification === 'ok'
       ? 'deliverable'

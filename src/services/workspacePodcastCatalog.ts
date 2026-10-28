@@ -39,6 +39,7 @@ export interface WorkspacePodcastCatalogItem {
   free_podscan_email: string | null
   /** Absent from older responses, which read as unchecked. */
   email_verification?: WorkspacePodcastCatalogEmailVerification | null
+  direct_linkedin_url?: string | null
   direct_email: string | null
   direct_verified_at: string | null
   shortlist_uses: number
