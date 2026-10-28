@@ -1469,3 +1469,32 @@ export async function createWorkspaceCreditCheckout(
   if (!data || typeof data.url !== 'string') throw new Error('The checkout response was invalid.')
   return data.url
 }
+
+export interface LegacyCreditReview {
+  status: 'requested' | 'reviewing' | 'resolved'
+  requested_at: string
+  purchased_remaining_at_request: number
+  resolution_note: string | null
+  updated_at: string
+}
+export interface LegacyCreditOverview {
+  purchased_remaining: number
+  review: LegacyCreditReview | null
+}
+export async function getLegacyCreditOverview(workspaceId: string): Promise<LegacyCreditOverview> {
+  return await invoke({ action: 'legacy-credit-overview', workspace_id: canonicalUuid(workspaceId, 'Workspace ID') }, 'Your historical purchased balance could not be loaded.') as LegacyCreditOverview
+}
+export async function requestLegacyCreditReview(workspaceId: string): Promise<LegacyCreditOverview> {
+  return await invoke({ action: 'legacy-credit-review-request', workspace_id: canonicalUuid(workspaceId, 'Workspace ID') }, 'Your balance review could not be requested.') as LegacyCreditOverview
+}
+export async function updateLegacyCreditReview(workspaceId: string, status: 'reviewing' | 'resolved', note?: string): Promise<LegacyCreditOverview> {
+  return await invoke({ action: 'legacy-credit-review-update', workspace_id: canonicalUuid(workspaceId, 'Workspace ID'), status, ...(note ? { resolution_note: note } : {}) }, 'The balance review could not be updated.') as LegacyCreditOverview
+}
+export interface LegacyCreditReviewQueueItem extends LegacyCreditReview {
+  workspace_id: string
+  workspace_name: string
+}
+export async function listLegacyCreditReviews(workspaceId: string): Promise<LegacyCreditReviewQueueItem[]> {
+  const data = await invoke({ action: 'legacy-credit-review-queue', workspace_id: canonicalUuid(workspaceId, 'Workspace ID') }, 'Balance review requests could not be loaded.') as { requests: LegacyCreditReviewQueueItem[] }
+  return data.requests
+}

@@ -91,7 +91,7 @@ assert.match(billing, /export async function refundCredits[\s\S]*?console\.error
 // provider, so it never refunds: the order stays processing with the debit
 // kept and is marked for support. Only a definite refusal fails the order.
 assert.match(edge, /class WinnrOutcomeUnknownError extends HttpError \{\}/u)
-assert.match(edge, /\} catch \(_error\) \{\s*\n\s*throw new WinnrOutcomeUnknownError\(503, 'WINNR_UNAVAILABLE'/u)
+assert.match(edge, /\} catch \(_error\) \{\s*\n\s*const failure = providerFailure\('winnr'\)\s*\n\s*throw new WinnrOutcomeUnknownError\(failure.status, failure.code, failure.message\)/u)
 assert.match(edge, /AMBIGUOUS_GATEWAY_STATUSES = new Set\(\[502, 503, 504\]\)/u)
 assert.match(orderCreate, /if \(error instanceof WinnrOutcomeUnknownError\) \{\s*\n\s*await markUnconfirmed\(\)\s*\n\s*throw new HttpError\(504, 'WINNR_UNCONFIRMED', UNCONFIRMED_ORDER_MESSAGE\)\s*\n\s*\}\s*\n\s*await failMailboxOrder\(/u)
 assert.match(orderCreate, /if \(!purchase\?\.job_id\) \{\s*\n\s*await markUnconfirmed\(\)/u)

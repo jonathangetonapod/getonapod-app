@@ -1,3 +1,4 @@
+import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -556,7 +557,7 @@ async function generateEmbedding(
 ): Promise<{ embedding: number[]; tokens: number }> {
   const apiKey = apiKeyOverride ?? Deno.env.get('OPENAI_API_KEY')?.trim()
   if (!apiKey) throw new HttpError(500, 'BUILD_NOT_CONFIGURED', 'Prospect matching is not configured')
-  const response = await fetch('https://api.openai.com/v1/embeddings', {
+  const response = await providerFetch('openai', 'https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -569,7 +570,6 @@ async function generateEmbedding(
     }),
     signal: AbortSignal.timeout(25_000),
   })
-  if (!response.ok) throw new Error(`embedding request failed with ${response.status}`)
   const payload = await response.json()
   const embedding = payload?.data?.[0]?.embedding
   if (!Array.isArray(embedding) || embedding.length !== 1_536) {
@@ -646,7 +646,7 @@ async function anthropicText(
   maxTokens: number,
   timeoutMs = 55_000,
 ): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -661,7 +661,6 @@ async function anthropicText(
     }),
     signal: AbortSignal.timeout(timeoutMs),
   })
-  if (!response.ok) throw new Error(`ranking request failed with ${response.status}`)
   const payload = await response.json()
   if (payload?.stop_reason === 'max_tokens') throw new Error('ranking response was cut off at the token limit')
   const text = payload?.content?.find((block: { type?: string }) => block.type === 'text')?.text

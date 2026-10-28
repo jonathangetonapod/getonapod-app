@@ -35,6 +35,8 @@ export function podscanErrorStatus(error: unknown): number | null {
 export function classifyPodscanError(error: unknown): PodscanErrorKind {
   const { code } = fields(error)
   const status = podscanErrorStatus(error)
+  if (code === 'PROVIDER_KEY_REQUIRED' || code === 'PROVIDER_KEY_REJECTED') return 'auth'
+  if (code === 'PROVIDER_BILLING_REQUIRED' || code === 'SUBSCRIPTION_REQUIRED') return 'fatal'
   if (status === 401 || status === 403 || code === 'PODSCAN_NOT_CONFIGURED') return 'auth'
   // Both fail the same way however often they are tried: the quota resets
   // once a day, and the same request returns the same oversized response.
@@ -51,7 +53,11 @@ export function podscanFailureReason(error: unknown): string {
   const status = podscanErrorStatus(error)
   if (status === 401 || status === 403) return `The podcast index rejected the request (error ${status}).`
   if (code === 'PODSCAN_NOT_CONFIGURED') return 'The podcast index is not set up on the server. Contact support.'
-  if (code === 'INSUFFICIENT_CREDITS' || status === 402) return 'The workspace is out of credits.'
+  if (code === 'SUBSCRIPTION_REQUIRED') return 'Your workspace subscription needs attention. Open Billing to restore access.'
+  if (code === 'PROVIDER_BILLING_REQUIRED') return 'Your Podscan account needs billing or quota attention. Check that provider account.'
+  if (code === 'PROVIDER_KEY_REQUIRED' || code === 'PROVIDER_KEY_REJECTED') return 'Ask your workspace owner to connect a valid Podscan key in Billing.'
+  if (code === 'INSUFFICIENT_CREDITS') return 'App credits are retired. Refresh the app and contact support if this continues.'
+  if (status === 402) return 'Billing needs attention. Check your workspace subscription and the connected provider account.'
   if (code === 'PODSCAN_DAILY_LIMIT') return 'The podcast index\'s daily request limit is used up. It resets within a day.'
   if (code === 'PODSCAN_TIMEOUT') return 'The podcast index did not respond in time.'
   if (code === 'PODSCAN_RATE_LIMIT' || code === 'PODSCAN_CONCURRENCY_LIMIT' || status === 429) {

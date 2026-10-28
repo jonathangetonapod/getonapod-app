@@ -1,3 +1,4 @@
+import { LegacyCreditReviewQueue } from '@/components/workspace/LegacyCreditReview'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Building2, ShieldCheck } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/workspace/WorkspaceLayout'
@@ -71,6 +72,7 @@ const PlatformBilling = () => {
         </header>
 
         <PlatformPlanPricing />
+        {workspace?.id && <LegacyCreditReviewQueue workspaceId={workspace.id} />}
         {/* The signed-in admin's own workspace authorizes the portfolio read;
             the rows it returns are every workspace, not just this one. */}
         {workspace?.id && <BillingPortfolio workspaceId={workspace.id} onSelect={openWorkspace} />}

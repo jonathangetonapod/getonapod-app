@@ -84,8 +84,8 @@ const EXPECTED_COUNTS = Object.freeze({
   // read the bio, guest brief and intake answers (2026-10-27).
   // 198: reconcile the 197 tracked files and add flatBilling.test.ts for
   // subscription access and retirement of credit debits.
-  // 200 with catalogContacts.ts and its tests from the current main branch.
-  edgeTypeScriptFiles: 200,
+  // Includes shared checkout coordination and provider error helpers with tests.
+  edgeTypeScriptFiles: 204,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

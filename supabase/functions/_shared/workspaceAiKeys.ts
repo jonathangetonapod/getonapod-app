@@ -107,7 +107,7 @@ export async function resolveAiKey(
     await requireWorkspaceSubscription(admin, workspaceId)
     const stored = await readStoredAiKey(admin, workspaceId, provider)
     if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
-    throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', `Connect a valid ${provider} key in Settings to use this feature. Your provider bills usage directly.`)
+    throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', `Ask your workspace owner to connect a ${provider} key in Billing → Provider accounts. Your workspace subscription does not include provider usage.`)
   }
   const platformKey = Deno.env.get(PLATFORM_ENV[provider])?.trim()
   if (platformKey) return { apiKey: platformKey, source: 'platform' }
@@ -119,12 +119,12 @@ export type AiKeyProbeResult = 'valid' | 'invalid' | 'unreachable'
 export interface StoredAiKey {
   /** A row exists for this provider. */
   configured: boolean
-  /** The decrypted key; null when there is no row or it cannot be read. */
+  /** The decrypted key; null only when there is no row. */
   apiKey: string | null
 }
 
-// The workspace's own key only, never the platform's. A read error counts as
-// no key; a row that will not decrypt is configured but unreadable.
+// The workspace's own key only, never the platform's. Storage failures are
+// distinct from missing keys so users are not told to replace valid credentials.
 export async function readStoredAiKey(
   admin: ReturnType<typeof createAdminClient>,
   workspaceId: string,
@@ -136,16 +136,22 @@ export async function readStoredAiKey(
     .eq('workspace_id', workspaceId)
     .eq('provider', provider)
     .maybeSingle()
-  if (error || !data?.api_key_ciphertext || !data?.api_key_iv) return { configured: false, apiKey: null }
+  if (error) throw new HttpError(503, 'AI_KEY_STORAGE_UNAVAILABLE', 'Provider connections could not be read. Try again shortly; your saved keys have not changed.')
+  if (!data) return { configured: false, apiKey: null }
   try {
+    if (typeof data.api_key_ciphertext !== 'string' || !data.api_key_ciphertext.trim()
+      || typeof data.api_key_iv !== 'string' || !data.api_key_iv.trim()) {
+      throw new Error('Stored credential is incomplete')
+    }
     const apiKey = await decryptInstantlyApiKey({
       ciphertext: data.api_key_ciphertext,
       iv: data.api_key_iv,
     })
-    return { configured: true, apiKey: apiKey.trim() || null }
+    if (!apiKey.trim()) throw new Error('Stored credential is empty')
+    return { configured: true, apiKey: apiKey.trim() }
   } catch (_error) {
     console.error('[Workspace AI Keys] Stored key undecryptable')
-    return { configured: true, apiKey: null }
+    throw new HttpError(503, 'PROVIDER_CONNECTION_UNAVAILABLE', 'Your saved provider connection could not be read. Contact support before replacing the key.')
   }
 }
 

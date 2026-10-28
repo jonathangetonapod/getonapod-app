@@ -1,3 +1,4 @@
+import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -496,7 +497,7 @@ serve(async (req) => {
       // a draft with no usable field all give a fresh charge back.
       let fields: Record<string, string> = {}
       try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'x-api-key': anthropicKey.apiKey,
@@ -516,9 +517,6 @@ serve(async (req) => {
           }),
           signal: AbortSignal.timeout(45_000),
         })
-        if (!response.ok) {
-          throw new HttpError(503, 'DRAFT_FAILED', 'The profile draft could not be generated. Try again shortly')
-        }
         let payloadJson: {
           content?: Array<{ type: string; text?: string }>
           usage?: { input_tokens?: number; output_tokens?: number }

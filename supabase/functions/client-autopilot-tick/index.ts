@@ -8,6 +8,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
+import { isProviderRuntimeError, providerFetch } from '../_shared/providerErrors.ts'
 import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
 import { podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
@@ -78,6 +79,10 @@ interface RunFailure {
 }
 
 function classifyFailure(error: unknown): RunFailure {
+  if (isProviderRuntimeError(error)) {
+    const actionNeeded = ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED'].includes(error.code)
+    return { message: error.message, retryMs: actionNeeded ? ACTION_RETRY_MS : TRANSIENT_RETRY_MS }
+  }
   if (error instanceof HttpError) {
     if (error.code === 'INSUFFICIENT_CREDITS') {
       return { message: 'Not enough credits to run autopilot. Top up in workspace billing; it will retry automatically.', retryMs: ACTION_RETRY_MS }
@@ -140,7 +145,8 @@ async function anthropicJson(
   try {
     return await anthropicJsonOnce(apiKey, system, content, maxTokens, usage)
   } catch (error) {
-    throw new AnthropicError(error instanceof Error ? error.message : 'anthropic call failed')
+    if (isProviderRuntimeError(error)) throw error
+    throw new AnthropicError('Anthropic returned an invalid response')
   }
 }
 
@@ -151,7 +157,7 @@ async function anthropicJsonOnce(
   maxTokens: number,
   usage: { input: number; output: number },
 ): Promise<unknown> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -168,7 +174,6 @@ async function anthropicJsonOnce(
     }),
     signal: AbortSignal.timeout(45_000),
   })
-  if (!response.ok) throw new Error(`anthropic returned ${response.status}`)
   const payload = await response.json() as {
     content?: Array<{ type: string; text?: string }>
     usage?: { input_tokens?: number; output_tokens?: number }

@@ -1,3 +1,5 @@
+import { providerFetch } from './providerErrors.ts'
+
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIMENSIONS = 1_536
 
@@ -22,7 +24,7 @@ export async function generatePodcastSearchEmbedding(
   if (!apiKey) return null
 
   try {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    const response = await providerFetch('openai', 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -35,26 +37,6 @@ export async function generatePodcastSearchEmbedding(
       }),
       signal: AbortSignal.timeout(10_000),
     })
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => null)
-      const errorCode = errorPayload
-        && typeof errorPayload === 'object'
-        && !Array.isArray(errorPayload)
-        && 'error' in errorPayload
-        && errorPayload.error
-        && typeof errorPayload.error === 'object'
-        && !Array.isArray(errorPayload.error)
-        && 'code' in errorPayload.error
-        && typeof errorPayload.error.code === 'string'
-        ? errorPayload.error.code
-        : 'unknown'
-      console.warn(
-        '[PodcastSearch] Embedding provider returned a non-success status',
-        response.status,
-        errorCode,
-      )
-      return null
-    }
     const payload = await response.json()
     const embedding = payload?.data?.[0]?.embedding
     if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_DIMENSIONS) return null

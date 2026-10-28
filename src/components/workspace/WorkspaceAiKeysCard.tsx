@@ -45,7 +45,14 @@ const PROVIDERS: AiKeyProviderInfo[] = [
 
 ]
 
-export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: string; queryScope: readonly unknown[] }) {
+interface WorkspaceAiKeysCardProps { workspaceId: string; queryScope: readonly unknown[] }
+
+export function WorkspaceAiKeysCard(props: WorkspaceAiKeysCardProps) {
+  // Navigation between tenants must also reset an open removal dialog.
+  return <WorkspaceAiKeysPanel key={props.workspaceId} {...props} />
+}
+
+function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardProps) {
   const queryClient = useQueryClient()
   // Removing a key pauses its provider-backed features, so confirm the change.
   const [removing, setRemoving] = useState<AiKeyProvider | null>(null)
@@ -63,7 +70,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
       setWorkspaceAiKey(workspaceId, provider, apiKey),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
-      toast.success('Key saved. Your provider bills usage directly.')
+      toast.success('Key saved for everyone in this workspace. Your provider bills usage directly.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The API key could not be saved.')
@@ -74,7 +81,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
     mutationFn: (provider: AiKeyProvider) => clearWorkspaceAiKey(workspaceId, provider),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey })
-      toast.success('Key removed. Connect a key to resume the features it powers.')
+      toast.success('Key removed from this workspace. Connect a replacement to resume new requests.')
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The API key could not be removed.')
@@ -82,7 +89,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
   })
 
   const busy = saveMutation.isPending || removeMutation.isPending
-  const connected = PROVIDERS.filter((provider) => keysQuery.data?.[provider.id]?.configured).length
+  const saved = PROVIDERS.filter((provider) => keysQuery.data?.[provider.id]?.configured).length
   const providerRow = (provider: AiKeyProviderInfo) => (
     <AiKeyRow
       key={provider.id}
@@ -101,8 +108,9 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
       <CardContent className="space-y-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h3 className="font-semibold">Research & search</h3><p className="mt-1 text-sm text-muted-foreground">Start with the tools that power your daily work.</p></div>
-          {keysQuery.data && !keysQuery.isError && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">{connected} {connected === 1 ? 'provider' : 'providers'} connected</span>}
+          {keysQuery.data && !keysQuery.isError && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">{saved} {saved === 1 ? 'key' : 'keys'} saved</span>}
         </div>
+        <p className="text-sm leading-6 text-muted-foreground">Use company-owned provider accounts: these keys are shared by everyone in your workspace. Changing the workspace owner does not replace or revoke saved keys. Review and replace credentials during a handover, and revoke old keys with the provider when appropriate.</p>
         {keysQuery.isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
             <Loader2 className="h-4 w-4 animate-spin" />Loading key status…
@@ -120,7 +128,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
             {showAdditional && <div id="additional-billing-providers" className="mt-4 space-y-4">{PROVIDERS.filter((provider) => provider.optional).map(providerRow)}</div>}
           </div>
         </>}
-        <div className="flex items-start gap-2 border-t pt-4 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Keys are encrypted and hidden after saving. Anthropic and OpenAI keys are verified on save; other connections are checked when used. Removing a key pauses the features it powers.</p></div>
+        <div className="flex items-start gap-2 border-t pt-4 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Keys are encrypted and hidden after saving. Anthropic and OpenAI checks confirm authentication only, not available credits, quota or model access. Other provider keys are saved without an authentication check.</p></div>
       </CardContent>
       <AlertDialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null) }}>
         <AlertDialogContent>
@@ -129,7 +137,7 @@ export function WorkspaceAiKeysCard({ workspaceId, queryScope }: { workspaceId: 
               Remove the {PROVIDERS.find((provider) => provider.id === removing)?.label ?? ''} key?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              The features powered by this key will pause until you connect a replacement.
+              New requests that need this key will pause for everyone in this workspace until you connect a replacement. Jobs or campaigns already running in the provider account may continue; pause or cancel them with the provider. Removing a key here does not revoke it at the provider.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

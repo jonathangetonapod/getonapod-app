@@ -9,6 +9,7 @@
 // the customer finished a form, not that Stripe charged them.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { ensureWorkspaceBillingCustomer, getOrCreateWorkspaceCheckout, type StripeBillingRequest } from '../_shared/subscriptionCheckout.ts'
 
 import {
   createAdminClient,
@@ -484,41 +485,10 @@ serve(async (req) => {
       throw new HttpError(409, 'SUBSCRIPTION_EXISTS', 'This workspace already has a plan. Change it from the billing portal')
     }
 
-    // A customer is created once and reused. Without this the portal would open
-    // on an empty customer each time and show none of the workspace's history.
-    let customerId = typeof profile?.stripe_customer_id === 'string' && profile.stripe_customer_id
-      ? profile.stripe_customer_id
-      : ''
-    if (!customerId) {
-      // Every manager must send the same creation parameters under the
-      // workspace-wide idempotency key. Stripe collects the billing email in
-      // checkout; using the current caller's email makes cross-manager retries
-      // fail with an idempotency mismatch after a lost database write.
-      const customerParams = new URLSearchParams({
-        'metadata[workspace_id]': workspaceId,
-      })
-      const customer = await stripePost('customers', customerParams, stripeKey, `workspace-customer:${workspaceId}`)
-      customerId = typeof customer.id === 'string' ? customer.id : ''
-      if (!customerId) {
-        throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
-      }
-      // Recording the id is not the same as recording a subscription: it only
-      // says which Stripe customer this workspace is, so the next portal
-      // session opens on the same history.
-      // Upsert, not update: the profile row is created lazily by metering, so
-      // a workspace that has never spent a credit has none yet, and an update
-      // then matched nothing, lost the customer id, and minted a new Stripe
-      // customer on every visit.
-      const { error: writeError } = await admin
-        .from('workspace_billing_profiles')
-        .upsert(
-          { workspace_id: workspaceId, stripe_customer_id: customerId, updated_at: new Date().toISOString() },
-          { onConflict: 'workspace_id' },
-        )
-      if (writeError) {
-        throw new HttpError(503, 'BILLING_UNAVAILABLE', 'The billing customer could not be recorded')
-      }
-    }
+    const stripe: StripeBillingRequest = (method, path, params, idempotencyKey) => method === 'GET'
+      ? stripeGet(path, stripeKey)
+      : stripePost(path, params ?? new URLSearchParams(), stripeKey, idempotencyKey)
+    const customerId = await ensureWorkspaceBillingCustomer(admin, stripe, workspaceId, profile?.stripe_customer_id)
 
     const billingBase = `${appUrl()}/app/settings/billing`
 
@@ -553,38 +523,10 @@ serve(async (req) => {
       throw new HttpError(500, 'PLAN_NOT_CONFIGURED', 'This plan cannot be bought yet. Contact support')
     }
 
-    // The row above only knows what the webhook has recorded so far. A
-    // checkout finished a moment ago — or a subscription made in the Stripe
-    // dashboard — can be live on the customer before that lands, so Stripe is
-    // asked too.
-    const existing = await stripeGet(
-      `subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`,
-      stripeKey,
-    )
-    const ENDED = new Set(['canceled', 'incomplete_expired'])
-    const live = ((existing.data as Array<Record<string, unknown>> | undefined) ?? [])
-      .some((candidate) => typeof candidate.status === 'string' && !ENDED.has(candidate.status))
-    if (live) {
-      throw new HttpError(409, 'SUBSCRIPTION_EXISTS', 'This workspace already has a plan. Change it from the billing portal')
-    }
-
-    const session = await stripePost('checkout/sessions', new URLSearchParams({
-      mode: 'subscription',
-      customer: customerId,
-      // Stripe collects and validates the code on its own page.
-      allow_promotion_codes: 'true',
-      success_url: `${billingBase}?plan=updated`,
-      cancel_url: `${billingBase}?plan=cancelled`,
-      client_reference_id: workspaceId,
-      'line_items[0][price]': priceId,
-      'line_items[0][quantity]': '1',
-      'metadata[workspace_id]': workspaceId,
-      'metadata[plan_key]': planKey,
-      'subscription_data[metadata][workspace_id]': workspaceId,
-      'subscription_data[metadata][plan_key]': planKey,
-    }), stripeKey)
-    const url = typeof session.url === 'string' ? session.url : ''
-    if (!url) throw new HttpError(502, 'STRIPE_REJECTED', 'The payment could not be started. Check the card on file and try again')
+    const session = await getOrCreateWorkspaceCheckout(admin, stripe, {
+      workspaceId, customerId, planKey, priceId, billingBase,
+    })
+    const url = session.url
 
     await writeAudit(admin, {
       workspaceId,

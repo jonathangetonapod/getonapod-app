@@ -1,3 +1,4 @@
+import { LegacyCreditReview } from '@/components/workspace/LegacyCreditReview'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, ArrowUpRight, Check, CreditCard, FileText, KeyRound, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
@@ -174,6 +175,7 @@ export default function WorkspaceBilling() {
             </Card>
           </section>
 
+          {billing.cancel_at_period_end && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status">Your workspace subscription will end {periodEnd ?? 'at the end of this billing period'}. Campaigns already running in external sending accounts and recurring mailbox/domain charges continue until you stop them with those providers.</div>}
           <section id="payments" aria-label="Payments and invoices" className="grid scroll-mt-24 gap-4 sm:grid-cols-2">
             {[{ id: 'payment' as const, title: 'Payment method', icon: CreditCard, copy: 'Update your card and billing details securely in Stripe.', action: 'Payment settings' }, { id: 'invoices' as const, title: 'Invoices & receipts', icon: FileText, copy: 'View your billing history and download invoices and receipts.', action: 'View invoices' }].map((item) => <Card key={item.id}><CardContent className="space-y-4 p-6">
               <item.icon className="h-5 w-5 text-muted-foreground" />
@@ -189,7 +191,9 @@ export default function WorkspaceBilling() {
             {keyOwner ? <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={['tenant', user?.id, workspaceId]} /> : <Card><CardContent className="pt-6 text-sm text-muted-foreground">Ask your workspace owner to connect or update provider keys.</CardContent></Card>}
             <Link className="flex items-center justify-between gap-4 rounded-xl border px-5 py-4 text-sm transition-colors hover:bg-muted/40" to="/app/settings"><span><span className="block font-medium">Sending accounts</span><span className="mt-1 block text-muted-foreground">Manage email sending connections in workspace settings.</span></span><ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" /></Link>
           </section>
-          <details className="rounded-xl border p-5"><summary className="cursor-pointer font-medium">How billing works</summary><div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground"><p>Your workspace subscription covers access for your team and clients. AI, enrichment and sending services bill your connected accounts directly.</p><p>You can manage cancellation in Stripe. Your subscription screen shows when a scheduled cancellation takes effect.</p><p>If you purchased credits before this change, your transaction history is retained. Contact support to reconcile any remaining purchased balance.</p></div></details>
+          <LegacyCreditReview key={workspaceId} workspaceId={workspaceId} />
+          <aside className="rounded-xl border bg-muted/30 p-5 text-sm"><p className="font-medium">Your provider accounts stay separate</p><p className="mt-2 leading-6 text-muted-foreground">Pausing or cancelling this subscription does not cancel external campaigns, mailboxes or domains. Manage those in your provider accounts to stop their charges.</p></aside>
+          <details className="rounded-xl border p-5"><summary className="cursor-pointer font-medium">How billing works</summary><div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground"><p>Your workspace subscription covers access for your team and clients. AI, enrichment and sending services bill your connected accounts directly.</p><p>You can manage cancellation in Stripe. Workspace access continues until the paid period ends. Cancelling here does not pause campaigns already running in your sending provider, cancel mailboxes or domains, or stop those providers’ charges. Manage those directly in each provider account.</p><p>If you purchased credits before this change, your transaction history is retained. Contact support to reconcile any remaining purchased balance.</p></div></details>
         </>}
       </div>
     </WorkspaceLayout>

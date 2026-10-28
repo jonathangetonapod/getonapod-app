@@ -1,3 +1,4 @@
+import { isProviderRuntimeError } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -873,14 +874,15 @@ serve(async (req) => {
             reason: 'onboarding pitch profile draft failed after the charge',
           })
         }
-        if (error instanceof HttpError) throw error
+        if (error instanceof HttpError && !isProviderRuntimeError(error)) throw error
         await admin.rpc('set_workspace_onboarding_ai_profile_v1', {
           p_instance_id: instanceId,
           p_revision: detail.current_revision,
           p_status: 'failed',
           p_content: {},
-          p_error: 'AI draft unavailable. Try again or write the profile manually.',
+          p_error: isProviderRuntimeError(error) ? error.message : 'AI draft unavailable. Try again or write the profile manually.',
         })
+        if (isProviderRuntimeError(error)) throw error
         throw new HttpError(503, 'AI_DRAFT_UNAVAILABLE', 'The AI draft is unavailable. Try again later')
       }
       const refreshed = await admin.rpc('workspace_onboarding_staff_detail_v1', {

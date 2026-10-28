@@ -1,3 +1,4 @@
+import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -852,7 +853,7 @@ async function runResearchPrompt(
     // stage's own system line leads the instruction block instead.
     text: cached ? `${prompt.system}\n\n${resolved.instruction}` : resolved.instruction,
   })
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -871,12 +872,6 @@ async function runResearchPrompt(
     // The old 28s cap timed out every real run the moment the API key worked.
     signal: AbortSignal.timeout(90_000),
   })
-  if (!response.ok) {
-    // Surface the provider's own error type — a hidden status here once let
-    // an invalid platform API key masquerade as "research was interrupted".
-    const body = await response.text().catch(() => '')
-    throw new Error(`the AI provider returned ${response.status}: ${body.slice(0, 200)}`)
-  }
   const payload = await response.json() as {
     content?: Array<{ type?: string; text?: string }>
     usage?: {

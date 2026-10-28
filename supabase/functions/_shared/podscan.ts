@@ -4,6 +4,7 @@
 // cap — before this, five copies disagreed on each of those.
 
 import { HttpError } from './httpError.ts'
+import { providerFailure } from './providerErrors.ts'
 
 export const PODSCAN_API_BASE = 'https://podscan.fm/api/v1'
 export const PODSCAN_TIMEOUT_MS = 20_000
@@ -49,6 +50,24 @@ export class PodscanRateLimitError extends HttpError {
     this.retryAfter = headers.get('Retry-After')
     this.concurrencyLimit = headers.get('X-Concurrency-Limit')
   }
+}
+
+// Keep original statuses for retry, cache-miss and maintenance decisions;
+// only tenant response boundaries translate to the provider recovery contract.
+class PodscanUpstreamError extends HttpError {
+  constructor(status: number, readonly userError: HttpError) {
+    super(502, `PODSCAN_UPSTREAM_${status}`, `Podscan API error: ${status}`)
+  }
+}
+
+export function podscanUserError(error: unknown): unknown {
+  if (podscanUpstreamStatus(error) === 404) return error
+  if (error instanceof PodscanUpstreamError) return error.userError
+  if (error instanceof PodscanRateLimitError) {
+    return providerFailure('podscan', 429, { code: error.code === 'PODSCAN_DAILY_LIMIT' ? 'daily_limit_exceeded' : 'rate_limit_exceeded' })
+  }
+  if (error instanceof HttpError && error.code.startsWith('PODSCAN_')) return providerFailure('podscan')
+  return error
 }
 
 /** The upstream status of a PODSCAN_UPSTREAM_<status> error, else null. */
@@ -300,17 +319,12 @@ async function fetchOnce(
       }
       throw new PodscanRateLimitError('PODSCAN_RATE_LIMIT', 'Podscan rate limit reached', response.headers)
     }
-    // A 403 means Podscan knew the key and refused it (a bad key is a 401), and
-    // only the body says why: plan, quota or a block. Logged without the key.
-    const upstreamDetail = raw
-      .replaceAll(apiKey, '[redacted]')
-      .replace(/\s+/gu, ' ')
-      .slice(0, 200)
-    // A 404 is an ordinary answer (no demographics for this show, say).
-    if (response.status !== 404) {
-      console.error(`[podscan] upstream ${response.status} on ${url.pathname}: ${upstreamDetail}`)
-    }
-    throw new HttpError(502, `PODSCAN_UPSTREAM_${response.status}`, `Podscan API error: ${response.status}`)
+    let payload: unknown = null
+    try { payload = JSON.parse(raw) } catch { /* Status alone is enough for a safe error. */ }
+    const userError = providerFailure('podscan', response.status, payload)
+    // Never log upstream response text, even after redacting the current key.
+    if (response.status !== 404) console.error(`[podscan] upstream ${response.status}: ${userError.code}`)
+    throw new PodscanUpstreamError(response.status, userError)
   }
 
   try {

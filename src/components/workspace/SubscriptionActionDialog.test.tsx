@@ -104,7 +104,7 @@ describe('SubscriptionActionDialog', () => {
     mockedRun.mockResolvedValue({
       operation: 'checkout_link',
       idempotent: false,
-      result: { url: 'https://checkout.stripe.com/c/pay/cs_test_1', emailed: 'sent', owner_email: 'sam@quantisedmedia.com' },
+      result: { url: 'https://checkout.stripe.com/c/pay/cs_test_1', emailed: 'sent', owner_email: 'sam@quantisedmedia.com', expires_at: '2026-11-26T12:45:00Z' },
     })
     const { dialog, onClose } = renderDialog('checkout_link')
     expect(within(dialog).getByLabelText('Email it to the owner (sam@quantisedmedia.com)')).toBeChecked()
@@ -113,6 +113,7 @@ describe('SubscriptionActionDialog', () => {
 
     expect(await within(dialog).findByDisplayValue('https://checkout.stripe.com/c/pay/cs_test_1')).toBeInTheDocument()
     expect(within(dialog).getByText('Emailed to sam@quantisedmedia.com.')).toBeInTheDocument()
+    expect(within(dialog).getByText(/Expires .*your local time/u)).toBeInTheDocument()
     expect(mockedRun.mock.calls[0][1]).toMatchObject({ operation: 'checkout_link', planKey: 'founding_member', emailOwner: true })
     // Left open: the link is what the admin came for.
     expect(onClose).not.toHaveBeenCalled()
@@ -126,7 +127,7 @@ describe('SubscriptionActionDialog', () => {
   it('sends the same action key when retried within one opening', async () => {
     mockedRun.mockRejectedValueOnce(new Error('Stripe did not answer. Try again'))
     const { dialog } = renderDialog('cancel', { ...trialing, has_subscription: true, billing_status: 'active', current_period_end: '2026-11-26T00:00:00Z' } as WorkspaceBillingOverview)
-    expect(within(dialog).getByText(/The subscription ends .*\. The workspace keeps access until then\./u)).toBeInTheDocument()
+    expect(within(dialog).getByText(/The subscription ends .*\. Cancellation does not restore access suspended for unpaid invoices\./u)).toBeInTheDocument()
     await chooseReason(dialog)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel subscription' }))
     await waitFor(() => expect(mockedRun).toHaveBeenCalledTimes(1))

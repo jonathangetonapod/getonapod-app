@@ -22,6 +22,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { readStoredAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { providerFailure, providerResponseError } from '../_shared/providerErrors.ts'
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
@@ -68,23 +69,18 @@ async function winnrRequestRaw(
       signal: AbortSignal.timeout(25_000),
     })
   } catch (_error) {
-    throw new WinnrOutcomeUnknownError(503, 'WINNR_UNAVAILABLE', 'The mailbox provider is unreachable right now')
+    const failure = providerFailure('winnr')
+    throw new WinnrOutcomeUnknownError(failure.status, failure.code, failure.message)
   }
-  const payload = await response.json().catch(() => null) as
-    | { data?: unknown; error?: { code?: string; message?: string } }
-    | null
   if (!response.ok) {
-    const code = payload?.error?.code ?? `status_${response.status}`
-    console.error('[Mailbox Infra] Winnr error', code)
-    if (response.status === 402) {
-      throw new HttpError(503, 'WINNR_PAYMENT_FAILED', 'The provider payment failed. Contact support')
-    }
+    const failure = await providerResponseError('winnr', response)
+    console.error('[Mailbox Infra] Winnr error', failure.code)
     if (AMBIGUOUS_GATEWAY_STATUSES.has(response.status)) {
-      throw new WinnrOutcomeUnknownError(503, 'WINNR_UNAVAILABLE', 'The mailbox provider is unavailable right now')
+      throw new WinnrOutcomeUnknownError(failure.status, failure.code, failure.message)
     }
-    throw new HttpError(502, 'WINNR_ERROR', 'The mailbox provider rejected the request')
+    throw failure
   }
-  return payload
+  return await response.json().catch(() => null)
 }
 
 async function winnrRequest<T>(

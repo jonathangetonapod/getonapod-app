@@ -95,3 +95,17 @@ Deno.test('normalizes a single grounded URL despite extra model narration', asyn
     content: [evidence, { type: 'text', text: `The recurring host is supported by the show credits.\n\n${profile}/` }], stop_reason: 'end_turn',
   }))), profile)
 })
+
+Deno.test('host discovery preserves actionable sanitized provider failures', async () => {
+  const rejected = await assertRejects(() => discoverHostLinkedin('private-key', {}, usage(),
+    () => Promise.resolve(json({ error: { message: 'Your credit balance is too low private-key' } }, 400))), HttpError)
+  assertEquals(rejected.code, 'PROVIDER_BILLING_REQUIRED')
+  assertEquals(rejected.message.includes('private-key'), false)
+  for (const [status, code] of [[401, 'PROVIDER_KEY_REJECTED'], [402, 'PROVIDER_BILLING_REQUIRED'], [429, 'PROVIDER_RATE_LIMITED'], [503, 'PROVIDER_UNAVAILABLE']] as const) {
+    const failure = await assertRejects(() => findBlitzEmail('private-key', profile,
+      () => Promise.resolve(json({ message: 'private-key' }, status))), HttpError)
+    assertEquals(failure.code, code)
+    assertEquals(failure.message.includes('Blitz'), true)
+    assertEquals(failure.message.includes('private-key'), false)
+  }
+})

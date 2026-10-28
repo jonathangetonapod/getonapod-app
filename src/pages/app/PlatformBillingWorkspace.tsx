@@ -1,3 +1,4 @@
+import { LegacyCreditReview } from '@/components/workspace/LegacyCreditReview'
 import { useMemo } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -78,6 +79,7 @@ const PlatformBillingWorkspace = () => {
               />
             </header>
             <p className="text-sm text-muted-foreground">Flat subscription with customer-owned provider accounts. The ledger below is historical and retained for reconciliation.</p>
+            <LegacyCreditReview key={workspaceId} workspaceId={workspaceId} admin />
             <WorkspaceCreditLedger workspaceId={workspaceId} />
             <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} ownerEmail={owner?.email ?? null} />
           </div>

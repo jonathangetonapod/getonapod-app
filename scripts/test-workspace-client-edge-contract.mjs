@@ -442,7 +442,7 @@ const draftAction = clientsEdge.slice(
   clientsEdge.indexOf("if (action === 'sdr-profile-draft') {\n      const access"),
   clientsEdge.indexOf("if (action === 'dashboard-slug-rotate') {\n      const access"),
 )
-assert.match(draftAction, /try \{\s*const response = await fetch\([\s\S]*?await response\.json\(\)[\s\S]*?came back empty[\s\S]*?\} catch \(error\) \{\s*await refundDraft\(\)/u)
+assert.match(draftAction, /try \{\s*const response = await providerFetch\('anthropic',[\s\S]*?await response\.json\(\)[\s\S]*?came back empty[\s\S]*?\} catch \(error\) \{\s*await refundDraft\(\)/u)
 
 // Feed markup is decoded in one place, the prompt-variable registry, and the
 // pitch stage does not get its own decoder. It had one: a sequential replacer

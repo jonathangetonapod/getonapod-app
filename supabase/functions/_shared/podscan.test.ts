@@ -8,6 +8,7 @@ import {
   podscanFetch,
   podscanPodcastPayload,
   podscanRating,
+  podscanUserError,
   withoutDuplicateShows,
 } from './podscan.ts'
 
@@ -187,7 +188,8 @@ Deno.test('the key never reaches the error message', async () => {
     console.error = originalError
   }
   assertEquals(logged.some((line) => line.includes(KEY)), false)
-  assertEquals(logged.some((line) => line.includes('[redacted]')), true)
+  assertEquals(logged.some((line) => line.includes('bad token')), false)
+  assertEquals(logged.some((line) => line.includes('PROVIDER_KEY_REJECTED')), true)
 })
 
 Deno.test('no more than the cap are in flight at once', async () => {
@@ -341,4 +343,26 @@ Deno.test('a deadline already past fails before any request', async () => {
   const error = await rejection(podscanFetch('/podcasts/a', { apiKey: KEY, fetchImpl: impl, deadlineAt: Date.now() - 1 }))
   assertEquals(isPodscanDeadlineError(error), true)
   assertEquals(urls.length, 0)
+})
+
+Deno.test('tenant Podscan failures are actionable while internal retry semantics stay intact', async () => {
+  for (const [status, payload, code, retryable] of [
+    [401, { message: KEY }, 'PROVIDER_KEY_REJECTED', false],
+    [403, { error: 'insufficient credits' }, 'PROVIDER_BILLING_REQUIRED', false],
+    [429, { error: 'daily_limit_exceeded' }, 'PROVIDER_BILLING_REQUIRED', false],
+    [429, { error: 'concurrency_limit_exceeded' }, 'PROVIDER_RATE_LIMITED', true],
+    [503, { message: KEY }, 'PROVIDER_UNAVAILABLE', true],
+  ] as const) {
+    const error = await rejection(podscanFetch('/podcasts/test', { apiKey: KEY,
+      fetchImpl: scriptedFetch([json(payload, status)]).impl }))
+    assertEquals(isRetryablePodscanError(error), retryable)
+    const visible = podscanUserError(error) as HttpError
+    assertEquals(visible.code, code)
+    assertEquals(visible.message.includes(KEY), false)
+  }
+  const missing = await rejection(podscanFetch('/podcasts/test', { apiKey: KEY,
+    fetchImpl: scriptedFetch([json({}, 404)]).impl }))
+  assertEquals(podscanUserError(missing), missing, '404 keeps its cache-miss semantics')
+  const auth = new HttpError(403, 'WORKSPACE_ACCESS_DENIED', 'Access denied')
+  assertEquals(podscanUserError(auth), auth, 'tenant authorization is never reclassified')
 })

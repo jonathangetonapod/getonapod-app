@@ -18,6 +18,7 @@ import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billi
 import {
   type PodscanFetchResult,
   PodscanRateLimitError,
+  podscanUserError,
   podscanFetch,
   podscanUpstreamStatus,
   withoutDuplicateShows,
@@ -181,6 +182,7 @@ serve(async (req) => {
   // delivered nothing to pay for, so the outer catch gives the debit back
   // (except a 404, which is an answer; see the catch).
   let chargedForRefund: { workspaceId: string; entryId: string; credits: number } | null = null
+  let tenantRequest = false
   let refundAdmin: Parameters<typeof refundCredits>[0] | null = null
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
 
@@ -198,6 +200,7 @@ serve(async (req) => {
     if (workspaceId) {
       const context = await requireAuthenticatedUser(req)
       await requireWorkspaceFeatureAccess(context, workspaceId)
+      tenantRequest = true
       metering = { admin: context.admin, workspaceId }
       const lookupCharge = await chargeCredits(context.admin, {
         workspaceId,
@@ -255,7 +258,7 @@ serve(async (req) => {
       })
       if (refunded) creditsRefunded = chargedForRefund.credits
     }
-    const response = errorResponse(req, METHODS, error)
+    const response = errorResponse(req, METHODS, tenantRequest ? podscanUserError(error) : error)
     const headers = new Headers(response.headers)
     headers.set('Access-Control-Expose-Headers', 'Retry-After, X-Concurrency-Limit, X-Credits-Charged, X-Credits-Refunded')
     headers.set('X-Credits-Charged', String(creditsCharged))

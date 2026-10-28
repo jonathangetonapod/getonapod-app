@@ -84,9 +84,9 @@ export const SubscriptionActionDialog = ({
     make_comped: billing.has_subscription
       ? `Complimentary from now. Stripe stops charging after ${periodEnd}.`
       : 'Complimentary from now. It is never charged.',
-    cancel: `The subscription ends ${periodEnd}. The workspace keeps access until then.`,
+    cancel: `The subscription ends ${periodEnd}. Cancellation does not restore access suspended for unpaid invoices. External campaigns, mailboxes and domains continue until stopped in their provider accounts.`,
     checkout_link: plan
-      ? `A Stripe checkout for ${planLabel(planKey)} at ${formatMonthlyCents(plan.base_price_cents)}/mo. The link expires in 24 hours.`
+      ? `New checkouts use ${planLabel(planKey)} at ${formatMonthlyCents(plan.base_price_cents)}/mo. An existing open checkout keeps its original price; confirm the amount on Stripe before paying.`
       : 'Choose a plan.',
   }
 
@@ -143,6 +143,7 @@ export const SubscriptionActionDialog = ({
                 <Copy className="mr-2 h-4 w-4" aria-hidden="true" />Copy
               </Button>
             </div>
+            {link.expires_at && Number.isFinite(Date.parse(link.expires_at)) && <p className="text-sm text-muted-foreground">Expires {new Date(link.expires_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZoneName: undefined })} (your local time).</p>}
             <p className="text-sm text-muted-foreground" role="status">
               {link.emailed === 'sent' && `Emailed to ${link.owner_email}.`}
               {link.emailed === 'failed' && 'The email could not be sent. Copy the link and send it yourself.'}

@@ -36,7 +36,7 @@ interface AiKeyRowProps {
 type TestOutcome = WorkspaceAiKeyTestResult | 'unavailable'
 
 const TEST_COPY: Record<TestOutcome, string> = {
-  valid: 'Valid. The provider accepted this key.',
+  valid: 'Valid. The provider accepted this key. This checks authentication only, not available credits, quota or model access.',
   invalid: 'Invalid. The provider rejected this key. Replace it to resume the features it powers.',
   unreachable: 'The provider did not answer, so the key could not be checked. Try again in a minute.',
   unavailable: 'Testing a saved key is not available yet.',
@@ -47,7 +47,16 @@ const TEST_COPY: Record<TestOutcome, string> = {
  * not an empty box that reads as if nothing were saved; the box appears to
  * replace it. Every change is still an explicit save: these are credentials.
  */
-export const AiKeyRow = ({
+export const AiKeyRow = (props: AiKeyRowProps) => (
+  <AiKeyRowEditor
+    // A credential refresh or workspace switch must discard drafts and results
+    // from the previous key, including requests that are still in flight.
+    key={`${props.workspaceId}:${props.provider.id}:${props.status?.configured === true}:${props.status?.last_four ?? ''}:${props.status?.updated_at ?? ''}`}
+    {...props}
+  />
+)
+
+const AiKeyRowEditor = ({
   workspaceId,
   provider,
   status,
@@ -72,6 +81,9 @@ export const AiKeyRow = ({
     // else is a failure to ask, not an answer about the key.
     onError: (error) => setOutcome((error as { code?: string }).code === 'INVALID_ACTION' ? 'unavailable' : 'unreachable'),
   })
+  const rowBusy = busy || testMutation.isPending
+  const authenticationAccepted = outcome === 'valid' && !testMutation.isPending
+  const keyRejected = outcome === 'invalid' && !testMutation.isPending
 
   const save = async () => {
     await onSave(draft.trim())
@@ -86,7 +98,9 @@ export const AiKeyRow = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-medium">{provider.label}</p>
         {configured
-          ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Connected</Badge>
+          ? <Badge variant="outline" className={keyRejected ? 'border-destructive/30 bg-destructive/5 text-destructive' : authenticationAccepted ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
+            {testMutation.isPending ? 'Checking authentication…' : keyRejected ? 'Key rejected' : authenticationAccepted ? 'Authentication accepted' : 'Key saved'}
+          </Badge>
           : <Badge variant="outline">{provider.optional ? 'Optional' : 'Not connected'}</Badge>}
       </div>
       <p className="text-sm text-muted-foreground">
@@ -109,12 +123,12 @@ export const AiKeyRow = ({
             {provider.keyPrefix}…{status?.last_four ?? '????'}
           </code>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" disabled={busy} onClick={() => setReplacing(true)}>Replace</Button>
+            <Button type="button" variant="outline" disabled={rowBusy} onClick={() => setReplacing(true)}>Replace</Button>
             {['anthropic', 'openai'].includes(provider.id) && <Button type="button" variant="outline" disabled={busy || testMutation.isPending} onClick={() => testMutation.mutate()}>
               {testMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
               Test key
             </Button>}
-            <Button type="button" variant="outline" disabled={busy} onClick={onRemove}>
+            <Button type="button" variant="outline" disabled={rowBusy} onClick={onRemove}>
               <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remove
             </Button>
           </div>
@@ -122,52 +136,56 @@ export const AiKeyRow = ({
       )}
 
       {editing && (
-        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (!busy && draft.trim()) void save().catch(() => undefined) }}>
-          <div className="relative flex-1">
-            <Label htmlFor={inputId} className="sr-only">{provider.label} API key</Label>
-            {/* A provider key, not this person's password: kept out of
-                password managers so they neither fill nor save it. */}
-            <Input
-              id={inputId}
-              type={revealed ? 'text' : 'password'}
-              {...notACredentialField}
-              spellCheck={false}
-              placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : 'Paste your API key'}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              disabled={busy}
-              className="pr-10 font-mono"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-0 top-0 h-10 w-10 text-muted-foreground"
-              aria-label={revealed ? `Hide ${provider.label} key` : `Show ${provider.label} key`}
-              aria-pressed={revealed}
-              onClick={() => setRevealed((current) => !current)}
-            >
-              {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        <div className="space-y-3">
+          {replacing && <p id={`${inputId}-impact`} className="text-sm leading-6 text-muted-foreground">This replaces the key for everyone in this workspace. New requests use the replacement. Jobs or campaigns already running in the provider account may continue; manage those with the provider.</p>}
+          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); if (!rowBusy && draft.trim()) void save().catch(() => undefined) }}>
+            <div className="relative flex-1">
+              <Label htmlFor={inputId} className="sr-only">{provider.label} API key</Label>
+              {/* A provider key, not this person's password: kept out of
+                  password managers so they neither fill nor save it. */}
+              <Input
+                id={inputId}
+                type={revealed ? 'text' : 'password'}
+                {...notACredentialField}
+                spellCheck={false}
+                placeholder={provider.keyPrefix ? `${provider.keyPrefix}…` : 'Paste your API key'}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={rowBusy}
+                aria-describedby={replacing ? `${inputId}-impact` : undefined}
+                className="pr-10 font-mono"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-10 w-10 text-muted-foreground"
+                aria-label={revealed ? `Hide ${provider.label} key` : `Show ${provider.label} key`}
+                aria-pressed={revealed}
+                onClick={() => setRevealed((current) => !current)}
+              >
+                {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+            <Button type="submit" disabled={rowBusy || !draft.trim()}>
+              {saving ? 'Saving…' : 'Save key'}
             </Button>
-          </div>
-          <Button type="submit" disabled={busy || !draft.trim()}>
-            {saving ? 'Saving…' : 'Save key'}
-          </Button>
-          {replacing && (
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                setReplacing(false)
-                setDraft('')
-                setRevealed(false)
-              }}
-            >
-              Cancel
-            </Button>
-          )}
-        </form>
+            {replacing && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={rowBusy}
+                onClick={() => {
+                  setReplacing(false)
+                  setDraft('')
+                  setRevealed(false)
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+          </form>
+        </div>
       )}
 
       {outcome && configured && !replacing && (

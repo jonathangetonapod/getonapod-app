@@ -1,3 +1,4 @@
+import { providerException } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
 import {
@@ -368,7 +369,7 @@ serve(async (req) => {
         ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
-      })
+      }).catch((error: unknown) => { throw providerException('anthropic', error) })
       anthropicInputTokens += message.usage?.input_tokens ?? 0
       anthropicOutputTokens += message.usage?.output_tokens ?? 0
       return messageText(message)

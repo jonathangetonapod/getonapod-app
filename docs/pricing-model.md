@@ -32,9 +32,10 @@ can still open payment settings and historical invoices.
 
 ## Provider costs
 
-Tenant operations require customer-owned credentials. Missing or undecryptable
-keys stop the relevant feature with `PROVIDER_KEY_REQUIRED`; they never fall back
-to platform credentials.
+Tenant operations require customer-owned credentials. Missing keys stop the relevant feature with `PROVIDER_KEY_REQUIRED`. Storage or
+decryption failures return `AI_KEY_STORAGE_UNAVAILABLE` or
+`PROVIDER_CONNECTION_UNAVAILABLE`; they do not instruct users to replace valid
+credentials. Tenant operations never fall back to platform credentials.
 
 - Anthropic: research, client briefs, pitches and replies.
 - OpenAI: semantic database searches and embeddings.
@@ -88,8 +89,47 @@ disputes. Do not remove that endpoint when retiring sales.
 
 **Outstanding purchased credits require an explicit customer settlement policy.**
 This change does not refund money or convert balances automatically. Reconcile
-remaining purchased balances with the customer before production cutover; the UI
-points affected customers to support.
+remaining purchased balances with the customer. The billing page shows the
+historical purchased balance and allows an owner or administrator to request a
+review. Platform administrators have a review queue and must record the verified
+outcome before marking a review complete. These actions do not move money or
+change credit lots. A completed review cannot be overwritten by a retry.
+
+## Checkout and provider recovery
+
+Tenant checkout and administrator checkout links share a durable workspace attempt.
+Concurrent requests reuse the same frozen Stripe parameters and idempotency key.
+An uncertain Stripe response blocks a fresh payment until the existing attempt can
+be reconciled; the app does not infer failure from a network timeout. A reused
+checkout retains its original price and expiration. Payment access still depends
+on verified subscription state, not the return URL.
+
+Provider responses distinguish `PROVIDER_KEY_REJECTED`, `PROVIDER_BILLING_REQUIRED`,
+`PROVIDER_RATE_LIMITED` and `PROVIDER_UNAVAILABLE`. HTTP 402 alone must not be
+interpreted as a depleted app credit balance. Key tests validate authentication;
+they do not guarantee funds, quota or access to every model. Keys belong to the
+workspace and should use an account the organization controls. Replacing/removing
+a key affects all members but does not cancel external jobs or charges.
+
+## External automation and n8n
+
+Remove app credit debit/refill logic while retaining historical records. Every
+job must retain its workspace identity and enforce subscription access; privileged
+credentials are not a bypass. Use the workspace provider connection without a
+cross-workspace or platform-key fallback. Route subscription errors to app billing,
+provider billing errors to that provider, and rejected keys to the workspace owner.
+Use bounded retries for transient provider errors, but reconcile any action that
+may already have sent a message or purchased a resource before replaying it.
+`WINNR_UNCONFIRMED` requires reconciliation rather than another order.
+
+App cancellation and key removal do not automatically stop n8n schedules, external
+campaigns, mailboxes or domains. Their owners must implement explicit pause and
+cleanup handling. Keep the historical credit webhook for delayed refunds/disputes;
+do not automatically refund or convert old balances. This repository change does
+not modify external n8n workflows. Legacy `send-outreach-webhook` payloads have no
+workspace routing and remain platform-scoped. Review them before enabling BYO
+automation; adding a workspace ID alone does not satisfy tenant user authorization.
+Also update n8n-owned checkout email templates that still mention old credit plans.
 
 ## Deployment
 
@@ -135,3 +175,14 @@ created as part of verification. The deployment procedure for future releases is
 Automated checks cover portal rendering, authorization routing, absent-key
 isolation, credit retirement, legacy webhook contracts, SQL grammar and grants.
 Live Stripe behavior and migration execution require deployment verification.
+
+### Edge-case follow-up
+
+Migrations `20261031000300_workspace_checkout_attempts.sql` and
+`20261031000400_legacy_credit_reviews.sql` were applied on 2026-10-28.
+Post-migration checks confirmed service-only access, row security, and unchanged
+credit history and subscription identities/prices. Full static checks passed,
+including 226 Deno tests. An isolated PostgreSQL test additionally exercises
+12 concurrent checkout callers, conditional rotation, failed-write rollback,
+review constraints and aggregate balances across 1,500 historical lots. Run it
+with `npm run test:checkout-database` when Docker is available.

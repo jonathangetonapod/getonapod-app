@@ -1,3 +1,4 @@
+import { billingRecovery, showOperationError } from '@/lib/billingRecovery'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -87,6 +88,12 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const baseHref = isPlatformWorkspace ? selectedWorkspaceBaseHref(workspaceId) : '/app'
+  const recoveryLinks = {
+    providerHref: `${baseHref}/settings#ai-keys`,
+    billingHref: isPlatformWorkspace ? `/app/platform/billing/${workspaceId}` : '/app/settings/billing',
+    canManageProviders: isPlatformAdmin || membership?.role === 'owner',
+    canManageBilling: isPlatformAdmin || membership?.role === 'owner' || membership?.role === 'admin',
+  }
 
   // The shell names and brands the workspace on screen, which in the platform
   // view is not the one in AuthContext.
@@ -330,7 +337,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         setProfileTooThin(true)
         toast.error(PROFILE_TOO_THIN_COPY)
       } else {
-        toast.error(error instanceof StrategyGenerationError ? error.message : 'The AI search strategy could not be drafted. Try again in a moment.')
+        showOperationError(error, 'The AI search strategy could not be drafted. Try again in a moment.', recoveryLinks)
       }
     } finally {
       setIsRegenerating(false)
@@ -407,6 +414,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
           // A failed or refused strategy is refunded by the function (and a
           // thin profile is refused before any charge), so nothing was spent.
           if (error instanceof ProfileTooThinError) setProfileTooThin(true)
+          const recovery = billingRecovery(error, recoveryLinks)
           throw new ScanFailedError(error instanceof ProfileTooThinError
             ? {
                 title: 'Scan could not run.',
@@ -417,6 +425,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
             : {
                 title: 'Scan could not run.',
                 reason: error instanceof StrategyGenerationError ? error.message : 'The AI search strategy could not be drafted. Try again in a moment.',
+                ...(recovery?.href ? { action: { label: recovery.label, href: recovery.href } } : {}),
                 credits: scanFailureCreditLine(credits),
               })
         }
@@ -528,6 +537,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
             throw new ScanFailedError({
               title: 'Scan could not run.',
               reason: podscanFailureReason(error),
+              ...(billingRecovery(error, recoveryLinks)?.href ? { action: { label: billingRecovery(error, recoveryLinks)!.label, href: billingRecovery(error, recoveryLinks)!.href! } } : {}),
               credits: scanFailureCreditLine(credits),
             })
           }
@@ -674,7 +684,8 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         setPhase('done')
         setStatusMessage('')
         persistScan(ranked)
-        toast.warning(`${error.message} Score the rest again when you are ready.`, { duration: 10000 })
+        if (billingRecovery(error)) showOperationError(error, 'Scoring stopped.', recoveryLinks)
+        else toast.warning(`${error.message} Score the rest again when you are ready.`, { duration: 10000 })
         return
       }
       if (error instanceof InsufficientCreditsError && discoveredCandidates.length > 0) {
@@ -683,7 +694,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         persistScan(ranked)
         setPhase('done')
         setStatusMessage('')
-        toast.error(`${error.message} The ${discoveredCandidates.length} podcasts found are shown unscored. Add credits to score them.`, { duration: 10000 })
+        toast.error(`${error.message} The ${discoveredCandidates.length} podcasts found are shown unscored. Refresh the app and contact support if this continues; app credits are retired.`, { duration: 10000 })
         return
       }
       if (error instanceof ScanFailedError) {
@@ -695,7 +706,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
       }
       setPhase('idle')
       setStatusMessage('')
-      toast.error(error instanceof Error ? error.message : 'The scan could not be completed.')
+      showOperationError(error, 'The scan could not be completed.', recoveryLinks)
     }
   }
 

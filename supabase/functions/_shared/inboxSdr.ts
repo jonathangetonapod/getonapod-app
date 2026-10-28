@@ -1,3 +1,4 @@
+import { providerFetch } from './providerErrors.ts'
 // Shared AI SDR reply-package generation for the Master Inbox.
 //
 // Used by the operator path (workspace-client-campaigns inbox-draft) and the
@@ -477,7 +478,7 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
   }
 
   async function generateWithModel(): Promise<SdrReplyPackage> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': anthropicApiKey,
@@ -499,9 +500,6 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     }),
     signal: AbortSignal.timeout(45_000),
   })
-  if (!response.ok) {
-    throw new HttpError(503, 'DRAFT_FAILED', 'The reply draft could not be generated. Try again shortly')
-  }
   const payload = await response.json() as {
     content?: Array<{ type: string; text?: string }>
     usage?: { input_tokens?: number; output_tokens?: number }

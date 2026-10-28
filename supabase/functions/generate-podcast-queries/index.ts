@@ -1,3 +1,4 @@
+import { providerException } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
 import {
@@ -44,12 +45,9 @@ function resolveQueryCount(value: unknown): number {
  * so the cause of the next outage is in the function logs.
  */
 function providerFailure(error: unknown): HttpError {
-  const status = error instanceof Anthropic.APIError ? error.status : undefined
-  const type = error instanceof Anthropic.APIError
-    ? (error.error as { error?: { type?: string } } | undefined)?.error?.type
-    : error instanceof Error ? error.name : typeof error
-  console.error(`[generate-podcast-queries] Anthropic request failed: status=${status ?? 'none'} type=${type ?? 'unknown'}`)
-  return new HttpError(502, 'STRATEGY_PROVIDER_FAILED', 'The AI could not draft a search strategy. Try again in a moment.')
+  const failure = providerException('anthropic', error)
+  console.error('[generate-podcast-queries] Anthropic request failed:', failure.code)
+  return failure
 }
 
 function noUsableQueries(rejected: Array<{ query: string; problem: string }>): HttpError {

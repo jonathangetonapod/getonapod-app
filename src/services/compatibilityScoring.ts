@@ -1,3 +1,4 @@
+import { toFunctionError } from '@/lib/functionErrors'
 import { supabase } from '@/lib/supabase'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -44,7 +45,7 @@ export interface ScoringRunSummary {
 }
 
 export class PartialScoringError extends Error {
-  constructor(message: string, readonly scored: CompatibilityScore[], readonly failedCount: number) {
+  constructor(message: string, readonly scored: CompatibilityScore[], readonly failedCount: number, readonly code: string | null = null) {
     super(message)
     this.name = 'PartialScoringError'
   }
@@ -107,13 +108,14 @@ export async function scoreCompatibilityBatch(
       })
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({})) as { error?: string }
-        const message = error.error || 'Failed to score podcasts'
-        // Running out of credits is not a batch that happened to fail. Every
-        // remaining batch will fail the same way, and swallowing it here left
-        // the caller reporting a complete ranking built from nulls.
-        if (response.status === 402) throw new InsufficientCreditsError(message)
-        throw new Error(message)
+        const error = await toFunctionError({ context: response }, 'Failed to score podcasts') as Error & { code?: string | null }
+        if (error.code === 'INSUFFICIENT_CREDITS') throw new InsufficientCreditsError(error.message)
+        // A provider account or subscription failure will affect every batch.
+        // Stop immediately, retaining scores already produced and its recovery code.
+        if (error.code?.startsWith('PROVIDER_') || error.code === 'SUBSCRIPTION_REQUIRED') {
+          throw new PartialScoringError(error.message, results, podcasts.length - i, error.code)
+        }
+        throw error
       }
 
       const data = await response.json()
@@ -129,7 +131,7 @@ export async function scoreCompatibilityBatch(
         await new Promise(resolve => setTimeout(resolve, 500))
       }
     } catch (error) {
-      if (error instanceof InsufficientCreditsError) throw error
+      if (error instanceof InsufficientCreditsError || error instanceof PartialScoringError) throw error
       console.error('Error scoring batch:', error)
       // Counted, not just swallowed: a run where every batch failed used to
       // report "scoring completed" with nothing scored.

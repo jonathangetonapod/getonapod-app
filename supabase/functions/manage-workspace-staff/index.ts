@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { ensureWorkspaceBillingCustomer, getOrCreateWorkspaceCheckout } from "../_shared/subscriptionCheckout.ts";
 
 import { sendAppEmail } from "../_shared/appEmail.ts";
 import { CREDIT_PACKS } from "../_shared/creditPacks.ts";
@@ -23,7 +24,6 @@ import {
 import { generateTemporaryPassword } from "../_shared/workspaceCredentials.ts";
 import {
   clearWorkspaceAiKey,
-  probeAiKey,
   probeAiKeyResult,
   readStoredAiKey,
   requireProvider,
@@ -3184,6 +3184,71 @@ serve(async (req) => {
       throw new HttpError(410, "CREDIT_BILLING_RETIRED", "Credit billing has ended. Historical transactions remain available in the ledger.");
     }
 
+    if (action === "legacy-credit-review-queue") {
+      requireOnlyKeys(body, ["action", "workspace_id"]);
+      if (!platformAdmin) throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Platform administrator access is required");
+      const { data, error } = await admin.from("workspace_credit_reviews")
+        .select("workspace_id,status,requested_at,purchased_remaining_at_request,resolution_note,updated_at,workspace:workspaces(name)")
+        .neq("status", "resolved").order("requested_at").limit(500);
+      if (error) throw new HttpError(503, "CREDIT_REVIEW_UNAVAILABLE", "Review requests could not be loaded");
+      return jsonResponse(req, METHODS, 200, { success: true, requests: (data ?? []).map((row) => ({
+        ...row, workspace_name: (row.workspace as unknown as { name?: string } | null)?.name ?? "Workspace", workspace: undefined,
+      })) });
+    }
+
+    if (["legacy-credit-overview", "legacy-credit-review-request", "legacy-credit-review-update"].includes(action)) {
+      requireOnlyKeys(body, action === "legacy-credit-review-update"
+        ? ["action", "workspace_id", "status", "resolution_note"] : ["action", "workspace_id"]);
+      const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
+      if (!["owner", "admin", "platform_admin"].includes(access.role)) {
+        throw new HttpError(403, "WORKSPACE_ACCESS_REQUIRED", "Workspace manager access is required");
+      }
+      if (action === "legacy-credit-review-update" && !platformAdmin) {
+        throw new HttpError(403, "PLATFORM_ADMIN_REQUIRED", "Only platform administrators can record a settlement review");
+      }
+      // Aggregate inside one SQL snapshot: neither pagination limits nor a
+      // concurrent historical payment/refund can produce a partial balance.
+      const { data: balance, error: balanceError } = await admin.rpc("workspace_purchased_credit_balance_v1", { p_workspace_id: workspaceId });
+      const remaining = Number(balance);
+      if (balanceError || !Number.isSafeInteger(remaining) || remaining < 0 || balance === null) {
+        throw new HttpError(503, "CREDIT_HISTORY_UNAVAILABLE", "Your historical purchased balance could not be loaded");
+      }
+      if (action === "legacy-credit-review-request") {
+        if (remaining <= 0) throw new HttpError(409, "NO_PURCHASED_BALANCE", "There is no remaining purchased balance to review");
+        // One request per workspace. Retries never reset a completed review or
+        // overwrite its outcome. Financial adjustments occur separately in Stripe.
+        const { data: inserted, error } = await admin.from("workspace_credit_reviews").upsert({
+          workspace_id: workspaceId, requested_by: user.id, purchased_remaining_at_request: remaining,
+        }, { onConflict: "workspace_id", ignoreDuplicates: true }).select("workspace_id");
+        if (error) throw new HttpError(503, "CREDIT_REVIEW_UNAVAILABLE", "Your review request could not be saved. Try again");
+        if (inserted?.length) await writeAudit(admin, {
+          workspaceId, actorUserId: user.id, action: "billing.credit_review_requested",
+          entityType: "workspace_billing_profile", entityId: workspaceId,
+          metadata: { purchased_remaining: remaining },
+        });
+      }
+      if (action === "legacy-credit-review-update") {
+        const status = requireString(body.status, "status", { max: 20 });
+        if (!["reviewing", "resolved"].includes(status)) throw new HttpError(400, "INVALID_STATUS", "Choose reviewing or resolved");
+        const note = status === "resolved" ? requireString(body.resolution_note, "resolution_note", { min: 10, max: 1000 }) : null;
+        const { data: updated, error } = await admin.from("workspace_credit_reviews").update({
+          status, resolution_note: note, updated_by: user.id, updated_at: new Date().toISOString(),
+        }).eq("workspace_id", workspaceId).neq("status", "resolved").select("workspace_id");
+        if (error) throw new HttpError(503, "CREDIT_REVIEW_UNAVAILABLE", "The review could not be updated");
+        if (!updated?.length) throw new HttpError(409, "CREDIT_REVIEW_UNCHANGED", "This review was already completed or no request exists. Refresh to see its status");
+        await writeAudit(admin, {
+          workspaceId, actorUserId: user.id, action: "billing.credit_review_updated",
+          entityType: "workspace_billing_profile", entityId: workspaceId,
+          metadata: { status, resolution_note: note },
+        });
+      }
+      const { data: review, error: reviewError } = await admin.from("workspace_credit_reviews")
+        .select("status,requested_at,purchased_remaining_at_request,resolution_note,updated_at")
+        .eq("workspace_id", workspaceId).maybeSingle();
+      if (reviewError) throw new HttpError(503, "CREDIT_REVIEW_UNAVAILABLE", "Your review status could not be loaded");
+      return jsonResponse(req, METHODS, 200, { success: true, purchased_remaining: remaining, review });
+    }
+
     if (action === "subscription-overview") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
@@ -3836,7 +3901,12 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
       if (doneError) throw new HttpError(503, "BILLING_UNAVAILABLE", "Billing data could not be read");
-      if (done) {
+      // Checkout audit results intentionally omit the bearer URL. A retry must
+      // reconcile the durable session again to return its link, not replay an
+      // audit result that the caller cannot open. Other actions remain no-ops.
+      const checkoutReplay = Boolean(done && operation === "checkout_link"
+        && (done.metadata as Record<string, unknown> | null)?.operation === "checkout_link");
+      if (done && !checkoutReplay) {
         const metadata = (done.metadata ?? {}) as Record<string, unknown>;
         return jsonResponse(req, METHODS, 200, {
           success: true,
@@ -3994,49 +4064,29 @@ serve(async (req) => {
         const ownerEmail = typeof ownerRow?.email_normalized === "string" ? ownerRow.email_normalized : "";
         const workspaceName = typeof workspaceRow?.name === "string" && workspaceRow.name ? workspaceRow.name : "your workspace";
 
-        let customerId = typeof profile?.stripe_customer_id === "string" ? profile.stripe_customer_id : "";
-        if (customerId) {
-          // The webhook may not have recorded a subscription made a moment ago.
-          const existing = await stripeRequest("GET", `subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=20`);
-          const live = ((existing.data as Array<Record<string, unknown>> | undefined) ?? [])
-            .some((candidate) => !["canceled", "incomplete_expired"].includes(String(candidate.status)));
-          if (live) throw new HttpError(409, "SUBSCRIPTION_EXISTS", "This workspace already has a subscription in Stripe");
-        } else {
-          const customerParams = new URLSearchParams({ "metadata[workspace_id]": workspaceId });
-          if (ownerEmail) customerParams.set("email", ownerEmail);
-          const customer = await stripeRequest("POST", "customers", customerParams, `${actionKey}:customer`);
-          customerId = typeof customer.id === "string" ? customer.id : "";
-          if (!customerId) throw new HttpError(502, "STRIPE_REJECTED", "Stripe did not create a customer");
-          await writeProfile({ stripe_customer_id: customerId });
-        }
-
+        const customerId = await ensureWorkspaceBillingCustomer(admin, stripeRequest, workspaceId,
+          typeof profile?.stripe_customer_id === "string" ? profile.stripe_customer_id : null);
         const billingBase = `${(Deno.env.get("APP_URL") || "https://getonapod.com").replace(/\/+$/u, "")}/app/settings/billing`;
-        const session = await stripeRequest("POST", "checkout/sessions", new URLSearchParams({
-          mode: "subscription",
-          customer: customerId,
-          allow_promotion_codes: "true",
-          success_url: `${billingBase}?plan=updated`,
-          cancel_url: `${billingBase}?plan=cancelled`,
-          client_reference_id: workspaceId,
-          "line_items[0][price]": priceId,
-          "line_items[0][quantity]": "1",
-          "metadata[workspace_id]": workspaceId,
-          "metadata[plan_key]": String(target.plan_key),
-          "subscription_data[metadata][workspace_id]": workspaceId,
-          "subscription_data[metadata][plan_key]": String(target.plan_key),
-        }), `${actionKey}:checkout`);
-        checkoutUrl = typeof session.url === "string" ? session.url : null;
-        if (!checkoutUrl) throw new HttpError(502, "STRIPE_REJECTED", "Stripe did not return a checkout link");
-        const expiresAt = typeof session.expires_at === "number" ? new Date(session.expires_at * 1000).toISOString() : null;
+        const session = await getOrCreateWorkspaceCheckout(admin, stripeRequest, {
+          workspaceId, customerId, planKey: String(target.plan_key), priceId, billingBase,
+        });
+        checkoutUrl = session.url;
+        const expiresAt = session.expires_at;
 
-        let emailed: "sent" | "failed" | "skipped" | "not_requested" = "not_requested";
-        if (body.email_owner === true) {
+        const previousResult = ((done?.metadata as Record<string, unknown> | null)?.result ?? {}) as Record<string, unknown>;
+        let emailed: "sent" | "failed" | "skipped" | "not_requested" =
+          checkoutReplay && ["sent", "failed", "skipped", "not_requested"].includes(String(previousResult.emailed))
+            ? previousResult.emailed as "sent" | "failed" | "skipped" | "not_requested"
+            : "not_requested";
+        if (!checkoutReplay && body.email_owner === true) {
           emailed = ownerEmail
             ? await emailCheckoutLink({
               to: ownerEmail,
               workspaceName,
               planName: String(target.display_name ?? target.plan_key),
-              priceLabel: `$${(Number(target.base_price_cents) / 100).toFixed(Number(target.base_price_cents) % 100 === 0 ? 0 : 2)}/month`,
+              // An existing session retains its original Price even if the plan
+              // catalog changed. Stripe shows that price and any discounts.
+              priceLabel: "Review the price and any discounts in secure checkout",
               url: checkoutUrl,
             })
             : "skipped";
@@ -4045,7 +4095,7 @@ serve(async (req) => {
         result = { plan_key: target.plan_key, expires_at: expiresAt, emailed, owner_email: ownerEmail || null };
       }
 
-      await writeAudit(admin, {
+      if (!checkoutReplay) await writeAudit(admin, {
         workspaceId,
         actorUserId: user.id,
         action: "workspace.subscription.admin_action",
@@ -4315,9 +4365,10 @@ serve(async (req) => {
         if (apiKey.trim().length < 20) {
           throw new HttpError(400, "INVALID_API_KEY", "The API key looks incomplete");
         }
-        const valid = !["anthropic", "openai"].includes(provider) || await probeAiKey(provider, apiKey.trim());
-        if (!valid) {
-          throw new HttpError(422, "API_KEY_REJECTED", "The provider rejected this API key");
+        if (["anthropic", "openai"].includes(provider)) {
+          const probe = await probeAiKeyResult(provider, apiKey.trim());
+          if (probe === "invalid") throw new HttpError(422, "PROVIDER_KEY_REJECTED", "The provider rejected this API key. Check that you copied an active key");
+          if (probe === "unreachable") throw new HttpError(503, "PROVIDER_UNAVAILABLE", "The provider could not verify this key right now. Your existing connection has not changed; try again shortly");
         }
         await storeWorkspaceAiKey(admin, workspaceId, provider, apiKey.trim(), user.id);
         await writeAudit(admin, {

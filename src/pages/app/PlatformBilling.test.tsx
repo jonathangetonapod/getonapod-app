@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { getBillingPortfolio, listBillingPlans } from '@/services/workspaceStaff'
 import PlatformBilling from '@/pages/app/PlatformBilling'
 
+vi.mock('@/components/workspace/LegacyCreditReview', () => ({ LegacyCreditReviewQueue: () => null }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({ WorkspaceLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))

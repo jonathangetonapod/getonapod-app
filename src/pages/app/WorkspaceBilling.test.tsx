@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { createWorkspaceBillingPortal, createWorkspaceSubscriptionCheckout, getWorkspaceSubscriptionOverview } from '@/services/workspaceStaff'
 import WorkspaceBilling from './WorkspaceBilling'
 
+vi.mock('@/components/workspace/LegacyCreditReview', () => ({ LegacyCreditReview: () => null }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({ WorkspaceLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 vi.mock('@/components/workspace/WorkspaceAiKeysCard', () => ({ WorkspaceAiKeysCard: () => <div>Connect provider accounts</div> }))

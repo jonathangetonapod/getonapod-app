@@ -13,6 +13,15 @@ function edgeError(fields: Record<string, unknown>): Error {
 const noWait = () => Promise.resolve()
 
 describe('classifyPodscanError', () => {
+  it.each(['PROVIDER_BILLING_REQUIRED', 'SUBSCRIPTION_REQUIRED'])('does not retry %s or describe it as depleted app credits', async (code) => {
+    const error = edgeError({ code, status: 402 })
+    expect(classifyPodscanError(error)).toBe('fatal')
+    expect(podscanFailureReason(error)).not.toContain('credits')
+    const request = vi.fn().mockRejectedValue(error)
+    await expect(withPodscanRetry(request, { sleep: noWait })).rejects.toBe(error)
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
   it('treats a refused key or account as final, whatever status the proxy wrapped it in', () => {
     expect(classifyPodscanError(edgeError({ code: 'PODSCAN_UPSTREAM_403', status: 502 }))).toBe('auth')
     expect(classifyPodscanError(edgeError({ code: 'PODSCAN_UPSTREAM_401', status: 502 }))).toBe('auth')

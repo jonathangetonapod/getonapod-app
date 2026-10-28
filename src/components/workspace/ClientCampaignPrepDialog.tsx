@@ -1,3 +1,4 @@
+import { showOperationError } from '@/lib/billingRecovery'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -399,7 +400,7 @@ export function ClientCampaignPrep({
       // Whatever just changed for this podcast, the editor's field values
       // changed with it.
       void queryClient.invalidateQueries({ queryKey: promptPreviewQueryKey })
-      toast.error(error instanceof Error ? error.message : 'The research run could not be completed.')
+      showOperationError(error, 'The research run could not be completed.', { billingHref, providerHref: `${campaignHref.split('/client-campaigns')[0]}/settings#ai-keys`, canManageProviders: viewerRole === 'owner' || viewerRole === 'platform_admin', canManageBilling: viewerRole !== 'member' })
     },
   })
   // Real pitch copy comes from the write_email/clean_email prompts running
@@ -583,7 +584,7 @@ export function ClientCampaignPrep({
       // Whatever just changed for this podcast, the editor's field values
       // changed with it.
       void queryClient.invalidateQueries({ queryKey: promptPreviewQueryKey })
-      toast.error(error instanceof Error ? error.message : 'The pitch could not be written from research.')
+      showOperationError(error, 'The pitch could not be written from research.', { billingHref, providerHref: `${campaignHref.split('/client-campaigns')[0]}/settings#ai-keys`, canManageProviders: viewerRole === 'owner' || viewerRole === 'platform_admin', canManageBilling: viewerRole !== 'member' })
     } finally {
       setPitchLoadingKey((current) => (current === key ? null : current))
     }
@@ -612,7 +613,7 @@ export function ClientCampaignPrep({
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'The direct email search could not be completed.')
+      showOperationError(error, 'The direct email search could not be completed.', { billingHref, providerHref: `${campaignHref.split('/client-campaigns')[0]}/settings#ai-keys`, canManageProviders: viewerRole === 'owner' || viewerRole === 'platform_admin', canManageBilling: viewerRole !== 'member' })
     },
     onSettled: () => {
       setPreviewEmailSearchPodcastId(null)
@@ -963,7 +964,7 @@ export function ClientCampaignPrep({
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Podscan could not be reached.')
+      showOperationError(error, 'Podscan could not be reached.', { billingHref, providerHref: `${campaignHref.split('/client-campaigns')[0]}/settings#ai-keys`, canManageProviders: viewerRole === 'owner' || viewerRole === 'platform_admin', canManageBilling: viewerRole !== 'member' })
     },
   })
 

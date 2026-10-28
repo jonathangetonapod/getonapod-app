@@ -700,9 +700,15 @@ assert.match(subscriptionAdmin, /const reason = requireString\(body\.reason, "re
 assert.match(subscriptionAdmin, /\.contains\("metadata", \{ action_key: actionKey \}\)/u)
 assert.match(subscriptionAdmin, /action: "workspace\.subscription\.admin_action",/u)
 assert.match(subscriptionAdmin, /actorUserId: user\.id,/u)
-for (const suffix of ['plan', 'comp', 'cancel', 'customer', 'checkout']) {
+for (const suffix of ['plan', 'comp', 'cancel']) {
   assert.match(subscriptionAdmin, new RegExp(`\`\\$\\{actionKey\\}:${suffix}\``, 'u'))
 }
+assert.match(subscriptionAdmin, /ensureWorkspaceBillingCustomer\(admin, stripeRequest, workspaceId/u)
+assert.match(subscriptionAdmin, /getOrCreateWorkspaceCheckout\(admin, stripeRequest,/u)
+assert.doesNotMatch(subscriptionAdmin, /stripeRequest\("POST", "checkout\/sessions"/u)
+assert.match(subscriptionAdmin, /if \(done && !checkoutReplay\)/u)
+assert.match(subscriptionAdmin, /if \(!checkoutReplay && body\.email_owner === true\)/u)
+assert.match(subscriptionAdmin, /if \(!checkoutReplay\) await writeAudit/u)
 // Cancelling is always at period end, and a plan change is prorated.
 assert.match(subscriptionAdmin, /cancel_at_period_end: "true"/u)
 assert.doesNotMatch(subscriptionAdmin, /stripeRequest\("DELETE"/u)

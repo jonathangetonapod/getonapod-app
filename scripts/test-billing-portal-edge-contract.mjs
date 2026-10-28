@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const portal = readFileSync('supabase/functions/workspace-billing-portal/index.ts', 'utf8')
+const checkout = readFileSync('supabase/functions/_shared/subscriptionCheckout.ts', 'utf8')
+const checkoutMigration = readFileSync('supabase/migrations/20261031000300_workspace_checkout_attempts.sql', 'utf8')
 
 // Manager-gated on the workspace being billed, with a fresh credential.
 assert.match(portal, /requireAuthenticatedUser\(req\)/u)
@@ -16,10 +18,8 @@ assert.match(portal, /requireOnlyKeys\(body, \['action', 'workspace_id'\]\)/u)
 // to. Asserted on the update payloads themselves, because reading plan_key and
 // naming it in an audit entry are both fine.
 const portalUpdates = [...portal.matchAll(/\.(?:update|upsert)\(\s*\{([^}]*)\}/gsu)].map((match) => match[1])
-assert.ok(
-  portalUpdates.some((payload) => /stripe_customer_id: customerId/u.test(payload)),
-  'the portal records which Stripe customer a workspace is',
-)
+assert.match(portal, /ensureWorkspaceBillingCustomer\(admin, stripe, workspaceId, profile\?\.stripe_customer_id\)/u)
+assert.match(checkout, /record_workspace_billing_customer_v1/u)
 // Plan pricing is a different table. What no update here may ever touch is what
 // a workspace is subscribed to — that belongs to the webhook alone.
 for (const payload of portalUpdates) {
@@ -37,7 +37,7 @@ assert.doesNotMatch(portal, /body\.(?:price|price_id|stripe_price_id)\b/u)
 assert.match(portal, /from\('billing_plans'\)/u)
 assert.match(portal, /plan\.stripe_price_id/u)
 assert.match(portal, /!plan\.is_purchasable/u)
-assert.match(portal, /allow_promotion_codes: 'true'/u)
+assert.match(checkout, /allow_promotion_codes: 'true'/u)
 
 // Plan administration sets what a plan costs for everyone, so it is gated on
 // platform admin rather than on membership of any one workspace.
@@ -51,12 +51,17 @@ assert.match(portal, /const reason = requireString\(body\.reason, 'reason', \{ m
 assert.match(portal, /const actionKey = requireUuid\(body\.action_key, 'action_key'\)/u)
 assert.match(portal, /stripeKey, `\$\{actionKey\}:price`\)/u)
 assert.match(portal, /'Idempotency-Key': idempotencyKey/u)
-// The workspace-wide customer key must use the same parameters when a
-// different owner/admin retries after Stripe succeeded but the DB write failed.
-const customerCreation = portal.slice(portal.indexOf('if (!customerId) {'), portal.indexOf("customerId = typeof customer.id"))
-assert.match(customerCreation, /const customerParams = new URLSearchParams\(\{\s*'metadata\[workspace_id\]': workspaceId,\s*\}\)/u)
-assert.match(customerCreation, /stripePost\('customers', customerParams, stripeKey, `workspace-customer:\$\{workspaceId\}`\)/u)
-assert.doesNotMatch(customerCreation, /authContext\.user|customerParams\.set/u)
+// Both entry points share deterministic customer creation and durable checkout.
+assert.match(checkout, /'metadata\[workspace_id\]': workspaceId,[\s\S]*?`workspace-customer:\$\{workspaceId\}`/u)
+assert.doesNotMatch(checkout, /authContext\.user|customerParams\.set/u)
+assert.match(portal, /getOrCreateWorkspaceCheckout\(admin, stripe,/u)
+assert.doesNotMatch(portal, /stripePost\('checkout\/sessions'/u)
+assert.match(checkoutMigration, /CREATE UNIQUE INDEX workspace_checkout_attempts_one_active[\s\S]*?WHERE retired_at IS NULL/u)
+assert.match(checkoutMigration, /pg_advisory_xact_lock/u)
+assert.match(checkoutMigration, /attempt\.id <> p_replace_attempt_id/u)
+assert.match(checkoutMigration, /now\(\) <= attempt\.expires_at \+ interval '1 minute'/u)
+assert.match(checkoutMigration, /REVOKE ALL ON public\.workspace_checkout_attempts FROM PUBLIC, anon, authenticated, service_role/u)
+assert.match(checkoutMigration, /GRANT EXECUTE ON FUNCTION public\.claim_workspace_checkout_attempt_v1[^;]+TO service_role/u)
 // Complimentary is never sold: credits only, never a Stripe price.
 assert.match(portal, /This plan is never sold, so it has no price to set/u)
 // The admin sees how many workspaces a change reaches.
@@ -75,10 +80,10 @@ assert.match(portal, /action: 'billing_plan_allowance_backfilled'/u)
 assert.match(portal, /\.select\('stripe_customer_id, stripe_subscription_id, plan_key, billing_status'\)/u)
 assert.match(portal, /profile\.billing_status !== 'suspended'/u)
 assert.match(portal, /action === 'subscription-create' && alreadySubscribed/u)
-assert.equal((portal.match(/new HttpError\(409, 'SUBSCRIPTION_EXISTS'/gu) ?? []).length, 2)
-assert.match(portal, /subscriptions\?customer=\$\{encodeURIComponent\(customerId\)\}&status=all/u)
-const existingCheckAt = portal.indexOf("subscriptions?customer=")
-const checkoutAt = portal.indexOf("stripePost('checkout/sessions'")
+assert.match(portal, /new HttpError\(409, 'SUBSCRIPTION_EXISTS'/u)
+assert.match(checkout, /new HttpError\(409, 'SUBSCRIPTION_EXISTS'/u)
+const existingCheckAt = checkout.indexOf('await assertNoSubscription(stripe, attempt.customer_id)')
+const checkoutAt = checkout.indexOf("session = await stripe('POST', 'checkout/sessions'")
 assert.ok(existingCheckAt > 0 && existingCheckAt < checkoutAt, 'Stripe is asked about live subscriptions before checkout opens')
 assert.doesNotMatch(portal, /body\.stripe_price_id/u)
 // Stripe Prices are immutable, so a change creates one; and creating one does
