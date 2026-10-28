@@ -146,15 +146,16 @@ const Login = () => {
     )
   }
 
-  if (user && ['suspended', 'expired', 'no_membership', 'error'].includes(accountState)) {
+  if (user && ['suspended', 'expired', 'no_membership', 'error', 'session_expired'].includes(accountState)) {
+    const sessionExpired = accountState === 'session_expired'
     return (
       <AuthShell
-        title="Access unavailable | Get On A Pod"
+        title={`${sessionExpired ? 'Sign in again' : 'Access unavailable'} | Get On A Pod`}
         description="This account cannot open a workspace right now."
         path="/login"
         tone="notice"
-        heading="Access unavailable."
-        footer={<>Need a workspace? <Link to="/register">Request to join</Link></>}
+        heading={sessionExpired ? 'Sign in again.' : 'Access unavailable.'}
+        footer={sessionExpired ? undefined : <>Need a workspace? <Link to="/register">Request to join</Link></>}
       >
         <p className="gp-auth-reason">
           {accountState === 'suspended'
@@ -163,15 +164,18 @@ const Login = () => {
               ? 'Your invitation has expired. Ask whoever invited you for a new one.'
               : accountError || 'This account has not been invited to an active workspace.'}
         </p>
-        <p className="gp-auth-note">Signed in as {user.email}</p>
+        <p className="gp-auth-note">{sessionExpired ? 'Account:' : 'Signed in as'} {user.email}</p>
         <div className="gp-auth-actions">
           {accountState === 'error' && (
             <button type="button" className="gp-btn gp-btn-primary" onClick={() => void refreshAccount()}>
               Try again
             </button>
           )}
-          <button type="button" className="gp-btn gp-btn-ghost" onClick={() => void signOut()}>
-            Sign in with another account
+          <button type="button" className={`gp-btn ${sessionExpired ? 'gp-btn-primary' : 'gp-btn-ghost'}`} onClick={() => {
+            if (sessionExpired) setEmail(user.email ?? '')
+            void signOut()
+          }}>
+            {sessionExpired ? 'Sign in again' : 'Sign in with another account'}
           </button>
         </div>
       </AuthShell>

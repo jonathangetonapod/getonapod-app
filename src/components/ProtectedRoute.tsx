@@ -59,7 +59,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     )
   }
 
-  if (!user || accountState === 'signed_out') {
+  if (!user || accountState === 'signed_out' || accountState === 'session_expired') {
     const loginPath = location.pathname.startsWith('/admin') ? '/admin/login' : '/login'
     return <Navigate to={loginPath} state={{ from: location }} replace />
   }
