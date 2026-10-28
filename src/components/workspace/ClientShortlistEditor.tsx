@@ -50,7 +50,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { isTargetInActiveOutreach, pitchActionLabel } from '@/lib/campaignTargetState'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { MY_WORKSPACE_BASE_HREF, clientPitchHref } from '@/lib/workspaceRoutes'
-import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
+import { getWorkspaceCampaign, type WorkspaceCampaignTarget } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
@@ -69,6 +69,25 @@ type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' 
 const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'archived']
 type FitFilter = 'any' | 'at_least' | 'below' | 'unscored'
 type ListSort = 'list_order' | 'fit_desc' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
+
+type PitchStatus = 'staged' | 'pending' | 'draft' | 'ready' | 'launching' | 'in_outreach' | 'replied' | 'completed' | 'failed'
+type PitchFilter = 'all' | 'written' | PitchStatus
+const PITCH_LABELS: Record<PitchFilter, string> = {
+  all: 'All pitch statuses', written: 'Written — saved pitch', pending: 'Pending — no saved pitch',
+  staged: 'Queued in campaign', draft: 'Draft in progress', ready: 'Ready for outreach', launching: 'Launching',
+  in_outreach: 'In outreach', replied: 'Replied', completed: 'Completed', failed: 'Needs attention',
+}
+function hasWrittenPitch(target?: WorkspaceCampaignTarget): boolean {
+  return Boolean(target?.pitch_subject?.trim() && target?.pitch_body?.trim())
+}
+function pitchStatus(target?: WorkspaceCampaignTarget): PitchStatus {
+  if (target?.status === 'failed') return 'failed'
+  if (target?.status === 'replied' || target?.status === 'completed' || target?.status === 'launching') return target.status
+  if (target?.lead_staged_at && !target.launched_at && target.status !== 'in_outreach' && target.lead_staged_campaign_status !== 1) return 'staged'
+  if (isTargetInActiveOutreach(target)) return 'in_outreach'
+  if (target?.status === 'ready') return 'ready'
+  return target?.pitch_subject?.trim() || target?.pitch_body?.trim() ? 'draft' : 'pending'
+}
 
 interface ClientShortlistEditorProps {
   workspaceId: string
@@ -196,6 +215,7 @@ export function ClientShortlistEditor({
   const [filter, setFilter] = useState<ListFilter>(() => (
     LIST_FILTERS.includes(initialFilter as ListFilter) ? initialFilter as ListFilter : 'all'
   ))
+  const [pitchFilter, setPitchFilter] = useState<PitchFilter>('all')
   const [sort, setSort] = useState<ListSort>('list_order')
   const [searchQuery, setSearchQuery] = useState('')
   const [fitFilter, setFitFilter] = useState<FitFilter>('any')
@@ -236,13 +256,11 @@ export function ClientShortlistEditor({
     retry: false,
     staleTime: 30_000,
   })
-  const podcastsInActiveOutreach = useMemo(() => {
-    const ids = new Set<string>()
-    for (const target of campaignTargetsQuery.data?.targets ?? []) {
-      if (isTargetInActiveOutreach(target)) ids.add(target.shortlist_podcast_id)
-    }
-    return ids
-  }, [campaignTargetsQuery.data])
+  const targetsByPodcast = useMemo(() => new Map(
+    (campaignTargetsQuery.data?.targets ?? []).map((target) => [target.shortlist_podcast_id, target]),
+  ), [campaignTargetsQuery.data])
+  const pitchDataAvailable = campaignTargetsQuery.data !== undefined
+
 
   const shortlistQuery = useQuery({
     queryKey: shortlistQueryKey,
@@ -261,8 +279,8 @@ export function ClientShortlistEditor({
     return () => window.clearTimeout(timeout)
   }, [catalogQuery])
 
-  useEffect(() => setPage(1), [filter, searchQuery, sort, fitFilter, fitThreshold])
-  useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold])
+  useEffect(() => setPage(1), [filter, searchQuery, sort, fitFilter, fitThreshold, pitchFilter])
+  useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold, pitchFilter])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
   const featured = useMemo(() => podcasts
@@ -281,6 +299,11 @@ export function ClientShortlistEditor({
     const threshold = Number.parseFloat(fitThreshold)
     const matching = podcasts.filter((podcast) => {
       if (query && !`${podcast.podcast_name} ${podcast.publisher_name || ''}`.toLowerCase().includes(query)) return false
+      if (pitchFilter !== 'all') {
+        if (!pitchDataAvailable) return false
+        const target = targetsByPodcast.get(podcast.id)
+        if (pitchFilter === 'written' ? !hasWrittenPitch(target) : pitchStatus(target) !== pitchFilter) return false
+      }
       if (!matchesFitFilter(podcast, fitFilter, threshold)) return false
       if (filter === 'all') return podcast.visibility === 'visible'
       if (filter === 'archived') return podcast.visibility === 'archived'
@@ -308,7 +331,15 @@ export function ClientShortlistEditor({
       }
       return left.podcast_name.localeCompare(right.podcast_name, undefined, { sensitivity: 'base' })
     })
-  }, [filter, fitFilter, fitThreshold, podcasts, searchQuery, sort])
+  }, [filter, fitFilter, fitThreshold, podcasts, searchQuery, sort, pitchFilter, pitchDataAvailable, targetsByPodcast])
+  // A campaign refresh can move a selected podcast out of the active filter.
+  useEffect(() => {
+    const visibleIds = new Set(filtered.map((podcast) => podcast.podcast_id))
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => visibleIds.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [filtered])
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages])
   const visiblePage = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -513,6 +544,15 @@ export function ClientShortlistEditor({
                 )}
               </div>
             </div>
+            <select
+              aria-label="Filter by pitch status"
+              value={pitchFilter}
+              disabled={!pitchDataAvailable}
+              onChange={(event) => setPitchFilter(event.target.value as PitchFilter)}
+              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              {Object.entries(PITCH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
             <div className="flex flex-wrap gap-2">
               {([
                 ['all', `All ${counts.active}`],
@@ -528,6 +568,7 @@ export function ClientShortlistEditor({
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {campaignTargetsQuery.isError && <p role="status" className="text-sm text-muted-foreground">{pitchDataAvailable ? 'Pitch statuses could not be refreshed. Showing last loaded statuses.' : 'Pitch statuses could not be loaded.'} <button type="button" className="underline" onClick={() => void campaignTargetsQuery.refetch()}>Retry</button></p>}
           {filtered.length > 0 && (
             <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
               <Checkbox
@@ -550,8 +591,10 @@ export function ClientShortlistEditor({
           ) : (
             <div className="divide-y rounded-xl border">
               {visiblePage.map((podcast) => {
-                const pitchLabel = pitchActionLabel({
-                  inActiveOutreach: podcastsInActiveOutreach.has(podcast.id),
+                const target = targetsByPodcast.get(podcast.id)
+                const hasDraft = Boolean(target?.pitch_subject?.trim() || target?.pitch_body?.trim())
+                const pitchLabel = !isTargetInActiveOutreach(target) && hasDraft ? 'Continue Draft' : pitchActionLabel({
+                  inActiveOutreach: isTargetInActiveOutreach(target),
                   previouslyContacted: Boolean(podcast.prior_outreach_at),
                 })
                 return (
@@ -573,7 +616,8 @@ export function ClientShortlistEditor({
                     <div>{feedbackBadge(podcast)}</div>
                     <div>{visibilityBadge(podcast.visibility)}</div>
                   </div>
-                  <div className="flex items-center justify-end gap-2 lg:shrink-0">
+                  <div className="flex flex-wrap items-center justify-end gap-2 lg:shrink-0">
+                    <Badge variant="outline">{pitchDataAvailable ? (pitchStatus(target) === 'draft' && hasWrittenPitch(target) ? 'Written draft' : PITCH_LABELS[pitchStatus(target)]) : campaignTargetsQuery.isError ? 'Pitch status unavailable' : 'Loading pitch status…'}</Badge>
                     {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && (
                       <Button
                         asChild

@@ -105,6 +105,7 @@ function renderEditor(
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 describe('ClientShortlistEditor', () => {
@@ -568,6 +569,105 @@ describe('ClientShortlistEditor', () => {
 
     expect(await screen.findByRole('link', { name: 'View Pitch for Founder Stories' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Write Pitch for Founder Stories' })).not.toBeInTheDocument()
+  })
+
+  it('filters saved pitches independently of approval and search, and resumes drafts', async () => {
+    const overview = await vi.mocked(getWorkspaceCampaign)(workspaceId, clientId)
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      ...overview,
+      targets: [{ shortlist_podcast_id: podcastRowId, status: 'draft', pitch_subject: 'A guest idea', pitch_body: 'Saved pitch' }] as never,
+    })
+    renderEditor()
+    expect(await screen.findByRole('link', { name: 'Continue Draft for Founder Stories' })).toBeInTheDocument()
+    const filter = screen.getByRole('combobox', { name: 'Filter by pitch status' })
+    fireEvent.change(filter, { target: { value: 'written' } })
+    expect(screen.getByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View details for Operator Weekly' })).not.toBeInTheDocument()
+    fireEvent.change(filter, { target: { value: 'pending' } })
+    expect(screen.getByRole('button', { name: 'View details for Operator Weekly' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View details for Founder Stories' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approved 1' }))
+    expect(screen.getByText('No podcasts match this view')).toBeInTheDocument()
+    fireEvent.change(filter, { target: { value: 'draft' } })
+    expect(screen.getByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search podcasts or publishers' }), { target: { value: 'missing' } })
+    expect(screen.getByText('No podcasts match this view')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['ready', 'ready', null],
+    ['launching', 'launching', null],
+    ['in_outreach', 'draft', 'provider-lead'],
+    ['replied', 'replied', 'provider-lead'],
+    ['completed', 'completed', 'provider-lead'],
+    ['failed', 'failed', null],
+  ])('finds %s pitches using campaign state', async (filterValue, status, leadId) => {
+    const overview = await vi.mocked(getWorkspaceCampaign)(workspaceId, clientId)
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      ...overview,
+      targets: [{ shortlist_podcast_id: podcastRowId, status, instantly_lead_id: leadId }] as never,
+    })
+    renderEditor()
+    const filter = await screen.findByRole('combobox', { name: 'Filter by pitch status' })
+    await waitFor(() => expect(filter).toBeEnabled())
+    fireEvent.change(filter, { target: { value: filterValue } })
+    expect(screen.getByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View details for Operator Weekly' })).not.toBeInTheDocument()
+  })
+
+  it('shows pitches staged in a paused campaign as queued while keeping them locked', async () => {
+    const overview = await vi.mocked(getWorkspaceCampaign)(workspaceId, clientId)
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      ...overview,
+      targets: [{ shortlist_podcast_id: podcastRowId, status: 'ready', instantly_lead_id: 'lead', lead_staged_at: '2026-10-28', lead_staged_campaign_status: 2 }] as never,
+    })
+    renderEditor()
+    expect(await screen.findByRole('link', { name: 'View Pitch for Founder Stories' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by pitch status' }), { target: { value: 'staged' } })
+    expect(screen.getByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by pitch status' }), { target: { value: 'in_outreach' } })
+    expect(screen.queryByRole('button', { name: 'View details for Founder Stories' })).not.toBeInTheDocument()
+  })
+
+  it('clears selection when refreshed pitch status removes a row from the filter', async () => {
+    const queryClient = renderEditor()
+    const filter = await screen.findByRole('combobox', { name: 'Filter by pitch status' })
+    await waitFor(() => expect(filter).toBeEnabled())
+    fireEvent.change(filter, { target: { value: 'pending' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Founder Stories' }))
+    expect(screen.getByRole('button', { name: 'Clear', exact: true })).toBeInTheDocument()
+    const overview = await vi.mocked(getWorkspaceCampaign)(workspaceId, clientId)
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      ...overview,
+      targets: [{ shortlist_podcast_id: podcastRowId, status: 'draft', pitch_body: 'Saved draft' }] as never,
+    })
+    await queryClient.invalidateQueries({ queryKey: ['client-campaign-preparation', workspaceId, clientId] })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'View details for Founder Stories' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear', exact: true })).not.toBeInTheDocument())
+    fireEvent.change(filter, { target: { value: 'all' } })
+    expect(screen.getByRole('checkbox', { name: 'Select Founder Stories' })).not.toBeChecked()
+  })
+
+  it('keeps cached pitch filters usable when a background refresh fails', async () => {
+    const queryClient = renderEditor()
+    const filter = await screen.findByRole('combobox', { name: 'Filter by pitch status' })
+    await waitFor(() => expect(filter).toBeEnabled())
+    fireEvent.change(filter, { target: { value: 'pending' } })
+    vi.mocked(getWorkspaceCampaign).mockRejectedValue(new Error('Offline'))
+    await queryClient.invalidateQueries({ queryKey: ['client-campaign-preparation', workspaceId, clientId] })
+    expect(await screen.findByText(/Showing last loaded statuses/)).toBeInTheDocument()
+    expect(filter).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
+    fireEvent.change(filter, { target: { value: 'all' } })
+    expect(screen.getByRole('button', { name: 'View details for Operator Weekly' })).toBeInTheDocument()
+  })
+
+  it('does not classify unavailable campaign data as pending', async () => {
+    vi.mocked(getWorkspaceCampaign).mockRejectedValue(new Error('Unavailable'))
+    renderEditor()
+    expect(await screen.findByText(/Pitch statuses could not be loaded/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Filter by pitch status' })).toBeDisabled()
+    expect(screen.queryByText('Pending — no saved pitch', { selector: 'span' })).not.toBeInTheDocument()
   })
 
   it('still offers to write when nothing has been sent', async () => {
