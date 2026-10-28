@@ -670,6 +670,11 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByText('Pending — no saved pitch', { selector: 'span' })).not.toBeInTheDocument()
   })
 
+  it('shows the saved research status for a show', async () => {
+    renderEditor()
+    expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Research complete')
+  })
+
   it('still offers to write when nothing has been sent', async () => {
     renderEditor()
 
