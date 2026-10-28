@@ -343,7 +343,7 @@ Match a prospect to relevant podcasts using AI-powered semantic search. Finds po
 - Optimizes text representation for semantic search accuracy
 
 **AI Quality Filtering:**
-- Uses Anthropic Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) for podcast relevance evaluation
+- Uses Anthropic Claude Sonnet 5.5 (`claude-sonnet-5-5`) for podcast relevance evaluation
 - Scores podcasts 0-10 based on topical alignment, audience match, format fit
 - Only returns podcasts scoring 5+ for quality assurance
 - Provides specific relevance explanations for each match

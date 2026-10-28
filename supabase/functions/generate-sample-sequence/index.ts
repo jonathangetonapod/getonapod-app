@@ -422,9 +422,9 @@ CUTTING PATTERNS - DELETE THESE IF THEY APPEAR:
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-5-5',
         // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
-        thinking: { type: 'disabled' },
+        thinking: { type: 'between_tools' },
         max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),

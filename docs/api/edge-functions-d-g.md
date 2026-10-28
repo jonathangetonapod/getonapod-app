@@ -387,7 +387,7 @@ No request body required. The function fetches all interested replies from the B
 #### Features
 - **Full Pipeline**: Combines fetch, insert, and classify into a single operation
 - **Thread Status Tracking**: Determines who sent the last message (awaiting reply from us or from them)
-- **AI Classification**: Uses Claude Haiku 4.5 with three categories (SALES/FULFILLMENT/OTHER)
+- **AI Classification**: Uses Claude Sonnet 5.5 with three categories (SALES/FULFILLMENT/OTHER)
 - **Idempotent**: Safe to call repeatedly; already-classified replies are skipped with only thread status updated
 - **Thread Context**: Fetches full conversation threads from Bison for accurate classification
 - **Fallback Parsing**: Handles malformed AI responses with keyword-based extraction
@@ -821,7 +821,7 @@ Generates a professionally formatted Google Doc media kit for a prospect using A
 ```
 
 #### Description
-1. Generates media kit content (about bio, credentials, speaking topics) using Claude Haiku 4.5
+1. Generates media kit content (about bio, credentials, speaking topics) using Claude Sonnet 5.5
 2. Authenticates with Google using service account with domain-wide delegation
 3. Creates a blank Google Doc with a branded title
 4. Inserts structured, formatted content using Google Docs batch update API:

@@ -19,6 +19,7 @@ import {
 import { RESEARCH_PROMPT_DEFAULTS } from './researchPromptDefaults.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from './billing.ts'
 import { resolveAiKey } from './workspaceAiKeys.ts'
+import { thinkingForModel } from './promptModels.ts'
 
 // deno-lint-ignore no-explicit-any
 type AdminClient = any
@@ -485,6 +486,7 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     },
     body: JSON.stringify({
       model: replyModel,
+      thinking: thinkingForModel(replyModel) ?? undefined,
       max_tokens: replyDefault.maxTokens,
       system: [
         replyDefault.system,

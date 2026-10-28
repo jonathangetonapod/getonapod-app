@@ -111,8 +111,8 @@ for (const actionSource of [episodesEnsureAction, researchRunAction, emailSearch
 assert.ok(episodesEnsureAction.indexOf('preflightPodcastRelationship(') < episodesEnsureAction.indexOf('ensureEpisodesCaptured('))
 assert.ok(researchRunAction.indexOf('preflightPodcastRelationship(') < researchRunAction.indexOf('chargeCredits('))
 assert.ok(researchRunAction.indexOf('preflightPodcastRelationship(') < researchRunAction.indexOf('ensureEpisodesCaptured('))
-assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('decryptInstantlyApiKey('))
-assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('verifyEmailWithInstantly('))
+assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('readStoredAiKey('))
+assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('findBlitzEmail('))
 assert.ok(pitchGenerateAction.indexOf('preflightPodcastRelationship(') < pitchGenerateAction.indexOf('chargeCredits('))
 assert.ok(pitchGenerateAction.indexOf('preflightPodcastRelationship(') < pitchGenerateAction.indexOf('runResearchPrompt('))
 assert.match(pitchGenerateAction, /ACTIVE CONVERSATION[\s\S]*?RESEARCH_PROMPT_DEFAULTS\.write_email\.content[\s\S]*?ACTIVE CONVERSATION[\s\S]*?PODCAST_RELATIONSHIP_BLOCKED/u)
@@ -143,27 +143,18 @@ assert.match(shortlistEdge, /from\('workspace_research_prompts'\)[\s\S]*?RESEARC
 assert.match(shortlistEdge, /ai_clean_description: cleanDescription,[\s\S]*?ai_analyzed_at: completedAt,[\s\S]*?research_document:[\s\S]*?research_progress:[\s\S]*?status: 'completed'/u)
 assert.match(shortlistEdge, /await logOperationCost\(authContext\.admin, \{[\s\S]*?operationType: 'research_run'[\s\S]*?podscanCalls: 1/u)
 
-// Email waterfall: global-reuse short-circuits for free, Instantly gate before
-// any progress writes, and the 1-credit charge happens only when the RPC
-// reports the first global unlock.
-assert.match(shortlistEdge, /if \(action === 'email-search-run'\)[\s\S]*?requireOnlyKeys\(body, \['action', 'workspace_id', 'client_id', 'shortlist_podcast_id', 'relationship_acknowledged'\]\)/u)
-assert.match(shortlistEdge, /from\('podcast_direct_contacts'\)[\s\S]*?\.eq\('verification_status', 'verified'\)[\s\S]*?buildUnlockedPayload\(existingContact, 0\)/u)
-assert.match(shortlistEdge, /EMAIL_SEARCH_ALREADY_RUNNING/u)
-// The connection status is checked before the key is ever decrypted...
-assert.match(
-  shortlistEdge,
-  /const readInstantlyKey = async \(\): Promise<string \| null> => \{[\s\S]*?integration\.status !== 'connected'[\s\S]*?return null[\s\S]*?\}[\s\S]*?return await decryptInstantlyApiKey\(/u,
-)
-// ...and a full search refuses before it writes any progress, so a workspace
-// without Instantly never leaves a half-started run on the shortlist row.
-assert.ok(
-  emailSearchAction.indexOf('INSTANTLY_NOT_CONNECTED')
-    < emailSearchAction.indexOf("await writeUnlockProgress({ status: 'running'"),
-  'the Instantly gate must precede the first progress write',
-)
-assert.match(shortlistEdge, /record_global_podcast_direct_contact_v1[\s\S]*?p_provider: 'instantly-verification'/u)
-assert.match(shortlistEdge, /if \(record\.credit_charge_allowed\)[\s\S]*?operationType: 'email_unlock_verify'[\s\S]*?idempotencyKey: `email-unlock:\$\{shortlistRow\.podcast_id\}`/u)
-assert.match(shortlistEdge, /status: 'not_found'[\s\S]*?You were not charged/u)
+// Contact discovery uses only the workspace Claude key and Blitz, without app credits.
+assert.match(emailSearchAction, /readStoredAiKey\(authContext.admin, workspaceId, 'anthropic'\)/u)
+assert.match(emailSearchAction, /CLAUDE_KEY_REQUIRED/u)
+assert.match(emailSearchAction, /BLITZ_API_KEY/u)
+assert.match(emailSearchAction, /EMAIL_SEARCH_ALREADY_RUNNING/u)
+assert.match(emailSearchAction, /discoverHostLinkedin\(/u)
+assert.match(emailSearchAction, /findBlitzEmail\(blitzKey, profile\)/u)
+assert.match(emailSearchAction, /p_provider: 'blitz', p_provider_reference: profile/u)
+assert.match(emailSearchAction, /claim.eq\('email_unlock_progress', JSON.stringify\(previous\)\)/u)
+assert.doesNotMatch(emailSearchAction, /chargeCredits\(|resolveAiKey\(|instantlyRequest|buildEmailCandidates/u)
+assert.match(emailSearchAction, /credit_cost: 0/u)
+assert.ok(emailSearchAction.indexOf('CLAUDE_KEY_REQUIRED') < emailSearchAction.indexOf('const startedAt'))
 
 const waterfallMigration = readFileSync('supabase/migrations/20260726000600_email_waterfall.sql', 'utf8')
 assert.match(waterfallMigration, /ADD COLUMN IF NOT EXISTS email_unlock_progress JSONB/u)

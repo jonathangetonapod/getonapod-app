@@ -133,7 +133,7 @@ export async function getTopChartPodcasts(platform: 'apple' | 'spotify', country
 ### Compatibility Algorithm
 **File:** `/supabase/functions/score-podcast-compatibility/index.ts`
 
-Uses Claude Haiku 4.5 for fast, parallel compatibility scoring:
+Uses Claude Sonnet 5.5 for fast, parallel compatibility scoring:
 
 ```typescript
 // Scoring criteria

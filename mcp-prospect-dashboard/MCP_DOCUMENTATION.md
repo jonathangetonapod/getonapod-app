@@ -33,7 +33,7 @@ The podcast matching system uses a hybrid approach that combines the speed of ve
 ┌─────────────────────────────────────────────────────────────┐
 │                 STAGE 2: CLAUDE EVALUATION                   │
 │                                                              │
-│  Claude Sonnet 4.5 evaluates each podcast:                  │
+│  Claude Sonnet 5.5 evaluates each podcast:                  │
 │  • Relevance score (5-10 scale)                             │
 │  • Detailed explanation of why it matches                    │
 │  • Filters out generic/irrelevant matches                    │
@@ -55,7 +55,7 @@ This approach gives you the best of both worlds: speed + intelligence.
 
 - **Vector Database**: Supabase (PostgreSQL + pgvector)
 - **Embeddings**: OpenAI text-embedding-3-small (1536 dimensions)
-- **AI Evaluation**: Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
+- **AI Evaluation**: Claude Sonnet 5.5 (claude-sonnet-5-5)
 - **Framework**: Model Context Protocol (MCP) SDK
 - **Runtime**: Node.js + TypeScript
 
@@ -301,7 +301,7 @@ def match_podcasts(prospect_name, prospect_bio):
 
     # 5. Claude evaluation (AI filtering)
     evaluations = claude.messages.create(
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-5-5",
         messages=[{
             "role": "user",
             "content": f"""Evaluate these podcasts for: {prospect_text}
@@ -572,9 +572,9 @@ To use a different model for filtering:
 ```typescript
 // src/tools/match-podcasts.ts
 const response = await anthropic.messages.create({
-  model: 'claude-opus-4-5-20251101',  // More powerful
+  model: 'claude-sonnet-5-5',  // Application default
   // or
-  model: 'claude-haiku-4-5-20250929',  // Faster, cheaper
+  model: 'claude-sonnet-5-5',  // Application default
   ...
 });
 ```

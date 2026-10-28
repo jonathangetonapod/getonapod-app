@@ -78,9 +78,9 @@ Generate the HTML content now:`
 
     // Call Claude API
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-5-5',
+      ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
       max_tokens: 8000,
-      temperature: 0.7,
       messages: [
         {
           role: 'user',
@@ -104,9 +104,9 @@ ${generatedContent.substring(0, 500)}...
 Meta description:`
 
     const metaMessage = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-5-5',
+      ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
       max_tokens: 200,
-      temperature: 0.7,
       messages: [
         {
           role: 'user',

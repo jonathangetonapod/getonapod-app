@@ -30,6 +30,7 @@ export interface ClientShortlistEmailUnlock {
   updated_at?: string | null
   unlocked_at?: string | null
   verified_at?: string | null
+  linkedin_url?: string | null
   scope?: 'global' | null
   credit_cost?: number | null
   /** Verified more than 90 days ago and not re-checked — send at your own risk. */

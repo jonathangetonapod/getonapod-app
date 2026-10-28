@@ -519,7 +519,7 @@ Uses Claude AI to score podcast compatibility with client or prospect bios.
 
 #### Features
 - Supports both client and prospect mode
-- Claude Haiku 4.5 for fast processing
+- Claude Sonnet 5.5 for fast processing
 - Parallel processing of multiple podcasts
 - 1-10 scoring scale with reasoning
 - Batch statistics and progress tracking

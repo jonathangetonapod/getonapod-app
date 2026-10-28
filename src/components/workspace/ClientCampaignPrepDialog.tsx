@@ -232,9 +232,9 @@ const RESEARCH_STAGE_TO_PROMPT: Record<
 }
 
 const emailUnlockSteps: EmailUnlockStep[] = [
-  { id: 'identify_contact', title: 'Confirming the right contact' },
-  { id: 'find_email', title: 'Searching trusted sources' },
-  { id: 'verify_email', title: 'Verifying the email' },
+  { id: 'identify_contact', title: 'Finding the host’s LinkedIn profile' },
+  { id: 'find_email', title: 'Looking up the work email with Blitz' },
+  { id: 'verify_email', title: 'Saving the verified email' },
 ]
 
 function promptVariables(content: string): string[] {
@@ -312,9 +312,6 @@ export function ClientCampaignPrep({
   onDismiss,
 }: ClientCampaignPrepProps) {
   const page = layout === 'page'
-  // Leaving a page and closing a modal are different verbs for the same
-  // reassurance: the search keeps going without this screen.
-  const leaveVerb = page ? 'leave this page' : 'close this modal'
   const leaveWindowVerb = page ? 'leave this page' : 'close this window'
   // Only the page has anywhere to go. The dialog's Cancel is the close button,
   // and closing never lost a saved draft; a link away from an unsaved one can.
@@ -611,7 +608,7 @@ export function ClientCampaignPrep({
       if (unlock.status === 'unlocked') {
         toast.success('Direct host email unlocked and shared across the platform.')
       } else {
-        toast.info(unlock.message || 'No verified direct email was found. You were not charged.')
+        toast.info(unlock.message || 'No verified direct email was found. No app credits were used; Anthropic API charges may apply.')
       }
     },
     onError: (error) => {
@@ -1200,6 +1197,10 @@ export function ClientCampaignPrep({
         : 'Review and confirm the relationship warning before starting a contact search.')
       return
     }
+    if (!byoAi) {
+      toast.info('Connect your Claude API key in workspace settings first.')
+      return
+    }
     setEmailRoute('waterfall')
     setContactEmail('')
     setPreviewEmailSearchPodcastId(podcast.podcast_id)
@@ -1767,7 +1768,7 @@ export function ClientCampaignPrep({
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
                         <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A valid email is required before research. Use the free Podscan inbox, try a deeper direct-host search, or enter an address you already have.</p></div>
+                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A valid email is required before research. Use the free Podscan inbox, find the host through LinkedIn, or enter an address you already have.</p></div>
                       </div>
                     </div>
 
@@ -1817,65 +1818,12 @@ export function ClientCampaignPrep({
                               setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
                             }}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700">{emailAlreadyUnlocked ? <CheckCircle2 className="h-5 w-5" /> : emailSearchRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : emailSearchHasNoResult ? <AlertCircle className="h-5 w-5" /> : <Search className="h-5 w-5" />}</div>
-                              <div className="flex flex-col items-end gap-1.5">
-                                <Badge className={contactIsStale ? 'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100' : 'border-violet-200 bg-violet-100 text-violet-800 hover:bg-violet-100'}>{contactIsStale ? 'Needs re-check' : emailAlreadyUnlocked ? 'Globally unlocked' : emailSearchRunning ? 'Global search in progress' : emailSearchHasNoResult ? 'No result yet' : 'Recommended'}</Badge>
-                                <span className={contactIsStale ? 'text-[11px] font-semibold text-amber-900' : 'text-[11px] font-semibold text-violet-800'}>{contactIsStale ? 'Re-check costs 0 credits' : emailAlreadyUnlocked ? '0 additional credits' : emailSearchRunning ? 'Safe to close' : emailSearchHasNoResult ? 'You were not charged' : byoAi ? 'Included' : `${creditsLabel(CREDIT_COSTS.email_unlock_verify)} on success`}</span>
-                              </div>
-                            </div>
-                            <h4 className="mt-4 font-semibold">{emailAlreadyUnlocked ? 'Use the direct host email' : emailSearchRunning ? 'Finding the direct host email' : emailSearchHasNoResult ? 'No direct email found yet' : "Find the host's direct email"}</h4>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">{emailAlreadyUnlocked
-                              ? 'A verified direct contact for this podcast is already in the Database. It can be reused for every client and campaign.'
-                              : emailSearchRunning
-                                ? `One platform-wide search is running for this podcast. It keeps going if you ${leaveVerb}, and another workspace cannot start or pay for a duplicate lookup.`
-                                : emailSearchHasNoResult
-                                  ? storedEmailUnlock?.message || 'The last search did not return a verified direct email. Use the public inbox, enter your own address, or try again.'
-                                  : 'Run a waterfall search to identify the host and verify a work or personal address—the stronger route for reply potential.'}</p>
-                            {emailAlreadyUnlocked ? (
-                              <div className={contactIsStale
-                                ? 'mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5'
-                                : 'mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5'}>
-                                <p className={contactIsStale
-                                  ? 'text-[11px] font-semibold uppercase tracking-wide text-amber-900'
-                                  : 'text-[11px] font-semibold uppercase tracking-wide text-violet-800'}>
-                                  {contactIsStale ? 'Direct email out of date' : 'Direct email ready'}
-                                </p>
-                                <p className={contactIsStale ? 'mt-1 text-xs leading-5 text-amber-900' : 'mt-1 text-xs leading-5 text-muted-foreground'}>
-                                  {contactIsStale
-                                    ? storedEmailUnlock?.message
-                                      || `Last verified ${formatPodcastDate(storedEmailUnlock?.verified_at)}. Hosts change addresses, so this may now bounce — re-run the search to re-check it at no credit cost.`
-                                    : (
-                                      <>
-                                        {storedEmailUnlock?.revalidated
-                                          ? 'Re-checked just now and still valid.'
-                                          : storedEmailUnlock?.verified_at
-                                            ? `Verified ${formatPodcastDate(storedEmailUnlock.verified_at)}.`
-                                            : 'Saved to the global contact network.'}
-                                        {' '}Future host and contact refreshes are included for every workspace.
-                                      </>
-                                    )}
-                                </p>
-                              </div>
-                            ) : emailSearchRunning ? (
-                              <div className="mt-4 space-y-2">
-                                {visibleEmailUnlockSteps.map((step) => <div key={step.id} className="flex items-center gap-2 text-[11px] font-medium text-violet-900">{step.status === 'complete' ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : step.status === 'active' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-700" /> : <span className="h-3.5 w-3.5 rounded-full border border-violet-300" />}<span>{step.title}</span><span className="ml-auto text-violet-700/70">{step.status === 'complete' ? 'Done' : step.status === 'active' ? 'In progress' : 'Waiting'}</span></div>)}
-                              </div>
-                            ) : emailSearchHasNoResult ? (
-                              <p className="mt-4 rounded-xl border border-violet-200 bg-background/80 px-3 py-2.5 text-xs leading-5 text-violet-900">No credit was used. A future retry is charged only if it becomes the first successful direct-contact unlock across the entire platform.</p>
-                            ) : (
-                              <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-violet-900">
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Identify host <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_identify', { byo: byoAi })}</span></span>
-                                <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Confirm identity <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_find', { byo: byoAi })}</span></span>
-                                <ArrowRight className="h-3 w-3 text-violet-400" />
-                                <span className="rounded-full bg-violet-100 px-2.5 py-1">Verify email <span className="font-normal text-violet-700/70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></span>
-                              </div>
-                            )}
-                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">
-                              {emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border border-violet-300" />}
-                              {emailRoute === 'waterfall' ? emailAlreadyUnlocked ? 'Selected · ready to use' : emailSearchRunning ? 'Selected · search continues' : 'Selected' : emailAlreadyUnlocked ? 'Use unlocked contact' : emailSearchRunning ? 'View search progress' : 'Try for a better contact'}
-                            </div>
+                            <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">0 app credits</Badge></div>
+                            <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">Claude searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
+                            <p className="mt-3 text-xs leading-5 text-violet-800">Uses your Claude API key. Anthropic bills API usage to your account.</p>
+                            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-violet-800"><span>Find LinkedIn profile</span><span>→</span><span>Get verified work email</span></div>
+                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">{emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border" />}{emailAlreadyUnlocked ? 'Use shared contact' : emailRoute === 'waterfall' ? 'Selected' : 'Use Claude + Blitz'}</div>
                           </button>
                         </div>
 
@@ -1915,30 +1863,19 @@ export function ClientCampaignPrep({
                       </div>
 
                       {emailRoute === 'waterfall' && (
-                        emailAlreadyUnlocked ? (
-                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                            <div className="flex gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" /><div><p className="text-sm font-semibold text-emerald-950">Globally unlocked direct email · 0 credits</p><p className="mt-1 max-w-3xl text-xs leading-5 text-emerald-900/75">Another successful lookup already paid for this contact. It is permanently available to every workspace, client, and campaign, with future verification refreshes included.</p></div></div>
-                          </div>
-                        ) : emailSearchRunning ? (
-                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                            <div className="flex gap-3"><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-violet-700" /><div><p className="text-sm font-semibold text-violet-950">Direct email search in progress</p><p className="mt-1 max-w-3xl text-xs leading-5 text-violet-900/75">You can safely {leaveVerb}. The search continues in the background, and {page ? 'returning to this podcast picks up' : 'reopening this podcast returns to'} the same job without reserving or charging another credit.</p></div></div>
-                          </div>
-                        ) : emailSearchHasNoResult ? (
-                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex gap-3"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" /><div><p className="text-sm font-semibold text-amber-950">No verified direct email · No charge</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-900/75">Try again, use the free Podscan inbox, or enter an address manually. A credit is eligible only for the first successful global unlock.</p></div></div><Button type="button" variant="outline" size="sm" className="shrink-0 border-amber-200 bg-background text-amber-950" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}>Try search again<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></Button></div>
-                          </div>
-                        ) : (
-                          <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex gap-3">
-                                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-                                <div><p className="text-sm font-semibold text-violet-950">{byoAi ? 'Robust lookup · Included with your own key' : 'Robust lookup · 1 credit on first global success'}</p><p className="mt-1 max-w-2xl text-xs leading-5 text-violet-900/75">We check the global contact network first. Only a true global miss starts host identification and verification; no verified direct email means no credit is charged.</p></div>
-                              </div>
-                              <div className="flex shrink-0 flex-wrap gap-2"><Button asChild variant="outline" size="sm" className="border-violet-200 bg-background text-violet-900 hover:bg-violet-100"><Link to={billingHref} target="_blank" rel="noreferrer"><Coins className="mr-2 h-3.5 w-3.5" />Buy credits in Billing<ExternalLink className="ml-2 h-3.5 w-3.5" /></Link></Button><Button type="button" size="sm" disabled={!relationshipCanProceed} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />Start direct email search<span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('email_unlock_verify', { byo: byoAi })}</span></Button></div>
-                            </div>
-                            <p className="mt-3 border-t border-violet-200/70 pt-3 text-[11px] font-medium leading-5 text-violet-800">Once successfully unlocked in the Database, this podcast never costs another direct-email credit. Billing opens in a new tab so this pitch stays here.</p>
-                          </div>
-                        )
+                        <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                          {emailAlreadyUnlocked ? (
+                            <div><p className="text-sm font-semibold">Shared verified contact · 0 app credits</p><p className="mt-1 text-xs text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p></div>
+                          ) : emailSearchRunning ? (
+                            <div role="status"><p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" />Direct email search in progress</p><div className="mt-3 space-y-2">{visibleEmailUnlockSteps.map((step) => <p key={step.id} className="text-xs">{step.status === 'complete' ? '✓ ' : step.status === 'active' ? '→ ' : ''}{step.title}</p>)}</div></div>
+                          ) : (
+                            <div><p className="text-sm font-semibold">Claude + Blitz · 0 app credits</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Claude finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
+                          )}
+                          {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && <a className="mt-3 block break-all text-sm text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a>}
+                          {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
+                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· 0 app credits</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your Claude API key. Anthropic API charges apply; no app credits are used.' : 'Connect your Claude API key in workspace settings to start. No app credits are used.'}</p></div>
+                          )}
+                        </div>
                       )}
 
                       {!emailReady && !publicPodcastEmail && !emailSearchRunning && (

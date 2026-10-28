@@ -24,6 +24,10 @@ Deno.test('disables thinking only for the models that would otherwise think', ()
   // stage outright, so silence is the safe default for everything else.
   assertEquals(thinkingForModel('claude-sonnet-4-6'), null)
   assertEquals(thinkingForModel('claude-haiku-4-5-20251001'), null)
+  assertEquals(thinkingForModel('claude-sonnet-5-5'), { type: 'between_tools' })
+  assertEquals(thinkingForModel('claude-opus-5-5'), null)
+  assertEquals(thinkingForModel('claude-fable-5-1'), null)
+  assertEquals(thinkingForModel('claude-haiku-5-5'), null)
   assertEquals(thinkingForModel('a-model-that-ships-next-year'), null)
 })
 

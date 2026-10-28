@@ -361,12 +361,12 @@ Return exactly one new query as JSON:
 
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanations. Just the raw JSON object.`
 
-      console.log('🤖 [AI] Calling Claude Opus 4.5 to generate new query...')
+      console.log('🤖 [AI] Calling Claude Sonnet 5.5 to generate new query...')
 
       const message = await anthropic.messages.create({
-        model: 'claude-opus-4-5-20251101',
+        model: 'claude-sonnet-5-5',
+        ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
         max_tokens: 100,
-        temperature: 0.9,
         messages: [{ role: 'user', content: prompt }],
       }).catch((error: unknown) => {
         throw providerFailure(error)
@@ -395,7 +395,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
 
     // Generate the requested number of queries
     console.log(`🤖 [AI] Generating ${queryCount} strategic podcast search queries...`)
-    console.log(`   Using Claude Opus 4.5 with temperature 0.8`)
+    console.log(`   Using Claude Sonnet 5.5`)
 
     const prompt = `You are an expert podcast researcher using Podscan.fm.
 Your goal: Generate ${queryCount} *broad, high-volume, but relevant* podcast search queries (each 3–7 words),
@@ -457,11 +457,11 @@ ${Array.from({ length: queryCount }, (_unused, index) => `    "query ${index + 1
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanations, no additional text. Just the raw JSON object starting with { and ending with }.`
 
     const message = await anthropic.messages.create({
-      model: 'claude-opus-4-5-20251101',
+      model: 'claude-sonnet-5-5',
+      ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
       // Scaled with the request: twenty OR-chained queries do not fit in the
       // 500 that five needed, and a truncated reply has no usable queries.
       max_tokens: Math.min(4000, 400 + (queryCount * 80)),
-      temperature: 0.8,
       messages: [{ role: 'user', content: prompt }],
     }).catch((error: unknown) => {
       throw providerFailure(error)

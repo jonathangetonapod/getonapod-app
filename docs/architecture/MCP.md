@@ -216,7 +216,7 @@ The system creates rich text representations optimized for semantic matching:
 
 ### AI-Powered Podcast Filtering
 
-**Model**: `claude-sonnet-4-5-20250929`
+**Model**: `claude-sonnet-5-5`
 **Purpose**: Evaluate podcast relevance and provide explanatory reasoning
 
 ### Evaluation Criteria

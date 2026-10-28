@@ -32,7 +32,7 @@ assert.match(studio, /if \(action === 'create'\)[\s\S]*?const dashboardId = requ
 assert.match(studio, /\.from\('prospect_dashboards'\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
 assert.match(studio, /if \(action === 'build'\)[\s\S]*?buildProspect\(context, workspaceId, dashboardId\)/u)
 assert.match(studio, /model: 'text-embedding-3-small'/u)
-assert.match(studio, /const RANKING_MODEL = 'claude-haiku-4-5-20251001'/u)
+assert.match(studio, /const RANKING_MODEL = 'claude-sonnet-5-5'/u)
 assert.match(studio, /function fallbackRankCandidates/u)
 // Fit explanations: the fallback no longer stamps one sentence per show, the
 // AI set is checked for repeated runs and rewritten, and a failure is logged.

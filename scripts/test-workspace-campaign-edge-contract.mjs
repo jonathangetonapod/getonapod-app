@@ -1124,18 +1124,12 @@ assert.deepEqual(checkedPromptIds(clientPromptMigration), edgePromptIds)
 assert.match(prepDialog, /\{creditsLabel\(CREDIT_COSTS\.research_run\)\} per run/u)
 assert.doesNotMatch(prepDialog, /included with your plan/iu)
 
-// Contact name extraction is offered in the prompt editor, and the call that
-// decides the name a pitch opens with read the shipped default, so an owner's
-// rewrite of that stage changed nothing.
+// Contact discovery uses live web search independently of pitch prompt overrides.
 const shortlistEdge = readFileSync(
   'supabase/functions/workspace-client-shortlist/index.ts',
   'utf8',
 )
-assert.match(
-  shortlistEdge,
-  /\.eq\('prompt_id', 'host_name_extractor'\)/u,
-)
-assert.match(shortlistEdge, /fillPromptTemplate\(extractorContent,/u)
+assert.match(shortlistEdge, /discoverHostLinkedin\(/u)
 
 // ---- prompt variable registry -------------------------------------------
 // docs/prompt-variables.json is canonical; both TS files are generated from it
@@ -1272,8 +1266,8 @@ assert.match(
 // columns while research read the registry's thirty.
 assert.equal(
   shortlistEdge.match(/\.select\(CLIENT_PROMPT_COLUMNS\)/gu)?.length,
-  4,
-  'research, pitch, the identify step and the editor preview must all load the client AI SDR profile',
+  3,
+  'research, pitch and the editor preview must load the client AI SDR profile',
 )
 assert.match(shortlistEdge, /\.select\(PODCAST_PROMPT_COLUMNS\)/u)
 assert.match(shortlistEdge, /\.select\(PITCH_CATALOG_COLUMNS\)/u)
@@ -1283,11 +1277,10 @@ assert.match(
 )
 // Every stage builds its variables through the same helpers, so no two can
 // disagree about how much of a show they can see. Research, pitch generation
-// and the waterfall's identify step all qualify — the last of these decides
-// the name a pitch opens with and used to receive a single field.
-assert.equal(shortlistEdge.match(/buildPodcastVariables\(/gu)?.length, 3)
-assert.equal(shortlistEdge.match(/buildClientVariables\(/gu)?.length, 3)
-assert.equal(shortlistEdge.match(/buildEpisodeVariables\(/gu)?.length, 3)
+// share this registry. Contact discovery uses only public podcast context.
+assert.equal(shortlistEdge.match(/buildPodcastVariables\(/gu)?.length, 2)
+assert.equal(shortlistEdge.match(/buildClientVariables\(/gu)?.length, 2)
+assert.equal(shortlistEdge.match(/buildEpisodeVariables\(/gu)?.length, 2)
 // The inbox reply stage reads the catalogue too, from storage only — an
 // inbound reply must not trigger a provider fetch.
 const inboxSdr = readFileSync('supabase/functions/_shared/inboxSdr.ts', 'utf8')

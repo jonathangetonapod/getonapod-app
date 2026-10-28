@@ -115,9 +115,9 @@ Respond with ONLY a JSON array (no markdown, no other text):
 Be selective for quality - better to have 10 highly relevant matches than 50 mediocre ones.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-sonnet-5-5',
+      ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
       max_tokens: 4096,
-      temperature: 0.3,
       messages: [
         {
           role: 'user',

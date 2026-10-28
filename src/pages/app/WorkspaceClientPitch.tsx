@@ -79,8 +79,9 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
     enabled: validAddress,
     retry: false,
     refetchInterval: (query) => {
-      const status = findPodcast(query.state.data?.podcasts)?.research_progress?.status
-      return status === 'queued' || status === 'running' ? 2_000 : false
+      const row = findPodcast(query.state.data?.podcasts)
+      return [row?.research_progress?.status, row?.email_unlock?.status]
+        .some((status) => status === 'queued' || status === 'running') ? 2_000 : false
     },
   })
 

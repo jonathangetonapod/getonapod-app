@@ -223,7 +223,8 @@ Return ONLY valid JSON, no markdown code blocks.`
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
+        thinking: { type: 'between_tools' },
         max_tokens: 2000,
         messages: [{ role: 'user', content: prompt }],
       }),

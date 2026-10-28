@@ -69,7 +69,8 @@ IMPORTANT: Reply with ONLY the category name from the list above. Nothing else. 
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-5-5',
+        thinking: { type: 'between_tools' },
         max_tokens: 50,
         messages: [
           {

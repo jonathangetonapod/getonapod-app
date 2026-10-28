@@ -91,7 +91,7 @@ Uses AI to categorize a podcast into one of 18 predefined categories based on it
 - Society & Culture
 
 ### Features
-- **AI-Powered**: Uses Claude Haiku 4.5 for fast, accurate categorization
+- **AI-Powered**: Uses Claude Sonnet 5.5 for fast, accurate categorization
 - **Fuzzy Matching**: If the AI returns a category not exactly in the list, performs case-insensitive and substring matching
 - **Graceful Fallback**: Always returns "Business" as the default category, even on errors
 - **Lightweight**: Single API call with max 50 tokens for minimal latency
@@ -660,7 +660,7 @@ Classifies email campaign replies as SALES, FULFILLMENT, or OTHER using Claude H
 
 ### Features
 - **Thread Context**: Fetches the full email conversation thread from Bison API for better classification accuracy
-- **AI Classification**: Uses Claude Haiku 4.5 for fast, cost-efficient classification
+- **AI Classification**: Uses Claude Sonnet 5.5 for fast, cost-efficient classification
 - **Three Categories**:
   - **SALES**: Prospect responding to GOAP's sales outreach (pricing, services, hiring)
   - **FULFILLMENT**: Podcast host/producer responding to a guest pitch (scheduling, booking, guest info)

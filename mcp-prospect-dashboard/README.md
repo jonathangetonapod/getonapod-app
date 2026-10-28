@@ -126,7 +126,7 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
 - `match_count` (optional): Maximum results to return. Default: 50, Max: 100. **Targets minimum 15 results** - system will automatically lower threshold, but prioritizes quality over quantity when AI filtering is enabled
 - `prospect_id` (optional): UUID from create_prospect (required for export_to_sheet)
 - `export_to_sheet` (optional): Export results to prospect's Google Sheet. Default: false
-- `use_ai_filter` (optional): Enable AI quality filtering (Claude Sonnet 4.5). Default: true (recommended for prospects)
+- `use_ai_filter` (optional): Enable AI quality filtering (Claude Sonnet 5.5). Default: true (recommended for prospects)
 
 **Returns**:
 ```json
@@ -156,14 +156,14 @@ Find matching podcasts for a prospect using AI-powered semantic search. Analyzes
 
 **How It Works (Two-Stage AI Matching)**:
 1. **Stage 1 - Semantic Search**: Creates a text representation combining prospect name and bio, generates a 1536-dimension embedding using OpenAI's text-embedding-3-small model, searches database using cosine similarity
-2. **Stage 2 - AI Quality Filter (Default)**: Uses Claude Sonnet 4.5 to evaluate each match for true relevance, filters out generic/irrelevant podcasts (scores 5+/10 only), adds detailed explanation for why each podcast is relevant
+2. **Stage 2 - AI Quality Filter (Default)**: Uses Claude Sonnet 5.5 to evaluate each match for true relevance, filters out generic/irrelevant podcasts (scores 5+/10 only), adds detailed explanation for why each podcast is relevant
 3. **Smart Fallback**: Targets minimum 15 results - if threshold is too high, automatically does fallback search. Prioritizes quality over quantity
 4. Returns podcasts ranked by AI relevance score and similarity
 5. Optionally exports matches to the prospect's linked Google Sheet
 
 **Cost**:
 - Embeddings: ~$0.00002 per search (OpenAI text-embedding-3-small)
-- AI filtering (Claude Sonnet 4.5): ~$0.003-0.006 per search (30 podcasts)
+- AI filtering (Claude Sonnet 5.5): ~$0.003-0.006 per search (30 podcasts)
 - **Total: ~$0.006 per search** (extremely affordable)
 
 **Performance**:

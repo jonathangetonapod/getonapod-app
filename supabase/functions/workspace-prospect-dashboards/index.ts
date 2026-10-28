@@ -612,7 +612,7 @@ function parseRankedCandidates(value: unknown, candidateCount: number): RankedCa
   return ranked.sort((left, right) => right.score - left.score).slice(0, 12)
 }
 
-const RANKING_MODEL = 'claude-haiku-4-5-20251001'
+const RANKING_MODEL = 'claude-sonnet-5-5'
 /** Rewrites allowed when explanations repeat each other or break the rules. */
 const EXPLANATION_REWRITE_ATTEMPTS = 2
 
@@ -655,8 +655,8 @@ async function anthropicText(
     },
     body: JSON.stringify({
       model: RANKING_MODEL,
+      thinking: { type: 'between_tools' },
       max_tokens: maxTokens,
-      temperature: 0.4,
       messages: [{ role: 'user', content: prompt }],
     }),
     signal: AbortSignal.timeout(timeoutMs),

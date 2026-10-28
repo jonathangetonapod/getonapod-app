@@ -30,7 +30,7 @@ import {
 } from '../_shared/compatibilityPrompt.ts'
 
 const METHODS = ['POST'] as const
-const SCORING_MODEL = 'claude-haiku-4-5-20251001'
+const SCORING_MODEL = 'claude-sonnet-5-5'
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
 const MAX_SHORTLIST_IDS = 20
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -365,8 +365,8 @@ serve(async (req) => {
     const ask = async (prompt: string, maxTokens: number) => {
       const message = await anthropic.messages.create({
         model: SCORING_MODEL,
+        ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
         max_tokens: maxTokens,
-        temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       })
       anthropicInputTokens += message.usage?.input_tokens ?? 0

@@ -150,9 +150,9 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-5-5',
+        thinking: { type: 'between_tools' },
         max_tokens: 1000,
-        temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: AbortSignal.timeout(60_000),

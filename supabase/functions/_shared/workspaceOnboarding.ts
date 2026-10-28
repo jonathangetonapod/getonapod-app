@@ -1,5 +1,6 @@
 import { appEmailConfigured, sendAppEmail, validEmailAddress } from './appEmail.ts'
 import { platformOrigin } from './workspaceOrigin.ts'
+import { thinkingForModel } from './promptModels.ts'
 import { HttpError } from './httpError.ts'
 
 export const ONBOARDING_QUESTION_TYPES = [
@@ -590,9 +591,9 @@ export async function generatePitchProfile(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-4-5-20250929',
+      model: Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-5-5',
+      thinking: thinkingForModel(Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-5-5') ?? undefined,
       max_tokens: 2400,
-      temperature: 0.3,
       messages: [{ role: 'user', content: prompt }],
     }),
     signal: AbortSignal.timeout(30_000),

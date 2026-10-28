@@ -33,6 +33,7 @@
     "test:portal-storage": "tsx scripts/test-portal-session-store.ts",
     "test:retired-helpers": "node scripts/test-retired-helpers.mjs",
     "test:retired-video-service": "node scripts/test-retired-video-service.mjs",
+    "test:podcast-contact-save": "python3 scripts/test-podcast-contact-save.py",
     "test:deployment-config": "node scripts/test-deployment-config.mjs",
     "test:account-context-edge-contract": "node scripts/test-account-context-edge-contract.mjs",
     "test:guest-resource-edge-contract": "node scripts/test-guest-resource-edge-contract.mjs",

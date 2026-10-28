@@ -24,36 +24,26 @@ export interface PromptModel {
 }
 
 /**
- * What the Models API does not expose: whether a model thinks when the
- * `thinking` parameter is absent.
- *
- * This is a default, not a capability, and `capabilities.thinking` reports only
- * what is *supported*. It matters because the request sends one `max_tokens`
- * covering thinking AND the answer — so on a model that thinks by default, a
- * stage capped at 4,096 can spend most of that budget reasoning and return a
- * truncated report, which still reads like a report. Stages on these models are
- * sent an explicit disabled config so that choosing a model changes the model
- * and nothing else.
- *
- * A model absent from this map is treated as not thinking by default, which is
- * how every model behaved before the Claude 5 generation. That is the safe
- * direction: the cost of being wrong is a stage that thinks when we did not ask
- * it to, whereas sending a `thinking` parameter to a model that will not accept
- * one fails the stage outright.
+ * Defaults differ from supported capabilities. Sonnet 5.5 uses between_tools
+ * for text-only stages; Opus 5.5 and Fable 5.1 cannot disable thinking.
+ * Keep legacy behavior for explicitly saved older model selections.
  */
 const THINKS_BY_DEFAULT = new Set<string>([
   'claude-opus-5',
   'claude-sonnet-5',
+  'claude-fable-5-1',
+  'claude-opus-5-5',
+  'claude-sonnet-5-5',
 ])
 
-/**
- * The thinking parameter to send for a model, or null to send none.
- *
- * Null for anything not known to think by default — see the note above on why
- * silence is safer than a blanket disabled config.
- */
-export function thinkingForModel(id: string): { type: 'disabled' } | null {
-  return THINKS_BY_DEFAULT.has(id) ? { type: 'disabled' } : null
+/** Lowest compatible thinking setting for short text-only prompt stages. */
+export function thinkingForModel(id: string): { type: 'disabled' | 'between_tools' } | null {
+  // Sonnet 5.5 rejects disabled. between_tools preserves the text-only
+  // behavior of our short extraction/writing requests when no tools are used.
+  if (id === 'claude-sonnet-5-5') return { type: 'between_tools' }
+  // Opus 5.5 and Fable 5.1 always think; never send disabled to them.
+  if (id === 'claude-opus-5' || id === 'claude-sonnet-5') return { type: 'disabled' }
+  return null
 }
 
 interface ModelsApiEntry {

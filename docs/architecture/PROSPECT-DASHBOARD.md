@@ -205,7 +205,7 @@ console.log('💵 Cost savings: $' + costSavings)
 const BATCH_SIZE = 10
 const CONCURRENT_BATCHES = 3 // 30 podcasts at once
 
-// Claude Sonnet 4.0 analysis
+// Claude Sonnet 5.5 analysis
 const analysis = await analyzePodcastFit({
   podcast: podcastData,
   prospectName: prospect.name,
@@ -373,7 +373,7 @@ const matches = await supabase.rpc('search_similar_podcasts', {
 
 // 3. AI quality filter
 const filtered = await anthropic.messages.create({
-  model: 'claude-sonnet-4-5',
+  model: 'claude-sonnet-5-5',
   messages: [{
     role: 'user', 
     content: `Evaluate podcast relevance for prospect...`
