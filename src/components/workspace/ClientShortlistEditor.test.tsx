@@ -635,7 +635,7 @@ describe('ClientShortlistEditor', () => {
     await waitFor(() => expect(filter).toBeEnabled())
     fireEvent.change(filter, { target: { value: 'pending' } })
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Founder Stories' }))
-    expect(screen.getByRole('button', { name: 'Clear', exact: true })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Clear$/ })).toBeInTheDocument()
     const overview = await vi.mocked(getWorkspaceCampaign)(workspaceId, clientId)
     vi.mocked(getWorkspaceCampaign).mockResolvedValue({
       ...overview,
@@ -643,7 +643,7 @@ describe('ClientShortlistEditor', () => {
     })
     await queryClient.invalidateQueries({ queryKey: ['client-campaign-preparation', workspaceId, clientId] })
     await waitFor(() => expect(screen.queryByRole('button', { name: 'View details for Founder Stories' })).not.toBeInTheDocument())
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear', exact: true })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Clear$/ })).not.toBeInTheDocument())
     fireEvent.change(filter, { target: { value: 'all' } })
     expect(screen.getByRole('checkbox', { name: 'Select Founder Stories' })).not.toBeChecked()
   })
