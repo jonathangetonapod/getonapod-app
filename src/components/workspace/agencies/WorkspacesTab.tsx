@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { RowMenu, type RowMenuItem } from '@/components/workspace/RowMenu'
+import { SetupChecklist } from '@/components/workspace/SetupChecklist'
 import { formatDate } from '@/lib/dates'
 import { plural } from '@/lib/plural'
 import { cn } from '@/lib/utils'
@@ -133,6 +134,7 @@ export const WorkspacesTab = ({ usersQuery, users, domains, highlightId, onOpenD
   const [credentialConfirmation, setCredentialConfirmation] = useState<ManagedWorkspaceUser | null>(null)
   const [confirmation, setConfirmation] = useState<{ user: ManagedWorkspaceUser; action: PendingAction } | null>(null)
   const [closing, setClosing] = useState<ManagedWorkspaceUser | null>(null)
+  const [setupReview, setSetupReview] = useState<ManagedWorkspaceUser | null>(null)
   const [closeName, setCloseName] = useState('')
   const [closeReason, setCloseReason] = useState('')
   const highlightRef = useRef<HTMLTableRowElement | null>(null)
@@ -350,7 +352,8 @@ export const WorkspacesTab = ({ usersQuery, users, domains, highlightId, onOpenD
             <TableHeader>
               <TableRow>
                 {sortHeader('workspace', 'Workspace')}
-                {sortHeader('status', 'Status')}
+                {sortHeader('status', 'Access')}
+                <TableHead>Onboarding</TableHead>
                 <TableHead>Domain</TableHead>
                 {sortHeader('added', 'Added')}
                 <TableHead className="text-right">Actions</TableHead>
@@ -373,6 +376,11 @@ export const WorkspacesTab = ({ usersQuery, users, domains, highlightId, onOpenD
                       <Badge variant="outline" className={state.className}>{state.label}</Badge>
                       {state.detail && <p className="mt-1 text-xs text-muted-foreground">{state.detail}</p>}
                       {notice && <p className="mt-1 max-w-64 text-xs font-medium text-destructive">{notice}</p>}
+                    </TableCell>
+                    <TableCell>
+                      {user.status === 'active' && !user.password_change_required ? (
+                        <Button variant="link" size="sm" className="h-auto p-0" aria-label={`View setup for ${workspaceLabel(user)}`} onClick={() => setSetupReview(user)}>View setup progress</Button>
+                      ) : <span className="text-sm text-muted-foreground">{user.status === 'suspended' ? 'Access suspended' : 'Waiting for owner sign-in'}</span>}
                     </TableCell>
                     <TableCell>
                       {hostname ? (
@@ -420,6 +428,16 @@ export const WorkspacesTab = ({ usersQuery, users, domains, highlightId, onOpenD
               {credentialConfirmation?.status === 'active' ? 'Reset password' : 'Issue temporary password'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(setupReview)} onOpenChange={(open) => { if (!open) setSetupReview(null) }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{setupReview ? `${workspaceLabel(setupReview)} setup` : 'Agency setup'}</DialogTitle>
+            <DialogDescription>Signing in activates access. These steps show whether the agency has prepared its workspace for outreach.</DialogDescription>
+          </DialogHeader>
+          {setupReview && <SetupChecklist key={setupReview.workspace_id} workspaceId={setupReview.workspace_id} baseHref={selectedWorkspaceBaseHref(setupReview.workspace_id)} canManage review />}
         </DialogContent>
       </Dialog>
 

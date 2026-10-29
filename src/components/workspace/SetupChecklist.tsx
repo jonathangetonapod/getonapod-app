@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Circle, CircleHelp, ListChecks, X } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRight, CheckCircle2, Circle, CircleHelp, ListChecks, Loader2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { plural } from '@/lib/plural'
+import { platformBillingWorkspaceHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClients } from '@/services/clients'
 import {
   getWorkspaceCampaignOverview,
@@ -35,7 +36,7 @@ export interface SetupProgress {
   steps: SetupStep[]
   requiredDone: number
   requiredTotal: number
-  /** Every required step is done or dismissed. */
+  /** Every required step is verified as done. Dismissal never completes setup. */
   complete: boolean
   /** Required steps whose source could not be read. */
   requiredUnknown: number
@@ -68,11 +69,21 @@ interface UseSetupProgressOptions {
  * page that otherwise works would be louder than the thing it reports.
  */
 const dismissedStepsKey = (workspaceId: string) => `setup-checklist-dismissed-steps:${workspaceId}`
+const optionalKeys = new Set(['client-brand', 'onboarding', 'team'])
+const stepOrder = ['client', 'reply-to', 'billing', 'instantly', 'mailbox', 'client-brand', 'onboarding', 'team']
+
+const stepHelp: Record<string, string> = {
+  client: 'Add the person or company you want to book on podcasts. You can fill in more details later.',
+  'reply-to': 'Give clients an email address they can reply to when you share their onboarding and updates.',
+  billing: 'Review your subscription or trial before using paid features.',
+  instantly: 'Connect your agency’s Instantly account when you are ready to prepare outreach.',
+  mailbox: 'Assign a sending mailbox to your client so their outreach uses the right email address.',
+}
 
 function readDismissedSteps(workspaceId: string): string[] {
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(dismissedStepsKey(workspaceId)) ?? '[]')
-    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []
+    return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string' && optionalKeys.has(key)) : []
   } catch {
     return []
   }
@@ -110,6 +121,7 @@ export function useSetupProgress({
     setDismissedKeys(readDismissedSteps(workspaceId))
   }, [workspaceId])
   const dismissStep = useCallback((key: string) => {
+    if (!optionalKeys.has(key)) return
     setDismissedKeys((current) => {
       const next = current.includes(key) ? current : [...current, key]
       writeDismissedSteps(workspaceId, next)
@@ -219,7 +231,7 @@ export function useSetupProgress({
     {
       key: 'billing',
       label: 'Activate your workspace subscription',
-      href: `${baseHref}/settings/billing`,
+      href: baseHref === '/app' ? `${baseHref}/settings/billing` : platformBillingWorkspaceHref(workspaceId),
       required: true,
       done: ['active', 'comped'].includes(billingQuery.data?.billing_status ?? '')
         || (billingQuery.data?.billing_status === 'trialing' && Date.parse(billingQuery.data.trial_ends_at ?? '') > Date.now()),
@@ -233,7 +245,9 @@ export function useSetupProgress({
       done: members.length > 1,
       unknown: staffUnknown,
     },
-  ] satisfies Omit<SetupStep, 'dismissed'>[]).map((step) => ({ ...step, dismissed: dismissedKeys.includes(step.key) }))
+  ] satisfies Omit<SetupStep, 'dismissed'>[])
+    .sort((left, right) => stepOrder.indexOf(left.key) - stepOrder.indexOf(right.key))
+    .map((step) => ({ ...step, dismissed: !step.required && dismissedKeys.includes(step.key) }))
 
   const required = steps.filter((step) => step.required)
   const isDone = (step: SetupStep) => step.done && !step.unknown
@@ -257,7 +271,7 @@ export function useSetupProgress({
     steps,
     requiredDone,
     requiredTotal: required.length,
-    complete: requiredDone + requiredDismissed === required.length,
+    complete: requiredDone === required.length,
     requiredUnknown,
     requiredDismissed,
     loading,
@@ -267,7 +281,8 @@ export function useSetupProgress({
   }
 }
 
-const dismissalKey = (workspaceId: string) => `setup-checklist-dismissed:${workspaceId}`
+// Previous versions allowed incomplete setup to be dismissed as complete.
+const dismissalKey = (workspaceId: string) => `setup-checklist-dismissed-v2:${workspaceId}`
 
 function readDismissed(workspaceId: string): boolean {
   try {
@@ -289,26 +304,73 @@ interface SetupChecklistProps {
   workspaceId: string
   baseHref: string
   canManage: boolean
+  onAddClient?: () => void
+  /** Platform review always shows the saved facts, ignoring local dismissals. */
+  review?: boolean
 }
 
-export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupChecklistProps) => {
+export const SetupChecklist = ({ workspaceId, baseHref, canManage, onAddClient, review = false }: SetupChecklistProps) => {
+  const queryClient = useQueryClient()
   const [dismissed, setDismissed] = useState(() => readDismissed(workspaceId))
   useEffect(() => {
     setDismissed(readDismissed(workspaceId))
   }, [workspaceId])
 
-  const progress = useSetupProgress({ workspaceId, baseHref, enabled: canManage && !dismissed })
+  const progress = useSetupProgress({ workspaceId, baseHref, enabled: canManage })
 
-  const visibleSteps = progress.steps.filter((step) => !step.dismissed)
+  const visibleSteps = progress.steps.filter((step) => review || !step.dismissed)
   const dismissedCount = progress.steps.length - visibleSteps.length
+  const nextStep = progress.steps.find((step) => step.required && (!step.done || step.unknown))
+  const clientDone = progress.steps.some((step) => step.key === 'client' && step.done && !step.unknown)
 
-  // Every step set aside one by one is the same as dismissing the card.
-  if (!canManage || dismissed || progress.loading || visibleSteps.length === 0) return null
+  if (!canManage || (!review && dismissed && progress.complete)) return null
+  if (progress.loading) return <div role="status" className="flex items-center gap-2 rounded-lg border p-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Checking workspace setup…</div>
 
   const dismiss = () => {
     writeDismissed(workspaceId)
     setDismissed(true)
   }
+
+  const renderStep = (step: SetupStep) => (
+    <li
+      key={step.key}
+      data-step={step.key}
+      data-done={step.unknown ? 'unknown' : step.done ? 'true' : 'false'}
+      className="flex items-center gap-2 py-2.5 sm:gap-3"
+    >
+      {step.unknown
+        ? <CircleHelp className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+        : step.done
+          ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+          : <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />}
+      <span className="sr-only">{step.unknown ? 'Could not check:' : step.done ? 'Done:' : 'Not done:'}</span>
+      <span className={step.done && !step.unknown ? 'min-w-0 flex-1 text-sm text-muted-foreground line-through' : 'min-w-0 flex-1 text-sm font-medium'}>
+        {step.label}
+        {step.unknown && <span className="ml-2 text-xs font-normal text-muted-foreground">Could not be checked right now</span>}
+      </span>
+      <Badge variant={step.required ? 'outline' : 'secondary'} className="hidden shrink-0 rounded-full font-normal sm:inline-flex">
+        {step.required ? 'Required' : 'Optional'}
+      </Badge>
+      <Link
+        to={step.href}
+        className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline"
+        aria-label={`Open ${step.label}`}
+      >
+        Open
+      </Link>
+      {!step.required && !review && <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        className="h-8 w-8 shrink-0 text-muted-foreground"
+        onClick={() => progress.dismissStep(step.key)}
+        aria-label={`Dismiss ${step.label}`}
+        title="Dismiss this step"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </Button>}
+    </li>
+  )
 
   return (
     <Card data-testid="setup-checklist" className="border-border/70 shadow-sm">
@@ -322,8 +384,8 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
           </CardTitle>
           <CardDescription>
             {progress.complete
-              ? `Every required step is ${progress.requiredDismissed > 0 ? 'done or dismissed' : 'done'}. The optional ones stay here until you dismiss this.`
-              : 'Required steps are marked. Optional ones can wait.'}
+              ? 'Every required step is done. You can continue working with your clients.'
+              : 'Start with your first client, then prepare your workspace for outreach. Your progress saves as you go.'}
           </CardDescription>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -332,54 +394,39 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage }: SetupCheckl
             {progress.requiredDismissed > 0 && `, ${progress.requiredDismissed} dismissed`}
             {progress.requiredUnknown > 0 && ` (${progress.requiredUnknown} could not be checked)`}
           </p>
-          {progress.complete && (
+          {progress.complete && !review && (
             <Button type="button" size="sm" variant="outline" onClick={dismiss}>Dismiss</Button>
           )}
         </div>
       </CardHeader>
-      <CardContent>
-        <ul className="divide-y divide-border/70">
-          {visibleSteps.map((step) => (
-            <li
-              key={step.key}
-              data-step={step.key}
-              data-done={step.unknown ? 'unknown' : step.done ? 'true' : 'false'}
-              className="flex items-center gap-3 py-2.5"
-            >
-              {step.unknown
-                ? <CircleHelp className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-                : step.done
-                  ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
-                  : <Circle className="h-5 w-5 shrink-0 text-muted-foreground/60" aria-hidden="true" />}
-              <span className="sr-only">{step.unknown ? 'Could not check:' : step.done ? 'Done:' : 'Not done:'}</span>
-              <span className={step.done && !step.unknown ? 'min-w-0 flex-1 text-sm text-muted-foreground line-through' : 'min-w-0 flex-1 text-sm font-medium'}>
-                {step.label}
-                {step.unknown && <span className="ml-2 text-xs font-normal text-muted-foreground">Could not be checked right now</span>}
-              </span>
-              <Badge variant={step.required ? 'outline' : 'secondary'} className="shrink-0 rounded-full font-normal">
-                {step.required ? 'Required' : 'Optional'}
-              </Badge>
-              <Link
-                to={step.href}
-                className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline"
-                aria-label={`Open ${step.label}`}
-              >
-                Open
-              </Link>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 shrink-0 text-muted-foreground"
-                onClick={() => progress.dismissStep(step.key)}
-                aria-label={`Dismiss ${step.label}`}
-                title="Dismiss this step"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </li>
-          ))}
-        </ul>
+      <CardContent className="space-y-5">
+        {nextStep && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{review ? 'Next step for this agency' : 'Your next step'}</p>
+            <p className="mt-1 text-lg font-semibold">{nextStep.unknown ? 'Check setup progress' : `Next: ${nextStep.label}`}</p>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">{nextStep.unknown ? 'We could not confirm this step. Check again before repeating work you have already done.' : stepHelp[nextStep.key]}</p>
+            {nextStep.unknown ? (
+              <Button className="mt-3" variant="outline" onClick={() => void queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] })}>Check again</Button>
+            ) : nextStep.key === 'client' && onAddClient ? (
+              <Button className="mt-3" onClick={onAddClient}>Add your first client<ArrowRight className="ml-2 h-4 w-4" /></Button>
+            ) : (
+              <Button className="mt-3" asChild><Link to={nextStep.href}>{review ? 'Open this step' : 'Continue setup'}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+            )}
+          </div>
+        )}
+        {clientDone && !review && (
+          <p className="text-sm text-muted-foreground">Your first client is in place. <Link className="font-medium text-primary underline underline-offset-4" to={`${baseHref}/podcast-finder`}>Find podcasts for your client</Link> while you prepare outreach.</p>
+        )}
+        <ol aria-label="Required setup steps" className="divide-y divide-border/70">
+          {visibleSteps.filter((step) => step.required).map(renderStep)}
+        </ol>
+        <details className="rounded-lg border px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">Optional: branding, client intake and team</summary>
+          <p className="mt-2 text-sm text-muted-foreground">Personalize these whenever you are ready.</p>
+          <ul className="mt-2 divide-y divide-border/70">
+            {visibleSteps.filter((step) => !step.required).map(renderStep)}
+          </ul>
+        </details>
         {dismissedCount > 0 && (
           <Button
             type="button"

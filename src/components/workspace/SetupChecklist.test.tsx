@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SetupChecklist } from '@/components/workspace/SetupChecklist'
@@ -77,12 +77,12 @@ function primeAllDone() {
   vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ has_subscription: true, billing_status: 'active' } as never)
 }
 
-function renderChecklist(canManage = true) {
+function renderChecklist(canManage = true, props: Partial<React.ComponentProps<typeof SetupChecklist>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <SetupChecklist workspaceId={workspaceId} baseHref={baseHref} canManage={canManage} />
+        <SetupChecklist workspaceId={workspaceId} baseHref={baseHref} canManage={canManage} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -102,11 +102,12 @@ describe('SetupChecklist', () => {
     expect(screen.getByText('5 of 5 required steps done')).toBeInTheDocument()
     // Optional steps still list, with their tag, whether or not they are done.
     expect(screen.getByText('Invite your team').closest('li')).toHaveAttribute('data-done', 'false')
+    fireEvent.click(screen.getByText('Optional: branding, client intake and team'))
     expect(screen.getByRole('link', { name: 'Open Invite your team' })).toHaveAttribute('href', '/app/settings#workspace-access')
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     await waitFor(() => expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument())
-    expect(window.localStorage.getItem(`setup-checklist-dismissed:${workspaceId}`)).toBe('1')
+    expect(window.localStorage.getItem(`setup-checklist-dismissed-v2:${workspaceId}`)).toBe('1')
   })
 
   it('shows a missing required step as not done, with a link to where it is finished', async () => {
@@ -120,7 +121,7 @@ describe('SetupChecklist', () => {
     renderChecklist()
 
     expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
-    expect(screen.getByText('Required steps are marked. Optional ones can wait.')).toBeInTheDocument()
+    expect(screen.getByText('Start with your first client, then prepare your workspace for outreach. Your progress saves as you go.')).toBeInTheDocument()
     expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
     const step = screen.getByText('Connect a sending mailbox to a client').closest('li')
     expect(step).toHaveAttribute('data-done', 'false')
@@ -190,7 +191,9 @@ describe('SetupChecklist', () => {
     expect(await screen.findByText('Setup complete')).toBeInTheDocument()
   })
 
-  it('dismisses a single step, counts a dismissed required step as handled, and can bring it back', async () => {
+  it('does not let an old required-step dismissal complete or hide setup', async () => {
+    window.localStorage.setItem(`setup-checklist-dismissed-steps:${workspaceId}`, JSON.stringify(['mailbox']))
+    window.localStorage.setItem(`setup-checklist-dismissed:${workspaceId}`, '1')
     vi.mocked(getWorkspaceMailboxes).mockResolvedValue({
       connected: true,
       provider_workspace_name: 'Acme Sending',
@@ -201,17 +204,57 @@ describe('SetupChecklist', () => {
     renderChecklist()
 
     expect(await screen.findByText('Set up your workspace')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss Connect a sending mailbox to a client' }))
-
-    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
-    expect(screen.getByText('4 of 5 required steps done, 1 dismissed')).toBeInTheDocument()
-    expect(screen.queryByText('Connect a sending mailbox to a client')).not.toBeInTheDocument()
-    expect(JSON.parse(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`))).toEqual(['mailbox'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show 1 dismissed step' }))
-    expect(await screen.findByText('Connect a sending mailbox to a client')).toBeInTheDocument()
     expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
-    expect(window.localStorage.getItem(`setup-checklist-dismissed-steps:${workspaceId}`)).toBeNull()
+    expect(screen.getByText('Connect a sending mailbox to a client')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dismiss Connect a sending mailbox to a client' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Setup complete')).not.toBeInTheDocument()
+  })
+
+  it('lets an agency defer and restore optional steps without changing completion', async () => {
+    renderChecklist()
+    await screen.findByText('Setup complete')
+    fireEvent.click(screen.getByText('Optional: branding, client intake and team'))
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss Invite your team' }))
+    expect(screen.queryByText('Invite your team')).not.toBeInTheDocument()
+    expect(screen.getByText('5 of 5 required steps done')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 dismissed step' }))
+    expect(screen.getByText('Invite your team')).toBeInTheDocument()
+  })
+
+  it('starts with the first client and opens creation directly', async () => {
+    vi.mocked(getWorkspaceClients).mockResolvedValue([])
+    const onAddClient = vi.fn()
+    renderChecklist(true, { onAddClient })
+    expect(await screen.findByText('Next: Add your first client')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first client' }))
+    expect(onAddClient).toHaveBeenCalledOnce()
+    const steps = within(screen.getByRole('list', { name: 'Required setup steps' })).getAllByRole('listitem')
+    expect(steps[0]).toHaveAttribute('data-step', 'client')
+    expect(steps[3]).toHaveAttribute('data-step', 'instantly')
+    expect(steps[4]).toHaveAttribute('data-step', 'mailbox')
+  })
+
+  it('rechecks an unknown prerequisite before recommending later steps', async () => {
+    vi.mocked(getWorkspaceClients).mockRejectedValueOnce(new Error('Unavailable'))
+    renderChecklist()
+    expect(await screen.findByText('Check setup progress')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Continue setup' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
+  })
+
+  it('shows saved setup during platform review and links billing to the selected agency', async () => {
+    window.localStorage.setItem(`setup-checklist-dismissed-v2:${workspaceId}`, '1')
+    window.localStorage.setItem(`setup-checklist-dismissed-steps:${workspaceId}`, JSON.stringify(['team']))
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ billing_status: 'past_due' } as never)
+    renderChecklist(true, { review: true, baseHref: `/app/workspaces/${workspaceId}` })
+    expect(await screen.findByText('Next: Activate your workspace subscription')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open this step' })).toHaveAttribute('href', `/app/platform/billing/workspaces/${workspaceId}`)
+    fireEvent.click(screen.getByText('Optional: branding, client intake and team'))
+    expect(screen.getByText('Invite your team')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dismiss/ })).not.toBeInTheDocument()
+    expect(getWorkspaceClients).toHaveBeenCalledWith(workspaceId)
+    expect(listWorkspaceStaff).toHaveBeenCalledWith(workspaceId)
   })
 
   it('remembers dismissed steps for the workspace', async () => {
@@ -224,12 +267,14 @@ describe('SetupChecklist', () => {
     expect(screen.getByRole('button', { name: 'Show 2 dismissed steps' })).toBeInTheDocument()
   })
 
-  it('renders nothing once dismissed for this workspace', () => {
-    window.localStorage.setItem(`setup-checklist-dismissed:${workspaceId}`, '1')
+  it('keeps a completed checklist hidden after dismissal', async () => {
+    window.localStorage.setItem(`setup-checklist-dismissed-v2:${workspaceId}`, '1')
     renderChecklist()
 
     expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument()
-    expect(getWorkspaceClients).not.toHaveBeenCalled()
+    await waitFor(() => expect(getWorkspaceClients).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument()
   })
 
   it('renders nothing for someone who cannot manage the workspace', () => {

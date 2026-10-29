@@ -285,6 +285,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
             workspaceId={workspaceId}
             baseHref={platformWorkspace?.baseHref || MY_WORKSPACE_BASE_HREF}
             canManage={showManagementControls}
+            onAddClient={managementEnabled ? openCreate : undefined}
           />
         )}
 
