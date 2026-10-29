@@ -686,7 +686,7 @@ assert.match(source, /const LEDGER_TYPES = \["all", "grant", "removal", "allowan
 const adjust = source.slice(source.indexOf('if (action === "credits-adjust")'), source.indexOf('if (action === "billing-allowance-set")'))
 assert.match(adjust, /requireOnlyKeys\(body, \["action", "workspace_id", "amount", "reason", "note", "adjustment_key"\]\)/u)
 assert.match(adjust, /metadata: \{ amount: -amount, reason, note: adjustNote, adjustment_key: adjustmentKey \}/u)
-const allowanceSet = source.slice(source.indexOf('if (action === "billing-allowance-set")'), source.indexOf('if (action === "ai-keys-status"'))
+const allowanceSet = source.slice(source.indexOf('if (action === "billing-allowance-set")'), source.indexOf('if (action === "ai-provider-set" ||'))
 assert.match(allowanceSet, /const allowanceReason = requireString\(body\.reason, "reason", \{ min: 1, max: 60 \}\);/u)
 assert.match(allowanceSet, /actorUserId: user\.id,/u)
 assert.match(allowanceSet, /reason: allowanceReason,/u)
@@ -760,7 +760,7 @@ assert.match(subscriptionWebhook, /if \(keepComped\) \{/u)
 // Testing a saved AI key: owner or platform admin only, the workspace's own
 // stored key only (the platform key would always pass), and an outage is not
 // reported as a bad key.
-const aiKeys = source.slice(source.indexOf('if (action === "ai-keys-status"'), source.indexOf('if (action === "ai-keys-status") {'))
+const aiKeys = source.slice(source.indexOf('if (action === "ai-provider-set" ||'), source.indexOf('if (action === "ai-keys-status") {'))
 assert.match(aiKeys, /action === "ai-keys-test"/u)
 assert.match(aiKeys, /if \(!\["owner", "platform_admin"\]\.includes\(access\.role\)\)/u)
 const aiKeyTest = source.slice(source.indexOf('if (action === "ai-keys-test") {'), source.indexOf('if (action === "ai-keys-set") {'))
@@ -771,3 +771,14 @@ assert.match(aiKeyTest, /probeAiKeyResult\(provider, stored\.apiKey\)/u)
 assert.match(aiKeyTest, /"AI_KEY_NOT_CONFIGURED"/u)
 const aiKeysShared = readFileSync('supabase/functions/_shared/workspaceAiKeys.ts', 'utf8')
 assert.match(aiKeysShared, /response\.status === 401 \|\| response\.status === 403 \? 'invalid' : 'unreachable'/u)
+
+// Selecting the agency default is inside the same owner-only access boundary,
+// accepts only a provider name, and records no credential in its audit metadata.
+assert.match(aiKeys, /action === "ai-provider-set"/u)
+assert.match(aiKeys, /requireWorkspaceFeatureAccess\(authContext, workspaceId, \{ billingRecovery: true \}\)/u)
+const providerSet = source.slice(source.indexOf('if (action === "ai-provider-set") {'), source.indexOf('// Whether the saved key still works'))
+assert.match(providerSet, /requireOnlyKeys\(body, \["action", "workspace_id", "provider"\]\)/u)
+assert.match(providerSet, /requireProvider\(body\.provider\)/u)
+assert.match(providerSet, /setWorkspaceTextAiProvider\(admin, workspaceId, provider\)/u)
+assert.match(providerSet, /action: "workspace\.ai_provider\.set"[\s\S]*?metadata: \{ provider \}/u)
+assert.doesNotMatch(providerSet, /api_key|apiKey|Deno\.env/u)

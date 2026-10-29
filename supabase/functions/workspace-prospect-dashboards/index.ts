@@ -1,3 +1,4 @@
+import { textTokenUsage, textAiFetch, platformTextAiKey, type TextAiCredential } from '../_shared/textAi.ts'
 import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -20,7 +21,7 @@ import {
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 import { decodeHtmlEntities, dedupeShows } from '../_shared/showText.ts'
 import { explanationsNeedingRewrite, MAX_FIT_EXPLANATION_CHARS } from '../_shared/fitExplanations.ts'
 
@@ -557,7 +558,7 @@ async function generateEmbedding(
 ): Promise<{ embedding: number[]; tokens: number }> {
   const apiKey = apiKeyOverride ?? Deno.env.get('OPENAI_API_KEY')?.trim()
   if (!apiKey) throw new HttpError(500, 'BUILD_NOT_CONFIGURED', 'Prospect matching is not configured')
-  const response = await providerFetch('openai', 'https://api.openai.com/v1/embeddings', {
+  const response = await providerFetch('openai-platform', 'https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -641,18 +642,13 @@ function extractJsonArray(text: string): unknown {
 }
 
 async function anthropicText(
-  apiKey: string,
+  apiKey: TextAiCredential,
   prompt: string,
   maxTokens: number,
   timeoutMs = 55_000,
 ): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const response = await textAiFetch(apiKey, {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       model: RANKING_MODEL,
       thinking: { type: 'between_tools' },
@@ -675,9 +671,9 @@ async function anthropicText(
 async function rankCandidates(
   prospectText: string,
   candidates: PodcastCandidate[],
-  apiKeyOverride?: string,
+  apiKeyOverride?: TextAiCredential,
 ): Promise<{ ranked: RankedCandidate[]; inputTokens: number; outputTokens: number }> {
-  const apiKey = apiKeyOverride ?? Deno.env.get('ANTHROPIC_API_KEY')?.trim()
+  const apiKey = apiKeyOverride ?? platformTextAiKey()
   if (!apiKey) throw new HttpError(500, 'BUILD_NOT_CONFIGURED', 'Prospect analysis is not configured')
   const candidateText = candidates.map((candidate, index) => ({
     index,
@@ -729,7 +725,7 @@ async function enforceDistinctExplanations(
   prospectText: string,
   candidates: PodcastCandidate[],
   ranked: RankedCandidate[],
-  apiKey: string,
+  apiKey: TextAiCredential,
   dashboardId: string,
 ): Promise<{ inputTokens: number; outputTokens: number }> {
   const usage = { inputTokens: 0, outputTokens: 0 }
@@ -945,7 +941,7 @@ async function buildProspect(
     throw new HttpError(409, 'PROFILE_NOT_READY', 'Add a focused prospect profile of at least 80 characters before building')
   }
 
-  const anthropicKey = await resolveAiKey(context.admin, workspaceId, 'anthropic')
+  const anthropicKey = await resolveTextAiKey(context.admin, workspaceId)
   const openaiKey = await resolveAiKey(context.admin, workspaceId, 'openai')
   const byoKeyUsed = anthropicKey?.source === 'workspace'
   let buildDelivered = false
@@ -1068,7 +1064,7 @@ async function buildProspect(
     let rankingSource: 'ai_ranked' | 'semantic' = 'ai_ranked'
     let ranked: RankedCandidate[]
     try {
-      const ranking = await rankCandidates(prospectText, candidates, anthropicKey?.apiKey)
+      const ranking = await rankCandidates(prospectText, candidates, anthropicKey)
       ranked = ranking.ranked
       buildUsage.anthropicInputTokens += ranking.inputTokens
       buildUsage.anthropicOutputTokens += ranking.outputTokens
@@ -1084,7 +1080,7 @@ async function buildProspect(
         prospectText,
         candidates,
         ranked,
-        (anthropicKey?.apiKey ?? Deno.env.get('ANTHROPIC_API_KEY')?.trim())!,
+        anthropicKey,
         dashboardId,
       )
       buildUsage.anthropicInputTokens += rewriteUsage.inputTokens
@@ -1099,7 +1095,7 @@ async function buildProspect(
     await logOperationCost(context.admin, {
       workspaceId,
       operationType: 'dashboard_build',
-      usage: buildUsage,
+      usage: { ...textTokenUsage(anthropicKey, buildUsage.anthropicInputTokens, buildUsage.anthropicOutputTokens), openaiTokens: buildUsage.openaiTokens },
       usedByoKey: byoKeyUsed,
       referenceKind: 'prospect_dashboard',
       referenceId: dashboardId,

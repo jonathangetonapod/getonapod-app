@@ -35,7 +35,7 @@ export function podscanErrorStatus(error: unknown): number | null {
 export function classifyPodscanError(error: unknown): PodscanErrorKind {
   const { code } = fields(error)
   const status = podscanErrorStatus(error)
-  if (code === 'PROVIDER_KEY_REQUIRED' || code === 'PROVIDER_KEY_REJECTED') return 'auth'
+  if (['PROVIDER_KEY_REQUIRED', 'PROVIDER_KEY_REJECTED', 'PLATFORM_PROVIDER_NOT_CONFIGURED', 'PLATFORM_PROVIDER_ACTION_REQUIRED'].includes(code ?? '')) return 'auth'
   if (code === 'PROVIDER_BILLING_REQUIRED' || code === 'SUBSCRIPTION_REQUIRED') return 'fatal'
   if (status === 401 || status === 403 || code === 'PODSCAN_NOT_CONFIGURED') return 'auth'
   // Both fail the same way however often they are tried: the quota resets
@@ -54,8 +54,8 @@ export function podscanFailureReason(error: unknown): string {
   if (status === 401 || status === 403) return `The podcast index rejected the request (error ${status}).`
   if (code === 'PODSCAN_NOT_CONFIGURED') return 'The podcast index is not set up on the server. Contact support.'
   if (code === 'SUBSCRIPTION_REQUIRED') return 'Your workspace subscription needs attention. Open Billing to restore access.'
-  if (code === 'PROVIDER_BILLING_REQUIRED') return 'Your Podscan account needs billing or quota attention. Check that provider account.'
-  if (code === 'PROVIDER_KEY_REQUIRED' || code === 'PROVIDER_KEY_REJECTED') return 'Ask your workspace owner to connect a valid Podscan key in Billing.'
+  if (code === 'PROVIDER_BILLING_REQUIRED') return 'The platform podcast index needs billing or quota attention. Contact support.'
+  if (['PROVIDER_KEY_REQUIRED', 'PROVIDER_KEY_REJECTED', 'PLATFORM_PROVIDER_NOT_CONFIGURED', 'PLATFORM_PROVIDER_ACTION_REQUIRED'].includes(code ?? '')) return 'The platform podcast index needs attention. Contact support; no Podscan key is needed from you.'
   if (code === 'INSUFFICIENT_CREDITS') return 'App credits are retired. Refresh the app and contact support if this continues.'
   if (status === 402) return 'Billing needs attention. Check your workspace subscription and the connected provider account.'
   if (code === 'PODSCAN_DAILY_LIMIT') return 'The podcast index\'s daily request limit is used up. It resets within a day.'

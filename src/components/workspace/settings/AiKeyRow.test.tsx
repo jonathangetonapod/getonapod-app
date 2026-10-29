@@ -60,14 +60,6 @@ describe('provider credential lifecycle', () => {
     expect(screen.queryByText('Key rejected')).not.toBeInTheDocument()
   })
 
-  it('only describes an untested optional provider key as saved', () => {
-    const view = renderRow()
-    view.update({ provider: { ...provider, id: 'podscan', label: 'Podscan', keyPrefix: '', optional: true } })
-    expect(screen.getByText('Key saved')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Test key' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Authentication accepted')).not.toBeInTheDocument()
-  })
-
   it('prevents replacing or removing a key while its authentication check is running', async () => {
     let finish!: (result: WorkspaceAiKeyTestResult) => void
     vi.mocked(testWorkspaceAiKey).mockReturnValue(new Promise((resolve) => { finish = resolve }))

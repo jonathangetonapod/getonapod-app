@@ -19,7 +19,7 @@ The current product is invite-only:
 - Public workspace registration is disabled.
 - A private workspace has one owner plus optional admins and members.
 - Workspace users and client portal users are separate identities.
-- Workspaces use a flat subscription and customer-owned provider accounts. Credit purchases, allowances, and automatic refills are retired.
+- Workspaces use a flat subscription and choose Claude or OpenAI for AI and connect their own Instantly account; other provider credentials are platform-managed. Credit purchases, allowances, and automatic refills are retired.
 - The platform owner stays signed in as the platform owner while managing a selected workspace; there is no owner impersonation.
 
 ## Core workflows
@@ -157,14 +157,20 @@ Legacy Bison/Clay outreach code remains in the repository for operator history. 
 
 New customers subscribe to one Standard workspace plan at $99 USD/month, with
 unlimited clients and team members. Existing subscribers retain their actual
-Stripe prices. AI, live discovery, enrichment and sending usage is billed by the
-customer's connected providers. Tenant requests do not fall back to platform keys.
+Stripe prices. Customers connect a Claude or OpenAI API key, select their default AI provider
+in Billing, and connect their own Instantly account. Those providers bill the
+agency directly. Podscan, OpenAI embeddings and Blitz enrichment use platform
+server secrets.
+Winnr is optional platform-managed provisioning. Each agency connects and manages
+its own Instantly key in Client Campaigns; sending credentials stay workspace-scoped.
+Tenant AI generation never falls back to a platform key or switches providers
+after a failed request. An agency with only an OpenAI key can use every AI feature.
 
 The user portal at `/app/settings/billing` shows the subscription, renewal or
 cancellation timing, payment recovery, invoices, and encrypted provider keys.
 Owners and administrators manage billing; owners and platform administrators
-manage credentials. An expired trial or inactive subscription blocks operational
-features while leaving billing and account recovery available.
+manage Claude/OpenAI and Instantly credentials. An expired trial or inactive subscription
+blocks operational features while leaving billing and account recovery available.
 
 Credit checkout, refills, allowances and application credit debits are retired.
 `CREDIT_ENFORCEMENT_ENABLED` no longer enables charges. Existing credit lots,
@@ -420,7 +426,7 @@ Legacy `/app/outreach-platform`, `/app/unibox`, `/admin/outreach-platform`, and 
 
 ## AI research and pitch pipeline
 
-One operator click runs an ordered prompt chain against Claude. Each stage may only build on the verified output of the stage before it, so a later stage cannot invent a fact an earlier one did not establish.
+One operator click runs an ordered prompt chain against the agency’s selected Claude or OpenAI provider. Each stage may only build on the verified output of the stage before it, so a later stage cannot invent a fact an earlier one did not establish.
 
 | Stage | Prompt | Produces |
 | --- | --- | --- |

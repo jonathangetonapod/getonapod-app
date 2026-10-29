@@ -14,7 +14,6 @@ import { ensureWorkspaceOriginAllowed } from '../_shared/cors.ts'
 import { requestHostname, requireServedByHost, resolveHostWorkspaceId } from '../_shared/workspaceDomain.ts'
 import { logOperationCost } from '../_shared/billing.ts'
 import { reservePublicRate } from '../_shared/publicRateLimit.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
   generatePitchProfile,
   type OnboardingAssetReference,

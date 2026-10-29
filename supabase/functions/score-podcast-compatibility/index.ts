@@ -1,6 +1,6 @@
+import { credentialProvider, textTokenUsage, textAiClient, platformTextAiKey, type TextAiCredential, type TextAiMessage } from '../_shared/textAi.ts'
 import { providerException } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
 import {
   createAdminClient,
   errorResponse,
@@ -16,7 +16,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { type ClientFitProfile, loadClientFitProfile } from '../_shared/clientFitProfile.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
 import {
   groupScoringPrompt,
   parseGroupScores,
@@ -82,7 +82,7 @@ function deterministicScore(targetText: string, podcast: PodcastForScoring) {
   }
 }
 
-function messageText(message: Anthropic.Messages.Message): string | null {
+function messageText(message: TextAiMessage): string | null {
   const content = message.content[0]
   return content?.type === 'text' ? content.text : null
 }
@@ -198,7 +198,7 @@ serve(async (req) => {
       ? body.podcasts.slice(0, 20)
       : body.podcasts
 
-    let anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
+    let anthropicApiKey: TextAiCredential = platformTextAiKey() ?? ''
     let meteringActorUserId = ''
     let admin: ReturnType<typeof createAdminClient> | null = null
     // Everything on file about the client: bio, guest brief and intake answers.
@@ -225,9 +225,9 @@ serve(async (req) => {
         throw new HttpError(400, 'INVALID_RESEARCH_TARGET', 'Choose exactly one client or prospect research target')
       }
 
-      const resolvedKey = await resolveAiKey(context.admin, workspaceId, 'anthropic')
+      const resolvedKey = await resolveTextAiKey(context.admin, workspaceId)
       const byoKeyUsed = resolvedKey?.source === 'workspace'
-      if (resolvedKey) anthropicApiKey = resolvedKey.apiKey
+      if (resolvedKey) anthropicApiKey = resolvedKey
       meteringActorUserId = context.user.id
       metering = {
         admin: context.admin,
@@ -355,7 +355,7 @@ serve(async (req) => {
       }
     }
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
+    const anthropic = textAiClient(anthropicApiKey)
     const targetLabel = isProspectMode ? 'prospect' : 'client'
     const episodesById = admin
       ? await storedEpisodes(admin, podcasts.map((podcast) => podcast.podcast_id))
@@ -369,7 +369,7 @@ serve(async (req) => {
         ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
-      }).catch((error: unknown) => { throw providerException('anthropic', error) })
+      }).catch((error: unknown) => { throw error instanceof HttpError ? error : providerException(credentialProvider(anthropicApiKey), error) })
       anthropicInputTokens += message.usage?.input_tokens ?? 0
       anthropicOutputTokens += message.usage?.output_tokens ?? 0
       return messageText(message)
@@ -481,7 +481,7 @@ serve(async (req) => {
       await logOperationCost(metering.admin, {
         workspaceId: metering.workspaceId,
         operationType: 'compatibility_scoring',
-        usage: { anthropicInputTokens, anthropicOutputTokens },
+        usage: textTokenUsage(anthropicApiKey, anthropicInputTokens, anthropicOutputTokens),
         usedByoKey: metering.byoKeyUsed,
         clientId: metering.clientId,
         referenceKind: metering.referenceKind,

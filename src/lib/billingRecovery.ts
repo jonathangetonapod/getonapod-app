@@ -13,7 +13,11 @@ export function billingRecovery(error: unknown, links: BillingRecoveryLinks = {}
     description: 'Your workspace subscription needs attention. An owner or administrator can manage it in Billing.',
     label: 'Manage subscription', href: links.canManageBilling === false ? null : links.billingHref ?? '/app/settings/billing',
   }
-  if (['PROVIDER_KEY_REQUIRED', 'PROVIDER_KEY_REJECTED', 'CLAUDE_KEY_REQUIRED', 'WINNR_NOT_CONNECTED'].includes(String(code))) return {
+  if (['PLATFORM_PROVIDER_NOT_CONFIGURED', 'PLATFORM_PROVIDER_ACTION_REQUIRED', 'WINNR_NOT_CONNECTED'].includes(String(code))) return {
+    description: 'This service is managed by the platform. Contact support; you do not need another API key.',
+    label: '', href: null,
+  }
+  if (['PROVIDER_KEY_REQUIRED', 'PROVIDER_KEY_REJECTED', 'CLAUDE_KEY_REQUIRED'].includes(String(code))) return {
     description: 'Ask your workspace owner to connect or replace this provider key. The connection is shared by the whole team.',
     label: 'Provider accounts', href: links.canManageProviders === false ? null : links.providerHref ?? '/app/settings/billing#providers',
   }

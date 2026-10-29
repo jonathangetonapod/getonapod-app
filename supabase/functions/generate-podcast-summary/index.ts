@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
@@ -24,9 +25,9 @@ serve(async (req) => {
       })
     }
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    const anthropicApiKey = platformTextAiKey()
     if (!anthropicApiKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured')
+      throw new Error('Text AI provider not configured')
     }
 
     const prompt = `You are a podcast booking agency expert. Write a compelling 2-3 sentence description explaining why guests should appear on this podcast and who it's ideal for.
@@ -54,13 +55,8 @@ Guidelines:
 
     console.log('🤖 Calling Claude API...')
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await textAiFetch(anthropicApiKey, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-      },
       body: JSON.stringify({
         model: 'claude-sonnet-5-5',
         thinking: { type: 'between_tools' },

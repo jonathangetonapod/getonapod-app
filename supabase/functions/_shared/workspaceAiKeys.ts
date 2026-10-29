@@ -1,9 +1,9 @@
-// Per-workspace bring-your-own AI provider keys. Reuses the Instantly
-// credential AES-GCM machinery (same encryption secret) so there is exactly
-// one credential-storage pattern in the codebase. Operations that run on a
-// workspace key are not charged platform credits.
+// Workspace AI settings accept Claude and OpenAI. Other research and infrastructure
+// providers use server secrets; Instantly has its own agency connection flow.
+// Workspace credentials reuse the Instantly AES-GCM storage machinery.
 
 import { createAdminClient, HttpError, requireWorkspaceSubscription } from './workspaceAuth.ts'
+import { type TextAiKey, type TextAiProvider } from './textAi.ts'
 import { decryptInstantlyApiKey, encryptInstantlyApiKey } from './instantly.ts'
 
 export type AiProvider = 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan'
@@ -21,15 +21,15 @@ const PLATFORM_ENV: Record<AiProvider, string> = {
   podscan: 'PODSCAN_API_KEY',
 }
 
-export function requireProvider(value: unknown): AiProvider {
-  if (value === 'anthropic' || value === 'openai' || value === 'winnr' || value === 'blitz' || value === 'podscan') return value
-  throw new HttpError(400, 'INVALID_PROVIDER', 'Unknown provider')
+export function requireProvider(value: unknown): TextAiProvider {
+  if (value === 'anthropic' || value === 'openai') return value
+  throw new HttpError(400, 'INVALID_PROVIDER', 'Only Claude and OpenAI keys can be managed here')
 }
 
 export async function storeWorkspaceAiKey(
   admin: ReturnType<typeof createAdminClient>,
   workspaceId: string,
-  provider: AiProvider,
+  provider: TextAiProvider,
   apiKey: string,
   actorUserId: string,
 ): Promise<void> {
@@ -68,7 +68,7 @@ export async function clearWorkspaceAiKey(
 export async function workspaceAiKeyStatus(
   admin: ReturnType<typeof createAdminClient>,
   workspaceId: string,
-): Promise<Record<AiProvider, { configured: boolean; last_four: string | null; updated_at: string | null }>> {
+): Promise<Record<TextAiProvider, { configured: boolean; last_four: string | null; updated_at: string | null }>> {
   const { data, error } = await admin
     .from('workspace_ai_credentials')
     .select('provider, api_key_last_four, updated_at')
@@ -76,16 +76,13 @@ export async function workspaceAiKeyStatus(
   if (error) {
     throw new HttpError(503, 'AI_KEY_STORAGE_UNAVAILABLE', 'API key status is unavailable')
   }
-  const status: Record<AiProvider, { configured: boolean; last_four: string | null; updated_at: string | null }> = {
+  const status: Record<TextAiProvider, { configured: boolean; last_four: string | null; updated_at: string | null }> = {
     anthropic: { configured: false, last_four: null, updated_at: null },
     openai: { configured: false, last_four: null, updated_at: null },
-    winnr: { configured: false, last_four: null, updated_at: null },
-    blitz: { configured: false, last_four: null, updated_at: null },
-    podscan: { configured: false, last_four: null, updated_at: null },
   }
   for (const row of (data ?? []) as Array<{ provider?: unknown; api_key_last_four?: unknown; updated_at?: unknown }>) {
     const provider = row.provider
-    if (provider === 'anthropic' || provider === 'openai' || provider === 'winnr' || provider === 'blitz' || provider === 'podscan') {
+    if (provider === 'anthropic' || provider === 'openai') {
       status[provider] = {
         configured: true,
         last_four: typeof row.api_key_last_four === 'string' ? row.api_key_last_four : null,
@@ -96,8 +93,9 @@ export async function workspaceAiKeyStatus(
   return status
 }
 
-// Tenant operations require their own key. Platform keys are reserved for
-// explicitly platform-scoped maintenance (workspaceId = null).
+// Infrastructure/embedding credential resolution. OpenAI here is the platform
+// embedding account. Text generation must use resolveTextAiKey instead.
+// The explicit Anthropic path remains for legacy callers, without a platform fallback.
 export async function resolveAiKey(
   admin: ReturnType<typeof createAdminClient>,
   workspaceId: string | null,
@@ -105,12 +103,15 @@ export async function resolveAiKey(
 ): Promise<ResolvedAiKey | null> {
   if (workspaceId) {
     await requireWorkspaceSubscription(admin, workspaceId)
-    const stored = await readStoredAiKey(admin, workspaceId, provider)
-    if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
-    throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', `Ask your workspace owner to connect a ${provider} key in Billing → Provider accounts. Your workspace subscription does not include provider usage.`)
+    if (provider === 'anthropic') {
+      const stored = await readStoredAiKey(admin, workspaceId, provider)
+      if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
+      throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', 'Ask your workspace owner to connect a Claude key in Billing → Provider accounts. Claude usage is billed by Anthropic.')
+    }
   }
   const platformKey = Deno.env.get(PLATFORM_ENV[provider])?.trim()
   if (platformKey) return { apiKey: platformKey, source: 'platform' }
+  if (workspaceId) throw new HttpError(503, 'PLATFORM_PROVIDER_NOT_CONFIGURED', 'This service is not configured on the platform. Contact support; no additional API key is needed from your workspace.')
   return null
 }
 
@@ -184,4 +185,31 @@ export async function probeAiKeyResult(
 // Before storing a key: anything but a clear yes refuses it, as it always has.
 export async function probeAiKey(provider: AiProvider, apiKey: string): Promise<boolean> {
   return await probeAiKeyResult(provider, apiKey) === 'valid'
+}
+
+/** Explicit preferences never silently fall back to another provider or platform key. */
+export async function workspaceTextAiPreference(admin: ReturnType<typeof createAdminClient>, workspaceId: string): Promise<TextAiProvider | null> {
+  const { data, error } = await admin.from('workspaces').select('default_ai_provider').eq('id', workspaceId).single()
+  if (error || !data) throw new HttpError(503, 'AI_SETTINGS_UNAVAILABLE', 'AI provider settings could not be read. Try again or contact support.')
+  return data.default_ai_provider === 'anthropic' || data.default_ai_provider === 'openai' ? data.default_ai_provider : null
+}
+
+export async function resolveTextAiKey(admin: ReturnType<typeof createAdminClient>, workspaceId: string): Promise<TextAiKey> {
+  await requireWorkspaceSubscription(admin, workspaceId)
+  const preferred = await workspaceTextAiPreference(admin, workspaceId)
+  const providers: TextAiProvider[] = preferred ? [preferred] : ['anthropic', 'openai']
+  for (const provider of providers) {
+    const stored = await readStoredAiKey(admin, workspaceId, provider)
+    if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace', provider }
+  }
+  throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', preferred
+    ? `Connect the selected ${preferred === 'openai' ? 'OpenAI' : 'Claude'} key in Billing, or choose another AI provider.`
+    : 'Connect a Claude or OpenAI key in Billing to use AI features.')
+}
+
+export async function setWorkspaceTextAiProvider(admin: ReturnType<typeof createAdminClient>, workspaceId: string, provider: TextAiProvider): Promise<void> {
+  const stored = await readStoredAiKey(admin, workspaceId, provider)
+  if (!stored.apiKey) throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', 'Save a key for this provider before selecting it.')
+  const { error } = await admin.from('workspaces').update({ default_ai_provider: provider }).eq('id', workspaceId)
+  if (error) throw new HttpError(503, 'AI_SETTINGS_UNAVAILABLE', 'The default AI provider could not be saved.')
 }

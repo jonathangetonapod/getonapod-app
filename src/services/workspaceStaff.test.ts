@@ -7,6 +7,9 @@ import {
   runSubscriptionAction,
   setWorkspaceMonthlyAllowance,
   testWorkspaceAiKey,
+  getWorkspaceAiKeys,
+  setWorkspaceAiProvider,
+  setWorkspaceAiKey,
   inviteWorkspaceStaff,
   listWorkspaceStaff,
   mutateWorkspaceStaff,
@@ -669,7 +672,7 @@ describe('testWorkspaceAiKey', () => {
 
   it('refuses an answer it does not recognize', async () => {
     invoke.mockResolvedValue({ data: { success: true, result: 'maybe' }, error: null })
-    await expect(testWorkspaceAiKey(workspaceId, 'openai')).rejects.toThrow('The API key could not be tested.')
+    await expect(testWorkspaceAiKey(workspaceId, 'anthropic')).rejects.toThrow('The API key could not be tested.')
   })
 })
 
@@ -779,5 +782,43 @@ describe('runSubscriptionAction', () => {
     invoke.mockResolvedValue({ data: { success: true }, error: null })
     await expect(runSubscriptionAction(workspaceId, { operation: 'cancel', reason: 'other', note: '', actionKey: key }))
       .rejects.toThrow('The subscription could not be changed.')
+  })
+})
+
+
+describe('workspace AI provider choice', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('reads both AI key statuses and the agency provider preference', async () => {
+    invoke.mockResolvedValue({ data: { success: true, default_provider: 'openai', providers: {
+      openai: { configured: true, last_four: '1234', updated_at: '2026-10-29' },
+      podscan: { configured: true, last_four: 'hidden' },
+    } }, error: null })
+    await expect(getWorkspaceAiKeys(workspaceId)).resolves.toEqual({
+      anthropic: { configured: false, last_four: null, updated_at: null },
+      openai: { configured: true, last_four: '1234', updated_at: '2026-10-29' },
+      default_provider: 'openai',
+    })
+  })
+
+  it('saves an OpenAI key in the requested workspace', async () => {
+    invoke.mockResolvedValue({ data: { success: true }, error: null })
+    await setWorkspaceAiKey(workspaceId, 'openai', 'sk-test-customer-key')
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', { body: {
+      action: 'ai-keys-set', workspace_id: workspaceId, provider: 'openai', api_key: 'sk-test-customer-key',
+    } })
+  })
+
+  it('sets the preferred provider without resending a credential', async () => {
+    invoke.mockResolvedValue({ data: { success: true }, error: null })
+    await setWorkspaceAiProvider(workspaceId, 'openai')
+    expect(invoke).toHaveBeenCalledWith('manage-workspace-staff', { body: {
+      action: 'ai-provider-set', workspace_id: workspaceId, provider: 'openai',
+    } })
+  })
+
+  it('does not claim the provider changed when the server refuses it', async () => {
+    invoke.mockResolvedValue({ data: { success: false }, error: null })
+    await expect(setWorkspaceAiProvider(workspaceId, 'openai')).rejects.toThrow('The default AI provider could not be saved.')
   })
 })

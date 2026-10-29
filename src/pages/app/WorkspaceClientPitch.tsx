@@ -200,7 +200,7 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
           billingHref={isPlatformWorkspace ? '/app/platform/billing' : '/app/settings/billing'}
           shortlistHref={shortlistHref}
           podcast={podcast}
-          byoAi={detail.ai_keys?.anthropic === true}
+          byoAi={(detail.ai_keys?.anthropic === true || detail.ai_keys?.openai === true)}
           onArchive={() => setArchiveOpen(true)}
         />
       </div>

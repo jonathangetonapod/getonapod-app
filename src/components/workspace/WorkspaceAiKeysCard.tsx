@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Loader2, LockKeyhole } from 'lucide-react'
+import { Loader2, LockKeyhole } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -15,11 +15,12 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AiKeyRow, type AiKeyProviderInfo } from '@/components/workspace/settings/AiKeyRow'
-type AiKeyProvider = keyof import('@/services/workspaceStaff').WorkspaceAiKeysView
+type AiKeyProvider = import('@/services/workspaceStaff').WorkspaceAiProvider
 import {
   clearWorkspaceAiKey,
   getWorkspaceAiKeys,
   setWorkspaceAiKey,
+  setWorkspaceAiProvider,
 } from '@/services/workspaceStaff'
 
 // What each key is actually spent on, and where to get one, so the choice to
@@ -32,17 +33,7 @@ const PROVIDERS: AiKeyProviderInfo[] = [
     usedFor: 'Used for podcast research, pitch writing and inbox replies.',
     consoleUrl: 'https://console.anthropic.com/settings/keys',
   },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    keyPrefix: 'sk-',
-    usedFor: 'Used for searching the podcast database.',
-    consoleUrl: 'https://platform.openai.com/api-keys',
-  },
-  { id: 'podscan', label: 'Podscan', keyPrefix: '', usedFor: 'Live podcast discovery and data refreshes.', consoleUrl: 'https://podscan.fm', optional: true },
-  { id: 'blitz', label: 'Blitz', keyPrefix: '', usedFor: 'Direct host contact enrichment.', consoleUrl: '', optional: true },
-  { id: 'winnr', label: 'Winnr', keyPrefix: '', usedFor: 'Domains and mailboxes billed to your Winnr account.', consoleUrl: '', optional: true },
-
+  { id: 'openai', label: 'OpenAI', keyPrefix: 'sk-', usedFor: 'An alternative to Claude for research, writing, scoring, host discovery and inbox replies.', consoleUrl: 'https://platform.openai.com/api-keys' },
 ]
 
 interface WorkspaceAiKeysCardProps { workspaceId: string; queryScope: readonly unknown[] }
@@ -56,7 +47,6 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
   const queryClient = useQueryClient()
   // Removing a key pauses its provider-backed features, so confirm the change.
   const [removing, setRemoving] = useState<AiKeyProvider | null>(null)
-  const [showAdditional, setShowAdditional] = useState(false)
   const queryKey = [...queryScope, 'workspace-ai-keys']
 
   const keysQuery = useQuery({
@@ -69,7 +59,7 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
     mutationFn: ({ provider, apiKey }: { provider: AiKeyProvider; apiKey: string }) =>
       setWorkspaceAiKey(workspaceId, provider, apiKey),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey.includes(workspaceId) })
       toast.success('Key saved for everyone in this workspace. Your provider bills usage directly.')
     },
     onError: (error) => {
@@ -80,7 +70,7 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
   const removeMutation = useMutation({
     mutationFn: (provider: AiKeyProvider) => clearWorkspaceAiKey(workspaceId, provider),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey })
+      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey.includes(workspaceId) })
       toast.success('Key removed from this workspace. Connect a replacement to resume new requests.')
     },
     onError: (error) => {
@@ -88,7 +78,16 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
     },
   })
 
-  const busy = saveMutation.isPending || removeMutation.isPending
+  const providerMutation = useMutation({
+    mutationFn: (provider: AiKeyProvider) => setWorkspaceAiProvider(workspaceId, provider),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ predicate: (query) => query.queryKey.includes(workspaceId) })
+      toast.success('Default AI provider updated for this workspace.')
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The AI provider could not be saved.'),
+  })
+  const selectedProvider = keysQuery.data?.default_provider ?? (keysQuery.data?.anthropic.configured ? 'anthropic' : keysQuery.data?.openai?.configured ? 'openai' : '')
+  const busy = saveMutation.isPending || removeMutation.isPending || providerMutation.isPending
   const saved = PROVIDERS.filter((provider) => keysQuery.data?.[provider.id]?.configured).length
   const providerRow = (provider: AiKeyProviderInfo) => (
     <AiKeyRow
@@ -107,7 +106,7 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
     <Card>
       <CardContent className="space-y-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h3 className="font-semibold">Research & search</h3><p className="mt-1 text-sm text-muted-foreground">Start with the tools that power your daily work.</p></div>
+          <div><h3 className="font-semibold">Research & search</h3><p className="mt-1 text-sm text-muted-foreground">Connect Claude or OpenAI and choose the default for your agency. Only one AI key is required. Podcast data, search and contact enrichment are managed by the platform.</p></div>
           {keysQuery.data && !keysQuery.isError && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">{saved} {saved === 1 ? 'key' : 'keys'} saved</span>}
         </div>
         <p className="text-sm leading-6 text-muted-foreground">Use company-owned provider accounts: these keys are shared by everyone in your workspace. Changing the workspace owner does not replace or revoke saved keys. Review and replace credentials during a handover, and revoke old keys with the provider when appropriate.</p>
@@ -118,17 +117,18 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
         ) : keysQuery.isError ? <div className="space-y-3 rounded-lg border border-destructive/20 bg-destructive/5 p-4" role="alert">
           <p className="text-sm">We couldn’t load your provider connections. Your saved keys haven’t been changed.</p>
           <Button variant="outline" size="sm" disabled={keysQuery.isFetching} onClick={() => void keysQuery.refetch()}>Retry connections</Button>
-        </div> : <>
-          <div className="space-y-4">{PROVIDERS.filter((provider) => !provider.optional).map(providerRow)}</div>
-          <div className="border-t pt-4">
-            <button type="button" className="flex w-full items-center justify-between gap-4 rounded-md py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={showAdditional} aria-controls="additional-billing-providers" onClick={() => setShowAdditional((open) => !open)}>
-              <span><span className="block text-sm font-semibold">Additional providers</span><span className="mt-1 block text-xs text-muted-foreground">Live discovery, contact enrichment, domains and mailboxes</span></span>
-              <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showAdditional ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </button>
-            {showAdditional && <div id="additional-billing-providers" className="mt-4 space-y-4">{PROVIDERS.filter((provider) => provider.optional).map(providerRow)}</div>}
+        </div> : <div className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="default-ai-provider" className="text-sm font-medium">Default AI provider</label>
+            <select id="default-ai-provider" className="block h-10 w-full rounded-md border bg-background px-3 text-sm" value={selectedProvider} disabled={busy} onChange={(event) => providerMutation.mutate(event.target.value as AiKeyProvider)}>
+              {!selectedProvider && <option value="" disabled>Save a Claude or OpenAI key first</option>}
+              {PROVIDERS.map((provider) => <option key={provider.id} value={provider.id} disabled={!keysQuery.data?.[provider.id]?.configured}>{provider.label}{!keysQuery.data?.[provider.id]?.configured ? ' (key not saved)' : ''}</option>)}
+            </select>
+            <p className="text-xs leading-5 text-muted-foreground">Used for research, pitches, scoring, onboarding, host discovery and inbox replies. Stage model choices apply to the selected provider. Switching providers keeps existing stage choices until you change them. We never switch providers automatically after a failed request.</p>
           </div>
-        </>}
-        <div className="flex items-start gap-2 border-t pt-4 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Keys are encrypted and hidden after saving. Anthropic and OpenAI checks confirm authentication only, not available credits, quota or model access. Other provider keys are saved without an authentication check.</p></div>
+          {PROVIDERS.map(providerRow)}
+        </div>}
+        <div className="flex items-start gap-2 border-t pt-4 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><p>Keys are encrypted and hidden after saving. AI key checks confirm authentication only, not available credits, quota or model access.</p></div>
       </CardContent>
       <AlertDialog open={removing !== null} onOpenChange={(open) => { if (!open) setRemoving(null) }}>
         <AlertDialogContent>

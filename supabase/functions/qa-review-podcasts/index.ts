@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey, type TextAiCredential } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
@@ -56,8 +57,8 @@ serve(async (req) => {
       )
     }
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+    const anthropicApiKey = platformTextAiKey()
+    if (!anthropicApiKey) throw new Error('Text AI provider not configured')
 
     console.log(`[QA Review] Scoring ${podcasts.length} podcasts | Topic: "${target_topic || 'none'}" | Bio length: ${prospect_bio.length}`)
 
@@ -83,7 +84,7 @@ serve(async (req) => {
 })
 
 async function scorePodcast(
-  apiKey: string,
+  apiKey: TextAiCredential,
   bio: string,
   targetTopic: string | null,
   podcast: PodcastInput
@@ -142,13 +143,8 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 }`
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await textAiFetch(apiKey, {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
       body: JSON.stringify({
         model: 'claude-sonnet-5-5',
         thinking: { type: 'between_tools' },

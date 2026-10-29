@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-type AiKeyProvider = keyof import('@/services/workspaceStaff').WorkspaceAiKeysView
+type AiKeyProvider = import('@/services/workspaceStaff').WorkspaceAiProvider
 import { notACredentialField } from '@/lib/formAutofill'
 import {
   testWorkspaceAiKey,
@@ -20,7 +20,6 @@ export interface AiKeyProviderInfo {
   keyPrefix: string
   usedFor: string
   consoleUrl: string
-  optional?: boolean
 }
 
 interface AiKeyRowProps {
@@ -101,7 +100,7 @@ const AiKeyRowEditor = ({
           ? <Badge variant="outline" className={keyRejected ? 'border-destructive/30 bg-destructive/5 text-destructive' : authenticationAccepted ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}>
             {testMutation.isPending ? 'Checking authentication…' : keyRejected ? 'Key rejected' : authenticationAccepted ? 'Authentication accepted' : 'Key saved'}
           </Badge>
-          : <Badge variant="outline">{provider.optional ? 'Optional' : 'Not connected'}</Badge>}
+          : <Badge variant="outline">Not connected</Badge>}
       </div>
       <p className="text-sm text-muted-foreground">
         {provider.usedFor}{' '}
@@ -124,10 +123,10 @@ const AiKeyRowEditor = ({
           </code>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={rowBusy} onClick={() => setReplacing(true)}>Replace</Button>
-            {['anthropic', 'openai'].includes(provider.id) && <Button type="button" variant="outline" disabled={busy || testMutation.isPending} onClick={() => testMutation.mutate()}>
+            <Button type="button" variant="outline" disabled={busy || testMutation.isPending} onClick={() => testMutation.mutate()}>
               {testMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
               Test key
-            </Button>}
+            </Button>
             <Button type="button" variant="outline" disabled={rowBusy} onClick={onRemove}>
               <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remove
             </Button>

@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
@@ -323,8 +324,8 @@ serve(async (req) => {
       )
     }
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+    const anthropicApiKey = platformTextAiKey()
+    if (!anthropicApiKey) throw new Error('Text AI provider not configured')
 
     const firstName = clientName.split(' ')[0]
 
@@ -414,13 +415,8 @@ CUTTING PATTERNS - DELETE THESE IF THEY APPEAR:
 
     console.log('[Generate Sequence] Generating for:', clientName)
 
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    const claudeResponse = await textAiFetch(anthropicApiKey, {
       method: 'POST',
-      headers: {
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
       body: JSON.stringify({
         model: 'claude-sonnet-5-5',
         // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.

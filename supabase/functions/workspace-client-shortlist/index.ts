@@ -1,6 +1,6 @@
+import { textTokenUsage, textAiFetch, type TextAiCredential } from '../_shared/textAi.ts'
 import { BatchYield, BatchCheckpointError, batchPromptRunner, researchBatchRecovery } from '../_shared/researchBatchCheckpoint.ts'
 import { researchBatchAuth } from '../_shared/researchBatchAuth.ts'
-import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -22,7 +22,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { generatePodcastSearchEmbedding, isSemanticSearchEnabled } from '../_shared/podcastSearch.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { readStoredAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import {
   ensureEpisodesCaptured,
   readStoredEpisodes,
@@ -835,7 +835,7 @@ interface ResearchPromptParts {
 }
 
 async function runResearchPrompt(
-  apiKey: string,
+  apiKey: TextAiCredential,
   prompt: { model: string; maxTokens: number; system: string },
   parts: string | ResearchPromptParts,
   usage: { input: number; output: number; deadline?: number },
@@ -855,13 +855,8 @@ async function runResearchPrompt(
     // stage's own system line leads the instruction block instead.
     text: cached ? `${prompt.system}\n\n${resolved.instruction}` : resolved.instruction,
   })
-  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const response = await textAiFetch(apiKey, {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       model: prompt.model,
       max_tokens: prompt.maxTokens,
@@ -1307,7 +1302,7 @@ serve(async (req) => {
         // opens or research runs (both call ensureEpisodesCaptured).
         for (const podcastId of addedPodcastIds.slice(0, 5)) {
           try {
-            await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
+            await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await resolveAiKey(authContext.admin, workspaceId, 'podscan'))!.apiKey })
           } catch (_error) {
             // A Podscan hiccup never fails the add.
           }
@@ -1676,7 +1671,7 @@ serve(async (req) => {
         podcastId,
         body.relationship_acknowledged === true,
       )
-      const captured = await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
+      const captured = await ensureEpisodesCaptured(authContext.admin, podcastId, { apiKey: (await resolveAiKey(authContext.admin, workspaceId, 'podscan'))!.apiKey })
       return jsonResponse(req, METHODS, 200, {
         // The full stored shape (minus transcript): title, description, urls,
         // duration, hosts, guests, summary, keywords, topics.
@@ -1854,7 +1849,7 @@ serve(async (req) => {
         .eq('podscan_id', shortlistRow.podcast_id)
         .maybeSingle()
 
-      const anthropicKey = await resolveAiKey(authContext.admin, workspaceId, 'anthropic')
+      const anthropicKey = await resolveTextAiKey(authContext.admin, workspaceId)
       if (!anthropicKey) {
         throw new HttpError(500, 'RESEARCH_NOT_CONFIGURED', 'Podcast research is not configured')
       }
@@ -2036,7 +2031,7 @@ serve(async (req) => {
 
         // Stored episode capture: Podscan is only hit when the capture is
         // missing or stale, so research reruns are free of provider calls.
-        const captured = await ensureEpisodesCaptured(authContext.admin, shortlistRow.podcast_id, { apiKey: (await readStoredAiKey(authContext.admin, workspaceId, 'podscan')).apiKey })
+        const captured = await ensureEpisodesCaptured(authContext.admin, shortlistRow.podcast_id, { apiKey: (await resolveAiKey(authContext.admin, workspaceId, 'podscan'))!.apiKey })
         const firstEpisode = captured?.episodes[0] ?? null
         // Every podcast-sourced variable in the registry, rendered by its
         // declared type. Typing matters here: a raw false or 0 handed to the
@@ -2181,7 +2176,7 @@ serve(async (req) => {
           promptId: string,
           parts: { context: string; report?: string },
         ): Promise<string> => runResearchPrompt(
-          anthropicKey.apiKey,
+          anthropicKey,
           promptSpec(promptId),
           { ...parts, instruction: fillPromptTemplate(promptContent(promptId), stageVariables) },
           usage,
@@ -2296,7 +2291,7 @@ serve(async (req) => {
         // Structure the narrative outputs into the shortlist's existing
         // ai_* columns so every downstream surface renders them unchanged.
         const structured = await runResearchPrompt(
-          anthropicKey.apiKey,
+          anthropicKey,
           { model: 'claude-sonnet-5-5', maxTokens: 1_500, system: 'You convert podcast research into strict JSON. Return ONLY a JSON object, no markdown.' },
           `From the research and topic proposal below, return ONLY this JSON shape: {"clean_description": string (2 sentences about the show), "fit_reasons": string[] (3 specific reasons this guest fits), "pitch_angles": [{"title": string, "description": string}] (exactly 3 angles), "host_name": string or null, "recent_guest_name": string or null (full name of the guest on the analyzed episode per the guest report; null for solo episodes or when unverified)}.\n\nRESEARCH:\n${researchReport.slice(0, 12_000)}\n\nHOST REPORT:\n${hostReport.slice(0, 4_000)}\n\nGUEST REPORT:\n${guestReport ? guestReport.slice(0, 4_000) : 'Not available'}\n\nTOPIC PROPOSAL:\n${topicProposal.slice(0, 8_000)}`,
           usage,
@@ -2405,8 +2400,7 @@ serve(async (req) => {
           workspaceId,
           operationType: 'research_run',
           usage: {
-            anthropicInputTokens: usage.input,
-            anthropicOutputTokens: usage.output,
+            ...textTokenUsage(anthropicKey, usage.input, usage.output),
             podscanCalls: 1,
           },
           usedByoKey: byoKeyUsed,
@@ -2448,7 +2442,7 @@ serve(async (req) => {
         await logOperationCost(authContext.admin, {
           workspaceId,
           operationType: 'research_run',
-          usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output, podscanCalls: 1 },
+          usage: { ...textTokenUsage(anthropicKey, usage.input, usage.output), podscanCalls: 1 },
           usedByoKey: byoKeyUsed,
           clientId,
           referenceKind: 'shortlist_podcast',
@@ -2504,8 +2498,8 @@ serve(async (req) => {
       }
 
       // No platform Claude fallback, no credit charge, no Instantly requirement.
-      const claudeKey = await readStoredAiKey(authContext.admin, workspaceId, 'anthropic')
-      if (!claudeKey.apiKey) throw new HttpError(409, 'CLAUDE_KEY_REQUIRED', 'Connect your Claude API key in workspace settings to find a host contact. No app credits are used.')
+      const claudeKey = await resolveTextAiKey(authContext.admin, workspaceId)
+      if (!claudeKey) throw new HttpError(409, 'CLAUDE_KEY_REQUIRED', 'Connect your Claude or OpenAI API key in workspace settings to find a host contact. No app credits are used.')
       const blitzKey = (await resolveAiKey(authContext.admin, workspaceId, 'blitz'))?.apiKey
       if (!blitzKey) throw new HttpError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', 'The email provider is not configured. Contact your administrator.')
 
@@ -2540,7 +2534,7 @@ serve(async (req) => {
         profile ??= linkedinProfileUrl(existingContact?.provider_reference)
         if (!profile) {
           const episodes = Array.isArray(catalog?.recent_episodes) ? catalog.recent_episodes.slice(0, 3) : []
-          profile = await discoverHostLinkedin(claudeKey.apiKey, {
+          profile = await discoverHostLinkedin(claudeKey, {
             podcast_name: catalog?.podcast_name ?? shortlistRow.podcast_name,
             description: (catalog?.podcast_description ?? shortlistRow.podcast_description ?? '').slice(0, 4_000),
             website: catalog?.website ?? catalog?.podcast_url ?? shortlistRow.podcast_url,
@@ -2588,7 +2582,7 @@ serve(async (req) => {
       } finally {
         await logOperationCost(authContext.admin, {
           workspaceId, clientId, operationType: 'email_unlock_identify', usedByoKey: true,
-          usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output },
+          usage: { ...textTokenUsage(claudeKey, usage.input, usage.output)},
           referenceKind: 'shortlist_podcast', referenceId: shortlistPodcastId,
         })
       }
@@ -2759,7 +2753,7 @@ serve(async (req) => {
         ? structuredAngles[angleIndex].grounding.trim()
         : ''
 
-      const anthropicKey = await resolveAiKey(authContext.admin, workspaceId, 'anthropic')
+      const anthropicKey = await resolveTextAiKey(authContext.admin, workspaceId)
       if (!anthropicKey) throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Pitch writing is not configured')
       const byoKeyUsed = anthropicKey.source === 'workspace'
       // Charged below, once the fields write_email requires are known to be
@@ -3002,7 +2996,7 @@ serve(async (req) => {
           ? 'OPERATOR REVIEW CONFIRMED: The operator saw the live-conversation warning and chose to draft anyway. Write a careful warm follow-on sequence for editing; do not return ACTIVE CONVERSATION.'
           : ''
         let draftRaw = await runPitchPrompt(
-          anthropicKey.apiKey,
+          anthropicKey,
           promptSpec('write_email'),
           {
             context: pitchContext,
@@ -3022,7 +3016,7 @@ serve(async (req) => {
         // making the paid request unusable.
         if (/^\s*ACTIVE CONVERSATION/iu.test(draftRaw) && relationship?.state === 'in_conversation') {
           draftRaw = await runPitchPrompt(
-            anthropicKey.apiKey,
+            anthropicKey,
             // The workspace's model, but deliberately the canonical prompt —
             // this retry exists because the SAVED wording refused, so only the
             // wording falls back, not the model choice.
@@ -3081,7 +3075,7 @@ serve(async (req) => {
         let flags = pitchSequenceChecks(sequence)
         try {
           const auditRaw = await runPitchPrompt(
-            anthropicKey.apiKey,
+            anthropicKey,
             { model: 'claude-sonnet-5-5', maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
             `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
             usage,
@@ -3098,7 +3092,7 @@ serve(async (req) => {
         }
         if (flags.length > 0) {
           const revisedRaw = await runPitchPrompt(
-            anthropicKey.apiKey,
+            anthropicKey,
             promptSpec('clean_email'),
             // The revision stage runs inside the pitch scope, so it can see
             // everything the draft was written from. It used to get two fields,
@@ -3122,7 +3116,7 @@ serve(async (req) => {
         await logOperationCost(authContext.admin, {
           workspaceId,
           operationType: 'query_generation',
-          usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output },
+          usage: { ...textTokenUsage(anthropicKey, usage.input, usage.output)},
           usedByoKey: byoKeyUsed,
           clientId,
           referenceKind: 'pitch_generate',

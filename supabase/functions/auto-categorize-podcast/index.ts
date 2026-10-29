@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
@@ -43,9 +44,9 @@ serve(async (req) => {
       )
     }
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    const anthropicApiKey = platformTextAiKey()
     if (!anthropicApiKey) {
-      throw new Error('ANTHROPIC_API_KEY not configured')
+      throw new Error('Text AI provider not configured')
     }
 
     const prompt = `You are a podcast categorization expert. Based on the information below, select the SINGLE BEST category from this list:
@@ -61,13 +62,8 @@ IMPORTANT: Reply with ONLY the category name from the list above. Nothing else. 
 
     console.log(`[Auto-Categorize] Categorizing podcast: ${podcastName}`)
 
-    const haikuResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    const haikuResponse = await textAiFetch(anthropicApiKey, {
       method: 'POST',
-      headers: {
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
       body: JSON.stringify({
         model: 'claude-sonnet-5-5',
         thinking: { type: 'between_tools' },

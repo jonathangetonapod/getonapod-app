@@ -1,3 +1,4 @@
+import { textAiFetch, type TextAiCredential } from './textAi.ts'
 import { HttpError } from './httpError.ts'
 import { providerFetch } from './providerErrors.ts'
 
@@ -33,7 +34,7 @@ type Block = { type?: string; text?: string; url?: string; content?: unknown; ci
 
 /** Uses the caller's workspace key. Does not resolve or fall back to a platform key. */
 export async function discoverHostLinkedin(
-  apiKey: string,
+  apiKey: TextAiCredential,
   context: Record<string, unknown>,
   usage: DiscoveryUsage,
   fetcher: typeof fetch = fetch,
@@ -43,9 +44,8 @@ export async function discoverHostLinkedin(
   let searched = false
   const signal = AbortSignal.timeout(90_000)
   for (let turn = 0; turn < 2; turn += 1) {
-    const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+    const response = await textAiFetch(apiKey, {
       method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: HOST_DISCOVERY_MODEL,
         max_tokens: 2_000,
@@ -67,7 +67,7 @@ export async function discoverHostLinkedin(
     for (const block of blocks) {
       if (block.type !== 'web_search_tool_result') continue
       if (!Array.isArray(block.content)) {
-        throw new HttpError(503, 'HOST_SEARCH_UNAVAILABLE', 'Claude could not complete web search. Check that web search is enabled for your API key and retry.')
+        throw new HttpError(503, 'HOST_SEARCH_UNAVAILABLE', 'The AI provider could not complete web search. Check that web search is enabled for your API key and retry.')
       }
       searched = true
       for (const result of block.content as Block[]) {
@@ -96,7 +96,7 @@ export async function discoverHostLinkedin(
       messages.push({ role: 'user', content: 'Verify the candidate with a targeted site:linkedin.com/in/ web search. The exact personal profile URL must appear as a search result, not just be inferred from another page. Return exactly one supported profile URL, or null if the host cannot be matched confidently. No explanation.' })
       continue
     }
-    throw new HttpError(503, 'HOST_SEARCH_UNGROUNDED', 'Claude did not return a personal LinkedIn URL supported by its search results. Try again.')
+    throw new HttpError(503, 'HOST_SEARCH_UNGROUNDED', 'The AI provider did not return a personal LinkedIn URL supported by its search results. Try again.')
   }
   throw new HttpError(503, 'HOST_SEARCH_INCOMPLETE', 'The host search needs more time. Try again.')
 }

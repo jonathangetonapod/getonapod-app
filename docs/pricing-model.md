@@ -11,7 +11,8 @@ Complimentary access remains available to platform administrators.
 `/app/settings/billing` shows subscription status, actual subscriber price,
 renewal/cancellation timing, payment settings, invoices, and provider connections.
 Owners and workspace administrators can manage billing; only owners and platform
-administrators can change provider credentials. Stripe hosts card collection,
+administrators can change the Claude/OpenAI and Instantly credentials. Each agency
+connects its own Instantly account in Client Campaigns. Stripe hosts card collection,
 invoices and cancellation. Card details never pass through the application.
 
 The page provides jump links for the plan, payments and provider setup. Past-due
@@ -19,9 +20,10 @@ subscriptions prioritize payment recovery. Checkout cancellation is acknowledged
 without claiming a payment result, and a late webhook confirmation clears the
 pending state even after automatic polling has stopped.
 
-Provider setup shows research/search first, with additional providers in a
-collapsible section. A failed status request shows recovery controls instead of
-empty key forms. Key entry supports keyboard submission and keeps saved secrets
+Billing provider setup offers Claude and OpenAI keys and a default AI provider
+selector. Only one AI key is required. There are no customer key forms for
+Podscan, Blitz or Winnr. A failed status request shows recovery
+controls instead of empty key forms. Key entry supports keyboard submission and keeps saved secrets
 masked.
 
 The portal reads `subscription-overview`, which does not query the credit ledger.
@@ -32,28 +34,65 @@ can still open payment settings and historical invoices.
 
 ## Provider costs
 
-Tenant operations require customer-owned credentials. Missing keys stop the relevant feature with `PROVIDER_KEY_REQUIRED`. Storage or
-decryption failures return `AI_KEY_STORAGE_UNAVAILABLE` or
-`PROVIDER_CONNECTION_UNAVAILABLE`; they do not instruct users to replace valid
-credentials. Tenant operations never fall back to platform credentials.
+Customers choose **Claude or OpenAI** in Billing and connect their own
+**Instantly API key** in Client Campaigns. No other customer API keys are required.
+The selected AI provider powers research stages, pitch writing, podcast scoring,
+query generation, onboarding profiles, prospect analysis, inbox replies and
+web-grounded host discovery. Missing selected credentials stop the feature with
+`PROVIDER_KEY_REQUIRED`. Stored-key and database failures do not trigger fallback
+to platform credentials or a different provider.
 
-- Anthropic: research, client briefs, pitches and replies.
-- OpenAI: semantic database searches and embeddings.
-- Podscan: live discovery and requested episode refreshes.
-- Blitz: direct host contact enrichment.
-- Winnr: domain/mailbox provisioning, billed to the customer's provider account.
-- Instantly: remains a separate customer-owned sending integration.
+| Provider | Credential owner | Used for |
+| --- | --- | --- |
+| Anthropic / Claude | Customer workspace, optional alternative to OpenAI | AI generation and host web search |
+| OpenAI text generation | Customer workspace, optional alternative to Claude | The same AI features through Responses API |
+| Podscan | Platform: `PODSCAN_API_KEY` | Live discovery and episode refreshes |
+| OpenAI embeddings | Platform: `OPENAI_API_KEY` | Semantic searches and embeddings, independent of the selected AI provider |
+| Blitz | Platform: `BLITZ_API_KEY` | Direct host contact enrichment |
+| Winnr | Platform: optional `WINNR_API_TOKEN` | Domain/mailbox provisioning |
+| Instantly | Customer agency, stored per workspace | Campaign sending |
 
-Keys are encrypted with the existing credential-storage mechanism. Anthropic and
-OpenAI keys are probed on save. Other providers' keys are stored and checked when
-used; the UI does not claim they were verified. Cached catalog data remains
-shared. Optional episode captures may reuse that data without a Podscan key but
-cannot fall back to the platform key to fetch new data.
+Existing agencies with no saved preference use Claude when its key exists, or
+OpenAI when only that key exists. An explicit preference requires that provider’s
+saved key and never falls back. Saving a preference is restricted to workspace
+owners and platform administrators. Both keys can be stored; only the selected
+provider is used for text work.
 
-Platform-scoped maintenance can still use platform credentials. Shared catalog
-maintenance, email verification, hosting and storage therefore remain platform
-costs. Unlimited clients is not a promise of unlimited platform-funded provider
-usage. Existing catalog/search rate limits remain in place.
+Stage model lists come from the selected provider’s Models API. Existing stage
+choices are preserved when switching providers; a model from the other provider
+uses the selected provider’s default. Choosing another stage model replaces that
+stage’s one saved choice. OpenAI text defaults to `gpt-4.1`; Claude keeps the existing
+stage defaults. OpenAI model listing excludes non-text and specialized models.
+Host search uses the default web-capable model and verifies returned LinkedIn URLs
+against actual search sources rather than trusting generated text alone.
+
+The OpenAI adapter uses the [Responses API](https://developers.openai.com/api/docs/guides/text)
+with `store: false` and [web-search source retrieval](https://developers.openai.com/api/docs/guides/tools-web-search).
+Incomplete, empty, refused or malformed responses cannot become completed drafts.
+OpenAI text input/output tokens are recorded separately from Claude and embeddings;
+cost estimates remain rough analytics, not provider invoices.
+
+Set platform secrets in Supabase Edge Function secret storage, never in `VITE_`
+variables. The platform pays usage on those accounts. Existing subscription and
+request limits still apply; shared credentials do not bypass authorization.
+Winnr resources remain scoped by workspace tags. Instantly keeps its existing
+workspace-specific encrypted credentials and unique provider workspace mapping;
+there is no shared sending-key fallback. Each workspace owner (or platform
+administrator) can connect, replace or disconnect its own Instantly credential.
+
+The `ai-keys-*` endpoints accept `anthropic` and `openai`. Legacy Podscan, Blitz
+and Winnr entries in `workspace_ai_credentials` are ignored and hidden, not
+deleted or revoked.
+Instantly credentials remain active in `workspace_instantly_integrations`. Both AI keys remain encrypted and authentication-tested on save. Podcast episode capture uses the server Podscan
+key, including the optional research capture paths. Shared catalog caches remain
+available. Platform-only maintenance/content generation uses `TEXT_AI_PROVIDER=anthropic`
+or `openai` with server credentials. If unset, it preserves Claude when configured
+and otherwise uses OpenAI. This platform setting never selects credentials for
+agency operations.
+
+Missing server secrets return `PLATFORM_PROVIDER_NOT_CONFIGURED`. Rejected or
+unfunded platform provider accounts return `PLATFORM_PROVIDER_ACTION_REQUIRED`;
+users are directed to support rather than another key form.
 
 ## Access and trials
 
@@ -68,8 +107,8 @@ Client and guest-resource lists, plus staff onboarding lists, details and existi
 links, remain readable for recovery and access to existing data. Creating,
 editing, deleting or publishing those resources requires access. Public client
 onboarding submissions retain their separate capability-based authorization.
-Keyword-only catalog search does not require an OpenAI key, and mailbox setup can
-report a disconnected provider before a Winnr key is supplied.
+Keyword-only catalog search does not require OpenAI, and mailbox setup can
+report a disconnected provider when platform Winnr provisioning is not configured.
 Scheduled autopilot/provider work and inbox enrollment/nudges also check access.
 Existing campaigns already running in the customer's external sending account
 are not cancelled automatically by this change.
@@ -115,9 +154,11 @@ a key affects all members but does not cancel external jobs or charges.
 
 Remove app credit debit/refill logic while retaining historical records. Every
 job must retain its workspace identity and enforce subscription access; privileged
-credentials are not a bypass. Use the workspace provider connection without a
-cross-workspace or platform-key fallback. Route subscription errors to app billing,
-provider billing errors to that provider, and rejected keys to the workspace owner.
+credentials are not a bypass. Use the workspace’s selected Claude/OpenAI and sending connections without
+cross-workspace fallback; use platform secrets for Podscan, embeddings, Blitz and
+Winnr. Route subscription errors to app billing, AI key/billing errors to the
+workspace owner, and platform
+provider configuration or billing errors to platform support.
 Use bounded retries for transient provider errors, but reconcile any action that
 may already have sent a message or purchased a resource before replaying it.
 `WINNR_UNCONFIRMED` requires reconciliation rather than another order.
@@ -132,6 +173,26 @@ automation; adding a workspace ID alone does not satisfy tenant user authorizati
 Also update n8n-owned checkout email templates that still mention old credit plans.
 
 ## Deployment
+
+Apply `20261031001400_workspace_text_ai_provider.sql` first to add the nullable
+workspace provider preference and OpenAI text usage columns. Then deploy every
+Edge Function importing `_shared/workspaceAiKeys.ts`, `_shared/textAi.ts`,
+`_shared/billing.ts` or `_shared/providerErrors.ts` (including transitive imports),
+and deploy the frontend. Configure `PODSCAN_API_KEY`, `OPENAI_API_KEY` and
+`BLITZ_API_KEY` first; configure `WINNR_API_TOKEN` only if mailbox provisioning is
+enabled. No stored credentials are deleted or revoked. Existing Instantly
+connections and subscription prices are unchanged.
+Migration `20261031001400_workspace_text_ai_provider.sql` was applied to Get On A
+Pod (`ysjwveqnwjysldpfqzov`) on 2026-10-29 after a successful rollback rehearsal.
+It was renumbered from `20261031001300` because production already recorded
+`client_pitch_previews` at that version. The exact repository SQL and its history
+entry were committed in one transaction through the authenticated Supabase SQL
+endpoint. Verification confirmed all three columns, validated constraints,
+correct defaults, unchanged row counts, and unchanged workspace write restrictions.
+No unrelated migrations were applied. Frontend and Edge Function deployment for
+this provider change remain outstanding; the earlier history below does not
+establish that those application changes are live.
+
 
 Migration `20261031000200_flat_workspace_subscriptions.sql` has been applied to
 Get On A Pod (`ysjwveqnwjysldpfqzov`). Live verification confirmed zero credit

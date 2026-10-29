@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { getCachedPodcasts, upsertPodcastCache, type PodcastCacheData } from '../_shared/podcastCache.ts'
@@ -178,9 +179,9 @@ async function analyzePodcastFit(
   clientName: string,
   clientBio: string
 ): Promise<FitAnalysis | null> {
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const anthropicApiKey = platformTextAiKey()
   if (!anthropicApiKey) {
-    console.error('[AI Analysis] ANTHROPIC_API_KEY not configured')
+    console.error('[AI Analysis] Text AI provider not configured')
     return null
   }
 
@@ -215,13 +216,8 @@ Return a JSON object with:
 Return ONLY valid JSON, no markdown code blocks.`
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await textAiFetch(anthropicApiKey, {
       method: 'POST',
-      headers: {
-        'x-api-key': anthropicApiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
       body: JSON.stringify({
         model: 'claude-sonnet-5-5',
         thinking: { type: 'between_tools' },

@@ -1,3 +1,4 @@
+import { textTokenUsage } from '../_shared/textAi.ts'
 import { isProviderRuntimeError } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -17,7 +18,7 @@ import {
   workspaceCredentialIsFresh,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
   createOnboardingCapability,
@@ -871,7 +872,7 @@ serve(async (req) => {
       }
       const definition = validateOnboardingDefinition(detail.definition)
       const answers = responseRecord(detail.answers, 'answers')
-      const anthropicKey = await resolveAiKey(admin, workspaceId, 'anthropic')
+      const anthropicKey = await resolveTextAiKey(admin, workspaceId)
       const draftCharge = await chargeCredits(admin, {
         workspaceId,
         operationType: 'pitch_profile',
@@ -882,11 +883,11 @@ serve(async (req) => {
         byoKeyUsed: anthropicKey?.source === 'workspace',
       })
       try {
-        const { profile, usage } = await generatePitchProfile(definition, answers, anthropicKey?.apiKey)
+        const { profile, usage } = await generatePitchProfile(definition, answers, anthropicKey)
         await logOperationCost(admin, {
           workspaceId,
           operationType: 'pitch_profile',
-          usage: { anthropicInputTokens: usage.inputTokens, anthropicOutputTokens: usage.outputTokens },
+          usage: { ...textTokenUsage(anthropicKey, usage.inputTokens, usage.outputTokens)},
           usedByoKey: anthropicKey?.source === 'workspace',
           referenceKind: 'onboarding_instance',
           referenceId: instanceId,

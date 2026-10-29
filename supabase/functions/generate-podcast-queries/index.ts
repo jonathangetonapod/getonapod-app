@@ -1,6 +1,6 @@
+import { credentialProvider, textTokenUsage, textAiClient, platformTextAiKey, type TextAiCredential, type TextAiMessage } from '../_shared/textAi.ts'
 import { providerException } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1'
 import {
   HttpError,
   parseJsonObject,
@@ -10,7 +10,7 @@ import {
   requireWorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
 import { assessProfile, filterQueries, queryProblem } from '../_shared/queryQuality.ts'
 
 const corsHeaders = {
@@ -44,9 +44,10 @@ function resolveQueryCount(value: unknown): number {
  * hand back template queries. The status and type are logged (never the key)
  * so the cause of the next outage is in the function logs.
  */
-function providerFailure(error: unknown): HttpError {
-  const failure = providerException('anthropic', error)
-  console.error('[generate-podcast-queries] Anthropic request failed:', failure.code)
+function providerFailure(error: unknown, key: TextAiCredential): HttpError {
+  if (error instanceof HttpError) return error
+  const failure = providerException(credentialProvider(key), error)
+  console.error('[generate-podcast-queries] AI request failed:', failure.code)
   return failure
 }
 
@@ -57,7 +58,7 @@ function noUsableQueries(rejected: Array<{ query: string; problem: string }>): H
   return new HttpError(502, 'STRATEGY_UNUSABLE', 'The AI did not return any usable search queries. Try again.')
 }
 
-function modelText(message: Anthropic.Message): string {
+function modelText(message: TextAiMessage): string {
   const content = message.content.find((block) => block.type === 'text')
   if (!content || content.type !== 'text') throw new HttpError(502, 'STRATEGY_UNUSABLE', 'The AI did not return any usable search queries. Try again.')
   let text = content.text.trim()
@@ -128,7 +129,7 @@ serve(async (req) => {
       || body.clientId !== undefined
       || body.prospectDashboardId !== undefined
 
-    let anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
+    let anthropicApiKey: TextAiCredential = platformTextAiKey() ?? ''
     let metering: {
       admin: Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
       workspaceId: string
@@ -152,9 +153,9 @@ serve(async (req) => {
         throw new HttpError(400, 'INVALID_RESEARCH_TARGET', 'Choose exactly one client or prospect research target')
       }
 
-      const resolvedKey = await resolveAiKey(context.admin, workspaceId, 'anthropic')
+      const resolvedKey = await resolveTextAiKey(context.admin, workspaceId)
       const byoKeyUsed = resolvedKey?.source === 'workspace'
-      if (resolvedKey) anthropicApiKey = resolvedKey.apiKey
+      if (resolvedKey) anthropicApiKey = resolvedKey
       metering = {
         admin: context.admin,
         workspaceId,
@@ -312,7 +313,7 @@ serve(async (req) => {
       }
     }
 
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey })
+    const anthropic = textAiClient(anthropicApiKey)
 
     const meterUsage = async (message: { usage?: { input_tokens?: number; output_tokens?: number } } | null) => {
       if (!metering || !message) return
@@ -320,8 +321,7 @@ serve(async (req) => {
         workspaceId: metering.workspaceId,
         operationType: 'query_generation',
         usage: {
-          anthropicInputTokens: message.usage?.input_tokens ?? 0,
-          anthropicOutputTokens: message.usage?.output_tokens ?? 0,
+          ...textTokenUsage(anthropicApiKey, message.usage?.input_tokens ?? 0, message.usage?.output_tokens ?? 0),
         },
         usedByoKey: metering.byoKeyUsed,
         clientId: metering.clientId,
@@ -367,7 +367,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
         max_tokens: 100,
         messages: [{ role: 'user', content: prompt }],
       }).catch((error: unknown) => {
-        throw providerFailure(error)
+        throw providerFailure(error, anthropicApiKey)
       })
       await meterUsage(message)
 
@@ -462,7 +462,7 @@ CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no
       max_tokens: Math.min(4000, 400 + (queryCount * 80)),
       messages: [{ role: 'user', content: prompt }],
     }).catch((error: unknown) => {
-      throw providerFailure(error)
+      throw providerFailure(error, anthropicApiKey)
     })
     await meterUsage(message)
 

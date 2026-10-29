@@ -136,7 +136,7 @@ for (const actionSource of [episodesEnsureAction, researchRunAction, emailSearch
 assert.ok(episodesEnsureAction.indexOf('preflightPodcastRelationship(') < episodesEnsureAction.indexOf('ensureEpisodesCaptured('))
 assert.ok(researchRunAction.indexOf('preflightPodcastRelationship(') < researchRunAction.indexOf('chargeCredits('))
 assert.ok(researchRunAction.indexOf('preflightPodcastRelationship(') < researchRunAction.indexOf('ensureEpisodesCaptured('))
-assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('readStoredAiKey('))
+assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('resolveTextAiKey('))
 assert.ok(emailSearchAction.indexOf('preflightPodcastRelationship(') < emailSearchAction.indexOf('findBlitzEmail('))
 assert.ok(pitchGenerateAction.indexOf('preflightPodcastRelationship(') < pitchGenerateAction.indexOf('chargeCredits('))
 assert.ok(pitchGenerateAction.indexOf('preflightPodcastRelationship(') < pitchGenerateAction.indexOf('runResearchPrompt('))
@@ -151,7 +151,7 @@ assert.match(shortlistEdge, /RESEARCH_STALE_LOCK_MS = 3 \* 60 \* 1000/u)
 // completed_stages seeded from the interrupted attempt rather than emptied: a
 // run the platform killed partway is continued, and the steps already ticked
 // off on screen must stay ticked instead of reappearing as work still to do.
-assert.match(shortlistEdge, /const anthropicKey = await resolveAiKey\(authContext\.admin, workspaceId, 'anthropic'\)[\s\S]*?writeProgress\(\{\s*\n\s*status: 'running',\s*\n\s*current_stage: 'podcast_profile',\s*\n\s*completed_stages: resumedStages,\s*\n\s*\}\)[\s\S]*?ensureEpisodesCaptured\(/u)
+assert.match(shortlistEdge, /const anthropicKey = await resolveTextAiKey\(authContext\.admin, workspaceId\)[\s\S]*?writeProgress\(\{\s*\n\s*status: 'running',\s*\n\s*current_stage: 'podcast_profile',\s*\n\s*completed_stages: resumedStages,\s*\n\s*\}\)[\s\S]*?ensureEpisodesCaptured\(/u)
 // The charge sits between the required-field gate and the first model call.
 //
 // It used to come first, before the episode capture. It cannot any more:
@@ -168,8 +168,8 @@ assert.match(shortlistEdge, /from\('workspace_research_prompts'\)[\s\S]*?RESEARC
 assert.match(shortlistEdge, /ai_clean_description: cleanDescription,[\s\S]*?ai_analyzed_at: completedAt,[\s\S]*?research_document:[\s\S]*?research_progress:[\s\S]*?status: 'completed'/u)
 assert.match(shortlistEdge, /await logOperationCost\(authContext\.admin, \{[\s\S]*?operationType: 'research_run'[\s\S]*?podscanCalls: 1/u)
 
-// Contact discovery uses only the workspace Claude key and Blitz, without app credits.
-assert.match(emailSearchAction, /readStoredAiKey\(authContext.admin, workspaceId, 'anthropic'\)/u)
+// Contact discovery uses the workspace-selected Claude/OpenAI key and platform Blitz, without app credits.
+assert.match(emailSearchAction, /resolveTextAiKey\(authContext\.admin, workspaceId\)/u)
 assert.match(emailSearchAction, /CLAUDE_KEY_REQUIRED/u)
 assert.match(emailSearchAction, /resolveAiKey\(authContext\.admin, workspaceId, 'blitz'\)/u)
 assert.doesNotMatch(emailSearchAction, /Deno\.env\.get\('BLITZ_API_KEY'\)/u)
@@ -456,7 +456,7 @@ const draftAction = clientsEdge.slice(
   clientsEdge.indexOf("if (action === 'sdr-profile-draft') {\n      const access"),
   clientsEdge.indexOf("if (action === 'dashboard-slug-rotate') {\n      const access"),
 )
-assert.match(draftAction, /try \{\s*const response = await providerFetch\('anthropic',[\s\S]*?await response\.json\(\)[\s\S]*?came back empty[\s\S]*?\} catch \(error\) \{\s*await refundDraft\(\)/u)
+assert.match(draftAction, /try \{\s*const response = await textAiFetch\(anthropicKey,[\s\S]*?await response\.json\(\)[\s\S]*?came back empty[\s\S]*?\} catch \(error\) \{\s*await refundDraft\(\)/u)
 
 // Feed markup is decoded in one place, the prompt-variable registry, and the
 // pitch stage does not get its own decoder. It had one: a sequential replacer

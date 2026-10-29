@@ -29,6 +29,8 @@ import {
   requireProvider,
   storeWorkspaceAiKey,
   workspaceAiKeyStatus,
+  workspaceTextAiPreference,
+  setWorkspaceTextAiProvider,
 } from "../_shared/workspaceAiKeys.ts";
 
 const METHODS = ["POST"] as const;
@@ -4314,7 +4316,7 @@ serve(async (req) => {
     }
 
 
-    if (action === "ai-keys-status" || action === "ai-keys-set" || action === "ai-keys-clear" || action === "ai-keys-test") {
+    if (action === "ai-provider-set" || action === "ai-keys-status" || action === "ai-keys-set" || action === "ai-keys-clear" || action === "ai-keys-test") {
       const access = await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true });
       if (!["owner", "platform_admin"].includes(access.role)) {
         throw new HttpError(403, "WORKSPACE_OWNER_REQUIRED", "Workspace owner access is required");
@@ -4323,7 +4325,15 @@ serve(async (req) => {
       if (action === "ai-keys-status") {
         requireOnlyKeys(body, ["action", "workspace_id"]);
         const status = await workspaceAiKeyStatus(admin, workspaceId);
-        return jsonResponse(req, METHODS, 200, { success: true, providers: status });
+        return jsonResponse(req, METHODS, 200, { success: true, providers: status, default_provider: await workspaceTextAiPreference(admin, workspaceId) });
+      }
+
+      if (action === "ai-provider-set") {
+        requireOnlyKeys(body, ["action", "workspace_id", "provider"]);
+        const provider = requireProvider(body.provider);
+        await setWorkspaceTextAiProvider(admin, workspaceId, provider);
+        await writeAudit(admin, { workspaceId, actorUserId: user.id, action: "workspace.ai_provider.set", entityType: "workspace", entityId: workspaceId, metadata: { provider } });
+        return jsonResponse(req, METHODS, 200, { success: true });
       }
 
       // Whether the saved key still works, asked of the provider with the
@@ -4332,14 +4342,11 @@ serve(async (req) => {
       if (action === "ai-keys-test") {
         requireOnlyKeys(body, ["action", "workspace_id", "provider"]);
         const provider = requireProvider(body.provider);
-        if (!["anthropic", "openai"].includes(provider)) {
-          throw new HttpError(400, "AI_KEY_TEST_UNSUPPORTED", "This provider does not support a connection test here");
-        }
         const stored = await readStoredAiKey(admin, workspaceId, provider);
         if (!stored.configured) {
           throw new HttpError(404, "AI_KEY_NOT_CONFIGURED", "No API key is saved for this provider");
         }
-        // A key that will not decrypt is as good as a rejected one: replace it.
+        // Storage failures surface separately; only ask the provider about readable keys.
         const result = stored.apiKey ? await probeAiKeyResult(provider, stored.apiKey) : "invalid";
         return jsonResponse(req, METHODS, 200, { success: true, result });
       }
@@ -4351,11 +4358,9 @@ serve(async (req) => {
         if (apiKey.trim().length < 20) {
           throw new HttpError(400, "INVALID_API_KEY", "The API key looks incomplete");
         }
-        if (["anthropic", "openai"].includes(provider)) {
-          const probe = await probeAiKeyResult(provider, apiKey.trim());
-          if (probe === "invalid") throw new HttpError(422, "PROVIDER_KEY_REJECTED", "The provider rejected this API key. Check that you copied an active key");
-          if (probe === "unreachable") throw new HttpError(503, "PROVIDER_UNAVAILABLE", "The provider could not verify this key right now. Your existing connection has not changed; try again shortly");
-        }
+        const probe = await probeAiKeyResult(provider, apiKey.trim());
+        if (probe === "invalid") throw new HttpError(422, "PROVIDER_KEY_REJECTED", "The provider rejected this API key. Check that you copied an active key");
+        if (probe === "unreachable") throw new HttpError(503, "PROVIDER_UNAVAILABLE", "The provider could not verify this key right now. Your existing connection has not changed; try again shortly");
         await storeWorkspaceAiKey(admin, workspaceId, provider, apiKey.trim(), user.id);
         await writeAudit(admin, {
           workspaceId,

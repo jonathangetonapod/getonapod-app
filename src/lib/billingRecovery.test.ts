@@ -5,6 +5,12 @@ import { billingRecovery, showOperationError } from './billingRecovery'
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
 
 describe('billing recovery', () => {
+  it.each(['PLATFORM_PROVIDER_NOT_CONFIGURED', 'PLATFORM_PROVIDER_ACTION_REQUIRED'])('routes %s to support without a key form', (code) => {
+    const recovery = billingRecovery({ code })
+    expect(recovery?.description).toContain('Contact support')
+    expect(recovery?.href).toBeNull()
+  })
+
   it('distinguishes provider funds from the workspace subscription', () => {
     expect(billingRecovery({ code: 'PROVIDER_BILLING_REQUIRED' })?.description).toContain('connected provider account')
     expect(billingRecovery({ code: 'SUBSCRIPTION_REQUIRED' })?.label).toBe('Manage subscription')

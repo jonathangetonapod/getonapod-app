@@ -6,9 +6,9 @@ Deno.test('provider authentication errors name recovery without exposing upstrea
   for (const provider of ['anthropic', 'openai', 'podscan', 'blitz', 'winnr'] as const) {
     for (const status of [401, 403]) {
       const failure = providerFailure(provider, status, { error: { message: 'rejected secret-key-12345' } })
-      assert(failure.code === 'PROVIDER_KEY_REJECTED')
-      assert(failure.status === 409, 'provider auth must not log the user out')
-      assert(failure.message.includes('Provider accounts'))
+      assert(failure.code === (['anthropic', 'openai'].includes(provider) ? 'PROVIDER_KEY_REJECTED' : 'PLATFORM_PROVIDER_ACTION_REQUIRED'))
+      assert(failure.status === (['anthropic', 'openai'].includes(provider) ? 409 : 503), 'provider auth must not log the user out')
+      assert(failure.message.includes(['anthropic', 'openai'].includes(provider) ? 'Provider accounts' : 'Contact support'))
       assert(!failure.message.includes('secret-key'))
     }
   }
@@ -27,10 +27,10 @@ Deno.test('OpenAI insufficient quota differs from a transient 429 rate limit', (
 })
 
 Deno.test('other provider account limits and daily quotas retain actionable billing errors', () => {
-  assert(providerFailure('blitz', 402).code === 'PROVIDER_BILLING_REQUIRED')
-  assert(providerFailure('winnr', 402).code === 'PROVIDER_BILLING_REQUIRED')
-  assert(providerFailure('blitz', 423).code === 'PROVIDER_KEY_REJECTED')
-  assert(providerFailure('podscan', 429, { error: 'daily_limit_exceeded' }).code === 'PROVIDER_BILLING_REQUIRED')
+  assert(providerFailure('blitz', 402).code === 'PLATFORM_PROVIDER_ACTION_REQUIRED')
+  assert(providerFailure('winnr', 402).code === 'PLATFORM_PROVIDER_ACTION_REQUIRED')
+  assert(providerFailure('blitz', 423).code === 'PLATFORM_PROVIDER_ACTION_REQUIRED')
+  assert(providerFailure('podscan', 429, { error: 'daily_limit_exceeded' }).code === 'PLATFORM_PROVIDER_ACTION_REQUIRED')
   assert(providerFailure('podscan', 429, { error: 'concurrency_limit_exceeded' }).code === 'PROVIDER_RATE_LIMITED')
 })
 

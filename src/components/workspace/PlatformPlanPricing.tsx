@@ -31,7 +31,7 @@ export function PlatformPlanPricing() {
             A new price applies to new subscribers only.
             <InfoTip topic="plan pricing">
               Stripe prices cannot be edited, so saving creates a new price and points the plan at it. Existing
-              subscribers keep the price they signed up at. Provider usage is billed to each workspace’s own accounts.
+              subscribers keep the price they signed up at. AI and sending usage are billed to each workspace’s selected AI provider and Instantly accounts; other services use platform-managed credentials.
             </InfoTip>
           </CardDescription>
         </CardHeader>

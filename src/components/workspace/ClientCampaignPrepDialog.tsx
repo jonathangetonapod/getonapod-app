@@ -609,7 +609,7 @@ export function ClientCampaignPrep({
       if (unlock.status === 'unlocked') {
         toast.success('Direct host email unlocked and shared across the platform.')
       } else {
-        toast.info(unlock.message || 'No verified direct email was found. No app credits were used; Anthropic API charges may apply.')
+        toast.info(unlock.message || 'No verified direct email was found. No app credits were used; AI provider charges may apply.')
       }
     },
     onError: (error) => {
@@ -1199,7 +1199,7 @@ export function ClientCampaignPrep({
       return
     }
     if (!byoAi) {
-      toast.info('Connect your Claude API key in workspace settings first.')
+      toast.info('Connect your Claude or OpenAI API key in workspace settings first.')
       return
     }
     setEmailRoute('waterfall')
@@ -1823,10 +1823,10 @@ export function ClientCampaignPrep({
                           >
                             <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">Provider billed</Badge></div>
                             <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
-                            <p className="mt-2 text-xs leading-5 text-muted-foreground">Claude searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
-                            <p className="mt-3 text-xs leading-5 text-violet-800">Uses your Claude API key. Anthropic bills API usage to your account.</p>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">Your selected AI provider searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
+                            <p className="mt-3 text-xs leading-5 text-violet-800">Uses your selected Claude or OpenAI key. Your AI provider bills usage to your account.</p>
                             <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-violet-800"><span>Find LinkedIn profile</span><span>→</span><span>Get verified work email</span></div>
-                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">{emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border" />}{emailAlreadyUnlocked ? 'Use shared contact' : emailRoute === 'waterfall' ? 'Selected' : 'Use Claude + Blitz'}</div>
+                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">{emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border" />}{emailAlreadyUnlocked ? 'Use shared contact' : emailRoute === 'waterfall' ? 'Selected' : 'Use AI contact search'}</div>
                           </button>
                         </div>
 
@@ -1872,11 +1872,11 @@ export function ClientCampaignPrep({
                           ) : emailSearchRunning ? (
                             <div role="status"><p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" />Direct email search in progress</p><div className="mt-3 space-y-2">{visibleEmailUnlockSteps.map((step) => <p key={step.id} className="text-xs">{step.status === 'complete' ? '✓ ' : step.status === 'active' ? '→ ' : ''}{step.title}</p>)}</div></div>
                           ) : (
-                            <div><p className="text-sm font-semibold">Your Claude + Blitz accounts</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Claude finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
+                            <div><p className="text-sm font-semibold">Your AI account + contact enrichment</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Your selected AI provider finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
                           )}
                           {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && <a className="mt-3 block break-all text-sm text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a>}
                           {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
-                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your provider accounts</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your Claude and Blitz accounts. Provider charges apply.' : 'Connect your Claude and Blitz keys in workspace settings to start.'}</p></div>
+                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your AI account</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your selected AI key and platform-managed contact enrichment. AI provider charges apply.' : 'Connect your Claude or OpenAI key in Billing to start.'}</p></div>
                           )}
                         </div>
                       )}
@@ -1902,7 +1902,7 @@ export function ClientCampaignPrep({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">Step 2</Badge>
-                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">Your Anthropic account</Badge>
+                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">Your AI provider account</Badge>
                           </div>
                           <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research and Pitch</h3>
                           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>
@@ -2335,7 +2335,7 @@ export function ClientCampaignPrep({
                                   id="campaign-research-stage-model"
                                   className="mt-2 h-8 w-full rounded border bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                                   disabled={promptBusy || promptModelsQuery.isLoading || promptModelsQuery.isError || setPromptModelMutation.isPending}
-                                  value={promptOverrides[selectedPromptId]?.model ?? ''}
+                                  value={promptModels.some((model) => model.id === promptOverrides[selectedPromptId]?.model) ? promptOverrides[selectedPromptId]?.model ?? '' : ''}
                                   onChange={(event) => setPromptModelMutation.mutate({
                                     promptId: selectedPromptId,
                                     model: event.target.value === '' ? null : event.target.value,
@@ -2344,7 +2344,7 @@ export function ClientCampaignPrep({
                                   {/* Empty means "follow the shipped default", which is not the
                                       same as pinning that default's id — if we change the default
                                       for a stage, a workspace that never chose should move with it. */}
-                                  <option value="">Default for this stage ({selectedPromptDefault.model})</option>
+                                  <option value="">Default for the selected AI provider</option>
                                   {promptModels.map((model) => (
                                     <option key={model.id} value={model.id}>
                                       {model.label} — {model.id}
@@ -2353,10 +2353,10 @@ export function ClientCampaignPrep({
                                 </select>
                                 <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
                                   {promptModelsQuery.isError
-                                    ? 'The model list could not be read from Anthropic, so this cannot be changed right now. Everything else on this stage still saves.'
+                                    ? 'The model list could not be read from your selected AI provider, so this cannot be changed right now. Everything else on this stage still saves.'
                                     : promptModelsQuery.isLoading
                                       ? 'Reading the models this workspace can use…'
-                                      : 'Read live from Anthropic, so it reflects what this workspace\u2019s key can actually use. Stages run in order and share a cached copy of the research, and that cache is per model — putting one stage on a different model means it re-reads the context rather than reusing it.'}
+                                      : 'Read live from your selected AI provider. Change the default provider in Billing to use Claude or OpenAI models.'}
                                 </p>
                               </div>
                               <div className="mt-3 rounded-lg border bg-muted/20 p-3">

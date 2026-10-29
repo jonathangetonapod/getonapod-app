@@ -13,6 +13,15 @@ function edgeError(fields: Record<string, unknown>): Error {
 const noWait = () => Promise.resolve()
 
 describe('classifyPodscanError', () => {
+  it.each(['PLATFORM_PROVIDER_NOT_CONFIGURED', 'PLATFORM_PROVIDER_ACTION_REQUIRED'])('does not retry %s or request a customer Podscan key', async (code) => {
+    const error = edgeError({ code, status: 503 })
+    const request = vi.fn().mockRejectedValue(error)
+    await expect(withPodscanRetry(request)).rejects.toBe(error)
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(podscanFailureReason(error)).toContain('Contact support')
+    expect(podscanFailureReason(error)).toContain('no Podscan key is needed from you')
+  })
+
   it.each(['PROVIDER_BILLING_REQUIRED', 'SUBSCRIPTION_REQUIRED'])('does not retry %s or describe it as depleted app credits', async (code) => {
     const error = edgeError({ code, status: 402 })
     expect(classifyPodscanError(error)).toBe('fatal')

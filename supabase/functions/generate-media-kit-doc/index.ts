@@ -1,3 +1,4 @@
+import { textAiFetch, platformTextAiKey } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
@@ -113,8 +114,8 @@ async function generateMediaKitContent(guest: {
   linkedinUrl?: string
   website?: string
 }): Promise<MediaKitContent> {
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  const anthropicApiKey = platformTextAiKey()
+  if (!anthropicApiKey) throw new Error('Text AI provider not configured')
 
   const expertiseList = guest.expertise?.length ? guest.expertise.join(', ') : 'Not specified'
   const topicsList = guest.topics?.length ? guest.topics.join(', ') : 'Not specified'
@@ -157,13 +158,8 @@ RULES:
 - Make the host feel like booking this guest is a no-brainer
 - Return ONLY valid JSON, nothing else`
 
-  const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+  const claudeResponse = await textAiFetch(anthropicApiKey, {
     method: 'POST',
-    headers: {
-      'x-api-key': anthropicApiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
     body: JSON.stringify({
       model: 'claude-sonnet-5-5',
       // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.

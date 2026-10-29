@@ -654,7 +654,7 @@ export interface ResearchPromptOverride {
 
 export type ResearchPromptOverrides = Partial<Record<string, ResearchPromptOverride>>
 
-/** A model this workspace's Anthropic key can actually use, as the API reports it. */
+/** A model this workspace's selected AI key can actually use, as the API reports it. */
 export interface PromptModelOption {
   id: string
   label: string
@@ -664,7 +664,7 @@ export interface PromptModelOption {
 }
 
 /**
- * The models available to this workspace, read live from Anthropic.
+ * The models available to this workspace, read live from the selected AI provider.
  *
  * Not a list shipped in this app: the usable set changes as models ship and
  * retire, and it differs by key — a workspace on its own Anthropic credential

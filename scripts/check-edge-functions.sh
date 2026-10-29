@@ -49,7 +49,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   --frozen \
   --lock=deno.lock \
   --node-modules-dir=none \
-  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL,ANTHROPIC_API_KEY,CREDIT_ENFORCEMENT_ENABLED \
+  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL,ANTHROPIC_API_KEY,PODSCAN_API_KEY,OPENAI_API_KEY,BLITZ_API_KEY,WINNR_API_TOKEN,TEXT_AI_PROVIDER,INSTANTLY_CREDENTIAL_ENCRYPTION_KEY,CREDIT_ENFORCEMENT_ENABLED \
   supabase/functions/_shared/accountContextDto.test.ts \
   supabase/functions/_shared/auditEntity.test.ts \
   supabase/functions/_shared/clientFitProfile.test.ts \
@@ -57,6 +57,9 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/cors.test.ts \
   supabase/functions/_shared/finderScans.test.ts \
   supabase/functions/_shared/flatBilling.test.ts \
+  supabase/functions/_shared/textAi.test.ts \
+  supabase/functions/_shared/textAiKeys.test.ts \
+  supabase/functions/_shared/textAiReview.test.ts \
   supabase/functions/_shared/subscriptionCheckout.test.ts \
   supabase/functions/_shared/checkoutEmail.test.ts \
   supabase/functions/_shared/providerErrors.test.ts \

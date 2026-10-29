@@ -1,10 +1,10 @@
 import { HttpError } from './httpError.ts'
 
-export type ProviderName = 'anthropic' | 'openai' | 'podscan' | 'blitz' | 'winnr'
-export type ProviderRuntimeCode = 'PROVIDER_KEY_REJECTED' | 'PROVIDER_BILLING_REQUIRED' | 'PROVIDER_RATE_LIMITED' | 'PROVIDER_UNAVAILABLE'
+export type ProviderName = 'anthropic' | 'openai' | 'openai-platform' | 'podscan' | 'blitz' | 'winnr'
+export type ProviderRuntimeCode = 'PROVIDER_KEY_REJECTED' | 'PROVIDER_BILLING_REQUIRED' | 'PROVIDER_RATE_LIMITED' | 'PROVIDER_UNAVAILABLE' | 'PLATFORM_PROVIDER_ACTION_REQUIRED'
 
 const LABELS: Record<ProviderName, string> = {
-  anthropic: 'Anthropic', openai: 'OpenAI', podscan: 'Podscan', blitz: 'Blitz', winnr: 'Winnr',
+  anthropic: 'Anthropic', openai: 'OpenAI', 'openai-platform': 'OpenAI', podscan: 'Podscan', blitz: 'Blitz', winnr: 'Winnr',
 }
 
 // Examine only bounded diagnostic fields. Upstream bodies, request IDs, URLs,
@@ -20,6 +20,9 @@ export function providerFailure(provider: ProviderName, status?: number, payload
   const label = LABELS[provider]
   const detail = diagnostic(payload)
   const billing = status === 402 || /insufficient_quota|billing_hard_limit|billing_not_active|credit balance.{0,40}(?:too low|insufficient)|insufficient.{0,20}(?:credits|funds|balance)|(?:out of|no remaining).{0,20}credits|(?:daily|per_day)_limit_exceeded/u.test(detail)
+  if (provider !== 'anthropic' && provider !== 'openai' && (billing || status === 401 || status === 403 || provider === 'blitz' && status === 423)) {
+    return new HttpError(503, 'PLATFORM_PROVIDER_ACTION_REQUIRED', `${label} needs attention from the platform administrator. Contact support; you do not need to supply a ${label} key.`)
+  }
   if (billing) return new HttpError(402, 'PROVIDER_BILLING_REQUIRED', `${label} needs billing attention. Add funds or review your plan and usage limits in your ${label} account, then try again.`)
   if (status === 401 || status === 403 || provider === 'blitz' && status === 423) {
     return new HttpError(409, 'PROVIDER_KEY_REJECTED', `${label} rejected the saved API key or its permissions. Update the ${label} key in Billing → Provider accounts, then try again.`)
@@ -31,7 +34,7 @@ export function providerFailure(provider: ProviderName, status?: number, payload
 }
 
 export function isProviderRuntimeError(error: unknown): error is HttpError {
-  return error instanceof HttpError && ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE'].includes(error.code)
+  return error instanceof HttpError && ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'PLATFORM_PROVIDER_ACTION_REQUIRED'].includes(error.code)
 }
 
 /** Normalize SDK failures without returning their raw request/response text. */

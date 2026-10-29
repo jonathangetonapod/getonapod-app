@@ -91,7 +91,7 @@ const emailSearch = clientShortlist.slice(emailSearchStart, emailSearchEnd === -
 assert.match(emailSearch, /existingContact\?\.email && Number\.isFinite\(verifiedAt\)[\s\S]*?Date\.now\(\) - verifiedAt <= DIRECT_CONTACT_FRESH_DAYS \* DAY_MS/u)
 assert.match(emailSearch, /email_unlock: unlocked\(existingContact\.email/u)
 assert.ok(emailSearch.indexOf('email_unlock: unlocked(existingContact.email') < emailSearch.indexOf('const blitzKey'))
-// Stale entries can be refreshed through the customer's Claude/Blitz accounts.
+// Stale entries use the customer's selected AI provider and platform-managed Blitz.
 assert.match(emailSearch, /discoverHostLinkedin\(/u)
 assert.match(emailSearch, /findBlitzEmail\(blitzKey, profile\)/u)
 assert.match(reverificationMigration, /UPDATE public\.podcast_direct_contacts contact\s+SET verification_status = 'invalid'/u)
@@ -112,6 +112,6 @@ assert.match(
 assert.match(clientShortlist, /stale: !Number\.isFinite\(Date\.parse\(directContact\.last_verified_at\)\)/u)
 assert.match(prepDialog, /const contactIsStale = emailAlreadyUnlocked && storedEmailUnlock\?\.stale === true/u)
 assert.match(prepDialog, /contactIsStale \? 'This contact needs a fresh lookup before outreach\.'/u)
-assert.match(prepDialog, /Your provider accounts/u)
+assert.match(prepDialog, /Uses your selected AI key and platform-managed contact enrichment\. AI provider charges apply\./u)
 
 process.stdout.write('Global podcast catalog contract checks passed.\n')

@@ -1,3 +1,4 @@
+import { textTokenUsage, textAiFetch, type TextAiCredential } from '../_shared/textAi.ts'
 // Weekly client autopilot tick. Invoked by pg_cron via pg_net every 10
 // minutes with a shared secret — no user JWT (verify_jwt = false). Each tick
 // claims at most ONE due client and runs the discovery pipeline for it:
@@ -8,8 +9,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
-import { isProviderRuntimeError, providerFetch } from '../_shared/providerErrors.ts'
-import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { isProviderRuntimeError, } from '../_shared/providerErrors.ts'
+import { resolveTextAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
 import { podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
 import { podscanSearchFailureKind, PodscanSearchError, searchAcrossQueries } from '../_shared/autopilotSearch.ts'
@@ -136,7 +137,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 }
 
 async function anthropicJson(
-  apiKey: string,
+  apiKey: TextAiCredential,
   system: string,
   content: string,
   maxTokens: number,
@@ -151,19 +152,14 @@ async function anthropicJson(
 }
 
 async function anthropicJsonOnce(
-  apiKey: string,
+  apiKey: TextAiCredential,
   system: string,
   content: string,
   maxTokens: number,
   usage: { input: number; output: number },
 ): Promise<unknown> {
-  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const response = await textAiFetch(apiKey, {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       model: 'claude-sonnet-5-5',
       // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
@@ -309,6 +305,7 @@ serve(async (req) => {
   const usage = { input: 0, output: 0 }
   let podscanCalls = 0
   let usedByoKey = false
+  let usageKey: TextAiCredential = ''
   // Hoisted so the failure handler can give back a charge the try block took.
   let queryChargeEntryId: string | null = null
   try {
@@ -335,11 +332,12 @@ serve(async (req) => {
     }
 
     const podscanKey = (await resolveAiKey(admin, due.workspace_id, 'podscan'))!
-    const anthropicKey = await resolveAiKey(admin, due.workspace_id, 'anthropic')
+    const anthropicKey = await resolveTextAiKey(admin, due.workspace_id)
     if (!anthropicKey) {
       await recordFailure({ message: 'No AI key is available for this workspace. Autopilot will retry.', retryMs: ACTION_RETRY_MS })
       return json(200, { processed: 1, skipped: 'no anthropic key' })
     }
+    usageKey = anthropicKey
     usedByoKey = anthropicKey.source === 'workspace'
 
     // Charged before the model call so an empty balance never gets a free
@@ -360,7 +358,7 @@ serve(async (req) => {
     queryChargeEntryId = queryCharge.entryId
 
     const queriesRaw = await anthropicJson(
-      anthropicKey.apiKey,
+      anthropicKey,
       'You draft podcast search queries. Return ONLY a JSON array of strings.',
       `Draft ${QUERY_COUNT} distinct podcast-search queries (2-4 words each, plain keywords, no operators) to find active interview podcasts where this person would be a strong guest:\n\n${String(client.bio).slice(0, 4_000)}`,
       400,
@@ -402,7 +400,7 @@ serve(async (req) => {
     }
 
     const scoredRaw = await anthropicJson(
-      anthropicKey.apiKey,
+      anthropicKey,
       'You score podcast-guest fit. Return ONLY a JSON array of {"podcast_id": string, "score": number 0-100, "reason": string (one sentence)}.',
       `Guest profile:\n${String(client.bio).slice(0, 3_000)}\n\nScore how strong a fit each podcast is for this guest:\n${JSON.stringify(candidates.map((podcast) => ({
         podcast_id: podcast.podcast_id,
@@ -533,7 +531,7 @@ serve(async (req) => {
     await logOperationCost(admin, {
       workspaceId: due.workspace_id,
       operationType: 'compatibility_scoring',
-      usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output, podscanCalls },
+      usage: { ...textTokenUsage(usageKey, usage.input, usage.output), podscanCalls },
       usedByoKey,
       clientId: due.client_id,
       referenceKind: 'autopilot',
@@ -555,7 +553,7 @@ serve(async (req) => {
     await logOperationCost(admin, {
       workspaceId: due.workspace_id,
       operationType: 'compatibility_scoring',
-      usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output, podscanCalls },
+      usage: { ...textTokenUsage(usageKey, usage.input, usage.output), podscanCalls },
       usedByoKey,
       clientId: due.client_id,
       referenceKind: 'autopilot',

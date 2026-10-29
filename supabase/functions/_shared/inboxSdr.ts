@@ -1,4 +1,4 @@
-import { providerFetch } from './providerErrors.ts'
+import { textTokenUsage, textAiFetch } from './textAi.ts'
 // Shared AI SDR reply-package generation for the Master Inbox.
 //
 // Used by the operator path (workspace-client-campaigns inbox-draft) and the
@@ -19,7 +19,7 @@ import {
 } from './promptVariables.ts'
 import { RESEARCH_PROMPT_DEFAULTS } from './researchPromptDefaults.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from './billing.ts'
-import { resolveAiKey } from './workspaceAiKeys.ts'
+import { resolveTextAiKey, } from './workspaceAiKeys.ts'
 import { thinkingForModel } from './promptModels.ts'
 
 // deno-lint-ignore no-explicit-any
@@ -428,12 +428,12 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     fill(resolvePrompt('inbox_nudges', nudgeDefault.content)),
   ].join('\n')
 
-  const anthropicKey = await resolveAiKey(admin, workspaceId, 'anthropic')
+  const anthropicKey = await resolveTextAiKey(admin, workspaceId)
   if (!anthropicKey) {
     throw new HttpError(500, 'SERVER_MISCONFIGURED', 'AI drafting is not configured')
   }
   const usedByoKey = anthropicKey.source === 'workspace'
-  const anthropicApiKey = anthropicKey.apiKey
+  const anthropicApiKey = anthropicKey
   /*
    * The retry-window key makes a fast retry (an operator double-clicking
    * Draft with AI, or an overlapping tick) replay the charge instead of
@@ -478,13 +478,8 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
   }
 
   async function generateWithModel(): Promise<SdrReplyPackage> {
-  const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+  const response = await textAiFetch(anthropicApiKey, {
     method: 'POST',
-    headers: {
-      'x-api-key': anthropicApiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       model: replyModel,
       thinking: thinkingForModel(replyModel) ?? undefined,
@@ -515,8 +510,7 @@ export async function generateReplyPackage(input: GenerateReplyPackageInput): Pr
     workspaceId,
     operationType: 'query_generation',
     usage: {
-      anthropicInputTokens: payload.usage?.input_tokens ?? 0,
-      anthropicOutputTokens: payload.usage?.output_tokens ?? 0,
+      ...textTokenUsage(anthropicKey, payload.usage?.input_tokens ?? 0, payload.usage?.output_tokens ?? 0),
     },
     usedByoKey,
     clientId,

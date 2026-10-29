@@ -1,6 +1,6 @@
 // Workspace mailbox infrastructure (Winnr-backed): buy sending domains and
 // warmed mailboxes in-app, track provisioning, and export to Instantly.
-// Manager-gated; provider work uses the workspace's own Winnr account.
+// Manager-gated; provider work uses the platform's Winnr account and workspace tags.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -21,7 +21,7 @@ import {
   type WorkspaceFeatureAccess,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
-import { readStoredAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { resolveAiKey } from '../_shared/workspaceAiKeys.ts'
 import { providerFailure, providerResponseError } from '../_shared/providerErrors.ts'
 
 const METHODS = ['POST'] as const
@@ -476,13 +476,10 @@ serve(async (req) => {
     }
     const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
     requireManager(access)
-    // The disconnected overview is a local setup state, not a provider call.
-    // A strict provider resolver would reject it before the UI can explain
-    // which account to connect. Operational actions still require that key.
+    // Keep the overview available when platform mailbox provisioning is disabled.
     if (action === 'infra-overview') {
       requireOnlyKeys(body, ['action', 'workspace_id'])
-      const stored = await readStoredAiKey(authContext.admin, workspaceId, 'winnr')
-      if (!stored.apiKey) {
+      if (!Deno.env.get('WINNR_API_TOKEN')?.trim()) {
         return jsonResponse(req, METHODS, 200, {
           winnr_connected: false,
           domains: [],
@@ -494,8 +491,8 @@ serve(async (req) => {
     if (!winnrKey) {
       throw new HttpError(
         409,
-        'WINNR_NOT_CONNECTED',
-        'Connect a Winnr account in workspace settings before buying sending domains',
+        'PLATFORM_PROVIDER_NOT_CONFIGURED',
+        'Mailbox provisioning is not configured on the platform. Contact support',
       )
     }
     const usingWorkspaceKey = winnrKey.source === 'workspace'

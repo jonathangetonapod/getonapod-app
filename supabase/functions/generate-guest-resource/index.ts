@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.71.2'
+import { textAiClient, platformTextAiKey } from '../_shared/textAi.ts'
 import { requirePlatformAdminOrService } from '../_shared/workspaceAuth.ts'
 
 const corsHeaders = {
@@ -24,9 +24,7 @@ serve(async (req) => {
       )
     }
 
-    const anthropic = new Anthropic({
-      apiKey: Deno.env.get('ANTHROPIC_API_KEY'),
-    })
+    const anthropic = textAiClient(platformTextAiKey() ?? '')
 
     // Get category-specific context
     const categoryContexts = {

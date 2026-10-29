@@ -1,3 +1,5 @@
+import type { TextAiProvider } from './textAi.ts'
+import { providerFetch } from './providerErrors.ts'
 /**
  * The Claude models a stage may run on, read from Anthropic rather than listed
  * here.
@@ -80,7 +82,19 @@ function toPromptModel(entry: unknown): PromptModel[] {
  * a partial list as the whole one. Bounded so an unexpected cursor loop cannot
  * spin an invocation against its two-minute ceiling.
  */
-export async function fetchPromptModels(apiKey: string): Promise<PromptModel[]> {
+export async function fetchPromptModels(apiKey: string, provider: TextAiProvider = 'anthropic'): Promise<PromptModel[]> {
+  if (provider === 'openai') {
+    const response = await providerFetch('openai', 'https://api.openai.com/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+    })
+    const payload = await response.json() as { data?: unknown }
+    return (Array.isArray(payload.data) ? payload.data : [])
+      .flatMap(toPromptModel)
+      .filter((model) => /^gpt-(?:4\.1|4o|5|6)(?:[.-]|$)/u.test(model.id)
+        && !/(?:audio|realtime|transcrib|image|search|codex|chat|pro|deep-research)/u.test(model.id))
+      .map((model) => ({ ...model, label: `OpenAI · ${model.id}` }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }
   const models: PromptModel[] = []
   let afterId: string | null = null
 

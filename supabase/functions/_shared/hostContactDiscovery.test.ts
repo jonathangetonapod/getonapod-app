@@ -101,7 +101,7 @@ Deno.test('host discovery preserves actionable sanitized provider failures', asy
     () => Promise.resolve(json({ error: { message: 'Your credit balance is too low private-key' } }, 400))), HttpError)
   assertEquals(rejected.code, 'PROVIDER_BILLING_REQUIRED')
   assertEquals(rejected.message.includes('private-key'), false)
-  for (const [status, code] of [[401, 'PROVIDER_KEY_REJECTED'], [402, 'PROVIDER_BILLING_REQUIRED'], [429, 'PROVIDER_RATE_LIMITED'], [503, 'PROVIDER_UNAVAILABLE']] as const) {
+  for (const [status, code] of [[401, 'PLATFORM_PROVIDER_ACTION_REQUIRED'], [402, 'PLATFORM_PROVIDER_ACTION_REQUIRED'], [429, 'PROVIDER_RATE_LIMITED'], [503, 'PROVIDER_UNAVAILABLE']] as const) {
     const failure = await assertRejects(() => findBlitzEmail('private-key', profile,
       () => Promise.resolve(json({ message: 'private-key' }, status))), HttpError)
     assertEquals(failure.code, code)

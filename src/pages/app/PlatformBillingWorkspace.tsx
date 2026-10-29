@@ -78,7 +78,7 @@ const PlatformBillingWorkspace = () => {
                 ownerEmail={owner?.email ?? null}
               />
             </header>
-            <p className="text-sm text-muted-foreground">Flat subscription with customer-owned provider accounts. The ledger below is historical and retained for reconciliation.</p>
+            <p className="text-sm text-muted-foreground">Flat subscription with customer-owned Claude or OpenAI and Instantly accounts. Other services are platform-managed. The ledger below is historical and retained for reconciliation.</p>
             <LegacyCreditReview key={workspaceId} workspaceId={workspaceId} admin />
             <WorkspaceCreditLedger workspaceId={workspaceId} />
             <WorkspaceSubscriptionStatus workspaceId={workspaceId} workspaceName={workspaceName} ownerEmail={owner?.email ?? null} />

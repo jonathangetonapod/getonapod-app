@@ -22,6 +22,8 @@ export interface TokenUsage {
   anthropicInputTokens?: number
   anthropicOutputTokens?: number
   openaiTokens?: number
+  openaiInputTokens?: number
+  openaiOutputTokens?: number
   podscanCalls?: number
 }
 
@@ -39,6 +41,8 @@ export function enforcementEnabled(): boolean {
 export function estimatedCostUsd(usage: TokenUsage): number {
   const total = (usage.anthropicInputTokens ?? 0) * USD_PER_ANTHROPIC_INPUT_TOKEN
     + (usage.anthropicOutputTokens ?? 0) * USD_PER_ANTHROPIC_OUTPUT_TOKEN
+    + (usage.openaiInputTokens ?? 0) * 0.000002
+    + (usage.openaiOutputTokens ?? 0) * 0.000008
     + (usage.openaiTokens ?? 0) * USD_PER_OPENAI_TOKEN
     + (usage.podscanCalls ?? 0) * USD_PER_PODSCAN_CALL
   return Math.round(total * 1_000_000) / 1_000_000
@@ -154,6 +158,8 @@ export async function logOperationCost(
       operation_type: input.operationType,
       anthropic_input_tokens: Math.max(0, Math.round(input.usage.anthropicInputTokens ?? 0)),
       anthropic_output_tokens: Math.max(0, Math.round(input.usage.anthropicOutputTokens ?? 0)),
+      openai_input_tokens: Math.max(0, Math.round(input.usage.openaiInputTokens ?? 0)),
+      openai_output_tokens: Math.max(0, Math.round(input.usage.openaiOutputTokens ?? 0)),
       openai_tokens: Math.max(0, Math.round(input.usage.openaiTokens ?? 0)),
       podscan_calls: Math.max(0, Math.round(input.usage.podscanCalls ?? 0)),
       estimated_cost_usd: estimatedCostUsd(input.usage),

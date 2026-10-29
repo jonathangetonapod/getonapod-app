@@ -49,7 +49,7 @@ export function FindHostEmailDialog({ podcast, clients, defaultClientId, workspa
           {clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
         </select>
       </label>
-      <p className="text-sm text-muted-foreground">The lookup uses your workspace’s Claude API key. No app credits are used; Anthropic API charges apply when you start the search.</p>
+      <p className="text-sm text-muted-foreground">The lookup uses your workspace’s selected Claude or OpenAI key. No app credits are used; your AI provider’s API charges apply when you start the search.</p>
       {openPitch.error && <p role="alert" className="text-sm text-destructive">{openPitch.error.message}</p>}
       <Button disabled={!clientId || openPitch.isPending} onClick={() => openPitch.mutate()}>{openPitch.isPending ? 'Opening…' : 'Continue to pitch workspace'}</Button>
     </DialogContent>

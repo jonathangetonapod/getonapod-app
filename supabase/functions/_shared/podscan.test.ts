@@ -189,7 +189,7 @@ Deno.test('the key never reaches the error message', async () => {
   }
   assertEquals(logged.some((line) => line.includes(KEY)), false)
   assertEquals(logged.some((line) => line.includes('bad token')), false)
-  assertEquals(logged.some((line) => line.includes('PROVIDER_KEY_REJECTED')), true)
+  assertEquals(logged.some((line) => line.includes('PLATFORM_PROVIDER_ACTION_REQUIRED')), true)
 })
 
 Deno.test('no more than the cap are in flight at once', async () => {
@@ -347,9 +347,9 @@ Deno.test('a deadline already past fails before any request', async () => {
 
 Deno.test('tenant Podscan failures are actionable while internal retry semantics stay intact', async () => {
   for (const [status, payload, code, retryable] of [
-    [401, { message: KEY }, 'PROVIDER_KEY_REJECTED', false],
-    [403, { error: 'insufficient credits' }, 'PROVIDER_BILLING_REQUIRED', false],
-    [429, { error: 'daily_limit_exceeded' }, 'PROVIDER_BILLING_REQUIRED', false],
+    [401, { message: KEY }, 'PLATFORM_PROVIDER_ACTION_REQUIRED', false],
+    [403, { error: 'insufficient credits' }, 'PLATFORM_PROVIDER_ACTION_REQUIRED', false],
+    [429, { error: 'daily_limit_exceeded' }, 'PLATFORM_PROVIDER_ACTION_REQUIRED', false],
     [429, { error: 'concurrency_limit_exceeded' }, 'PROVIDER_RATE_LIMITED', true],
     [503, { message: KEY }, 'PROVIDER_UNAVAILABLE', true],
   ] as const) {

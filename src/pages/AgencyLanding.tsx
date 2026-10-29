@@ -78,7 +78,7 @@ const PORTAL_ACTIVITY = [
  */
 const PLANS = [{
   name: 'Workspace', price: '$99', featured: true,
-  who: 'One subscription for your whole agency. Connect your own provider accounts.',
+  who: 'One subscription for your whole agency. Choose Claude or OpenAI and connect your Instantly account.',
   includes: ['Unlimited clients and team members', 'Podcast discovery and shortlists', 'Research, pitches and campaigns', 'Client portals'],
 }]
 
@@ -284,7 +284,7 @@ const AgencyLanding = () => {
             <div className="gp-sec-head">
               <span className="gp-eyebrow">Pricing</span>
               <h2>One workspace. $99 a month.</h2>
-              <p>Unlimited clients and team members. Bring your own provider accounts.</p>
+              <p>Unlimited clients and team members. Choose Claude or OpenAI and connect your Instantly account.</p>
             </div>
 
             <div className="gp-plans">

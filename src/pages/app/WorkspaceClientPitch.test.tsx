@@ -27,6 +27,7 @@ import {
   prepareWorkspaceCampaignPodcast,
   removeWorkspaceCampaignLead,
   saveWorkspaceCampaignPitch,
+  setWorkspacePromptModel,
 } from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -289,23 +290,36 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
-    expect(screen.getByText('Your Claude + Blitz accounts')).toBeInTheDocument()
+    expect(screen.getByText('Your AI account + contact enrichment')).toBeInTheDocument()
     expect(screen.queryByText('1 credit on success')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· Your provider accounts')
+    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· Your AI account')
 
     // Back on the free inbox, so research is unlocked.
     fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
-    expect(screen.getByText('Your Anthropic account')).toBeInTheDocument()
+    expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
     expect(screen.queryByText('2 credits per run')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Regenerate/ })).toHaveTextContent('· Your provider account')
   })
 
-  it('requires a workspace Claude key without offering app credits as a substitute', async () => {
+  it('allows direct host search and research with only an OpenAI key', async () => {
+    mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: true } })
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeEnabled()
+    expect(screen.getByText(/Uses your selected AI key and platform-managed contact enrichment/)).toBeInTheDocument()
+    expect(screen.queryByText(/Connect your Claude or OpenAI key in Billing/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    expect(screen.getByRole('button', { name: /^Regenerate/ })).toBeEnabled()
+    expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
+  })
+
+  it('requires a workspace AI key without offering app credits as a substitute', async () => {
     await renderPage()
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
     expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeDisabled()
-    expect(screen.getByText(/Connect your Claude and Blitz keys in workspace settings/)).toBeInTheDocument()
+    expect(screen.getByText(/Connect your Claude or OpenAI key in Billing/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
     expect(vi.mocked(runClientShortlistEmailSearch)).not.toHaveBeenCalled()
   })
@@ -502,7 +516,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Enter email manually' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('Provider billed')).toBeInTheDocument()
-    expect(screen.getByText(/Claude searches for the host’s personal LinkedIn profile/)).toBeInTheDocument()
+    expect(screen.getByText(/Your selected AI provider searches for the host’s personal LinkedIn profile/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
@@ -541,7 +555,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
     // A run charges research credits, so the step says so. It used to claim
     // the opposite to a customer who was being billed for it.
-    expect(screen.getByText('Your Anthropic account')).toBeInTheDocument()
+    expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
     expect(screen.queryByText('Included with your plan')).not.toBeInTheDocument()
     expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument()
     const researchStepsButton = screen.getByRole('button', { name: 'View steps' })
@@ -724,6 +738,31 @@ describe('WorkspaceClientPitch', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select sequence 2: Turn complexity into momentum' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Select sequence 2: Turn complexity into momentum' })).toHaveAttribute('aria-pressed', 'true'))
     expect(vi.mocked(generateClientShortlistPitch)).toHaveBeenCalledTimes(3)
+  })
+
+  it('offers and saves OpenAI stage models without exposing the old Claude selection', async () => {
+    mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: true } })
+    vi.mocked(getWorkspacePromptModels).mockResolvedValue([
+      { id: 'gpt-4.1', label: 'OpenAI · gpt-4.1', contextTokens: null, maxOutputTokens: null, thinksByDefault: false },
+    ])
+    vi.mocked(getWorkspaceResearchPromptOverrides).mockResolvedValue({
+      podcast_research: { content: null, model: 'claude-sonnet-5-5', updated_at: null },
+    })
+    vi.mocked(setWorkspacePromptModel).mockResolvedValue(undefined)
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit stage prompts' }))
+    const select = await screen.findByRole('combobox', { name: 'Model this stage runs on' })
+    await waitFor(() => expect(select).toBeEnabled())
+    expect(within(select).getByRole('option', { name: /OpenAI · gpt-4.1/ })).toBeInTheDocument()
+    expect(select).toHaveValue('')
+    expect(within(select).queryByRole('option', { name: /claude-sonnet/ })).not.toBeInTheDocument()
+    vi.mocked(getWorkspaceResearchPromptOverrides).mockResolvedValue({
+      podcast_research: { content: null, model: 'gpt-4.1', updated_at: '2026-10-29' },
+    })
+    fireEvent.change(select, { target: { value: 'gpt-4.1' } })
+    await waitFor(() => expect(setWorkspacePromptModel).toHaveBeenCalledWith(workspaceId, 'podcast_research', 'gpt-4.1'))
+    await waitFor(() => expect(select).toHaveValue('gpt-4.1'))
   })
 
   it('lets only the workspace owner customize the prompt for each research stage', async () => {

@@ -33,7 +33,7 @@ export function PodcastContact({ podcast, kind, onCopy, onFind }: {
 export function ContactHeading({ kind }: { kind: 'inbox' | 'host' }) {
   return <Tooltip>
     <TooltipTrigger asChild><span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2">{kind === 'inbox' ? 'Podcast inbox' : 'Host email'}</span></TooltipTrigger>
-    <TooltipContent>{kind === 'inbox' ? 'Public podcast inbox supplied by Podscan.' : 'Verified direct contact saved to this podcast. New lookups use Claude and Blitz.'}</TooltipContent>
+    <TooltipContent>{kind === 'inbox' ? 'Public podcast inbox supplied by Podscan.' : 'Verified direct contact saved to this podcast. New lookups use your selected Claude or OpenAI provider and platform contact enrichment.'}</TooltipContent>
   </Tooltip>
 }
 

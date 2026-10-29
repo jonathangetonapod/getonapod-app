@@ -465,7 +465,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const relationshipsHref = `${baseHref}/relationships`
   const billingHref = isPlatformWorkspace ? '/app/platform/billing' : '/app/settings/billing'
   const briefStatus = clientBriefStatus(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields)
-  const generateCost = creditCostSuffix('pitch_profile', { byo: detail.ai_keys?.anthropic })
+  const generateCost = creditCostSuffix('pitch_profile', { byo: (detail.ai_keys?.anthropic || detail.ai_keys?.openai) })
   const profileDraftWordCount = wordCount(profileDraft)
   const profileDraftChanged = profileDraft.trim() !== (client.bio || '').trim()
   const normalizedNotes = client.notes ? normalizedText(client.notes) : ''
@@ -909,7 +909,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 campaignHref={campaignHref}
                 relationshipsHref={relationshipsHref}
                 billingHref={billingHref}
-                byoAi={detail.ai_keys?.anthropic}
+                byoAi={(detail.ai_keys?.anthropic || detail.ai_keys?.openai)}
                 onChanged={() => void detailQuery.refetch()}
               />
             )}

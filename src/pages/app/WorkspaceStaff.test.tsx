@@ -54,6 +54,7 @@ vi.mock('@/services/workspaceStaff', () => ({
   createWorkspaceStaffTemporaryPassword: vi.fn(),
   getWorkspaceAiKeys: vi.fn(),
   setWorkspaceAiKey: vi.fn(),
+  setWorkspaceAiProvider: vi.fn(),
   clearWorkspaceAiKey: vi.fn(),
   testWorkspaceAiKey: vi.fn(),
   getWorkspaceSubscriptionOverview: vi.fn(),
@@ -202,8 +203,6 @@ describe('WorkspaceStaff', () => {
     vi.clearAllMocks()
     vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
       anthropic: { configured: false, last_four: null, updated_at: null },
-      openai: { configured: false, last_four: null, updated_at: null },
-      winnr: { configured: false, last_four: null, updated_at: null },
     })
     vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({
       plan_key: 'founding_member',
@@ -369,8 +368,6 @@ describe('WorkspaceStaff', () => {
   describe('AI keys', () => {
     const savedAnthropic = () => vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
       anthropic: { configured: true, last_four: '4f2a', updated_at: '2026-10-01T00:00:00Z' },
-      openai: { configured: false, last_four: null, updated_at: null },
-      winnr: { configured: false, last_four: null, updated_at: null },
     })
 
     it('shows a saved key masked, with Replace, Test and Remove instead of an empty box', async () => {
@@ -422,14 +419,14 @@ describe('WorkspaceStaff', () => {
       expect(screen.queryByText(/platform credits on/)).not.toBeInTheDocument()
   })
 
-    it('keeps optional providers behind a clearly labeled disclosure', async () => {
+    it('offers Claude and OpenAI in billing provider settings', async () => {
       renderPage()
       await screen.findByLabelText('Anthropic (Claude) API key')
       expect(screen.queryByLabelText('Podscan API key')).not.toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: /Additional providers/ }))
-      expect(screen.getByLabelText('Podscan API key')).toBeInTheDocument()
-      expect(screen.getByLabelText('Blitz API key')).toBeInTheDocument()
-      expect(screen.getByLabelText('Winnr API key')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Additional providers/ })).not.toBeInTheDocument()
+      expect(screen.getByLabelText('OpenAI API key')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Blitz API key')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Winnr API key')).not.toBeInTheDocument()
     })
 
     it('does not show empty key forms when connection status cannot be loaded', async () => {

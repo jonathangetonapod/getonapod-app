@@ -37,6 +37,12 @@ describe('flat subscription billing portal', () => {
     await waitFor(() => expect(createWorkspaceSubscriptionCheckout).toHaveBeenCalledWith(workspaceId, 'standard'))
     expect(screen.getByRole('button', { name: 'Start subscription' })).toBeEnabled()
   })
+  it('explains the AI choice while keeping agency-owned Instantly setup separate', async () => {
+    renderPage()
+    await screen.findByText('$99')
+    expect(screen.getByText(/Connect your Claude or OpenAI key here/)).toHaveTextContent('your agency’s Instantly account in Client Campaigns')
+    expect(screen.getByRole('link', { name: /Sending accounts/ })).toHaveAttribute('href', '/app/client-campaigns')
+  })
   it('preserves a subscriber’s actual founding price and opens Stripe for invoices', async () => {
     vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ ...fixture, plan_key: 'founding_member', billing_status: 'active', has_subscription: true, subscription_price_cents: 3900 })
     renderPage()

@@ -879,12 +879,11 @@ export interface WorkspaceAiKeyStatus {
   updated_at: string | null
 }
 
+export type WorkspaceAiProvider = 'anthropic' | 'openai'
 export interface WorkspaceAiKeysView {
   anthropic: WorkspaceAiKeyStatus
-  openai: WorkspaceAiKeyStatus
-  winnr: WorkspaceAiKeyStatus
-  blitz?: WorkspaceAiKeyStatus
-  podscan?: WorkspaceAiKeyStatus
+  openai?: WorkspaceAiKeyStatus
+  default_provider?: WorkspaceAiProvider | null
 }
 
 function parseAiKeyStatus(value: unknown): WorkspaceAiKeyStatus {
@@ -904,20 +903,18 @@ export async function getWorkspaceAiKeys(workspaceId: string): Promise<Workspace
   const data = await invoke(
     { action: 'ai-keys-status', workspace_id: canonicalWorkspaceId },
     'AI key status could not be loaded.',
-  ) as { success?: boolean; providers?: Record<string, unknown> }
+  ) as { success?: boolean; providers?: Record<string, unknown>; default_provider?: unknown }
   if (data?.success !== true) throw new Error('AI key status could not be loaded.')
   return {
     anthropic: parseAiKeyStatus(data.providers?.anthropic),
     openai: parseAiKeyStatus(data.providers?.openai),
-    winnr: parseAiKeyStatus(data.providers?.winnr),
-    blitz: parseAiKeyStatus(data.providers?.blitz),
-    podscan: parseAiKeyStatus(data.providers?.podscan),
+    default_provider: data.default_provider === 'openai' || data.default_provider === 'anthropic' ? data.default_provider : null,
   }
 }
 
 export async function setWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
+  provider: WorkspaceAiProvider,
   apiKey: string,
 ): Promise<void> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
@@ -930,7 +927,7 @@ export async function setWorkspaceAiKey(
 
 export async function clearWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
+  provider: WorkspaceAiProvider,
 ): Promise<void> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke(
@@ -949,7 +946,7 @@ export type WorkspaceAiKeyTestResult = 'valid' | 'invalid' | 'unreachable'
  */
 export async function testWorkspaceAiKey(
   workspaceId: string,
-  provider: 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan',
+  provider: WorkspaceAiProvider,
 ): Promise<WorkspaceAiKeyTestResult> {
   const canonicalWorkspaceId = canonicalUuid(workspaceId, 'Workspace ID')
   const data = await invoke(
@@ -1497,4 +1494,9 @@ export interface LegacyCreditReviewQueueItem extends LegacyCreditReview {
 export async function listLegacyCreditReviews(workspaceId: string): Promise<LegacyCreditReviewQueueItem[]> {
   const data = await invoke({ action: 'legacy-credit-review-queue', workspace_id: canonicalUuid(workspaceId, 'Workspace ID') }, 'Balance review requests could not be loaded.') as { requests: LegacyCreditReviewQueueItem[] }
   return data.requests
+}
+
+export async function setWorkspaceAiProvider(workspaceId: string, provider: WorkspaceAiProvider): Promise<void> {
+  const data = await invoke({ action: 'ai-provider-set', workspace_id: canonicalUuid(workspaceId, 'Workspace ID'), provider }, 'The default AI provider could not be saved.') as { success?: boolean }
+  if (data?.success !== true) throw new Error('The default AI provider could not be saved.')
 }

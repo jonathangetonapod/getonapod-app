@@ -22,7 +22,7 @@ import {
 } from "../_shared/instantly.ts";
 import { detectDeterministicReply } from "../_shared/inboxSdr.ts";
 import { normalizeRequiredVariables } from "../_shared/promptRequirements.ts";
-import { resolveAiKey } from "../_shared/workspaceAiKeys.ts";
+import { resolveTextAiKey } from "../_shared/workspaceAiKeys.ts";
 import { fetchPromptModels } from "../_shared/promptModels.ts";
 import {
   type AuthContext,
@@ -3760,16 +3760,16 @@ serve(async (req) => {
     if (action === "prompts-models") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
       requireCampaignManager(access);
-      // Read from Anthropic rather than from a list in this repo: the usable
+      // Read from the selected provider rather than a fixed list: the usable
       // set changes as models ship and retire, and it differs by key — a
-      // workspace on its own Anthropic credential may reach models the
+      // workspace on its own AI credential may reach models the
       // platform key cannot, or fewer.
-      const modelsKey = await resolveAiKey(context.admin, workspaceId, "anthropic");
+      const modelsKey = await resolveTextAiKey(context.admin, workspaceId);
       if (!modelsKey) {
         throw new HttpError(503, "PROMPTS_UNAVAILABLE", "AI settings are not available for this workspace yet. Everything else on this page still saves");
       }
       try {
-        return jsonResponse(req, METHODS, 200, { models: await fetchPromptModels(modelsKey.apiKey) });
+        return jsonResponse(req, METHODS, 200, { models: await fetchPromptModels(modelsKey.apiKey, modelsKey.provider) });
       } catch (error) {
         throw new HttpError(
           503,
@@ -3794,18 +3794,18 @@ serve(async (req) => {
       let model: string | null = null;
       if (body.model !== null && body.model !== undefined && body.model !== "") {
         const requested = requireString(body.model, "model", { max: 128 });
-        const modelKey = await resolveAiKey(context.admin, workspaceId, "anthropic");
+        const modelKey = await resolveTextAiKey(context.admin, workspaceId);
         if (!modelKey) {
-          throw new HttpError(503, "PROMPTS_UNAVAILABLE", "No Anthropic credential is configured, so the model cannot be verified");
+          throw new HttpError(503, "PROMPTS_UNAVAILABLE", "No AI credential is configured, so the model cannot be verified");
         }
         // Checked against the live list, not a list in this repo. The value
-        // reaches Anthropic as the `model` parameter, so an unverified string
+        // reaches the selected provider as the `model` parameter, so an unverified string
         // here is a tenant choosing what we send upstream — and a model that
         // does not exist would fail every run of this stage with a 404 the
         // operator cannot act on.
         let available: Awaited<ReturnType<typeof fetchPromptModels>>;
         try {
-          available = await fetchPromptModels(modelKey.apiKey);
+          available = await fetchPromptModels(modelKey.apiKey, modelKey.provider);
         } catch (error) {
           throw new HttpError(
             503,

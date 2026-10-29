@@ -1,4 +1,4 @@
-import { providerFetch } from '../_shared/providerErrors.ts'
+import { textTokenUsage, textAiFetch } from '../_shared/textAi.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -18,7 +18,7 @@ import {
   writeAudit,
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
-import { resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
+import { resolveTextAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
@@ -447,7 +447,7 @@ serve(async (req) => {
       if (typeof client.bio !== 'string' || client.bio.trim().length < 40) {
         throw new HttpError(409, 'CLIENT_BIO_REQUIRED', 'Add a client profile bio first — the draft is built from it')
       }
-      const anthropicKey = await resolveAiKey(admin, workspaceId, 'anthropic')
+      const anthropicKey = await resolveTextAiKey(admin, workspaceId)
       if (!anthropicKey) {
         throw new HttpError(500, 'SERVER_MISCONFIGURED', 'AI drafting is not configured')
       }
@@ -497,13 +497,8 @@ serve(async (req) => {
       // a draft with no usable field all give a fresh charge back.
       let fields: Record<string, string> = {}
       try {
-        const response = await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', {
+        const response = await textAiFetch(anthropicKey, {
           method: 'POST',
-          headers: {
-            'x-api-key': anthropicKey.apiKey,
-            'anthropic-version': '2023-06-01',
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             model: 'claude-sonnet-5-5',
             // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
@@ -554,7 +549,7 @@ serve(async (req) => {
       await logOperationCost(admin, {
         workspaceId,
         operationType: 'pitch_profile',
-        usage: { anthropicInputTokens: usage.input, anthropicOutputTokens: usage.output },
+        usage: { ...textTokenUsage(anthropicKey, usage.input, usage.output)},
         usedByoKey,
         clientId,
         referenceKind: 'sdr_profile_draft',

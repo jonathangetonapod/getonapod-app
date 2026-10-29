@@ -24,7 +24,7 @@ export async function generatePodcastSearchEmbedding(
   if (!apiKey) return null
 
   try {
-    const response = await providerFetch('openai', 'https://api.openai.com/v1/embeddings', {
+    const response = await providerFetch('openai-platform', 'https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
