@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 
 const staff = readFileSync('supabase/functions/workspace-onboarding/index.ts', 'utf8')
+const emailOperations = readFileSync('supabase/migrations/20261031000700_onboarding_email_operations.sql', 'utf8')
 const client = readFileSync('supabase/functions/client-onboarding/index.ts', 'utf8')
 const shared = readFileSync('supabase/functions/_shared/workspaceOnboarding.ts', 'utf8')
 const migration = readFileSync('supabase/migrations/20260722000500_workspace_onboarding.sql', 'utf8')
@@ -21,14 +22,15 @@ assert.match(staff, /requireAuthenticatedUser\(req\)/u)
 assert.match(staff, /workspaceCredentialIsFresh\(context\)/u)
 // Read-only staff recovery stays available; starting onboarding (which may
 // create a client) and all other staff mutations must pass the paid gate.
-assert.match(staff, /if \(!\['list', 'detail', 'get_link'\]\.includes\(action\)\) \{\s+await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
+assert.match(staff, /if \(!\['list', 'detail', 'get_link', 'email_operation_status'\]\.includes\(action\)\) \{\s+await requireWorkspaceFeatureAccess\(context, workspaceId\)/u)
 assert.ok(staff.indexOf('await requireWorkspaceFeatureAccess(context, workspaceId)') < staff.indexOf("if (action === 'start')"))
 assert.doesNotMatch(client, /requireWorkspaceFeatureAccess\(/u, 'public capability submissions do not require staff billing access')
 assert.match(staff, /workspace_onboarding_staff_list_v1/u)
 assert.match(staff, /workspace_onboarding_start_v1/u)
 assert.match(staff, /workspace_onboarding_approve_v1/u)
 assert.match(staff, /action === 'approve_answers'[\s\S]*?workspace_onboarding_approve_answers_v1/u)
-assert.match(staff, /record_workspace_onboarding_change_request_v1/u)
+assert.match(staff, /begin_workspace_onboarding_email_operation_v1/u)
+assert.match(shared, /complete_workspace_onboarding_email_operation_v1/u)
 assert.match(staff, /kind: 'changes_requested'/u)
 assert.match(staff, /experiencePayload\(body\.experience\)/u)
 assert.match(staff, /brandLogoPath/u)
@@ -188,17 +190,30 @@ assert.doesNotMatch(staff, /\.in\('kind', \[[^\]]*'change_request'/u)
 assert.match(staff, /if \(error \|\| data !== true\) \{\s*console\.error\('\[workspace-onboarding\] Invitation delivery could not be recorded'/u)
 // Resend emails the current link; rotate honours send_email.
 assert.match(staff, /action === 'resend_invitation'/u)
-// One delivered resend per onboarding per ten minutes, with a coded error the
-// page shows; checked before anything is sent.
-assert.match(staff, /const RESEND_COOLDOWN_MS = 10 \* 60 \* 1000/u)
+// Cooldown and single-operation reservation are atomic under the instance lock.
+assert.match(emailOperations, /pg_advisory_xact_lock/u)
+assert.match(emailOperations, /normalized_action IN \('rotate','request_changes'\) AND/u)
+assert.match(emailOperations, /OLD.status IN \('processing','unknown'\) AND NEW.status IN \('pending','cancelled'\)/u)
+const rotateSql = emailOperations.slice(emailOperations.indexOf("ELSIF normalized_action = 'rotate'"), emailOperations.indexOf("ELSIF normalized_action = 'extend'"))
+assert.doesNotMatch(rotateSql, /UPDATE public.workspace_onboarding_notifications/u)
+assert.match(emailOperations, /sent_at>now\(\)-interval '10 minutes'/u)
+assert.match(emailOperations, /WHERE state IN \('prepared','sending','unknown'\)/u)
+assert.match(emailOperations, /existing.request<>p_request/u)
+assert.match(emailOperations, /WHERE id=p_operation_id AND state='prepared'/u)
+assert.match(emailOperations, /WHERE id=p_operation_id AND state='sending'/u)
+assert.match(emailOperations, /WHERE instance_id=op.instance_id AND email_operation_id=p_operation_id/u)
+assert.match(emailOperations, /WHERE email_operation_id IS NULL AND status <> 'unknown'/u)
+assert.doesNotMatch(emailOperations, /attempted_at\s*<=.*interval/u)
+assert.match(shared, /idempotencyKey: input.operationId \? `onboarding:\$\{input.operationId\}`/u)
 {
   const resendBranch = staff.slice(staff.indexOf("if (action === 'resend_invitation')"), staff.indexOf("if (action === 'approve_answers')"))
-  assert.match(resendBranch, /\.not\('sent_at', 'is', null\)\s*\n\s*\.order\('sent_at', \{ ascending: false \}\)/u)
-  assert.match(resendBranch, /throw new HttpError\(\s*429,\s*'ONBOARDING_RESEND_COOLDOWN',/u)
-  assert.ok(
-    resendBranch.indexOf("'ONBOARDING_RESEND_COOLDOWN'") < resendBranch.indexOf('await sendOnboardingEmail('),
-    'the resend cooldown must be checked before the email is sent',
-  )
+  assert.ok(resendBranch.indexOf('await beginEmailOperation(') < resendBranch.indexOf('await sendDurableOnboardingEmail('))
+  assert.ok(resendBranch.indexOf('if (replay) return replay') < resendBranch.indexOf('const capabilityCheck'))
+  assert.match(resendBranch, /requireUuid\(body.operation_id, 'operation_id'\)/u)
+  const statusBranch = staff.slice(staff.indexOf("if (action === 'email_operation_status')"), staff.indexOf("if (action === 'retry_ai')"))
+  assert.match(statusBranch, /await staffWorkspace/u)
+  assert.match(statusBranch, /\.eq\('workspace_id', workspaceId\)\.eq\('instance_id', instanceId\)/u)
+  assert.doesNotMatch(statusBranch, /beginEmailOperation|sendDurableOnboardingEmail|\.update\(|\.insert\(|\.upsert\(/u)
 }
 assert.match(staff, /rotateSendEmail = booleanValue\(body\.send_email, 'send_email'\)/u)
 assert.match(onboardingPage, /resendOnboardingInvitation\(workspaceId, instance\.id\)/u)

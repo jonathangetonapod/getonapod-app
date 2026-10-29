@@ -41,7 +41,7 @@ assert.doesNotMatch(code, /includes\('youtube/u)
 assert.match(code, /MIN_TIME_ON_PAGE_MS = 3_000/u)
 assert.match(code, /if \(honeypot \|\| elapsed < MIN_TIME_ON_PAGE_MS\)/u)
 const dropIndex = fn.indexOf('elapsed < MIN_TIME_ON_PAGE_MS')
-const rpcIndex = fn.indexOf("admin.rpc('record_clips_lead'")
+const rpcIndex = fn.indexOf("admin.rpc('record_clips_lead_with_receipt_v1'")
 assert.ok(dropIndex > 0 && rpcIndex > dropIndex, 'bot checks run before anything is stored')
 
 // The name is echoed into a mail to an unverified inbox: it may only look like a name.

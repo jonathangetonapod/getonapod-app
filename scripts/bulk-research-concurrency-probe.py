@@ -3,7 +3,7 @@ Uses temporary rows/functions; never creates real research work.
 """
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-source=(ROOT / 'supabase/migrations/20261031000600_parallel_bulk_research.sql').read_text()
+source=(ROOT / 'supabase/migrations/20261031001000_parallel_bulk_research.sql').read_text()
 function=source.split('REVOKE ALL')[0].replace('FUNCTION public.claim_client_research_jobs','FUNCTION pg_temp.claim_client_research_jobs').replace('SET search_path = public','SET search_path = pg_temp')
 query='''BEGIN;
 CREATE TEMP TABLE client_research_jobs (LIKE public.client_research_jobs INCLUDING DEFAULTS);

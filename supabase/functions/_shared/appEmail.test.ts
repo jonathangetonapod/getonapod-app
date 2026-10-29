@@ -1,3 +1,4 @@
+import { webcrypto } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +13,7 @@ describe('sendAppEmail', () => {
     for (const [key, value] of Object.entries(values)) env.set(key, value)
     vi.stubGlobal('Deno', { env: { get: (key: string) => env.get(key) } })
     vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('crypto', webcrypto)
     fetchMock.mockReset()
   }
 
@@ -23,6 +25,13 @@ describe('sendAppEmail', () => {
   const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status })
 
   afterEach(() => vi.unstubAllGlobals())
+
+  it('does not report success when a sent-looking body explicitly reports failure', async () => {
+    stubDeno(configured)
+    fetchMock.mockResolvedValue(reply(200, { status: 'sent', provider_message_id: 'gm_1', success: false }))
+    await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
+      .resolves.toMatchObject({ status: 'unknown', retryable: false })
+  })
 
   it('skips without calling out when the webhook is not configured', async () => {
     stubDeno({ N8N_EMAIL_WEBHOOK_SECRET: 'shared-secret' })
@@ -62,23 +71,23 @@ describe('sendAppEmail', () => {
     })
   })
 
-  it('gives every send its own key when the caller has none', async () => {
+  it('keeps identical unkeyed content stable across retries', async () => {
     stubDeno(configured)
     fetchMock.mockResolvedValue(reply(200, { status: 'sent', provider_message_id: 'gm_2' }))
     await sendAppEmail({ event: 'portal.password_reset', to: ['a@example.com'], data: {} })
     await sendAppEmail({ event: 'portal.password_reset', to: ['a@example.com'], data: {} })
     const keys = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body).idempotency_key)
     expect(keys[0]).toMatch(/^portal\.password_reset:/u)
-    expect(keys[0]).not.toBe(keys[1])
+    expect(keys[0]).toBe(keys[1])
   })
 
-  it('marks only a 503 as safe to retry', async () => {
+  it('retries only an explicit pre-send failure', async () => {
     stubDeno(configured)
-    fetchMock.mockResolvedValueOnce(reply(503, { status: 'failed', error: 'provider_unavailable' }))
+    fetchMock.mockResolvedValueOnce(reply(503, { status: 'failed', error: 'provider_unavailable', code: 'DELIVERY_NOT_ATTEMPTED', retryable: true }))
     await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
       .resolves.toMatchObject({ status: 'failed', retryable: true })
 
-    for (const status of [400, 401, 409, 502]) {
+    for (const status of [400, 401, 410, 422]) {
       fetchMock.mockResolvedValueOnce(reply(status, { status: 'failed', error: 'x' }))
       await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
         .resolves.toMatchObject({ status: 'failed', retryable: false })
@@ -89,14 +98,50 @@ describe('sendAppEmail', () => {
     stubDeno(configured)
     fetchMock.mockRejectedValue(new DOMException('timed out', 'TimeoutError'))
     await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
-      .resolves.toMatchObject({ status: 'failed', retryable: false })
+      .resolves.toMatchObject({ status: 'unknown', retryable: false, code: 'DELIVERY_UNCONFIRMED' })
   })
 
   it('does not count a 200 without a sent status as delivered', async () => {
     stubDeno(configured)
     fetchMock.mockResolvedValue(reply(200, { ok: true }))
     await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
-      .resolves.toMatchObject({ status: 'failed' })
+      .resolves.toMatchObject({ status: 'unknown' })
+  })
+
+  it.each([200, 409, 503])('preserves delivery unknown from the body on HTTP %s', async (status) => {
+    stubDeno(configured)
+    fetchMock.mockResolvedValue(reply(status, { code: 'DELIVERY_UNCONFIRMED', status: 'unknown' }))
+    const result = await sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} })
+    expect(result).toMatchObject({ status: 'unknown', code: 'DELIVERY_UNCONFIRMED', retryable: false })
+    expect(result.error).toMatch(/Check delivery before sending another message/)
+    expect(result.error).not.toMatch(/reject/i)
+  })
+
+  it('does not assume a generic 503 or 409 is a rejection or safe retry', async () => {
+    stubDeno(configured)
+    for (const status of [409, 500, 503]) {
+      fetchMock.mockResolvedValue(reply(status, { error: 'unavailable' }))
+      await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
+        .resolves.toMatchObject({ status: 'unknown', retryable: false })
+    }
+  })
+
+  it('preserves key conflicts without retrying', async () => {
+    stubDeno(configured)
+    fetchMock.mockResolvedValue(reply(409, { code: 'IDEMPOTENCY_CONFLICT' }))
+    await expect(sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {} }))
+      .resolves.toMatchObject({ status: 'failed', code: 'IDEMPOTENCY_CONFLICT', retryable: false })
+  })
+
+  it('never truncates explicit operation keys', async () => {
+    stubDeno(configured)
+    fetchMock.mockResolvedValue(reply(200, { status: 'sent', provider_message_id: 'ok' }))
+    const key = 'x'.repeat(450)
+    await sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {}, idempotencyKey: key })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).idempotency_key).toBe(key)
+    fetchMock.mockClear()
+    await sendAppEmail({ event: 'portal.invite', to: ['a@example.com'], data: {}, idempotencyKey: 'x'.repeat(501) })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('fails without calling out when no recipient is valid', async () => {

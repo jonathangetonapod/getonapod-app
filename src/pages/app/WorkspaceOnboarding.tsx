@@ -27,6 +27,9 @@ import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
   approveOnboardingAnswers,
+  checkOnboardingEmailDelivery,
+  retryOnboardingEmail,
+  hasPendingOnboardingEmail,
   requestOnboardingChanges,
   archiveOnboardingInstance,
   archiveOnboardingTemplate,
@@ -63,7 +66,7 @@ interface Props {
 
 type ConfirmationAction = 'revoke' | 'archive' | 'purge'
 type TemplateConfirmationAction = 'default' | 'archive'
-type LinkAction = 'copy' | 'preview' | 'remind' | 'rotate' | 'extend'
+type LinkAction = 'copy' | 'preview' | 'remind' | 'rotate' | 'extend' | 'check_delivery' | 'retry_email'
 
 const linkIsLive = (instance: OnboardingInstanceSummary) => instance.status !== 'expired'
   && new Date(instance.capability_expires_at).valueOf() > Date.now()
@@ -358,7 +361,9 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
       // is put in front of the operator rather than left in a row menu.
       if (result.delivery?.status === 'sent') toast.success('Changes requested. The client has been emailed their reopened link.')
       else {
-        toast.warning('Changes recorded and the link reopened, but the email did not send. Share the link below with the client.')
+        toast.warning(!result.delivery || result.delivery.status === 'unknown'
+          ? 'Changes recorded. Email delivery is unknown. Check delivery before sending another message.'
+          : 'Changes recorded and the link reopened, but the email did not send. Share the link below with the client.')
         if (result.onboarding_url && result.instance) {
           setInvitationEmailRequested(true)
           setInvitation({
@@ -369,7 +374,12 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         }
       }
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Unable to request changes.'),
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Unable to request changes.'
+      toast.error(selectedInstanceId && hasPendingOnboardingEmail(workspaceId, selectedInstanceId)
+        ? `${message} The email outcome is unconfirmed. Close the review and use Check delivery before sending again.`
+        : message)
+    },
   })
 
   const copyLink = async (link: string): Promise<boolean> => {
@@ -387,6 +397,8 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
   const previewWindowRef = useRef<Window | null>(null)
   const linkMutation = useMutation({
     mutationFn: async ({ action, instance }: { action: LinkAction; instance: OnboardingInstanceSummary }) => {
+      if (action === 'check_delivery') return checkOnboardingEmailDelivery(workspaceId, instance.id)
+      if (action === 'retry_email') return retryOnboardingEmail(workspaceId, instance.id)
       if (action === 'copy' || action === 'preview') return getOnboardingLink(workspaceId, instance.id)
       // A lapsed link is never emailed as-is: resending it rotates to a fresh
       // 14-day link and emails that one.
@@ -422,12 +434,23 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         return
       }
       await refresh()
+      if (variables.action === 'check_delivery' || variables.action === 'retry_email') {
+        if (result.delivery?.status === 'sent') toast.success('The app records this email as sent.')
+        else if (result.delivery?.status === 'failed' || result.delivery?.status === 'skipped') toast.warning('The email was not sent. You can send a new message or share the link.')
+        else if (result.operation_state === 'not_started' || result.operation_state === 'prepared') toast.info('The original email has not started sending. You can retry the original request.', {
+          action: { label: 'Retry original email', onClick: () => linkMutation.mutate({ action: 'retry_email', instance: variables.instance }) },
+        })
+        else toast.info('App delivery record refreshed. If it is still unknown, contact support before sending another message.')
+        return
+      }
       if (variables.action === 'remind') {
         if (result.delivery?.status === 'sent') {
           setRemindedIds((current) => new Set(current).add(variables.instance.id))
           toast.success('Reminder sent')
         } else {
-          toast.warning('The reminder did not send. Share the link below with the client.')
+          toast.warning(!result.delivery || result.delivery.status === 'unknown'
+            ? 'Email delivery is unknown. Check delivery before sending another message.'
+            : 'The reminder did not send. Share the link below with the client.')
           showLink(true)
         }
         return
@@ -444,7 +467,10 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
         previewWindowRef.current?.close()
         previewWindowRef.current = null
       }
-      toast.error(error instanceof Error ? error.message : 'Unable to update the secure link.')
+      const message = error instanceof Error ? error.message : 'Unable to update the secure link.'
+      toast.error(hasPendingOnboardingEmail(workspaceId, variables.instance.id)
+        ? `${message} The email outcome is unconfirmed. Use Check delivery before sending again.`
+        : message)
     },
   })
 
@@ -729,6 +755,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
                             busy={linkMutation.isPending}
                             highlightId={highlightId}
                             remindedIds={remindedIds}
+                            pendingEmailIds={new Set(tableInstances.filter((instance) => hasPendingOnboardingEmail(workspaceId, instance.id)).map((instance) => instance.id))}
                             workspaceBaseHref={workspaceBaseHref}
                             onAction={handleRowAction}
                           />
@@ -802,7 +829,7 @@ const WorkspaceOnboarding = ({ platformWorkspaceId }: Props) => {
           )}
           {invitation && invitation.delivery.status === 'unknown' && invitationEmailRequested && (
             <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-              We could not confirm whether the email was sent. Share the link below to be sure the client has it.
+              Email delivery is unknown. Check delivery before sending another message.
             </p>
           )}
           {invitation && <div className="space-y-2"><Label htmlFor="onboarding-link">Private intake link for {invitation.instance.recipient_name}</Label><Input id="onboarding-link" readOnly value={invitation.onboarding_url} onFocus={(event) => event.currentTarget.select()} /><div className="grid gap-2 sm:grid-cols-2"><Button onClick={() => void shareLink(invitation.onboarding_url)}>Share link</Button><Button variant="outline" onClick={() => void copyLink(invitation.onboarding_url).then((copied) => { if (!copied) toast.error('Copy failed. Select and copy the link manually.') })}><Copy className="mr-2 h-4 w-4" />Copy link</Button></div><p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked. Send it only to the intended contact.</p></div>}

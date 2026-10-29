@@ -303,6 +303,7 @@ serve(async (req) => {
         if (owner?.email_normalized) {
           await sendAppEmail({
             event: 'portal.addon_request',
+            idempotencyKey: `portal-addon:${clientRecord.workspace_id}:${clientId}:${logRow.id}`,
             to: [owner.email_normalized],
             data: {
               client_name: clientRecord.name,

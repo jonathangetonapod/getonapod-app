@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { ensureWorkspaceBillingCustomer, getOrCreateWorkspaceCheckout } from "../_shared/subscriptionCheckout.ts";
 
-import { sendAppEmail } from "../_shared/appEmail.ts";
+import { checkoutEmailOutcome, sendCheckoutEmail } from "../_shared/checkoutEmail.ts";
 import { CREDIT_PACKS } from "../_shared/creditPacks.ts";
 
 import {
@@ -987,31 +987,6 @@ async function stripeRequest(
     );
   }
   return payload;
-}
-
-/**
- * The checkout link an admin sends a workspace owner. Best-effort: the link
- * is returned to the admin either way, so a failed send loses the email, not
- * the link.
- */
-async function emailCheckoutLink(input: {
-  to: string;
-  workspaceName: string;
-  planName: string;
-  priceLabel: string;
-  url: string;
-}): Promise<"sent" | "failed" | "skipped"> {
-  const delivery = await sendAppEmail({
-    event: "billing.checkout_link",
-    to: [input.to],
-    data: {
-      workspace_name: input.workspaceName,
-      plan_name: input.planName,
-      price_label: input.priceLabel,
-      checkout_url: input.url,
-    },
-  });
-  return delivery.status;
 }
 
 const SUBSCRIPTION_OPERATIONS = ["extend_trial", "change_plan", "make_comped", "cancel", "checkout_link"] as const;
@@ -4074,13 +4049,20 @@ serve(async (req) => {
         const expiresAt = session.expires_at;
 
         const previousResult = ((done?.metadata as Record<string, unknown> | null)?.result ?? {}) as Record<string, unknown>;
-        let emailed: "sent" | "failed" | "skipped" | "not_requested" =
-          checkoutReplay && ["sent", "failed", "skipped", "not_requested"].includes(String(previousResult.emailed))
-            ? previousResult.emailed as "sent" | "failed" | "skipped" | "not_requested"
+        let emailed: "sent" | "failed" | "skipped" | "unknown" | "not_requested" =
+          checkoutReplay && ["sent", "failed", "skipped", "unknown", "not_requested"].includes(String(previousResult.emailed))
+            ? previousResult.emailed as "sent" | "failed" | "skipped" | "unknown" | "not_requested"
             : "not_requested";
+        if (checkoutReplay) {
+          // The durable mail receipt wins over an audit written after an uncertain
+          // acknowledgement. A replay never issues another send or rotates its key.
+          emailed = await checkoutEmailOutcome(admin, workspaceId, actionKey) ?? emailed;
+        }
         if (!checkoutReplay && body.email_owner === true) {
           emailed = ownerEmail
-            ? await emailCheckoutLink({
+            ? await sendCheckoutEmail(admin, {
+              workspaceId,
+              actionKey,
               to: ownerEmail,
               workspaceName,
               planName: String(target.display_name ?? target.plan_key),
@@ -4095,13 +4077,17 @@ serve(async (req) => {
         result = { plan_key: target.plan_key, expires_at: expiresAt, emailed, owner_email: ownerEmail || null };
       }
 
+      // The recipient is useful in this response, but the delivery receipt and
+      // audit need only operation identity and outcome, never checkout secrets.
+      const auditResult = { ...result };
+      if (checkoutUrl) delete auditResult.owner_email;
       if (!checkoutReplay) await writeAudit(admin, {
         workspaceId,
         actorUserId: user.id,
         action: "workspace.subscription.admin_action",
         entityType: "workspace_billing_profile",
         entityId: workspaceId,
-        metadata: { operation, reason, note, action_key: actionKey, result },
+        metadata: { operation, reason, note, action_key: actionKey, result: auditResult },
       });
       return jsonResponse(req, METHODS, 200, {
         success: true,

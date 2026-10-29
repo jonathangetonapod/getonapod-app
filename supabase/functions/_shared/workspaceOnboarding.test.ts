@@ -1,8 +1,10 @@
+import { webcrypto } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   onboardingEmailConfigured,
   prefillOnboardingAnswers,
   sendOnboardingEmail,
+  sendDurableOnboardingEmail,
   validateOnboardingAnswers,
   validateOnboardingDefinition,
 } from './workspaceOnboarding.ts'
@@ -98,6 +100,7 @@ describe('sendOnboardingEmail', () => {
     env.clear()
     for (const [key, value] of Object.entries(values)) env.set(key, value)
     vi.stubGlobal('Deno', { env: { get: (key: string) => env.get(key) } })
+    vi.stubGlobal('crypto', webcrypto)
     vi.stubGlobal('fetch', fetchMock)
     fetchMock.mockReset()
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ id: 'msg_1' }), { status: 200 }))
@@ -154,6 +157,65 @@ describe('sendOnboardingEmail', () => {
         reminder: true,
       },
     })
+  })
+
+  function operationDatabase(options: { loseCompletion?: boolean; loseClaim?: boolean } = {}) {
+    const operations = new Map<string, { state: string; result?: unknown; payload?: unknown }>()
+    const rpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+      const id = String(args.p_operation_id)
+      if (name === 'claim_workspace_onboarding_email_send_v1') {
+        const existing = operations.get(id)
+        if (existing) return { data: { claimed: false, result: existing.result }, error: null }
+        operations.set(id, { state: 'sending', payload: args.p_payload })
+        if (options.loseClaim) return { data: null, error: { message: 'response lost after commit' } }
+        return { data: { claimed: true, payload: args.p_payload }, error: null }
+      }
+      if (options.loseCompletion) return { data: null, error: { message: 'write failed' } }
+      operations.set(id, { ...operations.get(id), state: 'sent', result: args.p_result })
+      return { data: true, error: null }
+    })
+    return { rpc, operations }
+  }
+
+  it('concurrent requests send once and replay the committed outcome', async () => {
+    stubDeno(configured)
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ status: 'sent', provider_message_id: 'gm_once' }), { status: 200 }))
+    const database = operationDatabase()
+    const results = await Promise.all(Array.from({ length: 12 }, () => sendDurableOnboardingEmail(database, 'operation-one', input)))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(results.filter((result) => result.status === 'sent')).toHaveLength(1)
+    await expect(sendDurableOnboardingEmail(database, 'operation-one', { ...input, workspaceName: 'Changed later' }))
+      .resolves.toMatchObject({ status: 'sent', providerMessageId: 'gm_once', recorded: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).idempotency_key).toBe('onboarding:operation-one')
+  })
+
+  it('identical intentional reminders use different persisted operation keys', async () => {
+    stubDeno(configured)
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ status: 'sent', provider_message_id: 'gm_ok' }), { status: 200 }))
+    const database = operationDatabase()
+    await sendDurableOnboardingEmail(database, 'reminder-one', { ...input, reminder: true })
+    await sendDurableOnboardingEmail(database, 'reminder-two', { ...input, reminder: true })
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(call[1].body))
+    expect(bodies.map((body) => body.idempotency_key)).toEqual(['onboarding:reminder-one', 'onboarding:reminder-two'])
+    expect(bodies[0].data).toEqual(bodies[1].data)
+  })
+
+  it('does not resend after Gmail acceptance and failed result persistence', async () => {
+    stubDeno(configured)
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'sent', provider_message_id: 'gm_lost' }), { status: 200 }))
+    const database = operationDatabase({ loseCompletion: true })
+    await expect(sendDurableOnboardingEmail(database, 'held', input)).resolves.toMatchObject({ status: 'unknown', recorded: false })
+    await expect(sendDurableOnboardingEmail(database, 'held', input)).resolves.toMatchObject({ status: 'unknown' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send when dispatch claim commits but its response is lost', async () => {
+    stubDeno(configured)
+    const database = operationDatabase({ loseClaim: true })
+    await expect(sendDurableOnboardingEmail(database, 'claim-lost', input)).resolves.toMatchObject({ status: 'unknown' })
+    await expect(sendDurableOnboardingEmail(database, 'claim-lost', input)).resolves.toMatchObject({ status: 'unknown' })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('omits an invalid reply-to and leaves the fixed wording to the workflow', async () => {

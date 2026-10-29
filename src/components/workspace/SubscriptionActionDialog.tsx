@@ -146,6 +146,7 @@ export const SubscriptionActionDialog = ({
             {link.expires_at && Number.isFinite(Date.parse(link.expires_at)) && <p className="text-sm text-muted-foreground">Expires {new Date(link.expires_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZoneName: undefined })} (your local time).</p>}
             <p className="text-sm text-muted-foreground" role="status">
               {link.emailed === 'sent' && `Emailed to ${link.owner_email}.`}
+              {link.emailed === 'unknown' && 'Email delivery is unknown. Check delivery before sending another message.'}
               {link.emailed === 'failed' && 'The email could not be sent. Copy the link and send it yourself.'}
               {link.emailed === 'skipped' && 'No email was sent: there is no owner email or email is not configured.'}
               {link.emailed === 'not_requested' && 'Not emailed. Copy the link and send it yourself.'}
