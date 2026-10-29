@@ -6,7 +6,7 @@ serve(async req => {
  const secret = Deno.env.get('RESEARCH_TICK_SECRET')
  if (req.method !== 'POST' || !secret || !(await secretsMatch(req.headers.get('x-research-secret') ?? '',secret))) return new Response('Unauthorized',{status:401})
  const admin = createAdminClient()
- const {data:jobs,error} = await admin.rpc('claim_client_research_jobs', {p_limit:4})
+ const {data:jobs,error} = await admin.rpc('claim_client_research_jobs', {p_limit:10})
  if (error) return new Response('Claim failed',{status:500})
  if (!jobs?.length) return Response.json({idle:true})
  const results = await Promise.allSettled(jobs.map(async (job: {id:string;phase:string;workspace_id:string;client_id:string;shortlist_podcast_id:string;continue_token:string|null;lease:string}) => {
