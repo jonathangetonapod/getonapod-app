@@ -55,6 +55,7 @@ import { getWorkspaceCampaign, type WorkspaceCampaignTarget } from '@/services/w
 import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
+import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
 import {
   addClientShortlistPodcasts,
@@ -583,6 +584,7 @@ export function ClientShortlistEditor({
               Select all {resultLabel(filtered.length)} in this view
             </label>
           )}
+          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} />
           <ShortlistBulkBar
             workspaceId={workspaceId}
             clientId={clientId}

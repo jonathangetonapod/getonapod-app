@@ -14,6 +14,8 @@ import {
 } from '@/services/clientShortlist'
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
+vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: () => null }))
+
 vi.mock('@/services/clientShortlist', () => ({
   FIT_SCORE_BATCH_SIZE: 20,
   BULK_FEEDBACK_BATCH_SIZE: 200,

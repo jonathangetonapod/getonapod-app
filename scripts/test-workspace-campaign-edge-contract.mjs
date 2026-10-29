@@ -1559,7 +1559,7 @@ assert.match(
 // finished did so with ten seconds to spare. The run stops itself between
 // stages instead, saving as it goes and asking to be called back.
 assert.match(shortlistEdge, /const RUN_BUDGET_MS = 60_000/u)
-assert.match(shortlistEdge, /const outOfTime = \(\) => Date\.now\(\) > runDeadline/u)
+assert.match(shortlistEdge, /const outOfTime = \(\) => Boolean\(batchJob\) \|\| Date\.now\(\) > runDeadline/u)
 for (const nextStage of ['host_profile', 'guest_patterns', 'guest_fit']) {
   assert.ok(
     shortlistEdge.includes(`if (outOfTime()) return continueResponse('${nextStage}')`),
@@ -1648,7 +1648,7 @@ assert.match(
 )
 assert.match(
   shortlistEdge,
-  /const startedAt = resuming && typeof existingProgress\?\.started_at === 'string'\s*\n\s*\? existingProgress\.started_at/u,
+  /const startedAt = batchJob\?\.research_run_started_at \?\? \(resuming && typeof existingProgress\?\.started_at === 'string'\s*\n\s*\? existingProgress\.started_at/u,
 )
 // A completed run is not resumed — asking again there is a request for fresh
 // research, which is what keeps Regenerate honest. Every other status is an

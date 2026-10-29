@@ -236,3 +236,6 @@ verify_jwt = false
 # the function grants nothing and rate-limits itself per address.
 [functions.clips-lead]
 verify_jwt = false
+
+[functions.client-research-tick]
+verify_jwt = false

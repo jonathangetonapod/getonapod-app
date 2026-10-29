@@ -1,3 +1,5 @@
+import { BatchYield, BatchCheckpointError, batchPromptRunner, researchBatchRecovery } from '../_shared/researchBatchCheckpoint.ts'
+import { researchBatchAuth } from '../_shared/researchBatchAuth.ts'
 import { providerFetch } from '../_shared/providerErrors.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -836,7 +838,7 @@ async function runResearchPrompt(
   apiKey: string,
   prompt: { model: string; maxTokens: number; system: string },
   parts: string | ResearchPromptParts,
-  usage: { input: number; output: number },
+  usage: { input: number; output: number; deadline?: number },
 ): Promise<string> {
   const resolved: ResearchPromptParts = typeof parts === 'string' ? { instruction: parts } : parts
   const cached = Boolean(resolved.context)
@@ -870,7 +872,7 @@ async function runResearchPrompt(
     }),
     // Research stages legitimately generate ~3k tokens, which takes 30-60s.
     // The old 28s cap timed out every real run the moment the API key worked.
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(Math.max(1, Math.min(90_000, (usage.deadline ?? Infinity) - Date.now()))),
   })
   const payload = await response.json() as {
     content?: Array<{ type?: string; text?: string }>
@@ -898,17 +900,85 @@ serve(async (req) => {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
 
+    const invocationDeadline = Date.now() + 110_000
     const body = await parseJsonObject(req, 1_000_000)
     const action = typeof body.action === 'string' ? body.action : ''
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
     const clientId = requireUuid(body.client_id, 'client_id')
-    const authContext = await requireAuthenticatedUser(req)
+    const authContext = await researchBatchAuth(req, body) ?? await requireAuthenticatedUser(req)
     if (!workspaceCredentialIsFresh(authContext)) {
       throw new HttpError(401, 'REAUTHENTICATION_REQUIRED', 'Your sign-in is out of date. Sign out and sign in again to continue')
     }
     const access = await requireWorkspaceFeatureAccess(authContext, workspaceId)
     requireManager(access)
     const client = await requireWorkspaceClient(authContext.admin, workspaceId, clientId)
+
+    const batchJobId = req.headers.get('x-research-job')
+    const batchLease = req.headers.get('x-research-lease')
+    const batchJob = batchJobId ? (await authContext.admin.from('client_research_jobs').select('*').eq('id',batchJobId).eq('lease',batchLease).single()).data : null
+    const saveBatch = async (values: Record<string, unknown>) => {
+      if (!batchJob) return
+      const {data,error} = await authContext.admin.from('client_research_jobs').update({...values,updated_at:new Date().toISOString()})
+        .eq('id',batchJob.id).eq('lease',batchLease).eq('status','running').select('id').single()
+      if (error || !data) throw new BatchCheckpointError('The batch lease or checkpoint could not be saved')
+    }
+
+    if (batchJob) {
+      const {data:eligibility,error} = await authContext.admin.from('client_dashboard_podcasts').select('visibility').eq('id',batchJob.shortlist_podcast_id).eq('client_id',clientId).single()
+      if (error) throw new HttpError(503,'BATCH_ELIGIBILITY_UNAVAILABLE','Cannot verify show eligibility')
+      if (eligibility.visibility === 'archived') {
+        await saveBatch({status:'skipped',message:'Archived while queued'})
+        return jsonResponse(req,METHODS,200,{batch_skipped:true})
+      }
+    }
+
+    if (action === 'research-batch-list') {
+      requireOnlyKeys(body, ['action','workspace_id','client_id'])
+      const { data, error } = await authContext.admin.from('client_research_jobs')
+        .select('id,batch_id,shortlist_podcast_id,podcast_name,status,phase,message,pitch,created_at,updated_at')
+        .eq('workspace_id',workspaceId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(1000)
+      if (error) throw new HttpError(500,'BATCH_READ_FAILED','Could not read research batches')
+      return jsonResponse(req,METHODS,200,{jobs:data})
+    }
+    if (action === 'research-batch-start') {
+      if (!Deno.env.get('RESEARCH_TICK_SECRET')) throw new HttpError(503,'BATCH_NOT_CONFIGURED','Background research is not configured yet')
+      requireOnlyKeys(body,['action','workspace_id','client_id','shortlist_podcast_ids'])
+      const ids = body.shortlist_podcast_ids
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200) throw new HttpError(400,'INVALID_BATCH','Select between 1 and 200 shows')
+      const uniqueIds = [...new Set(ids.map(id => requireUuid(id,'shortlist_podcast_id')))]
+      const { data: rows, error } = await authContext.admin.from('client_dashboard_podcasts')
+        .select('id,podcast_id,podcast_name,visibility,research_progress').eq('client_id',clientId).in('id',uniqueIds)
+      if (error || rows?.length !== uniqueIds.length) throw new HttpError(400,'INVALID_BATCH','Some shows are no longer on this client shortlist')
+      const batchId = crypto.randomUUID()
+      const jobs = []
+      for (const row of rows) {
+        let reason: string | null = null
+        const progress = row.research_progress as {status?:string;updated_at?:string} | null
+        if (row.visibility === 'archived') reason = 'Archived show'
+        else if (progress?.status === 'completed') reason = 'Research already complete; use the individual pitch view to regenerate'
+        else if (['running','queued'].includes(progress?.status ?? '') && Date.now()-Date.parse(progress?.updated_at ?? '') < RESEARCH_STALE_LOCK_MS) reason = 'Research already running'
+        if (!reason) {
+          try { await preflightPodcastRelationship(authContext.admin,workspaceId,row.podcast_id,false) }
+          catch (error) {
+            if (error instanceof HttpError && ['PODCAST_SUPPRESSED','RELATIONSHIP_REVIEW_REQUIRED'].includes(error.code)) reason = error.message
+            else throw error
+          }
+        }
+        jobs.push({batch_id:batchId,workspace_id:workspaceId,client_id:clientId,shortlist_podcast_id:row.id,podcast_name:row.podcast_name,
+          actor_id:authContext.user.id,actor_issued_at:authContext.tokenIssuedAt,actor_metadata:authContext.tokenAppMetadata,status:reason?'skipped':'queued',message:reason})
+      }
+      const { error: insertError } = await authContext.admin.from('client_research_jobs').insert(jobs)
+      if (insertError) throw new HttpError(409,'BATCH_START_FAILED','Could not queue the batch. A selected show may already be queued; refresh and try again.')
+      return jsonResponse(req,METHODS,200,{batch_id:batchId})
+    }
+    if (action === 'research-batch-retry') {
+      requireOnlyKeys(body,['action','workspace_id','client_id','job_id'])
+      const { error } = await authContext.admin.from('client_research_jobs').update({status:'queued',lease:null,leased_at:null,message:null,
+        actor_id:authContext.user.id,actor_issued_at:authContext.tokenIssuedAt,actor_metadata:authContext.tokenAppMetadata,updated_at:new Date().toISOString()})
+        .eq('id',requireUuid(body.job_id,'job_id')).eq('client_id',clientId).eq('workspace_id',workspaceId).eq('status','failed')
+      if (error) throw new HttpError(409,'RETRY_FAILED','Could not retry this show; another run may be active')
+      return jsonResponse(req,METHODS,200,{ok:true})
+    }
 
     if (action === 'list') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id'])
@@ -1708,7 +1778,7 @@ serve(async (req) => {
 
       const { data: shortlistRow, error: shortlistError } = await authContext.admin
         .from('client_dashboard_podcasts')
-        .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, last_posted_at, research_progress, research_document')
+        .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, last_posted_at, visibility, research_progress, research_document')
         .eq('id', shortlistPodcastId)
         .eq('client_id', clientId)
         .maybeSingle()
@@ -1721,6 +1791,23 @@ serve(async (req) => {
         shortlistRow.podcast_id,
         body.relationship_acknowledged === true,
       )
+
+      if (batchJob) {
+        if (shortlistRow.visibility === 'archived') {
+          await saveBatch({status:'skipped',message:'Archived while queued'})
+          return jsonResponse(req,METHODS,200,{batch_skipped:true})
+        }
+        const progress = shortlistRow.research_progress as {status?:string;started_at?:string} | null
+        const recovery = researchBatchRecovery(batchJob.research_run_started_at, progress)
+        if (recovery !== 'continue') {
+          if (recovery === 'pitch') {
+            await saveBatch({phase:'pitch',continue_token:null})
+            return jsonResponse(req,METHODS,200,{research_progress:progress})
+          }
+          await saveBatch({status:'skipped',message:'Research completed or replaced outside this batch'})
+          return jsonResponse(req,METHODS,200,{batch_skipped:true})
+        }
+      }
 
       const existingProgress = shortlistRow.research_progress as
         | { status?: string; updated_at?: string; started_at?: string; completed_stages?: unknown }
@@ -1813,9 +1900,10 @@ serve(async (req) => {
       // The resumed run keeps the original run's identity, so the credit
       // idempotency key below matches and the workspace is charged once for the
       // research however many attempts it takes to get through it.
-      const startedAt = resuming && typeof existingProgress?.started_at === 'string'
+      const startedAt = batchJob?.research_run_started_at ?? (resuming && typeof existingProgress?.started_at === 'string'
         ? existingProgress.started_at
-        : new Date().toISOString()
+        : new Date().toISOString())
+      if (batchJob && !batchJob.research_run_started_at) await saveBatch({research_run_started_at:startedAt,continue_token:startedAt})
       const writeProgress = async (progress: Record<string, unknown>) => {
         await authContext.admin
           .from('client_dashboard_podcasts')
@@ -1858,7 +1946,7 @@ serve(async (req) => {
        */
       const RUN_BUDGET_MS = 60_000
       const runDeadline = Date.now() + RUN_BUDGET_MS
-      const outOfTime = () => Date.now() > runDeadline
+      const outOfTime = () => Boolean(batchJob) || Date.now() > runDeadline
       const continueResponse = (nextStage: string) => jsonResponse(req, METHODS, 200, {
         research_progress: {
           status: 'running',
@@ -1882,7 +1970,7 @@ serve(async (req) => {
         completed_stages: resumedStages,
       })
 
-      const usage = { input: 0, output: 0 }
+      const usage = { input: 0, output: 0, deadline: batchJob ? invocationDeadline : undefined }
       // Seeded from the interrupted attempt, so the steps already ticked off on
       // screen stay ticked rather than reappearing as work still to do.
       const completedStages: string[] = [...resumedStages]
@@ -2198,6 +2286,7 @@ serve(async (req) => {
           await saveStage('find_topics', topicProposal)
           await saveStage('pitch_angles_structured', proposedAngles.length > 0 ? proposedAngles : null)
           await advance('find_topics', null)
+          if (batchJob) return continueResponse('pitch_angles')
         }
         publishStageOutput('find_topics', topicProposal ? topicProposal.slice(0, 6_000) : null)
 
@@ -2323,6 +2412,7 @@ serve(async (req) => {
           referenceId: shortlistPodcastId,
         })
 
+        if (batchJob) await saveBatch({phase:'pitch',continue_token:null})
         return jsonResponse(req, METHODS, 200, {
           research_progress: {
             status: 'completed',
@@ -2345,7 +2435,8 @@ serve(async (req) => {
         const failureMessage = error instanceof Error && error.name === 'TimeoutError'
           ? 'A research stage took too long to answer. Run research again to retry.'
           : `Research failed: ${error instanceof Error ? error.message.slice(0, 240) : 'unknown error'}`
-        await writeProgress({
+        const persisted = batchJob ? (await authContext.admin.from('client_dashboard_podcasts').select('research_progress').eq('id',shortlistPodcastId).single()).data : null
+        if (persisted?.research_progress?.status !== 'completed') await writeProgress({
           status: 'failed',
           current_stage: null,
           completed_stages: completedStages,
@@ -2599,6 +2690,12 @@ serve(async (req) => {
         shortlistRow.podcast_id,
         body.relationship_acknowledged === true,
       )
+      if (!batchJob && angleIndex === 0) {
+        const {data:saved} = await authContext.admin.from('client_research_jobs').select('pitch,research_run_started_at')
+          .eq('workspace_id',workspaceId).eq('client_id',clientId).eq('shortlist_podcast_id',shortlistPodcastId).eq('status','completed').order('created_at',{ascending:false}).limit(1).maybeSingle()
+        const {data:current} = await authContext.admin.from('client_dashboard_podcasts').select('research_progress').eq('id',shortlistPodcastId).single()
+        if (saved?.pitch && saved.research_run_started_at === current?.research_progress?.started_at) return jsonResponse(req,METHODS,200,{pitch:saved.pitch})
+      }
       // The catalog row is the fresher copy of show metadata and carries the
       // stored episode capture; the shortlist copy is only the fallback.
       // Reads the registry's full column set, same as research: the stage that
@@ -2891,15 +2988,17 @@ serve(async (req) => {
         // A window, not a permanent key: regenerating the same angle later is
         // a deliberate second run and must be charged, while a double-click
         // inside the window replays.
-        idempotencyKey: retryWindowKey(['pitch', shortlistPodcastId, String(angleIndex)]),
+        idempotencyKey: batchJob ? `batch-pitch:${batchJob.id}` : retryWindowKey(['pitch', shortlistPodcastId, String(angleIndex)]),
       })
 
-      const usage = { input: 0, output: 0 }
+      const usage = { input: 0, output: 0, deadline: batchJob ? invocationDeadline : undefined }
+      const checkpoint = batchJob ? batchPromptRunner(batchJob.pitch_outputs ?? [], outputs => saveBatch({pitch_outputs:outputs})) : null
+      const runPitchPrompt: typeof runResearchPrompt = (...args) => checkpoint ? checkpoint(() => runResearchPrompt(...args)) : runResearchPrompt(...args)
       try {
         const relationshipReviewInstruction = relationship?.state === 'in_conversation'
           ? 'OPERATOR REVIEW CONFIRMED: The operator saw the live-conversation warning and chose to draft anyway. Write a careful warm follow-on sequence for editing; do not return ACTIVE CONVERSATION.'
           : ''
-        let draftRaw = await runResearchPrompt(
+        let draftRaw = await runPitchPrompt(
           anthropicKey.apiKey,
           promptSpec('write_email'),
           {
@@ -2919,7 +3018,7 @@ serve(async (req) => {
         // warning, so retry once with today's canonical prompt instead of
         // making the paid request unusable.
         if (/^\s*ACTIVE CONVERSATION/iu.test(draftRaw) && relationship?.state === 'in_conversation') {
-          draftRaw = await runResearchPrompt(
+          draftRaw = await runPitchPrompt(
             anthropicKey.apiKey,
             // The workspace's model, but deliberately the canonical prompt —
             // this retry exists because the SAVED wording refused, so only the
@@ -2978,7 +3077,7 @@ serve(async (req) => {
         // silently.
         let flags = pitchSequenceChecks(sequence)
         try {
-          const auditRaw = await runResearchPrompt(
+          const auditRaw = await runPitchPrompt(
             anthropicKey.apiKey,
             { model: 'claude-sonnet-5-5', maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
             `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
@@ -2991,10 +3090,11 @@ serve(async (req) => {
             }
           }
         } catch (_error) {
+          if (batchJob) throw _error
           console.warn('[Client Shortlist] Claim audit unavailable; shipping with deterministic checks only')
         }
         if (flags.length > 0) {
-          const revisedRaw = await runResearchPrompt(
+          const revisedRaw = await runPitchPrompt(
             anthropicKey.apiKey,
             promptSpec('clean_email'),
             // The revision stage runs inside the pitch scope, so it can see
@@ -3025,7 +3125,7 @@ serve(async (req) => {
           referenceKind: 'pitch_generate',
           referenceId: shortlistPodcastId,
         })
-        return jsonResponse(req, METHODS, 200, {
+        const result = {
           pitch: {
             subject: (sequence.subject || fallbackSubject).slice(0, 300),
             body: sequence.email_1.slice(0, 6_000),
@@ -3035,8 +3135,11 @@ serve(async (req) => {
             chain_version: PITCH_CHAIN_VERSION,
             angle_index: angleIndex,
           },
-        })
+        }
+        if (batchJob) await saveBatch({status:'completed',pitch:result.pitch})
+        return jsonResponse(req,METHODS,200,result)
       } catch (error) {
+        if (error instanceof BatchYield) return jsonResponse(req,METHODS,200,{pitch_continue_required:true})
         /*
          * No pitch was saved, so the charge goes back. The permanent key used
          * to make this self-healing only for whoever retried the same angle —
