@@ -7,6 +7,7 @@ import { toFunctionError } from '@/lib/functionErrors'
 export type AccountState =
   | 'loading'
   | 'signed_out'
+  | 'session_expired'
   | 'active'
   | 'pending'
   | 'password_change_required'
@@ -77,6 +78,34 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const authenticationRejected = (error: unknown) =>
+  error instanceof Error && (error as Error & { status?: number }).status === 401
+
+async function withAccountTimeout<T>(request: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Account access timed out. Check your connection and try again.')), 15000)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function loadAccountContext(accessToken: string): Promise<AccountContextResponse> {
+  const { data, error } = await withAccountTimeout(
+    supabase.functions.invoke<AccountContextResponse>('account-context', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+  )
+  if (error) throw await toFunctionError(error, 'Unable to load account access.')
+  if (!data) throw new Error('Unable to load account access.')
+  return data
+}
+
 const clearSensitiveAccountStorage = () => {
   try {
     window.localStorage.removeItem('podcast-finder-state')
@@ -105,6 +134,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // a sign-in and a background token refresh is not visible in the token
   // itself, and only one of the two may unmount the page.
   const resolvedForUserRef = useRef<string | null>(null)
+  // Recovery owns its retry; its TOKEN_REFRESHED event must not start a
+  // competing account request (or another recovery loop).
+  const recoveringAccountRef = useRef<number | null>(null)
+  const recoveredAccessTokenRef = useRef<string | null>(null)
 
   const clearAccount = useCallback((nextState: AccountState = 'signed_out') => {
     accountRequestRef.current += 1
@@ -138,49 +171,51 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!options?.quiet) setAccountState('loading')
     setAccountError(null)
 
-    // Bound the wait. Without a timeout, a stalled function or gateway (a cold
-    // start beyond the proxy window, a hung connection) left the loud path on
-    // 'loading' forever — a full-screen spinner with no escape. On timeout the
-    // loud path falls to 'error', which at least offers Try again / Sign out.
-    const ACCOUNT_CONTEXT_TIMEOUT_MS = 15000
-    const result = await Promise.race([
-      supabase.functions.invoke<AccountContextResponse>('account-context')
-        .then((response) => ({ ...response, timedOut: false as const })),
-      new Promise<{ data: null; error: null; timedOut: true }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: null, timedOut: true }), ACCOUNT_CONTEXT_TIMEOUT_MS)),
-    ])
-    if (requestId !== accountRequestRef.current) return false
-    const { data, error } = result
+    let data: AccountContextResponse
+    try {
+      try {
+        data = await loadAccountContext(sessionData.session.access_token)
+      } catch (error) {
+        if (requestId !== accountRequestRef.current) return false
+        if (!authenticationRejected(error)) throw error
 
-    if (result.timedOut || error || !data) {
+        recoveringAccountRef.current = requestId
+        try {
+          const refreshed = await withAccountTimeout(supabase.auth.refreshSession())
+          if (requestId !== accountRequestRef.current) return false
+          if (refreshed.error) {
+            // A rejected refresh token requires sign-in; outages stay retryable.
+            if ([400, 401, 403].includes(refreshed.error.status ?? 0)) throw error
+            throw refreshed.error
+          }
+          if (!refreshed.data.session) throw error
+          const nextSession = refreshed.data.session
+          if (nextSession.user.id !== lastUserIdRef.current) return false
+          recoveredAccessTokenRef.current = nextSession.access_token
+          setSession(nextSession)
+          setUser(nextSession.user)
+          data = await loadAccountContext(nextSession.access_token)
+        } finally {
+          if (recoveringAccountRef.current === requestId) recoveringAccountRef.current = null
+        }
+      }
+    } catch (error) {
       if (requestId !== accountRequestRef.current) return false
-      /*
-       * A quiet refresh is the client's own token housekeeping, and a
-       * transient failure there (5xx, cold start, network blip, timeout) must
-       * NOT evict a user whose account is fine — a genuine state change comes
-       * back as data, never as an error. Keep whatever is on screen and let
-       * the next loud read decide, instead of dropping an in-progress form to
-       * an error screen for a routine token rotation.
-       */
-      if (options?.quiet) return false
-      // The SDK's own message for any non-2xx is the same sentence every time,
-      // so reading it here threw away every specific refusal account-context
-      // takes the trouble to name — invalid auth, context unavailable,
-      // authorization unavailable. This is the project's normalizer and it
-      // reads the real body.
-      const normalized = result.timedOut
-        ? new Error('Account access timed out. Check your connection and try again.')
-        : error
-          ? await toFunctionError(error, 'Unable to load account access.')
-          : new Error('Unable to load account access.')
-      setAccountState('error')
-      setAccountError(normalized.message)
+      const invalidSession = authenticationRejected(error)
+      // Preserve in-progress work during a transient background failure, but
+      // never keep presenting an authenticated workspace after a rejected retry.
+      if (options?.quiet && !invalidSession) return false
+      setAccountState(invalidSession ? 'session_expired' : 'error')
+      setAccountError(invalidSession
+        ? 'Your session could not be renewed. Sign in again with the same account.'
+        : error instanceof Error ? error.message : 'Unable to load account access.')
       setIsPlatformAdmin(false)
       setMembership(null)
       setWorkspace(null)
       return false
     }
 
+    if (requestId !== accountRequestRef.current) return false
     setIsPlatformAdmin(Boolean(data.platform_admin))
     setMembership(data.membership || null)
     setWorkspace(data.workspace || null)
@@ -198,6 +233,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       clearSensitiveAccountStorage()
       lastUserIdRef.current = nextUserId
       resolvedForUserRef.current = null
+      recoveredAccessTokenRef.current = null
+      recoveringAccountRef.current = null
       accountRequestRef.current += 1
       setAccountError(null)
       setIsPlatformAdmin(false)
@@ -263,6 +300,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * client's own housekeeping, and re-reads the account underneath the page.
      */
     const userId = lastUserIdRef.current
+    if (recoveringAccountRef.current === accountRequestRef.current
+      || accessToken === recoveredAccessTokenRef.current) return
     const firstTokenForUser = resolvedForUserRef.current !== userId
     resolvedForUserRef.current = userId
     void refreshAccount({ quiet: !firstTokenForUser })

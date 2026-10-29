@@ -51,6 +51,12 @@ describe('ProtectedRoute', () => {
     await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'))
   })
 
+  it('routes an unrecoverable session to login even when a cached user remains', async () => {
+    renderProtected('session_expired')
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/login'))
+    expect(screen.queryByText('Private workspace')).not.toBeInTheDocument()
+  })
+
   it('does not render platform-only content for a tenant user', () => {
     mockedUseAuth.mockReturnValue({
       accountState: 'active',

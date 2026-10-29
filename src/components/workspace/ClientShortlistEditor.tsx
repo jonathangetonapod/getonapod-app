@@ -49,11 +49,13 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '@/components/ui/textarea'
 import { isTargetInActiveOutreach, pitchActionLabel } from '@/lib/campaignTargetState'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { isResearchRunStale } from '@/lib/researchProgress'
 import { MY_WORKSPACE_BASE_HREF, clientPitchHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceCampaign, type WorkspaceCampaignTarget } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
+import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
 import {
   addClientShortlistPodcasts,
@@ -266,6 +268,9 @@ export function ClientShortlistEditor({
     queryKey: shortlistQueryKey,
     queryFn: () => getClientShortlist(workspaceId, clientId),
     retry: false,
+    refetchInterval: (query) => query.state.data?.podcasts.some((podcast) =>
+      ['queued', 'running'].includes(podcast.research_progress?.status ?? '')
+      && !isResearchRunStale(podcast.research_progress)) ? 10_000 : false,
   })
   const catalogSearchQuery = useQuery({
     queryKey: ['client-shortlist-catalog', workspaceId, clientId, debouncedCatalogQuery],
@@ -579,6 +584,7 @@ export function ClientShortlistEditor({
               Select all {resultLabel(filtered.length)} in this view
             </label>
           )}
+          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} />
           <ShortlistBulkBar
             workspaceId={workspaceId}
             clientId={clientId}
@@ -617,6 +623,14 @@ export function ClientShortlistEditor({
                     <div>{visibilityBadge(podcast.visibility)}</div>
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-2 lg:shrink-0">
+                    {podcast.research_progress && (
+                      <Badge variant="outline" aria-label={`Research status for ${podcast.podcast_name}`}>
+                        {isResearchRunStale(podcast.research_progress) ? 'Research needs attention'
+                          : podcast.research_progress.status === 'completed' ? 'Research complete'
+                            : podcast.research_progress.status === 'failed' ? 'Research failed'
+                              : podcast.research_progress.status === 'queued' ? 'Research queued' : 'Research running'}
+                      </Badge>
+                    )}
                     <Badge variant="outline">{pitchDataAvailable ? (pitchStatus(target) === 'draft' && hasWrittenPitch(target) ? 'Written draft' : PITCH_LABELS[pitchStatus(target)]) : campaignTargetsQuery.isError ? 'Pitch status unavailable' : 'Loading pitch status…'}</Badge>
                     {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && (
                       <Button

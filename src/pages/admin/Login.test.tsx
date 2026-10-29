@@ -237,6 +237,20 @@ describe('Login', () => {
     sessionStorage.removeItem('goap.post-login-path')
   })
 
+  it('offers same-account sign-in when the session cannot be renewed', () => {
+    auth.user = { email: 'dana@example.com' }
+    auth.accountState = 'session_expired'
+    auth.accountError = 'Your session could not be renewed. Sign in again with the same account.'
+    renderLogin()
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Sign in again.')
+    expect(screen.getByText(/Sign in again with the same account/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Request to join' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }))
+    expect(auth.signOut).toHaveBeenCalled()
+  })
+
   it('explains a suspended account rather than looping the sign-in form', () => {
     auth.user = { email: 'dana@example.com' }
     auth.accountState = 'suspended'

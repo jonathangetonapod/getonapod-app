@@ -20,8 +20,8 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 122,
-  deployedFunctions: 120,
+  changedFunctions: 123,
+  deployedFunctions: 121,
   excludedFunctions: 2,
   // 45 after the legacy Email Bison inbox, matching experiments, and other
   // admin-era functions with no caller in the app, the other functions, the
@@ -85,7 +85,7 @@ const EXPECTED_COUNTS = Object.freeze({
   // 198: reconcile the 197 tracked files and add flatBilling.test.ts for
   // subscription access and retirement of credit debits.
   // Includes shared checkout coordination and provider error helpers with tests.
-  edgeTypeScriptFiles: 207,
+  edgeTypeScriptFiles: 213,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -165,6 +165,7 @@ const EXPECTED_EXCLUDED_FUNCTIONS = Object.freeze([
 
 const EXPECTED_PUBLIC_NON_JWT_FUNCTIONS = Object.freeze([
   'client-autopilot-tick',
+  'client-research-tick',
   'inbox-enroll-tick',
   // A serving domain was checked by nothing once its setup page was closed.
   // Driven by pg_cron with a shared secret, so there is no user JWT.
@@ -754,13 +755,14 @@ function main() {
     '--name-only',
     '--diff-filter=ACMRD',
     '-z',
-    `${manifest.base_commit}...HEAD`,
+    manifest.base_commit,
     '--',
     'supabase/functions',
   ])
   const changedFunctionDirectories = new Set()
   const deletedEntrypointDirectories = new Set()
-  for (const changedPath of diffOutput.toString('utf8').split('\0').filter(Boolean)) {
+  const untracked = gitBuffer(['ls-files','--others','--exclude-standard','-z','--','supabase/functions'])
+  for (const changedPath of Buffer.concat([diffOutput, untracked]).toString('utf8').split('\0').filter(Boolean)) {
     const segments = changedPath.split('/')
     if (segments.length >= 3 && segments[2] !== '_shared') {
       changedFunctionDirectories.add(segments[2])
@@ -772,7 +774,7 @@ function main() {
     '--name-only',
     '--diff-filter=D',
     '-z',
-    `${manifest.base_commit}...HEAD`,
+    manifest.base_commit,
     '--',
     'supabase/functions',
   ])

@@ -14,6 +14,8 @@ import {
 } from '@/services/clientShortlist'
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
+vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: () => null }))
+
 vi.mock('@/services/clientShortlist', () => ({
   FIT_SCORE_BATCH_SIZE: 20,
   BULK_FEEDBACK_BATCH_SIZE: 200,
@@ -668,6 +670,11 @@ describe('ClientShortlistEditor', () => {
     expect(await screen.findByText(/Pitch statuses could not be loaded/)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Filter by pitch status' })).toBeDisabled()
     expect(screen.queryByText('Pending — no saved pitch', { selector: 'span' })).not.toBeInTheDocument()
+  })
+
+  it('shows the saved research status for a show', async () => {
+    renderEditor()
+    expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Research complete')
   })
 
   it('still offers to write when nothing has been sent', async () => {
