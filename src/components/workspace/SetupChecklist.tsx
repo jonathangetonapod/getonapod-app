@@ -75,7 +75,7 @@ const stepOrder = ['client', 'reply-to', 'billing', 'instantly', 'mailbox', 'cli
 const stepHelp: Record<string, string> = {
   client: 'Add the person or company you want to book on podcasts. You can fill in more details later.',
   'reply-to': 'Give clients an email address they can reply to when you share their onboarding and updates.',
-  billing: 'Review your subscription or trial before using paid features.',
+  billing: 'Activate a plan or resolve billing to add clients and use workspace features.',
   instantly: 'Connect your agency’s Instantly account when you are ready to prepare outreach.',
   mailbox: 'Assign a sending mailbox to your client so their outreach uses the right email address.',
 }
@@ -230,12 +230,13 @@ export function useSetupProgress({
     },
     {
       key: 'billing',
-      label: 'Activate your workspace subscription',
+      label: staff?.workspace.is_default ? 'No subscription needed for this workspace' : 'Activate your workspace subscription',
       href: baseHref === '/app' ? `${baseHref}/settings/billing` : platformBillingWorkspaceHref(workspaceId),
       required: true,
-      done: ['active', 'comped'].includes(billingQuery.data?.billing_status ?? '')
+      done: staff?.workspace.is_default === true
+        || ['active', 'comped'].includes(billingQuery.data?.billing_status ?? '')
         || (billingQuery.data?.billing_status === 'trialing' && Date.parse(billingQuery.data.trial_ends_at ?? '') > Date.now()),
-      unknown: billingQuery.data === null,
+      unknown: staff?.workspace.is_default !== true && billingQuery.data === null,
     },
     {
       key: 'team',
@@ -320,7 +321,12 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage, onAddClient, 
 
   const visibleSteps = progress.steps.filter((step) => review || !step.dismissed)
   const dismissedCount = progress.steps.length - visibleSteps.length
-  const nextStep = progress.steps.find((step) => step.required && (!step.done || step.unknown))
+  // Client creation requires subscription access. During an eligible trial
+  // clients come first; a known billing block must be resolved before that.
+  const billingStep = progress.steps.find((step) => step.key === 'billing')
+  const nextStep = billingStep && !billingStep.done && !billingStep.unknown
+    ? billingStep
+    : progress.steps.find((step) => step.required && (!step.done || step.unknown))
   const clientDone = progress.steps.some((step) => step.key === 'client' && step.done && !step.unknown)
 
   if (!canManage || (!review && dismissed && progress.complete)) return null

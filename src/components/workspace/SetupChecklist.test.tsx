@@ -234,6 +234,51 @@ describe('SetupChecklist', () => {
     expect(steps[4]).toHaveAttribute('data-step', 'mailbox')
   })
 
+  it.each([
+    { billing_status: 'past_due', trial_ends_at: null },
+    { billing_status: 'suspended', trial_ends_at: null },
+    { billing_status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z' },
+  ])('resolves $billing_status billing before offering first-client creation', async (billing) => {
+    vi.mocked(getWorkspaceClients).mockResolvedValue([])
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue(billing as never)
+    const onAddClient = vi.fn()
+    renderChecklist(true, { onAddClient })
+
+    expect(await screen.findByText('Next: Activate your workspace subscription')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue setup' })).toHaveAttribute('href', '/app/settings/billing')
+    expect(screen.queryByRole('button', { name: 'Add your first client' })).not.toBeInTheDocument()
+    expect(onAddClient).not.toHaveBeenCalled()
+  })
+
+  it('keeps client creation first during an eligible trial', async () => {
+    vi.mocked(getWorkspaceClients).mockResolvedValue([])
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({
+      billing_status: 'trialing', trial_ends_at: new Date(Date.now() + 86_400_000).toISOString(),
+    } as never)
+    renderChecklist(true, { onAddClient: vi.fn() })
+
+    expect(await screen.findByText('Next: Add your first client')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add your first client' })).toBeInTheDocument()
+  })
+
+  it.each(['expired', 'unavailable'])('honors the default-workspace subscription exemption when billing is %s', async (billing) => {
+    vi.mocked(getWorkspaceClients).mockResolvedValue([])
+    vi.mocked(listWorkspaceStaff).mockResolvedValue({
+      workspace: { is_default: true, client_brand_name: '', client_contact_email: 'hello@example.test' },
+      members: [{ status: 'active' }],
+    } as never)
+    if (billing === 'unavailable') vi.mocked(getWorkspaceSubscriptionOverview).mockRejectedValue(new Error('Unavailable'))
+    else vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({
+      billing_status: 'trialing', trial_ends_at: '2020-01-01T00:00:00Z',
+    } as never)
+    renderChecklist(true, { onAddClient: vi.fn() })
+
+    expect(await screen.findByText('Next: Add your first client')).toBeInTheDocument()
+    expect(screen.getByText('No subscription needed for this workspace').closest('li')).toHaveAttribute('data-done', 'true')
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
+    expect(screen.queryByText('Next: Activate your workspace subscription')).not.toBeInTheDocument()
+  })
+
   it('rechecks an unknown prerequisite before recommending later steps', async () => {
     vi.mocked(getWorkspaceClients).mockRejectedValueOnce(new Error('Unavailable'))
     renderChecklist()
