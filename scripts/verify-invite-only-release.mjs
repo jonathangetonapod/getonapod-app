@@ -85,7 +85,7 @@ const EXPECTED_COUNTS = Object.freeze({
   // 198: reconcile the 197 tracked files and add flatBilling.test.ts for
   // subscription access and retirement of credit debits.
   // Includes shared checkout coordination and provider error helpers with tests.
-  edgeTypeScriptFiles: 204,
+  edgeTypeScriptFiles: 207,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

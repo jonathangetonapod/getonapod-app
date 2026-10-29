@@ -25,7 +25,7 @@ export type ClientNotificationKind =
   | 'client_approved'
 
 export interface ClientNotificationResult {
-  status: 'sent' | 'failed' | 'skipped' | 'duplicate'
+  status: 'sent' | 'failed' | 'skipped' | 'unknown' | 'duplicate'
   reason?: string
 }
 
@@ -152,7 +152,7 @@ async function deliver(
   }
 
   const finish = async (
-    status: 'sent' | 'failed' | 'skipped',
+    status: 'sent' | 'failed' | 'skipped' | 'unknown',
     extra: { providerMessageId?: string | null; error?: string | null },
   ) => {
     await admin
@@ -194,6 +194,10 @@ async function deliver(
   if (delivery.status === 'skipped') {
     await finish('skipped', { error: 'Email delivery is not configured' })
     return { status: 'skipped', reason: 'not_configured' }
+  }
+  if (delivery.status === 'unknown') {
+    await finish('unknown', { error: delivery.error })
+    return { status: 'unknown', reason: 'delivery_unconfirmed' }
   }
   if (delivery.status === 'failed') {
     if (delivery.retryable) {

@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   approveOnboardingAnswers,
+  checkOnboardingEmailDelivery,
+  hasPendingOnboardingEmail,
   getClientOnboarding,
   getOnboardingLink,
   listWorkspaceOnboarding,
   resendOnboardingInvitation,
+  requestOnboardingChanges,
+  retryOnboardingEmail,
   rotateOnboardingLink,
   saveClientOnboarding,
   startWorkspaceOnboarding,
@@ -108,7 +112,10 @@ const listResponse = {
 }
 
 describe('workspaceOnboarding service', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+  })
 
   it('normalizes the selected workspace and rejects cross-workspace rows', async () => {
     invoke.mockResolvedValueOnce({ data: listResponse, error: null })
@@ -240,14 +247,88 @@ describe('workspaceOnboarding service', () => {
     await rotateOnboardingLink(workspaceId, instanceId, 14)
 
     expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-onboarding', {
-      body: { action: 'resend_invitation', workspace_id: workspaceId, instance_id: instanceId },
+      body: { action: 'resend_invitation', workspace_id: workspaceId, instance_id: instanceId, operation_id: expect.any(String) },
     })
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-onboarding', {
-      body: { action: 'rotate', workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: true },
+      body: { action: 'rotate', workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: true, operation_id: expect.any(String) },
     })
     expect(invoke).toHaveBeenNthCalledWith(3, 'workspace-onboarding', {
       body: { action: 'rotate', workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: false },
     })
+  })
+
+  it('reuses a reminder operation after a lost response, then reserves a new ID for the next intentional send', async () => {
+    invoke.mockRejectedValueOnce(new Error('Network disconnected'))
+    await expect(resendOnboardingInvitation(workspaceId, instanceId)).rejects.toThrow('Network disconnected')
+    const first = invoke.mock.calls[0][1].body.operation_id
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(true)
+    invoke.mockResolvedValue({ data: { delivery: { status: 'sent', operation_id: first } }, error: null })
+    await expect(resendOnboardingInvitation(workspaceId, instanceId)).resolves.toMatchObject({ delivery: { status: 'sent', operation_id: first } })
+    expect(invoke.mock.calls[1][1].body.operation_id).toBe(first)
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(false)
+    await resendOnboardingInvitation(workspaceId, instanceId)
+    expect(invoke.mock.calls[2][1].body.operation_id).not.toBe(first)
+  })
+
+  it('holds unknown operations and rejects a different action or edited comments until reconciled', async () => {
+    const comments = [{ question_id: 'full_name', body: 'Please add your full name.' }]
+    invoke.mockResolvedValue({ data: { delivery: { status: 'unknown' } }, error: null })
+    await requestOnboardingChanges(workspaceId, instanceId, comments)
+    const first = invoke.mock.calls[0][1].body.operation_id
+    await expect(resendOnboardingInvitation(workspaceId, instanceId)).rejects.toThrow('Check delivery')
+    await expect(requestOnboardingChanges(workspaceId, instanceId, [{ ...comments[0], body: 'Changed draft' }])).rejects.toThrow('Check delivery')
+    expect(invoke).toHaveBeenCalledTimes(1)
+    await checkOnboardingEmailDelivery(workspaceId, instanceId)
+    expect(invoke.mock.calls[1][1].body).toEqual({ action: 'email_operation_status', workspace_id: workspaceId, instance_id: instanceId, operation_id: first })
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(true)
+    invoke.mockResolvedValue({ data: { delivery: { status: 'failed' } }, error: null })
+    await checkOnboardingEmailDelivery(workspaceId, instanceId)
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(false)
+  })
+
+  it('recovers a persisted rotate operation after reload without changing its link expiry', async () => {
+    const operationId = '77777777-7777-4777-8777-777777777777'
+    localStorage.setItem(`onboarding-email-operation:${workspaceId}:${instanceId}`, JSON.stringify({
+      action: 'rotate', operation_id: operationId, extra: { expires_in_days: 14, send_email: true },
+    }))
+    invoke.mockResolvedValueOnce({ data: { delivery: { status: 'sent' } }, error: null })
+    await retryOnboardingEmail(workspaceId, instanceId)
+    expect(invoke.mock.calls[0][1].body).toEqual({ action: 'rotate', operation_id: operationId, workspace_id: workspaceId, instance_id: instanceId, expires_in_days: 14, send_email: true })
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(false)
+  })
+
+  it('only reads when checking an unstarted operation, preserving its identity for an explicit retry', async () => {
+    invoke.mockRejectedValueOnce(new Error('Offline'))
+    await expect(requestOnboardingChanges(workspaceId, instanceId, [{ question_id: 'full_name', body: 'Please complete this.' }])).rejects.toThrow('Offline')
+    const original = invoke.mock.calls[0][1].body
+    invoke.mockResolvedValueOnce({ data: { operation_state: 'not_started', delivery: { status: 'unknown', recorded: false } }, error: null })
+    await expect(checkOnboardingEmailDelivery(workspaceId, instanceId)).resolves.toMatchObject({ operation_state: 'not_started' })
+    expect(invoke.mock.calls[1][1].body).toEqual({ action: 'email_operation_status', workspace_id: workspaceId, instance_id: instanceId, operation_id: original.operation_id })
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(true)
+    invoke.mockResolvedValueOnce({ data: { delivery: { status: 'sent' } }, error: null })
+    await retryOnboardingEmail(workspaceId, instanceId)
+    expect(invoke.mock.calls[2][1].body).toEqual(original)
+  })
+
+  it('does not treat missing or unrecorded receipts as permission to create a new send', async () => {
+    invoke.mockResolvedValueOnce({ data: {}, error: null })
+      .mockResolvedValueOnce({ data: { delivery: { status: 'sent', recorded: false } }, error: null })
+    await resendOnboardingInvitation(workspaceId, instanceId)
+    await checkOnboardingEmailDelivery(workspaceId, instanceId)
+    expect(hasPendingOnboardingEmail(workspaceId, instanceId)).toBe(true)
+    expect(invoke.mock.calls[1][1].body.operation_id).toBe(invoke.mock.calls[0][1].body.operation_id)
+    await checkOnboardingEmailDelivery(otherWorkspaceId, instanceId)
+    expect(invoke).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not send when its operation identity cannot be persisted', async () => {
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+    try {
+      await expect(resendOnboardingInvitation(workspaceId, instanceId)).rejects.toThrow('Storage unavailable')
+      expect(invoke).not.toHaveBeenCalled()
+    } finally {
+      write.mockRestore()
+    }
   })
 
   it('retrieves the current secure link without rotating its generation', async () => {

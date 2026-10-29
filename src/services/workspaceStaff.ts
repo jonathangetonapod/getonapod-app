@@ -1189,7 +1189,7 @@ export interface SubscriptionActionResult {
   result: {
     url?: string
     expires_at?: string | null
-    emailed?: 'sent' | 'failed' | 'skipped' | 'not_requested'
+    emailed?: 'sent' | 'failed' | 'skipped' | 'unknown' | 'not_requested'
     owner_email?: string | null
     [key: string]: unknown
   }

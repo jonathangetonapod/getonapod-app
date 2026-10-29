@@ -7,7 +7,7 @@ import { sendAppEmail } from './appEmail.ts'
 import { platformOrigin } from './workspaceOrigin.ts'
 
 export interface PortalResetEmailResult {
-  status: 'sent' | 'failed' | 'skipped'
+  status: 'sent' | 'failed' | 'skipped' | 'unknown'
   providerMessageId: string | null
   error: string | null
 }
@@ -16,6 +16,16 @@ export function portalResetUrl(token: string, origin?: string): string {
   const url = new URL('/portal/reset', origin ?? platformOrigin())
   url.searchParams.set('token', token)
   return url.toString()
+}
+
+// A persisted recovery capability is the operation identity. Branding edits
+// must not create a second send for the same capability; never put the bearer
+// token itself into the durable mail receipt key.
+async function capabilityEmailKey(kind: string, url: string): Promise<string> {
+  const token = new URL(url).searchParams.get('token')
+  if (!token) throw new Error('A portal email requires a recovery capability')
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+  return `${kind}:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
 export async function sendPortalInviteEmail(input: {
@@ -27,6 +37,7 @@ export async function sendPortalInviteEmail(input: {
 }): Promise<PortalResetEmailResult> {
   const delivery = await sendAppEmail({
     event: 'portal.invite',
+    idempotencyKey: await capabilityEmailKey('portal-invite', input.url),
     to: [input.recipientEmail],
     senderName: input.workspaceName,
     data: {
@@ -53,6 +64,7 @@ export async function sendPortalResetEmail(input: {
 }): Promise<PortalResetEmailResult> {
   const delivery = await sendAppEmail({
     event: 'portal.password_reset',
+    idempotencyKey: await capabilityEmailKey('portal-reset', input.url),
     to: [input.recipientEmail],
     senderName: input.workspaceName,
     data: {

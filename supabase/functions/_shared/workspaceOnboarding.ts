@@ -504,6 +504,7 @@ export function onboardingEmailConfigured(): boolean {
 
 export async function sendOnboardingEmail(input: {
   kind: 'invitation' | 'changes_requested'
+  operationId?: string
   workspaceName: string
   recipientName: string
   recipientEmail: string
@@ -518,7 +519,7 @@ export async function sendOnboardingEmail(input: {
   /** A resend of an invitation the client already has: say so in the subject. */
   reminder?: boolean
 }): Promise<{
-  status: 'sent' | 'failed' | 'skipped'
+  status: 'sent' | 'failed' | 'skipped' | 'unknown'
   providerMessageId: string | null
   error: string | null
   reason?: 'not_configured'
@@ -543,6 +544,7 @@ export async function sendOnboardingEmail(input: {
 
   const delivery = await sendAppEmail({
     event: changesRequested ? 'onboarding.changes_requested' : 'onboarding.invitation',
+    idempotencyKey: input.operationId ? `onboarding:${input.operationId}` : undefined,
     to: [input.recipientEmail],
     senderName: input.workspaceName,
     // The sender is the platform's mailbox under the agency's name, so without
@@ -568,6 +570,36 @@ export async function sendOnboardingEmail(input: {
     providerMessageId: delivery.providerMessageId,
     error: delivery.error,
     ...(delivery.reason ? { reason: delivery.reason } : {}),
+  }
+}
+
+/** The database grants a single sender; uncertain outcomes are never reclaimed. */
+export async function sendDurableOnboardingEmail(
+  admin: { rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }> },
+  operationId: string,
+  input: Parameters<typeof sendOnboardingEmail>[0],
+): Promise<Awaited<ReturnType<typeof sendOnboardingEmail>> & { operationId: string; recorded: boolean }> {
+  const unknown = { status: 'unknown' as const, providerMessageId: null, error: 'Email delivery unknown; check before sending again', operationId, recorded: false }
+  try {
+    const claim = await admin.rpc('claim_workspace_onboarding_email_send_v1', {
+      p_operation_id: operationId, p_payload: { ...input, operationId },
+    })
+    if (claim.error || !claim.data || typeof claim.data !== 'object') return unknown
+    const result = claim.data as { claimed?: boolean; payload?: Parameters<typeof sendOnboardingEmail>[0]; result?: Awaited<ReturnType<typeof sendOnboardingEmail>> }
+    if (!result.claimed) {
+      return result.result && ['sent', 'failed', 'skipped', 'unknown'].includes(result.result.status)
+        ? { ...result.result, operationId, recorded: true } : unknown
+    }
+    if (!result.payload || result.payload.operationId !== operationId) return unknown
+    const delivery = await sendOnboardingEmail(result.payload)
+    const completed = await admin.rpc('complete_workspace_onboarding_email_operation_v1', {
+      p_operation_id: operationId, p_result: delivery,
+    })
+    if (completed.error || completed.data !== true) return unknown
+    return { ...delivery, operationId, recorded: true }
+  } catch {
+    // A failed RPC/send may have committed. Keep the permanent dispatch hold.
+    return unknown
   }
 }
 

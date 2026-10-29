@@ -244,6 +244,7 @@ export interface WorkspaceOnboardingData {
 }
 
 export interface OnboardingDelivery {
+  operation_id?: string
   status: 'sent' | 'failed' | 'skipped' | 'unknown'
   /** Set when the email was skipped because sending is not configured. */
   reason?: 'not_configured'
@@ -398,6 +399,7 @@ function deliveryValue(value: unknown): OnboardingDelivery {
     : 'unknown'
   return {
     status,
+    ...(typeof source.operation_id === 'string' ? { operation_id: uuid(source.operation_id) } : {}),
     ...(source.reason === 'not_configured' ? { reason: 'not_configured' as const } : {}),
     ...(source.recorded === false ? { recorded: false } : {}),
   }
@@ -602,6 +604,7 @@ async function instanceAction(
   instance?: OnboardingInstanceDetail
   onboarding_url?: string
   delivery?: OnboardingInvitationResult['delivery']
+  operation_state?: 'not_started' | 'prepared' | 'sending' | 'terminal'
   purged?: boolean
 }> {
   const canonicalWorkspaceId = uuid(workspaceId)
@@ -615,15 +618,102 @@ async function instanceAction(
     ...(data.instance ? { instance: detailValue(data.instance, canonicalWorkspaceId) } : {}),
     ...(typeof data.onboarding_url === 'string' ? { onboarding_url: data.onboarding_url } : {}),
     ...(data.delivery ? { delivery: deliveryValue(data.delivery) } : {}),
+    ...(['not_started', 'prepared', 'sending', 'terminal'].includes(String(data.operation_state))
+      ? { operation_state: data.operation_state as 'not_started' | 'prepared' | 'sending' | 'terminal' } : {}),
     ...(data.purged === true ? { purged: true } : {}),
   }
+}
+
+type EmailAction = 'resend_invitation' | 'request_changes' | 'rotate'
+interface PendingEmailOperation {
+  operation_id: string
+  action: EmailAction
+  extra: Record<string, unknown>
+}
+
+const operationStorageKey = (workspaceId: string, instanceId: string) =>
+  `onboarding-email-operation:${uuid(workspaceId)}:${uuid(instanceId)}`
+
+function readEmailOperation(workspaceId: string, instanceId: string): PendingEmailOperation | null {
+  const saved = localStorage.getItem(operationStorageKey(workspaceId, instanceId))
+  if (!saved) return null
+  const operation = record(JSON.parse(saved))
+  if (!['resend_invitation', 'request_changes', 'rotate'].includes(String(operation.action))) {
+    throw new Error('The saved email operation could not be read. Check delivery before sending another message.')
+  }
+  return {
+    operation_id: uuid(operation.operation_id),
+    action: operation.action as EmailAction,
+    extra: record(operation.extra),
+  }
+}
+
+export function hasPendingOnboardingEmail(workspaceId: string, instanceId: string): boolean {
+  try {
+    return localStorage.getItem(operationStorageKey(workspaceId, instanceId)) !== null
+  } catch {
+    return false
+  }
+}
+
+async function runEmailOperation(workspaceId: string, instanceId: string, operation: PendingEmailOperation) {
+  const result = await instanceAction(workspaceId, instanceId, operation.action, {
+    ...operation.extra,
+    operation_id: operation.operation_id,
+  })
+  // A transport error, missing delivery receipt, or unknown outcome must keep
+  // the original identity across reloads. Only a durable, known result permits
+  // a later intentional message to reserve a new operation.
+  if (result.delivery && result.delivery.status !== 'unknown' && result.delivery.recorded !== false) {
+    const saved = readEmailOperation(workspaceId, instanceId)
+    if (saved?.operation_id === operation.operation_id) {
+      localStorage.removeItem(operationStorageKey(workspaceId, instanceId))
+    }
+  }
+  return result
+}
+
+async function emailInstanceAction(
+  workspaceId: string,
+  instanceId: string,
+  action: EmailAction,
+  extra: Record<string, unknown> = {},
+) {
+  const pending = readEmailOperation(workspaceId, instanceId)
+  if (pending && (pending.action !== action || JSON.stringify(pending.extra) !== JSON.stringify(extra))) {
+    throw new Error('A previous email has no confirmed outcome. Use Check delivery before starting another message.')
+  }
+  const operation = pending ?? { operation_id: crypto.randomUUID(), action, extra }
+  // Persist before the request. If browser storage is unavailable, do not send
+  // an operation whose identity would be lost on a reload.
+  localStorage.setItem(operationStorageKey(workspaceId, instanceId), JSON.stringify(operation))
+  return runEmailOperation(workspaceId, instanceId, operation)
+}
+
+/** Explicitly retries the original request using its existing identity. */
+export async function retryOnboardingEmail(workspaceId: string, instanceId: string): Promise<Awaited<ReturnType<typeof instanceAction>>> {
+  const pending = readEmailOperation(workspaceId, instanceId)
+  if (!pending) return {}
+  return runEmailOperation(workspaceId, instanceId, pending)
+}
+
+/** Reads the app's saved receipt only; never initiates email or queries the provider. */
+export async function checkOnboardingEmailDelivery(workspaceId: string, instanceId: string): Promise<Awaited<ReturnType<typeof instanceAction>>> {
+  const pending = readEmailOperation(workspaceId, instanceId)
+  if (!pending) return {}
+  const result = await instanceAction(workspaceId, instanceId, 'email_operation_status', { operation_id: pending.operation_id })
+  if (result.delivery && result.delivery.status !== 'unknown' && result.delivery.recorded !== false) {
+    const saved = readEmailOperation(workspaceId, instanceId)
+    if (saved?.operation_id === pending.operation_id) localStorage.removeItem(operationStorageKey(workspaceId, instanceId))
+  }
+  return result
 }
 
 export const requestOnboardingChanges = (
   workspaceId: string,
   instanceId: string,
   comments: Array<{ question_id: string; body: string }>,
-) => instanceAction(workspaceId, instanceId, 'request_changes', { comments })
+) => emailInstanceAction(workspaceId, instanceId, 'request_changes', { comments })
 
 export const updateOnboardingProfile = (
   workspaceId: string,
@@ -648,14 +738,14 @@ export const rotateOnboardingLink = (
   instanceId: string,
   expiresInDays: number,
   sendEmail = false,
-) => instanceAction(workspaceId, instanceId, 'rotate', {
+) => (sendEmail ? emailInstanceAction : instanceAction)(workspaceId, instanceId, 'rotate', {
   expires_in_days: expiresInDays,
   send_email: sendEmail,
 })
 
 /** Emails the client their current, still-valid link again. */
 export const resendOnboardingInvitation = (workspaceId: string, instanceId: string) =>
-  instanceAction(workspaceId, instanceId, 'resend_invitation')
+  emailInstanceAction(workspaceId, instanceId, 'resend_invitation')
 
 export const getOnboardingLink = (workspaceId: string, instanceId: string) =>
   instanceAction(workspaceId, instanceId, 'get_link')

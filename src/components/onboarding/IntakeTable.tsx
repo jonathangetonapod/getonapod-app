@@ -64,7 +64,7 @@ export const IntakeFilterStrip = ({ value, onChange, counts }: StripProps) => (
   </ToggleGroup>
 )
 
-export type IntakeRowAction = 'copy' | 'remind' | 'review' | 'extend' | 'preview' | 'rotate' | 'revoke' | 'archive' | 'purge'
+export type IntakeRowAction = 'copy' | 'remind' | 'review' | 'extend' | 'preview' | 'rotate' | 'revoke' | 'archive' | 'purge' | 'check_delivery'
 
 interface TableProps {
   instances: OnboardingInstanceSummary[]
@@ -77,6 +77,7 @@ interface TableProps {
   highlightId: string | null
   /** Rows reminded from this page, for the inline confirmation. */
   remindedIds: Set<string>
+  pendingEmailIds?: Set<string>
   workspaceBaseHref: string
   onAction: (action: IntakeRowAction, instance: OnboardingInstanceSummary) => void
 }
@@ -105,7 +106,7 @@ const RowIconAction = ({ label, onClick, disabled, children }: { label: string; 
   </Tooltip>
 )
 
-const IntakeTable = ({ instances, statusById, templates, now, canManage, emailConfigured, busy, highlightId, remindedIds, workspaceBaseHref, onAction }: TableProps) => (
+const IntakeTable = ({ instances, statusById, templates, now, canManage, emailConfigured, busy, highlightId, remindedIds, pendingEmailIds, workspaceBaseHref, onAction }: TableProps) => (
   <TooltipProvider delayDuration={200}>
     <div className="overflow-x-auto">
       <Table>
@@ -138,7 +139,8 @@ const IntakeTable = ({ instances, statusById, templates, now, canManage, emailCo
           const expiresIn = daysUntilExpiry(instance, now)
           const canExtend = live && (status === 'expired' || (expiresIn !== null && expiresIn <= EXTEND_WITHIN_DAYS))
             || (instance.status === 'expired' && !instance.archived_at)
-          const canRemind = linkLive && (status === 'chasing' || status === 'in_progress')
+          const deliveryUnconfirmed = pendingEmailIds?.has(instance.id) || ['unknown', 'pending'].includes(instance.delivery?.status ?? '')
+          const canRemind = !deliveryUnconfirmed && linkLive && (status === 'chasing' || status === 'in_progress')
           const delivery = instance.delivery
           const reminded = remindedIds.has(instance.id)
           return (
@@ -163,7 +165,7 @@ const IntakeTable = ({ instances, statusById, templates, now, canManage, emailCo
               <TableCell className="hidden whitespace-nowrap text-sm md:table-cell">
                 {delivery?.status === 'failed' || delivery?.status === 'skipped' ? (
                   <span className="font-medium text-red-700" title={delivery.last_error ?? undefined}>{delivery.status === 'failed' ? 'Email failed' : 'Email not sent'}</span>
-                ) : delivery?.status === 'unknown' ? (
+                ) : deliveryUnconfirmed ? (
                   <span className="text-muted-foreground">Delivery unknown</span>
                 ) : (
                   <time dateTime={instance.invited_at}>{relativeTime(instance.invited_at, now)}</time>
@@ -183,6 +185,7 @@ const IntakeTable = ({ instances, statusById, templates, now, canManage, emailCo
                   {canManage && canRemind && (
                     <RowIconAction label={emailConfigured ? 'Send reminder' : 'Send reminder (email is not set up)'} disabled={busy || !emailConfigured} onClick={() => onAction('remind', instance)}><Mail className="h-4 w-4" /></RowIconAction>
                   )}
+                  {canManage && deliveryUnconfirmed && <RowIconAction label="Check delivery" disabled={busy} onClick={() => onAction('check_delivery', instance)}><RefreshCw className="h-4 w-4" /></RowIconAction>}
                   {canManage && canExtend && <RowIconAction label="Extend 14 days" disabled={busy} onClick={() => onAction('extend', instance)}><CalendarPlus className="h-4 w-4" /></RowIconAction>}
                   {canManage && linkLive && <RowIconAction label="Fill in the form for them" disabled={busy} onClick={() => onAction('preview', instance)}><ExternalLink className="h-4 w-4" /></RowIconAction>}
                   <DropdownMenu>

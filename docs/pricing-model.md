@@ -186,3 +186,76 @@ including 226 Deno tests. An isolated PostgreSQL test additionally exercises
 12 concurrent checkout callers, conditional rotation, failed-write rollback,
 review constraints and aggregate balances across 1,500 historical lots. Run it
 with `npm run test:checkout-database` when Docker is available.
+
+## Transactional email delivery follow-up (prepared, not deployed)
+
+Transactional and recovery emails keep using the platform Gmail mailbox, including
+after a workspace subscription expires. BYO credentials apply to tenant provider
+work; they do not gate account recovery or app mail.
+
+The n8n delivery candidate uses a PostgreSQL unique operation claim and canonical
+payload fingerprint. Only the inserting request can send. Receipts have no expiry;
+uncertain attempts remain held regardless of age. Existing n8n receipt rows are
+archived during cutover, including duplicates and unresolved attempts. Legacy keys
+without fingerprints are held for review, never silently reused for new content.
+
+`sendAppEmail` preserves `status: 'unknown'` and `DELIVERY_UNCONFIRMED`, including
+timeouts and missing receipt acknowledgements. Unknown is not a rejection or an
+automatic retry. Checkout, onboarding, portal-invite wrappers, and milestone
+notification records preserve that state. The UI asks the operator to check
+delivery before sending another message. Migration
+`20261031000600_email_delivery_unknown.sql` permits and holds unknown onboarding
+records; apply it before deploying these callers. It makes no credit mutations.
+
+Callers should pass the same stable business-operation key on every replay. Keys
+are validated, not truncated. The fallback key hashes canonical event content, so
+identical unkeyed requests are deduplicated. A deliberately new, identical message
+needs an explicit new operation key after verifying the previous outcome; changing
+a key is never a recovery mechanism for an unknown delivery.
+
+Local caller/workflow contract tests and isolated PostgreSQL concurrency/crash tests
+are in the paired N8N `goap-platform` worktree. Its README contains the coordinated
+cutover procedure. Neither these app changes nor the n8n candidates are deployed.
+
+### Durable app email operations and n8n handoff
+
+The app reserves onboarding and checkout email operations before calling n8n.
+Retries retain their original operation identity. A new intentional reminder gets
+its own operation only after the previous outcome is known; sending and unknown
+operations block replacement sends. The client persists the pending onboarding
+request across reloads. “Check delivery” reads the operation receipt only.
+
+Add-on request email keys use the persisted activity ID. Clips editor alerts use
+the saved lead ID returned by the new backwards-compatible RPC, preserving inbox
+confirmation and IP rate limits. Portal invite/reset keys hash the persisted
+recovery capability, so a branding change cannot resend the same capability and
+bearer tokens never appear in receipt keys. Explicit failure fields override a
+sent-looking HTTP 200 response.
+
+Apply migrations 006–009 before deploying these app callers. Run the focused real
+PostgreSQL checks with `npm run test:onboarding-email-database`,
+`npm run test:checkout-email-database`, and `npm run test:clips-email-database`.
+They use disposable containers and never contact customers.
+
+Instructions for the n8n operator:
+
+1. Keep the app's `idempotency_key` unchanged, including after a timeout or a
+   template update. Reject changed content under an existing key; do not invent
+   a replacement key to escape a hold.
+2. Preserve atomic first-owner claims, owner-checked receipts, permanent receipt
+   retention, and `DELIVERY_UNCONFIRMED` holds. Only confirmed non-admission may
+   return `503 DELIVERY_NOT_ATTEMPTED` with `retryable: true`.
+3. Use the platform mailbox for transactional/auth/recovery mail. These workflows
+   must not require an active subscription or a tenant BYO provider key.
+4. Follow the N8N repository's coordinated cutover: stop admission and drain both
+   old app/auth workflows, disable pruning, export every legacy row, import and
+   verify the count/digest, activate claims, switch both generated candidates,
+   verify receipts, then reopen admission. Preserve workflow IDs and credentials.
+5. Keep legacy records intact. Previously pruned receipts cannot be reconstructed;
+   do not replay old events under newly generated operation IDs. Reconcile unknown
+   and legacy outcomes manually. Rollback must retain both receipt stores and
+   must never re-enable the unsafe lookup/upsert send path.
+
+Local n8n candidates and their dedicated mail database are owned by the n8n rollout;
+merging app code alone does not deploy those workflows. No real mail is sent by
+these verification steps.

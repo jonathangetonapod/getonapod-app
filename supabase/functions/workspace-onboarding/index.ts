@@ -25,6 +25,7 @@ import {
   onboardingEmailConfigured,
   onboardingUrl,
   sendOnboardingEmail,
+  sendDurableOnboardingEmail,
   prefillOnboardingAnswers,
   validateOnboardingDefinition,
   validatePitchProfile,
@@ -33,8 +34,6 @@ import {
 const METHODS = ['POST'] as const
 const BUCKET = 'workspace-onboarding-assets'
 const BRAND_LOGO_MAX_BYTES = 2_097_152
-// A delivered invitation cannot be emailed again for this long.
-const RESEND_COOLDOWN_MS = 10 * 60 * 1000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 type AdminClient = Awaited<ReturnType<typeof requireAuthenticatedUser>>['admin']
 
@@ -170,6 +169,7 @@ function experiencePayload(value: unknown): {
 function rpcError(error: { code?: string; message?: string }): never {
   const code = error.code ?? ''
   const message = (error.message ?? '').toLowerCase()
+  if (message.includes('delivery_unconfirmed')) throw new HttpError(409, 'DELIVERY_UNCONFIRMED', 'Email delivery is unknown. Check delivery before changing the link or sending again.')
   if (code === '42501' || message.includes('active workspace') || message.includes('not editable')) {
     throw new HttpError(403, 'WORKSPACE_ACCESS_REQUIRED', 'Active workspace access is required')
   }
@@ -233,7 +233,7 @@ async function listPrivateOnboardingFiles(
   throw new HttpError(503, 'ONBOARDING_STORAGE_PURGE_FAILED', 'Private onboarding files exceeded the safe purge limit. No database records were deleted')
 }
 
-type Delivery = Awaited<ReturnType<typeof sendOnboardingEmail>>
+type Delivery = Awaited<ReturnType<typeof sendOnboardingEmail>> & { operationId?: string; recorded?: boolean }
 
 /*
  * The delivery record is what the list reads back as "Sent" or "Email
@@ -260,30 +260,50 @@ async function recordDelivery(
   return true
 }
 
-async function recordChangeRequestDelivery(
-  admin: AdminClient,
-  instanceId: string,
-  delivery: Delivery,
-): Promise<boolean> {
-  const { data, error } = await admin.rpc('record_workspace_onboarding_change_request_v1', {
-    p_instance_id: instanceId,
-    p_status: delivery.status,
-    p_provider_message_id: delivery.providerMessageId,
-    p_error: delivery.error,
+async function beginEmailOperation(
+  admin: AdminClient, operationId: string, workspaceId: string, instanceId: string,
+  action: string, request: Record<string, unknown>, mutation: Record<string, unknown>,
+  actorUserId: string, tokenIssuedAt: number,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await admin.rpc('begin_workspace_onboarding_email_operation_v1', {
+    p_operation_id: operationId, p_workspace_id: workspaceId, p_instance_id: instanceId,
+    p_action: action, p_request: request, p_mutation: mutation,
+    p_actor_user_id: actorUserId, p_token_issued_at: tokenIssuedAt,
   })
-  if (error || data !== true) {
-    console.error('[workspace-onboarding] Change-request delivery could not be recorded', error?.code ?? 'no row')
-    return false
+  if (error) {
+    const message = error.message ?? ''
+    if (message.includes('DELIVERY_UNCONFIRMED')) throw new HttpError(409, 'DELIVERY_UNCONFIRMED', 'Email delivery is unknown. Check delivery before sending another message.')
+    if (message.includes('ONBOARDING_RESEND_COOLDOWN')) throw new HttpError(429, 'ONBOARDING_RESEND_COOLDOWN', 'This client was recently emailed. Wait ten minutes before another reminder.')
+    if (message.includes('EMAIL_OPERATION_CONFLICT')) throw new HttpError(409, 'EMAIL_OPERATION_CONFLICT', 'This email operation was already used with different inputs.')
+    rpcError(error)
   }
-  return true
+  return responseRecord(data, 'email operation')
 }
 
 function deliveryResponse(delivery: Delivery, recorded: boolean): Record<string, unknown> {
   return {
     status: delivery.status,
     ...(delivery.reason ? { reason: delivery.reason } : {}),
-    ...(recorded ? {} : { recorded: false }),
+    ...(delivery.operationId ? { operation_id: delivery.operationId } : {}),
+    ...((delivery.recorded ?? recorded) ? {} : { recorded: false }),
   }
+}
+
+async function replayedEmailOperationResponse(
+  req: Request, admin: AdminClient, operation: Record<string, unknown>, workspaceId: string, linkOrigin: string,
+): Promise<Response | null> {
+  if (operation.state === 'prepared') return null
+  const instance = ensureWorkspaceResponse(operation.instance_snapshot, workspaceId)
+  const generation = integerValue(instance.capability_generation, 'capability generation', 1, 2_147_483_646)
+  const capability = await createOnboardingCapability(String(instance.id), generation, capabilitySecret())
+  const result = operation.result as Delivery | null
+  const delivery: Delivery = result ?? { status: 'unknown', providerMessageId: null, error: 'Email delivery unknown' }
+  return jsonResponse(req, METHODS, 200, {
+    instance: await addSignedAssetUrls(admin, instance),
+    onboarding_url: onboardingUrl(capability.token, linkOrigin),
+    delivery: deliveryResponse({ ...delivery, operationId: String(operation.id) }, Boolean(result)),
+    replayed: true,
+  })
 }
 
 /*
@@ -358,7 +378,7 @@ serve(async (req) => {
     // create a client, and the remaining staff actions mutate content, access,
     // or invitations, so they require the same entitlement as client writes.
     // Public capability submissions are handled separately by client-onboarding.
-    if (!['list', 'detail', 'get_link'].includes(action)) {
+    if (!['list', 'detail', 'get_link', 'email_operation_status'].includes(action)) {
       await requireWorkspaceFeatureAccess(context, workspaceId)
     }
     // The origin this workspace's clients should be sent to. Branding the page
@@ -793,8 +813,9 @@ serve(async (req) => {
         console.error('[workspace-onboarding] Draft prefill failed', prefillError instanceof Error ? prefillError.name : '')
       }
       const link = onboardingUrl(capability.token, linkOrigin)
+      if (sendEmail) await beginEmailOperation(admin, instanceId, workspaceId, instanceId, 'start', { instance_id: instanceId }, {}, user.id, tokenIssuedAt)
       const delivery: Delivery = sendEmail
-        ? await sendOnboardingEmail({
+        ? await sendDurableOnboardingEmail(admin, instanceId, {
           kind: 'invitation',
           workspaceName: typeof workspace.name === 'string' ? workspace.name : 'Your agency',
           recipientName,
@@ -807,7 +828,7 @@ serve(async (req) => {
           experienceBody: experience.introBody,
         })
         : { status: 'skipped' as const, providerMessageId: null, error: null }
-      const recorded = await recordDelivery(admin, instanceId, delivery)
+      const recorded = sendEmail ? Boolean(delivery.recorded) : await recordDelivery(admin, instanceId, delivery)
       return jsonResponse(req, METHODS, 201, {
         instance,
         onboarding_url: link,
@@ -817,6 +838,23 @@ serve(async (req) => {
     }
 
     const instanceId = requireUuid(body.instance_id, 'instance_id')
+
+    if (action === 'email_operation_status') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'operation_id'])
+      await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, true)
+      const operationId = requireUuid(body.operation_id, 'operation_id')
+      const { data: operation, error } = await admin.from('workspace_onboarding_email_operations')
+        .select('id,state,result').eq('id', operationId).eq('workspace_id', workspaceId).eq('instance_id', instanceId).maybeSingle()
+      if (error) throw new HttpError(503, 'EMAIL_STATUS_UNAVAILABLE', 'Email delivery status could not be loaded')
+      const result = operation?.result as Delivery | null
+      return jsonResponse(req, METHODS, 200, {
+        operation_state: operation ? (['sent', 'failed', 'skipped', 'unknown'].includes(operation.state) ? 'terminal' : operation.state) : 'not_started',
+        delivery: deliveryResponse({
+          ...(result ?? { status: 'unknown' as const, providerMessageId: null, error: 'Email delivery has not been confirmed' }),
+          operationId,
+        }, Boolean(result)),
+      })
+    }
 
     if (action === 'retry_ai') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
@@ -921,52 +959,14 @@ serve(async (req) => {
        * A link that has expired is not resent here; the page rotates it with
        * send_email instead, so the client never receives a dead link.
        */
-      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'operation_id'])
       const workspace = await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, true)
-      const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
-        p_workspace_id: workspaceId,
-        p_instance_id: instanceId,
-        p_actor_user_id: user.id,
-        p_token_issued_at: tokenIssuedAt,
-      })
-      if (detailResult.error) rpcError(detailResult.error)
-      const instance = ensureWorkspaceResponse(detailResult.data, workspaceId)
-      if (!['invited', 'in_progress', 'changes_requested'].includes(String(instance.status)) || instance.archived_at) {
-        throw new HttpError(409, 'ONBOARDING_LINK_UNAVAILABLE', 'This onboarding does not have an active client link')
-      }
+      const operationId = requireUuid(body.operation_id, 'operation_id')
+      const emailOperation = await beginEmailOperation(admin, operationId, workspaceId, instanceId, action, body, {}, user.id, tokenIssuedAt)
+      const replay = await replayedEmailOperationResponse(req, admin, emailOperation, workspaceId, linkOrigin)
+      if (replay) return replay
+      const instance = ensureWorkspaceResponse(emailOperation.instance_snapshot, workspaceId)
       const expiresAt = responseString(instance.capability_expires_at, 'capability expiry', 64)
-      if (!(new Date(expiresAt).valueOf() > Date.now())) {
-        throw new HttpError(409, 'ONBOARDING_LINK_EXPIRED', 'This link has expired. Rotate it to send the client a new one')
-      }
-      /*
-       * One resend per onboarding per cooldown. Each click sent the client
-       * another copy of the same email with nothing in between, so a few
-       * impatient clicks filled their inbox from the agency's domain. Only a
-       * delivered email starts the cooldown: a failed send can be retried at
-       * once, because nothing reached the client.
-       */
-      const { data: lastSent, error: lastSentError } = await admin
-        .from('workspace_onboarding_notifications')
-        .select('sent_at')
-        .eq('workspace_id', workspaceId)
-        .eq('instance_id', instanceId)
-        .in('kind', ['invitation', 'changes_requested'])
-        .not('sent_at', 'is', null)
-        .order('sent_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (lastSentError) {
-        console.error('[workspace-onboarding] Last delivery could not be read for the resend cooldown', lastSentError.code ?? '')
-      }
-      const lastSentAt = typeof lastSent?.sent_at === 'string' ? Date.parse(lastSent.sent_at) : Number.NaN
-      if (Number.isFinite(lastSentAt) && Date.now() - lastSentAt < RESEND_COOLDOWN_MS) {
-        const minutes = Math.max(1, Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - lastSentAt)) / 60_000))
-        throw new HttpError(
-          429,
-          'ONBOARDING_RESEND_COOLDOWN',
-          `This client was emailed a few minutes ago. You can resend in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
-        )
-      }
       const generation = integerValue(instance.capability_generation, 'capability generation', 1, 2_147_483_646)
       const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
       const capabilityCheck = await admin.rpc('workspace_onboarding_client_operation_v1', {
@@ -984,7 +984,7 @@ serve(async (req) => {
       }
       const link = onboardingUrl(capability.token, linkOrigin)
       const changesRequested = instance.status === 'changes_requested'
-      const delivery = await sendOnboardingEmail({
+      const delivery = await sendDurableOnboardingEmail(admin, operationId, {
         kind: changesRequested ? 'changes_requested' : 'invitation',
         workspaceName: responseString(workspace.name, 'workspace name', 200),
         recipientName: responseString(instance.recipient_name, 'recipient name', 200),
@@ -997,9 +997,7 @@ serve(async (req) => {
         experienceBody: typeof instance.experience_body === 'string' ? instance.experience_body : null,
         reminder: true,
       })
-      const recorded = changesRequested
-        ? await recordChangeRequestDelivery(admin, instanceId, delivery)
-        : await recordDelivery(admin, instanceId, delivery)
+      const recorded = delivery.recorded
       return jsonResponse(req, METHODS, 200, {
         instance: await addSignedAssetUrls(admin, instance),
         onboarding_url: link,
@@ -1026,7 +1024,7 @@ serve(async (req) => {
     let link: string | null = null
     let rotateSendEmail = false
     if (action === 'request_changes') {
-      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'comments'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'comments', 'operation_id'])
       if (!Array.isArray(body.comments) || body.comments.length < 1 || body.comments.length > 100) {
         throw new HttpError(400, 'INVALID_FIELD', 'comments must contain between 1 and 100 review notes')
       }
@@ -1045,7 +1043,7 @@ serve(async (req) => {
       requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'assigned_membership_ids'])
       payload.assigned_membership_ids = uuidArray(body.assigned_membership_ids, 'assigned_membership_ids')
     } else if (action === 'rotate') {
-      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'expires_in_days', 'send_email'])
+      requireOnlyKeys(body, ['action', 'workspace_id', 'instance_id', 'expires_in_days', 'send_email', 'operation_id'])
       const expiresInDays = integerValue(body.expires_in_days, 'expires_in_days', 1, 90)
       rotateSendEmail = booleanValue(body.send_email, 'send_email')
       const detailResult = await admin.rpc('workspace_onboarding_staff_detail_v1', {
@@ -1160,15 +1158,28 @@ serve(async (req) => {
       }
     }
 
-    const { data, error } = await admin.rpc('workspace_onboarding_instance_operation_v1', {
-      p_action: operation,
-      p_workspace_id: workspaceId,
-      p_instance_id: instanceId,
-      p_payload: payload,
-      p_actor_user_id: user.id,
-      p_token_issued_at: tokenIssuedAt,
-    })
-    if (error) rpcError(error)
+    const emailOperationId = action === 'request_changes' || (action === 'rotate' && rotateSendEmail)
+      ? requireUuid(body.operation_id, 'operation_id') : null
+    let data: unknown
+    if (emailOperationId) {
+      const emailOperation = await beginEmailOperation(admin, emailOperationId, workspaceId, instanceId, action, body, payload, user.id, tokenIssuedAt)
+      const replay = await replayedEmailOperationResponse(req, admin, emailOperation, workspaceId, linkOrigin)
+      if (replay) return replay
+      data = emailOperation.instance_snapshot
+      if (action === 'rotate') {
+        const snapshot = responseRecord(data)
+        const generation = integerValue(snapshot.capability_generation, 'capability generation', 1, 2_147_483_646)
+        const capability = await createOnboardingCapability(instanceId, generation, capabilitySecret())
+        link = onboardingUrl(capability.token, linkOrigin)
+      }
+    } else {
+      const operationResult = await admin.rpc('workspace_onboarding_instance_operation_v1', {
+        p_action: operation, p_workspace_id: workspaceId, p_instance_id: instanceId,
+        p_payload: payload, p_actor_user_id: user.id, p_token_issued_at: tokenIssuedAt,
+      })
+      if (operationResult.error) rpcError(operationResult.error)
+      data = operationResult.data
+    }
 
     if (action === 'purge') {
       responseRecord(data, 'purge response')
@@ -1191,7 +1202,7 @@ serve(async (req) => {
       })
       if (listResult.error) rpcError(listResult.error)
       const workspace = responseRecord(responseRecord(listResult.data).workspace, 'workspace')
-      const delivery = await sendOnboardingEmail({
+      const delivery = await sendDurableOnboardingEmail(admin, emailOperationId!, {
         kind: 'changes_requested',
         workspaceName: responseString(workspace.name, 'workspace name', 200),
         recipientName: responseString(instance.recipient_name, 'recipient name', 200),
@@ -1201,7 +1212,7 @@ serve(async (req) => {
         accentColor: responseString(instance.accent_color, 'accent color', 7),
         replyTo: await workspaceReplyTo(admin, workspaceId),
       })
-      const recorded = await recordChangeRequestDelivery(admin, instanceId, delivery)
+      const recorded = delivery.recorded
       return jsonResponse(req, METHODS, 200, {
         instance,
         onboarding_url: link,
@@ -1223,7 +1234,7 @@ serve(async (req) => {
       }
       const workspace = await staffWorkspace(admin, workspaceId, user.id, tokenIssuedAt, false)
       const changesRequested = instance.status === 'changes_requested'
-      const delivery = await sendOnboardingEmail({
+      const delivery = await sendDurableOnboardingEmail(admin, emailOperationId!, {
         kind: changesRequested ? 'changes_requested' : 'invitation',
         workspaceName: responseString(workspace.name, 'workspace name', 200),
         recipientName: responseString(instance.recipient_name, 'recipient name', 200),
@@ -1235,9 +1246,7 @@ serve(async (req) => {
         experienceTitle: typeof instance.experience_title === 'string' ? instance.experience_title : null,
         experienceBody: typeof instance.experience_body === 'string' ? instance.experience_body : null,
       })
-      const recorded = changesRequested
-        ? await recordChangeRequestDelivery(admin, instanceId, delivery)
-        : await recordDelivery(admin, instanceId, delivery)
+      const recorded = delivery.recorded
       return jsonResponse(req, METHODS, 200, {
         instance,
         onboarding_url: link,

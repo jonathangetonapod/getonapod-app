@@ -302,7 +302,7 @@ const NewIntakeDialog = ({
             {delivery.status === 'sent' && <p className="text-sm text-emerald-800" role="status">Invitation emailed to {result.instance.recipient_email}</p>}
             {emailRequested && delivery.status === 'failed' && <p className="text-sm text-amber-800" role="alert">The invitation email could not be delivered. Share the link yourself.</p>}
             {emailRequested && delivery.status === 'skipped' && <p className="text-sm text-amber-800" role="alert">No email was sent. Share the link yourself.</p>}
-            {emailRequested && delivery.status === 'unknown' && <p className="text-sm text-amber-800" role="alert">We could not confirm the email was sent. Share the link to be sure the client has it.</p>}
+            {emailRequested && delivery.status === 'unknown' && <p className="text-sm text-amber-800" role="alert">Email delivery is unknown. Check delivery before sending another message.</p>}
             <p className="text-xs text-muted-foreground">Anyone with this link can complete this client’s intake until it expires or is revoked.</p>
           </div>
           <DialogFooter>

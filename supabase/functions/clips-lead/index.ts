@@ -122,7 +122,7 @@ serve(async (req) => {
     const ipHash = await hashSourceIp(req) ?? UNIDENTIFIED_BUCKET
     const ceiling = ipHash === UNIDENTIFIED_BUCKET ? MAX_UNIDENTIFIED_PER_HOUR : MAX_PER_IP_PER_HOUR
 
-    const { data: outcome, error: recordError } = await admin.rpc('record_clips_lead', {
+    const { data: receipt, error: recordError } = await admin.rpc('record_clips_lead_with_receipt_v1', {
       p_name: name,
       p_email: email,
       p_show_url: showUrl,
@@ -141,6 +141,7 @@ serve(async (req) => {
       throw new HttpError(500, 'LEAD_NOT_SAVED', 'The request could not be saved. Please try again.')
     }
 
+    const outcome = receipt?.outcome
     if (outcome === 'rate_limited') {
       throw new HttpError(
         429,
@@ -154,14 +155,19 @@ serve(async (req) => {
       throw new HttpError(500, 'LEAD_NOT_SAVED', 'The request could not be saved. Please try again.')
     }
 
-    const startedAt = new Date()
+    if (typeof receipt?.id !== 'string' || !/^[0-9a-f-]{36}$/iu.test(receipt.id)
+      || typeof receipt.created_at !== 'string' || !Number.isFinite(Date.parse(receipt.created_at))) {
+      throw new HttpError(503, 'LEAD_RECEIPT_UNAVAILABLE', 'Your request was saved, but its confirmation could not be prepared. Contact support before submitting again.')
+    }
+    const leadId = receipt.id
+    const startedAt = new Date(receipt.created_at)
 
     // Best effort, and after the row exists: a mail provider having a bad
     // afternoon must not turn a saved lead into an error the host sees. The
     // editors hear about every lead; the host is confirmed once a day at most,
     // so the form cannot be pointed at somebody's inbox and fired repeatedly.
     await Promise.all([
-      notifyEditors({ name, email, showUrl, utmSource, utmMedium, utmCampaign, referrer, landingPath, startedAt }),
+      notifyEditors({ leadId, name, email, showUrl, utmSource, utmMedium, utmCampaign, referrer, landingPath, startedAt }),
       outcome === 'recorded' ? confirmToLead({ name, email, showUrl, startedAt }) : Promise.resolve(),
     ])
 
@@ -205,6 +211,7 @@ function formatStartedAt(startedAt: Date): string {
 }
 
 async function notifyEditors(lead: {
+  leadId: string
   name: string
   email: string
   showUrl: string
@@ -232,6 +239,7 @@ async function notifyEditors(lead: {
   ]
   await sendAppEmail({
     event: 'clips.lead_alert',
+    idempotencyKey: `clips-lead-alert:${lead.leadId}`,
     to: [to],
     replyTo: lead.email,
     data: { name: lead.name, email: lead.email, show_url: lead.showUrl, rows },

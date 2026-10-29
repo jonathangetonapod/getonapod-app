@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceOnboarding from '@/pages/app/WorkspaceOnboarding'
 import { useAuth } from '@/contexts/AuthContext'
 import {
+  checkOnboardingEmailDelivery,
   listWorkspaceOnboarding,
   publishOnboardingTemplate,
   saveOnboardingTemplate,
@@ -23,6 +24,7 @@ vi.mock('@/services/workspaceOnboarding', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/workspaceOnboarding')>()
   return {
     ...actual,
+    checkOnboardingEmailDelivery: vi.fn(),
     listWorkspaceOnboarding: vi.fn(),
     saveOnboardingTemplate: vi.fn(),
     publishOnboardingTemplate: vi.fn(),
@@ -269,6 +271,28 @@ describe('WorkspaceOnboarding', () => {
     renderPage()
     expect(await screen.findByText('Invitation emails are not set up')).toBeInTheDocument()
     expect(screen.getByText(/Delivery unknown/u)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument()
+    vi.mocked(checkOnboardingEmailDelivery).mockResolvedValueOnce({ delivery: { status: 'unknown' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Check delivery' }))
+    await waitFor(() => expect(checkOnboardingEmailDelivery).toHaveBeenCalledWith(workspaceId, '55555555-5555-4555-8555-555555555555'))
+    await waitFor(() => expect(mockedList).toHaveBeenCalledTimes(2))
+  })
+
+  it('offers recovery instead of a new reminder after reloading with a saved operation', async () => {
+    const intake = instance({ status: 'invited', capability_expires_at: '2099-12-01T00:00:00.000Z' })
+    const storageKey = `onboarding-email-operation:${workspaceId}:${intake.id}`
+    localStorage.setItem(storageKey, JSON.stringify({
+      operation_id: '77777777-7777-4777-8777-777777777777', action: 'resend_invitation', extra: {},
+    }))
+    try {
+      mockedList.mockResolvedValue(listData({ templates: [template], instances: [intake] }))
+      renderPage()
+      expect(await screen.findByRole('button', { name: 'Check delivery' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument()
+      expect(screen.getByText('Delivery unknown')).toBeInTheDocument()
+    } finally {
+      localStorage.removeItem(storageKey)
+    }
   })
 
   it('offers a sign-out when the sign-in is out of date', async () => {

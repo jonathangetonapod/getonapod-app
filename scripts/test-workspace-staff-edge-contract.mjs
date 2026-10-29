@@ -709,6 +709,10 @@ assert.doesNotMatch(subscriptionAdmin, /stripeRequest\("POST", "checkout\/sessio
 assert.match(subscriptionAdmin, /if \(done && !checkoutReplay\)/u)
 assert.match(subscriptionAdmin, /if \(!checkoutReplay && body\.email_owner === true\)/u)
 assert.match(subscriptionAdmin, /if \(!checkoutReplay\) await writeAudit/u)
+assert.match(subscriptionAdmin, /checkoutEmailOutcome\(admin, workspaceId, actionKey\)/u)
+assert.match(subscriptionAdmin, /sendCheckoutEmail\(admin, \{\s*workspaceId,\s*actionKey,/u)
+assert.match(subscriptionAdmin, /if \(checkoutUrl\) delete auditResult\.owner_email/u)
+assert.match(subscriptionAdmin, /metadata: \{ operation, reason, note, action_key: actionKey, result: auditResult \}/u)
 // Cancelling is always at period end, and a plan change is prorated.
 assert.match(subscriptionAdmin, /cancel_at_period_end: "true"/u)
 assert.doesNotMatch(subscriptionAdmin, /stripeRequest\("DELETE"/u)

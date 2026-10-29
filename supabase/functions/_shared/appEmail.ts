@@ -8,8 +8,9 @@
 // The contract with the workflow, which it answers in under two seconds:
 //   200 {status:'sent', provider_message_id}  the mailbox took it (or already
 //                                              had, for this idempotency key)
-//   503 provider_unavailable                  definitely not sent; safe to retry
-//   409 in_progress                           the same key is mid-send elsewhere
+//   503 DELIVERY_NOT_ATTEMPTED + retryable:true  no claim/send was attempted
+//   409 DELIVERY_UNCONFIRMED                  delivery unknown; hold, do not resend
+//   409 IDEMPOTENCY_CONFLICT                  key reused with different content
 //   400 / 401 / 502                           final; retrying will not help
 //
 // Fail-soft by design: an unset webhook is a 'skipped' send, not an error, so
@@ -36,7 +37,7 @@ export type AppEmailEvent =
   | 'clips.lead_confirmation'
 
 export interface AppEmailResult {
-  status: 'sent' | 'failed' | 'skipped'
+  status: 'sent' | 'failed' | 'skipped' | 'unknown'
   providerMessageId: string | null
   error: string | null
   /**
@@ -46,6 +47,7 @@ export interface AppEmailResult {
    */
   retryable: boolean
   reason?: 'not_configured'
+  code?: 'DELIVERY_UNCONFIRMED' | 'IDEMPOTENCY_CONFLICT'
 }
 
 function webhookSettings(): { url: string; secret: string } | null {
@@ -85,8 +87,9 @@ export async function sendAppEmail(input: {
   senderName?: string | null
   replyTo?: string | null
   /**
-   * Same key, same email: the workflow sends it at most once. Pass one when
-   * the caller can be retried for the same event; a fresh one is used otherwise.
+   * Stable business-operation key. Replays must reuse it; changed content is rejected.
+   * Without one, identical semantic payloads share a content-derived key. A new
+   * intentional message needs a new operation identity, not an automatic retry.
    */
   idempotencyKey?: string
 }): Promise<AppEmailResult> {
@@ -100,40 +103,58 @@ export async function sendAppEmail(input: {
     return { status: 'failed', providerMessageId: null, error: 'No valid recipient', retryable: false }
   }
 
+  const payload = {
+    event: input.event, to, reply_to: validEmailAddress(input.replyTo),
+    sender_name: senderDisplayName(input.senderName), data: input.data,
+  }
+  // No random fallback and no truncation: retries of the same content retain
+  // their key, and distinct long keys cannot silently collapse into one.
+  const canonical = (value: unknown): string => {
+    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+    if (value !== null && typeof value === 'object') return '{' + Object.entries(value)
+      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+      .map(([key, item]) => JSON.stringify(key) + ':' + canonical(item)).join(',') + '}'
+    return JSON.stringify(value)
+  }
+  const unknown = (): AppEmailResult => ({ status: 'unknown', providerMessageId: null,
+    error: 'Email delivery is unknown. Check delivery before sending another message.',
+    retryable: false, code: 'DELIVERY_UNCONFIRMED' })
   try {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical(JSON.parse(JSON.stringify(payload)))))
+    const key = input.idempotencyKey ?? `${input.event}:${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')}`
+    if (!key || key.length > 500 || key.trim() !== key) {
+      return { status: 'failed', providerMessageId: null, error: 'Invalid email operation key', retryable: false }
+    }
     const response = await fetch(settings.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-webhook-secret': settings.secret },
-      body: JSON.stringify({
-        event: input.event,
-        idempotency_key: (input.idempotencyKey || `${input.event}:${crypto.randomUUID()}`).slice(0, 300),
-        to,
-        reply_to: validEmailAddress(input.replyTo),
-        sender_name: senderDisplayName(input.senderName),
-        data: input.data,
-      }),
+      body: JSON.stringify({ ...payload, idempotency_key: key }),
       signal: AbortSignal.timeout(APP_EMAIL_TIMEOUT_MS),
     })
-    const payload = await response.json().catch(() => null) as
-      | { status?: unknown; provider_message_id?: unknown; error?: unknown }
+    const result = await response.json().catch(() => null) as
+      | { status?: unknown; provider_message_id?: unknown; error?: unknown; code?: unknown; retryable?: unknown; success?: unknown }
       | null
-    if (response.ok && payload?.status === 'sent') {
-      return {
-        status: 'sent',
-        providerMessageId: typeof payload.provider_message_id === 'string'
-          ? payload.provider_message_id.slice(0, 255)
-          : null,
-        error: null,
-        retryable: false,
-      }
+    // Inspect application codes before HTTP status, including misleading HTTP 2xx.
+    if (result?.code === 'IDEMPOTENCY_CONFLICT') {
+      return { status: 'failed', providerMessageId: null, retryable: false,
+        code: 'IDEMPOTENCY_CONFLICT', error: 'This email operation key was used with different content. Review the original attempt.' }
     }
-    if (response.status === 503) {
-      return { status: 'failed', providerMessageId: null, error: 'Email provider was temporarily unavailable', retryable: true }
+    if (result?.status === 'unknown' || ['DELIVERY_UNCONFIRMED', 'DELIVERY_IN_PROGRESS'].includes(String(result?.code))
+      || response.status === 409) return unknown()
+    if (response.ok && result?.status === 'sent' && !result.error && !result.code && result.success !== false
+      && typeof result.provider_message_id === 'string' && result.provider_message_id.trim()) {
+      return { status: 'sent', providerMessageId: result.provider_message_id.slice(0, 255), error: null, retryable: false }
     }
-    console.error(`[App Email] ${input.event} was not sent (HTTP ${response.status})`)
-    return { status: 'failed', providerMessageId: null, error: 'Email provider rejected the message', retryable: false }
+    if (response.status === 503 && result?.code === 'DELIVERY_NOT_ATTEMPTED' && result.retryable === true) {
+      return { status: 'failed', providerMessageId: null, error: 'Email delivery was not attempted', retryable: true }
+    }
+    if ([400, 401, 410, 422].includes(response.status)
+      || (response.status === 502 && result?.code === 'DELIVERY_REJECTED')) {
+      return { status: 'failed', providerMessageId: null, error: 'Email delivery was rejected', retryable: false }
+    }
+    return unknown()
   } catch {
-    console.error(`[App Email] ${input.event} delivery was unavailable`)
-    return { status: 'failed', providerMessageId: null, error: 'Email provider was unavailable', retryable: false }
+    // A transport failure does not establish whether Gmail accepted the message.
+    return unknown()
   }
 }

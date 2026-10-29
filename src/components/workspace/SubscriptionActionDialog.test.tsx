@@ -119,6 +119,16 @@ describe('SubscriptionActionDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('preserves unknown delivery without telling the owner to resend', async () => {
+    mockedRun.mockResolvedValue({ operation: 'checkout_link', idempotent: false,
+      result: { url: 'https://checkout.stripe.com/c/pay/cs_unknown', emailed: 'unknown', owner_email: 'sam@quantisedmedia.com' } })
+    const { dialog } = renderDialog('checkout_link')
+    await chooseReason(dialog)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create checkout link' }))
+    expect(await within(dialog).findByText('Email delivery is unknown. Check delivery before sending another message.')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/could not be sent|send it yourself/u)).not.toBeInTheDocument()
+  })
+
   it('cannot email a workspace with no owner', () => {
     const { dialog } = renderDialog('checkout_link', trialing, null)
     expect(within(dialog).getByLabelText('No owner email to send it to')).toBeDisabled()
