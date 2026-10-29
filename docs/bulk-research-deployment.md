@@ -20,3 +20,15 @@ A worker that stops reporting for ten minutes becomes failed and requires an exp
 - Shortlist and batch UI tests cover selected row IDs, explicit start, persisted progress, draft preview, and retry targeting.
 - SQL grammar and security-definer grant checks.
 - Live cron/provider execution requires deployment and is not covered by these local checks.
+
+## Production activation — 2026-10-29
+
+- Applied and recorded migration `20261031000500` after a successful rollback rehearsal.
+- Deployed `workspace-client-shortlist` version 111 (JWT verification enabled) and `client-research-tick` version 1 (shared-secret authentication).
+- Configured the worker environment secret and both Vault schedule entries; no secret values are stored in this document.
+- Verified public/authenticated database roles cannot read the queue or claim jobs. A transactional fixture verified one claim succeeds and a second simultaneous active claim is refused; the fixture was rolled back.
+- Worker probes returned 401 without its secret and 200 with an idle queue when authorized.
+- The one-minute cron executed successfully at 11:45 UTC; its worker HTTP response was 200 without a timeout.
+- Confirmed the deployed frontend client bundle contains the bulk-research action.
+- No real podcast research or email sending was triggered. Real provider completion remains to be observed on the first user-started batch.
+- Added this migration to the SQL grammar check's explicit input list (128 files validated).
