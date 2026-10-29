@@ -187,7 +187,7 @@ including 226 Deno tests. An isolated PostgreSQL test additionally exercises
 review constraints and aggregate balances across 1,500 historical lots. Run it
 with `npm run test:checkout-database` when Docker is available.
 
-## Transactional email delivery follow-up (prepared, not deployed)
+## Transactional email delivery follow-up
 
 Transactional and recovery emails keep using the platform Gmail mailbox, including
 after a workspace subscription expires. BYO credentials apply to tenant provider
@@ -205,7 +205,7 @@ automatic retry. Checkout, onboarding, portal-invite wrappers, and milestone
 notification records preserve that state. The UI asks the operator to check
 delivery before sending another message. Migration
 `20261031000600_email_delivery_unknown.sql` permits and holds unknown onboarding
-records; apply it before deploying these callers. It makes no credit mutations.
+records; it precedes deployment of these callers. It makes no credit mutations.
 
 Callers should pass the same stable business-operation key on every replay. Keys
 are validated, not truncated. The fallback key hashes canonical event content, so
@@ -215,7 +215,7 @@ a key is never a recovery mechanism for an unknown delivery.
 
 Local caller/workflow contract tests and isolated PostgreSQL concurrency/crash tests
 are in the paired N8N `goap-platform` worktree. Its README contains the coordinated
-cutover procedure. Neither these app changes nor the n8n candidates are deployed.
+cutover procedure. The app rollout and the n8n workflow cutover are separate deployment steps.
 
 ### Durable app email operations and n8n handoff
 
@@ -259,3 +259,12 @@ Instructions for the n8n operator:
 Local n8n candidates and their dedicated mail database are owned by the n8n rollout;
 merging app code alone does not deploy those workflows. No real mail is sent by
 these verification steps.
+
+App rollout verification on 2026-10-29: migrations `20261031000600`–
+`20261031000900` were applied to Get On A Pod. Post-migration checks confirmed
+restricted receipt access and unchanged credit history, subscription identities
+and prices, and onboarding notification counts. The merged release passed static
+checks, 237 Deno tests, 49 paired n8n/caller checks and all four isolated PostgreSQL
+suites. The n8n workflow cutover remains separate; no customer mail was sent by
+these checks. Manual reconciliation must update both the provider/n8n evidence
+and corresponding app operation/notification record before releasing a hold.

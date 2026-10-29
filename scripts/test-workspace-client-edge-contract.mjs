@@ -8,6 +8,7 @@ assert.match(edge, /if \(action === 'list'\) \{[\s\S]{0,300}?await requireWorksp
 assert.match(edge, /await requireWorkspaceFeatureAccess\(authContext, workspaceId\)\s+const \{ data, error \} = await admin\.rpc\('workspace_client_operation_v2'/u)
 const exportEdge = readFileSync('supabase/functions/export-to-google-sheets/index.ts', 'utf8')
 const shortlistEdge = readFileSync('supabase/functions/workspace-client-shortlist/index.ts', 'utf8')
+const researchBatchAuth = readFileSync('supabase/functions/_shared/researchBatchAuth.ts', 'utf8')
 const publicDashboardEdge = readFileSync('supabase/functions/public-client-dashboard/index.ts', 'utf8')
 const portalBrandingShared = readFileSync('supabase/functions/_shared/portalBranding.ts', 'utf8')
 const clientPodcastsEdge = readFileSync('supabase/functions/get-client-podcasts/index.ts', 'utf8')
@@ -94,7 +95,20 @@ assert.doesNotMatch(edge, /PREVIEW_READ_ONLY|preview is read-only/u)
 assert.match(config, /\[functions\.workspace-clients\]\s+verify_jwt = true/u)
 assert.doesNotMatch(edge, /\.select\([^\n]*google_sheet_url/u)
 
-assert.match(shortlistEdge, /const authContext = await requireAuthenticatedUser\(req\)/u)
+// Ordinary requests still require a user session. The worker alternative must
+// authenticate its secret and bind the context to one live, leased job/action.
+assert.match(shortlistEdge, /const authContext = await researchBatchAuth\(req, body\) \?\? await requireAuthenticatedUser\(req\)/u)
+assert.match(researchBatchAuth, /const jobId = req\.headers\.get\('x-research-job'\)\s+if \(!jobId\) return null/u)
+assert.match(researchBatchAuth, /const secret = Deno\.env\.get\('RESEARCH_TICK_SECRET'\)\s+if \(!secret \|\| !\(await secretsMatch\(req\.headers\.get\('x-research-secret'\) \?\? '', secret\)\)\) throw new HttpError\(401,/u)
+assert.match(researchBatchAuth, /\.from\('client_research_jobs'\)\.select\('\*'\)\.eq\('id',\s*jobId\)\.eq\('status',\s*'running'\)\.eq\('lease', req\.headers\.get\('x-research-lease'\)\)\.single\(\)/u)
+assert.match(researchBatchAuth, /if \(error \|\| !job \|\| Date\.now\(\)-Date\.parse\(job\.leased_at\)>600000[\s\S]*?throw new HttpError\(403,'INVALID_JOB'/u)
+for (const field of ['workspace_id', 'client_id', 'shortlist_podcast_id']) {
+  assert.ok(researchBatchAuth.includes(`body.${field} !== job.${field}`), `batch must bind ${field}`)
+}
+assert.match(researchBatchAuth, /body\.action !== \(job\.phase === 'research' \? 'research-run' : 'pitch-generate'\) \|\| body\.relationship_acknowledged === true/u)
+assert.match(researchBatchAuth, /\(body\.continue_token \?\? null\) !== job\.continue_token/u)
+assert.match(researchBatchAuth, /admin\.auth\.admin\.getUserById\(job\.actor_id\)[\s\S]*?if \(userError \|\| !data\.user\) throw new HttpError\(403,/u)
+assert.match(researchBatchAuth, /tokenIssuedAt:job\.actor_issued_at, tokenAppMetadata:job\.actor_metadata/u)
 assert.match(shortlistEdge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
 assert.match(shortlistEdge, /const access = await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?requireManager\(access\)/u)
 assert.match(shortlistEdge, /\.from\('clients'\)[\s\S]*?\.eq\('id', clientId\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)
