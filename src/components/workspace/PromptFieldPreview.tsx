@@ -158,9 +158,8 @@ export const PromptFieldPreview = ({
           {missing.length > 0 && (
             <div className="border-b bg-red-50 px-3 py-2 text-[11px] leading-4 text-red-900">
               <p>
-                Anything this prompt asks you to quote or summarise from{' '}
-                {missing.length === 1 ? 'that field' : 'those fields'} will be
-                written from “Not available”.
+                <strong>Missing: {missing.map((id) => LABELS.get(id)?.label ?? id).join(', ')}.</strong>{' '}
+                These fields reach the model as “Not available”. Add the missing data or adjust instructions that depend on it.
               </p>
               {refreshable.length > 0 && onRefreshEpisodes && (
                 <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -19,6 +19,11 @@ import {
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
   WorkspaceLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
+vi.mock('@/components/workspace/SetupChecklist', () => ({
+  SetupChecklist: ({ workspaceId, baseHref, review }: { workspaceId: string; baseHref: string; review: boolean }) => (
+    <div data-testid="agency-setup-review" data-workspace={workspaceId} data-base={baseHref} data-review={String(review)} />
+  ),
+}))
 vi.mock('@/services/workspaceUsers', () => ({
   createManualWorkspaceAccount: vi.fn(),
   inviteWorkspaceUser: vi.fn(),
@@ -148,6 +153,30 @@ describe('Agencies page', () => {
     expect(screen.queryByRole('button', { name: /temporary password|invite an owner/i })).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Workspaces' })).toBeNull()
     await screen.findByText('No workspaces yet')
+  })
+
+  it('opens setup for the selected active agency only when requested', async () => {
+    mockedList.mockResolvedValue([{ ...manualUser, status: 'active', password_change_required: false }])
+    renderPage()
+    const open = await screen.findByRole('button', { name: 'View setup for Acme Workspace' })
+    expect(screen.getByRole('columnheader', { name: 'Access' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Onboarding' })).toBeInTheDocument()
+    expect(screen.queryByTestId('agency-setup-review')).not.toBeInTheDocument()
+    fireEvent.click(open)
+    const review = await screen.findByTestId('agency-setup-review')
+    expect(review).toHaveAttribute('data-workspace', manualUser.workspace_id)
+    expect(review).toHaveAttribute('data-base', `/app/workspaces/${manualUser.workspace_id}`)
+    expect(review).toHaveAttribute('data-review', 'true')
+    expect(screen.getByRole('dialog', { name: 'Acme Workspace setup' })).toBeInTheDocument()
+  })
+
+  it('keeps pending access separate from setup without adding a resend action', async () => {
+    mockedList.mockResolvedValue([{ ...manualUser, provisioning_method: 'email_invite' }])
+    renderPage()
+    expect(await screen.findByText('Waiting for owner sign-in')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /View setup for/ })).not.toBeInTheDocument()
+    await openMenu('Acme Workspace')
+    expect(screen.queryByRole('menuitem', { name: /resend/i })).not.toBeInTheDocument()
   })
 
   it('counts each tab, marks waiting requests, and lands on the tab in the URL', async () => {

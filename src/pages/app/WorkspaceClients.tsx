@@ -128,6 +128,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
     const canonicalWorkspaceId = workspaceId.toLowerCase()
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: activeQueryKey }),
+      queryClient.invalidateQueries({ queryKey: ['setup-checklist', canonicalWorkspaceId, 'clients'] }),
       queryClient.invalidateQueries({ queryKey: ['workspace-client-podcast-system', userKey, canonicalWorkspaceId] }),
       clientId
         ? queryClient.invalidateQueries({
@@ -285,6 +286,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
             workspaceId={workspaceId}
             baseHref={platformWorkspace?.baseHref || MY_WORKSPACE_BASE_HREF}
             canManage={showManagementControls}
+            onAddClient={managementEnabled ? openCreate : undefined}
           />
         )}
 

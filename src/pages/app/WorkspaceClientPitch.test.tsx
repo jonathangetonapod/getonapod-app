@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceClientPitch from '@/pages/app/WorkspaceClientPitch'
@@ -28,6 +28,7 @@ import {
   removeWorkspaceCampaignLead,
   saveWorkspaceCampaignPitch,
   setWorkspacePromptModel,
+  setClientSdrPrompt,
 } from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
@@ -167,12 +168,14 @@ function renderRoutes(path: string) {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 async function renderPage(options: { viewerRole?: WorkspaceClientDetailData['viewer_role']; path?: string } = {}) {
   if (options.viewerRole) mockedDetail.mockResolvedValue({ ...detail, viewer_role: options.viewerRole })
-  renderRoutes(options.path ?? tenantPath)
+  const queryClient = renderRoutes(options.path ?? tenantPath)
   await screen.findByRole('heading', { name: 'Write a pitch for Founder Stories' })
+  return queryClient
 }
 
 describe('WorkspaceClientPitch', () => {
@@ -280,7 +283,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByRole('navigation', { name: 'Pitch workflow steps' })).toHaveClass('lg:grid-cols-1')
     expect(screen.getByLabelText('Pitch actions')).toHaveClass('sticky', 'bottom-0')
     // Collapsed, on every step, instead of tripling the research step.
-    expect(screen.getByRole('button', { name: 'Edit stage prompts' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('button', { name: /^Research instructions/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByLabelText('Prompt for Podcast research')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Taylor Client’s shortlist' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
   })
@@ -343,7 +346,7 @@ describe('WorkspaceClientPitch', () => {
   it('asks before leaving with unsaved pitch edits', async () => {
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'A changed subject' } })
     expect(screen.getByText('Unsaved edits')).toBeInTheDocument()
 
@@ -530,7 +533,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Research and Pitch' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Finalize the selected pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
@@ -552,16 +555,16 @@ describe('WorkspaceClientPitch', () => {
     expect(continueButton).toBeEnabled()
     fireEvent.click(continueButton)
 
-    expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Choose your pitch' })).toBeInTheDocument()
     // A run charges research credits, so the step says so. It used to claim
     // the opposite to a customer who was being billed for it.
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
     expect(screen.queryByText('Included with your plan')).not.toBeInTheDocument()
-    expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument()
-    const researchStepsButton = screen.getByRole('button', { name: 'View steps' })
+    expect(screen.getByText('Research complete')).toBeInTheDocument()
+    const researchStepsButton = screen.getByRole('button', { name: 'Research details' })
     expect(researchStepsButton).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(researchStepsButton)
-    expect(screen.getByRole('button', { name: 'Hide steps' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Hide research details' })).toHaveAttribute('aria-expanded', 'true')
     const researchProgress = within(screen.getByRole('list', { name: 'Podcast research progress' }))
     expect(researchProgress.getByText('Reading the podcast profile')).toBeInTheDocument()
     expect(researchProgress.getByText('Confirming the host')).toBeInTheDocument()
@@ -570,13 +573,14 @@ describe('WorkspaceClientPitch', () => {
     expect(researchProgress.getByText('Matching guest expertise')).toBeInTheDocument()
     expect(researchProgress.getByText('Preparing pitch angles')).toBeInTheDocument()
     expect(screen.getByText(/every stage is saved with this podcast/i)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Recommended pitch angles' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Choose a direction' })).toBeInTheDocument()
     const sequencePreview = within(screen.getByRole('region', { name: 'Pitch and follow-ups' }))
     expect(sequencePreview.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Guest idea for Founder Stories: Taylor Client')
+    fireEvent.click(sequencePreview.getByText('Follow-ups · 2 emails'))
     expect(sequencePreview.getByRole('article', { name: 'First follow-up preview' })).toHaveTextContent('Just following up')
     expect(sequencePreview.getByRole('article', { name: 'Second follow-up preview' })).toHaveTextContent('One last note')
     expect(sequencePreview.queryByRole('button', { name: 'Edit outputs' })).not.toBeInTheDocument()
-    expect(sequencePreview.getByText(/Read-only preview/i)).toBeInTheDocument()
+    expect(sequencePreview.getByText(/Continue when you’re ready to edit and save/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
@@ -584,7 +588,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByRole('button', { name: 'Try waterfall enrichment' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     expect(screen.getByRole('heading', { name: 'Finalize the selected pitch' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
@@ -599,7 +603,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByLabelText('Follow-up 1 subject')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 2 subject')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Research and Pitch' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this page/i)).toBeInTheDocument()
 
@@ -654,7 +658,7 @@ describe('WorkspaceClientPitch', () => {
     fireEvent.click(podcastContext.getByRole('button', { name: 'Hide details' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
-    expect(screen.queryByRole('heading', { name: 'Why Taylor Client fits' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Why this show fits' })).toBeInTheDocument()
     expect(screen.getByText('Option 1 of 3')).toBeInTheDocument()
     const firstOption = screen.getByRole('button', { name: 'Select sequence 1: Build a durable growth system' })
     const secondOption = screen.getByRole('button', { name: 'Select sequence 2: Turn complexity into momentum' })
@@ -662,12 +666,131 @@ describe('WorkspaceClientPitch', () => {
     expect(firstOption).toHaveAttribute('aria-pressed', 'true')
     expect(secondOption).toHaveAttribute('aria-pressed', 'false')
     expect(thirdOption).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Build a durable growth system')
+    expect(await screen.findByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Research-backed pitch body')
 
     fireEvent.click(secondOption)
     expect(secondOption).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Option 2 of 3')).toBeInTheDocument()
-    expect(screen.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Turn complexity into momentum')
+    expect(await screen.findByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Research-backed pitch body')
+  })
+
+  it('waits for real copy and keeps a late option from replacing the current preview', async () => {
+    const resolvers = new Map<number, (value: unknown) => void>()
+    vi.mocked(generateClientShortlistPitch).mockImplementation(
+      (_workspace, _client, _podcast, index) => new Promise((resolve) => { resolvers.set(index!, resolve) }) as never,
+    )
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({ ai_pitch_angles: [
+        { title: 'First angle', description: 'First direction' },
+        { title: 'Second angle', description: 'Second direction' },
+      ] })],
+    })
+    await renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    expect(screen.getByText('Preparing the emails for Option 1…')).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Opening pitch preview' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with Option 1' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Step 3: Finalize pitch locked until the sequence is ready' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select sequence 2: Second angle' }))
+    await waitFor(() => expect(resolvers.size).toBe(2))
+    resolvers.get(1)!({ subject: 'Second subject', body: 'Second sequence' })
+    expect(await screen.findByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Second sequence')
+    expect(screen.getByRole('button', { name: 'Continue with Option 2' })).toBeEnabled()
+
+    resolvers.get(0)!({ subject: 'First subject', body: 'First sequence' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Select sequence 1: First angle' })).toHaveTextContent('Ready'))
+    expect(screen.getByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Second sequence')
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Option 2' }))
+    expect(screen.getByLabelText('Opening email')).toHaveValue('Second sequence')
+  })
+
+  it('lets the user retry an unavailable sequence without rerunning research', async () => {
+    vi.mocked(generateClientShortlistPitch).mockRejectedValueOnce(new Error('Temporary failure'))
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({ ai_pitch_angles: [{ title: 'First angle', description: 'First direction' }] })],
+    })
+    await renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Prepare this sequence' }))
+    expect(await screen.findByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Research-backed pitch body')
+    expect(runClientShortlistResearch).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('replaces an obsolete regeneration request (saved sequence: %s)', async (savedSequence) => {
+    const requests: Array<{ resolve: (value: unknown) => void }> = []
+    vi.mocked(generateClientShortlistPitch).mockImplementation(() => new Promise((resolve) => { requests.push({ resolve }) }) as never)
+    const original = podcast({ ai_pitch_angles: [{ title: 'Original angle', description: 'Original direction' }] })
+    const shortlist = { client: { id: clientId, name: 'Taylor Client' }, podcasts: [original] }
+    vi.mocked(getClientShortlist).mockResolvedValue(shortlist)
+    if (savedSequence) {
+      vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+        can_manage_campaigns: true,
+        campaign: { id: 'campaign-one', name: 'Taylor Client Podcast Outreach' },
+        targets: [{ shortlist_podcast_id: original.id, pitch_subject: 'Saved subject', pitch_body: 'Saved copy' }],
+      } as never)
+    }
+    vi.mocked(runClientShortlistResearch).mockResolvedValueOnce(original.research_progress!)
+    const queryClient = await renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
+    if (!savedSequence) {
+      await waitFor(() => expect(requests).toHaveLength(1))
+      await act(async () => { requests[0].resolve({ subject: 'Original subject', body: 'Original copy' }) })
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Option 1' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: /^Regenerate/ }))
+    const oldRequestIndex = savedSequence ? 0 : 1
+    await waitFor(() => expect(requests).toHaveLength(oldRequestIndex + 1))
+    const refreshed = { ...shortlist, podcasts: [{ ...original, ai_pitch_angles: [{ title: 'Fresh angle', description: 'Fresh direction' }] }] }
+    vi.mocked(getClientShortlist).mockResolvedValue(refreshed)
+    await act(async () => { queryClient.setQueryData(['client-shortlist', workspaceId, clientId], refreshed) })
+    await waitFor(() => expect(requests).toHaveLength(oldRequestIndex + 2))
+    await act(async () => { requests[oldRequestIndex].resolve({ subject: 'Obsolete subject', body: 'Obsolete copy' }) })
+    expect(screen.getByText('Preparing the emails for Option 1…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with Option 1' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Select sequence 1: Fresh angle' }))
+    expect(requests).toHaveLength(oldRequestIndex + 2)
+    await act(async () => { requests[oldRequestIndex + 1].resolve({ subject: 'Fresh subject', body: 'Fresh copy' }) })
+    expect(await screen.findByRole('article', { name: 'Opening pitch preview' })).toHaveTextContent('Fresh copy')
+    expect(screen.getByRole('button', { name: 'Continue with Option 1' })).toBeEnabled()
+  })
+
+  it('preserves instruction text when saving fails, then saves it on retry', async () => {
+    vi.mocked(setClientSdrPrompt).mockRejectedValueOnce(new Error('Save unavailable')).mockResolvedValueOnce(undefined)
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
+    const editor = within(screen.getByRole('dialog', { name: 'Research instructions' }))
+    expect(editor.getByText(/Required-field switches save immediately for every client/)).toBeInTheDocument()
+    const instructions = editor.getByLabelText('Prompt for Podcast research')
+    fireEvent.change(instructions, { target: { value: 'Keep this carefully edited instruction.' } })
+    fireEvent.click(editor.getByRole('button', { name: 'Save prompt' }))
+    await waitFor(() => expect(editor.getByRole('button', { name: 'Save prompt' })).toBeEnabled())
+    expect(instructions).toHaveValue('Keep this carefully edited instruction.')
+    fireEvent.click(editor.getByRole('button', { name: 'Save prompt' }))
+    await waitFor(() => expect(editor.getByRole('button', { name: 'Save prompt' })).toBeDisabled())
+    expect(instructions).toHaveValue('Keep this carefully edited instruction.')
+    fireEvent.click(editor.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Research instructions' })).not.toBeInTheDocument()
+  })
+
+  it('keeps unsaved research instructions open until saved or discarded', async () => {
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
+    const editor = screen.getByRole('dialog', { name: 'Research instructions' })
+    const advanced = within(editor).getByText('Advanced settings · model and system instruction').closest('details')
+    expect(advanced).not.toHaveAttribute('open')
+    fireEvent.change(within(editor).getByLabelText('Prompt for Podcast research'), { target: { value: 'New client instructions' } })
+    fireEvent.click(within(editor).getByRole('button', { name: 'Close' }))
+    expect(editor).toBeInTheDocument()
+    fireEvent.click(within(editor).getByRole('button', { name: 'Discard changes' }))
+    fireEvent.click(within(editor).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Research instructions' })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Research instructions/ })).toHaveFocus())
   })
 
   // Each option is two or three sequential model calls, so opening one to
@@ -686,11 +809,10 @@ describe('WorkspaceClientPitch', () => {
       })],
     })
     await renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
 
-    // Nothing is written until an option is opened.
-    expect(vi.mocked(generateClientShortlistPitch)).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Select sequence 1: Build a durable growth system' }))
+    // The default option is prepared on entry; alternatives follow in the background.
 
     // All three written: the one opened, plus the two it is compared against.
     await waitFor(() => expect(vi.mocked(generateClientShortlistPitch)).toHaveBeenCalledTimes(3))
@@ -725,7 +847,8 @@ describe('WorkspaceClientPitch', () => {
       })],
     })
     await renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
     fireEvent.click(screen.getByRole('button', { name: 'Select sequence 1: Build a durable growth system' }))
 
     // Option 1 resolves, which starts the background writes for 2 and 3.
@@ -750,9 +873,11 @@ describe('WorkspaceClientPitch', () => {
     })
     vi.mocked(setWorkspacePromptModel).mockResolvedValue(undefined)
     await renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit stage prompts' }))
-    const select = await screen.findByRole('combobox', { name: 'Model this stage runs on' })
+    fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
+    fireEvent.click(screen.getByText('Advanced settings · model and system instruction'))
+    const select = await screen.findByRole('combobox', { name: 'Model for this stage · workspace-wide' })
     await waitFor(() => expect(select).toBeEnabled())
     expect(within(select).getByRole('option', { name: /OpenAI · gpt-4.1/ })).toBeInTheDocument()
     expect(select).toHaveValue('')
@@ -769,13 +894,13 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
 
-    const editPrompts = screen.getByRole('button', { name: 'Edit stage prompts' })
+    const editPrompts = screen.getByRole('button', { name: /^Research instructions/ })
     expect(editPrompts).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(editPrompts)
 
     const promptSettings = within(screen.getByRole('region', { name: 'Research prompts' }))
-    expect(screen.getByRole('button', { name: 'Close prompt editor' })).toHaveAttribute('aria-expanded', 'true')
-    expect(promptSettings.getByText('Owner controls')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Research instructions' })).toBeInTheDocument()
+    expect(screen.getByText(/Prompt edits apply to this client’s next run/)).toBeInTheDocument()
     expect(promptSettings.getByRole('navigation', { name: 'Research prompt stages' })).toBeInTheDocument()
     // Scoped to the stage nav: the field palette also offers a "Podcast
     // research result" button, and an unscoped name match now finds both.
@@ -839,7 +964,7 @@ describe('WorkspaceClientPitch', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /^Regenerate/ }))
 
-    expect(screen.getByRole('heading', { name: 'Research and Pitch' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Choose your pitch' })).toBeInTheDocument()
     expect(screen.getByText('Reading the podcast profile · 0 of 6 prompts complete')).toBeInTheDocument()
     expect(screen.getByText(/Running your saved workspace prompts against live podcast data/i)).toBeInTheDocument()
     await waitFor(() => {
@@ -858,8 +983,8 @@ describe('WorkspaceClientPitch', () => {
     expect(researchProgress.getByText('In progress')).toBeInTheDocument()
     expect(researchProgress.getAllByText('Waiting')).toHaveLength(6)
     expect(screen.getByRole('button', { name: 'Regenerating' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Edit stage prompts' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Research instructions/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue with this draft' })).toBeDisabled()
     expect(screen.getAllByText(/all six saved workspace prompts run in order/i).length).toBeGreaterThan(0)
   })
 
@@ -873,7 +998,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Edit stage prompts' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
 
     const promptSettings = within(screen.getByRole('region', { name: 'Research prompts' }))
     // The editor shows what this client's runs actually use.
@@ -895,7 +1020,7 @@ describe('WorkspaceClientPitch', () => {
     await renderPage({ viewerRole: 'admin' })
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
 
-    expect(screen.queryByRole('button', { name: 'Edit stage prompts' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Research instructions/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Research prompts' })).not.toBeInTheDocument()
   })
 
@@ -1002,7 +1127,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByRole('button', { name: 'Edit outputs' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     expect(screen.queryByRole('button', { name: /Regenerate/ })).not.toBeInTheDocument()
     expect(screen.getByText('All edits saved')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save edits' })).toBeDisabled()
@@ -1068,7 +1193,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     // The modal no longer claims nothing sends, because now it does.
     expect(screen.queryByText(/Nothing sends from this page/i)).not.toBeInTheDocument()
@@ -1099,7 +1224,7 @@ describe('WorkspaceClientPitch', () => {
   it('says nothing sends when the campaign is paused', async () => {
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     expect(screen.getByText(/Nothing sends from this page/i)).toBeInTheDocument()
     expect(screen.getByText(/The campaign is paused, so nothing goes out until you start outreach/i)).toBeInTheDocument()
@@ -1134,7 +1259,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     // Already in the campaign, so sending again is an update, not a duplicate.
     expect(screen.getByRole('button', { name: /Send to Client Campaign \(goes live\)/ })).toBeInTheDocument()
@@ -1161,7 +1286,7 @@ describe('WorkspaceClientPitch', () => {
     )
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const alert = await screen.findByRole('alert')
@@ -1182,7 +1307,7 @@ describe('WorkspaceClientPitch', () => {
     vi.mocked(prepareWorkspaceCampaignPodcast).mockRejectedValue(refusal)
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const alert = await screen.findByRole('alert')
@@ -1199,7 +1324,7 @@ describe('WorkspaceClientPitch', () => {
   it('offers no campaign picker when there is only one place to send', async () => {
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     expect(screen.queryByLabelText('Send to')).not.toBeInTheDocument()
   })
@@ -1217,7 +1342,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     const picker = await screen.findByLabelText('Send to')
     fireEvent.click(picker)
@@ -1238,7 +1363,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     fireEvent.click(await screen.findByLabelText('Send to'))
     expect(await screen.findByRole('option', { name: 'Second Wave' })).toBeInTheDocument()
@@ -1258,7 +1383,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
 
     // The default campaign is paused, so the send button is calm until the
     // live one is chosen.
@@ -1285,7 +1410,7 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const confirmation = await screen.findByRole('status', { name: 'Pitch added to client campaign' })
@@ -1308,7 +1433,7 @@ describe('WorkspaceClientPitch', () => {
     vi.mocked(prepareWorkspaceCampaignPodcast).mockRejectedValue(refusal)
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const alert = await screen.findByRole('alert')
@@ -1329,7 +1454,7 @@ describe('WorkspaceClientPitch', () => {
     vi.mocked(prepareWorkspaceCampaignPodcast).mockRejectedValue(refusal)
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const alert = await screen.findByRole('alert')
@@ -1352,7 +1477,7 @@ describe('WorkspaceClientPitch', () => {
     vi.mocked(prepareWorkspaceCampaignPodcast).mockRejectedValueOnce(racing)
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
 
     const alert = await screen.findByRole('alert')
@@ -1371,7 +1496,7 @@ describe('WorkspaceClientPitch', () => {
     vi.mocked(prepareWorkspaceCampaignPodcast).mockClear()
     await renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send to Client Campaign' }))
     await screen.findByText(/Added to/i)
 
@@ -1428,13 +1553,13 @@ describe('WorkspaceClientPitch', () => {
     expect(researchProgress.getAllByText('Done')).toHaveLength(2)
     expect(researchProgress.getByText('In progress')).toBeInTheDocument()
     expect(researchProgress.getAllByText('Waiting')).toHaveLength(4)
-    expect(screen.queryByRole('button', { name: 'View steps' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Research details' })).not.toBeInTheDocument()
     expect(screen.getByText(/research continues while this tab stays open/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue with this draft' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Step 3: Finalize pitch locked until research is complete' })).toBeDisabled()
 
-    await waitFor(() => expect(screen.getByText('Research ready · 6 of 6 steps complete')).toBeInTheDocument(), { timeout: 4_000 })
-    expect(screen.getByRole('button', { name: 'Finalize selected pitch' })).toBeEnabled()
+    await waitFor(() => expect(screen.getByText('Research complete')).toBeInTheDocument(), { timeout: 4_000 })
+    expect(screen.getByRole('button', { name: 'Continue with this draft' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Go to step 3: Finalize pitch' })).toBeEnabled()
   })
 
@@ -1522,7 +1647,7 @@ describe('WorkspaceClientPitch', () => {
     const continueToResearch = screen.getByRole('button', { name: 'Continue to research' })
     await waitFor(() => expect(continueToResearch).toBeEnabled())
     fireEvent.click(continueToResearch)
-    fireEvent.click(screen.getByRole('button', { name: 'Finalize selected pitch' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with this draft' }))
     expect(screen.getByText('You can finalize the pitch now')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Campaign setup' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     expect(screen.getByRole('button', { name: 'Send to Client Campaign' })).toBeDisabled()

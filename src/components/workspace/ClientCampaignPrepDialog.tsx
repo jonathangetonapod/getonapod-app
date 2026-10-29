@@ -41,6 +41,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -100,7 +101,7 @@ import {
   type ResearchPromptId,
 } from '@/lib/researchPromptDefaults'
 import { isTargetInActiveOutreach } from '@/lib/campaignTargetState'
-import { researchPromptPhases, researchPromptStepNumbers } from '@/lib/researchPromptStages'
+import { researchPromptPhases } from '@/lib/researchPromptStages'
 
 
 export interface ClientCampaignPrepProps {
@@ -361,6 +362,7 @@ export function ClientCampaignPrep({
       },
     ),
     onMutate: () => {
+      setPreviewingSavedSequence(false)
       // The shortlist poll only activates once it sees a running status, so
       // refresh shortly after the backend writes its first progress row.
       window.setTimeout(() => {
@@ -415,6 +417,10 @@ export function ClientCampaignPrep({
   aiPitchesRef.current = aiPitches
   const activeRef = useRef(active)
   activeRef.current = active
+  useEffect(() => {
+    activeRef.current = active
+    return () => { activeRef.current = false }
+  }, [active])
   /**
    * Pitch writes currently in flight, by pitch key.
    *
@@ -460,6 +466,7 @@ export function ClientCampaignPrep({
     // These pitches were written for angles that no longer exist.
     setAiPitches({})
     aiPitchesRef.current = {}
+    setPitchLoadingKey(null)
     inFlightPitchesRef.current.clear()
     pitchGenerationRef.current += 1
   }, [angleSignature])
@@ -502,7 +509,7 @@ export function ClientCampaignPrep({
       return stored
     }).finally(() => {
       // Cleared either way, so a failure can be retried by opening the option.
-      inFlightPitchesRef.current.delete(key)
+      if (inFlightPitchesRef.current.get(key) === request) inFlightPitchesRef.current.delete(key)
     })
 
     inFlightPitchesRef.current.set(key, request)
@@ -549,11 +556,12 @@ export function ClientCampaignPrep({
     // Read through the ref, so a cache cleared moments ago — by a fresh
     // research run, whose new angles must not be shown the old run's copy — is
     // seen as cleared rather than as this render's stale snapshot.
-    if (aiPitchesRef.current[key] || pitchLoadingKey === key) return
+    if (aiPitchesRef.current[key]) return
     // Only the current prompt pipeline counts — a legacy ai_analyzed_at
     // stamp does not authorize pitch writing (the server enforces this too).
     const researched = podcast.research_progress?.status === 'completed'
     if (!researched && !options?.skipResearchCheck) return
+    const generation = pitchGenerationRef.current
     setPitchLoadingKey(key)
     try {
       // Joins the background write when one is already running for this angle,
@@ -565,6 +573,8 @@ export function ClientCampaignPrep({
       // its own, so an error here would blame the click for something that
       // worked correctly.
       if (!stored) return
+      // A slower option must never replace the option the reader switched to.
+      if (!activeRef.current || selectedPitchKeyRef.current !== key) return
       // The whole three-touch sequence is AI-written now; the template
       // follow-ups only remain as the fallback for older generations.
       const applyPitch = (current: PodcastCampaignSequenceDraft): PodcastCampaignSequenceDraft => ({
@@ -574,19 +584,23 @@ export function ClientCampaignPrep({
         ...(stored.followUpOneBody ? { followUpOneBody: stored.followUpOneBody } : {}),
         ...(stored.followUpTwoBody ? { followUpTwoBody: stored.followUpTwoBody } : {}),
       })
+      setPreviewingSavedSequence(false)
       setDraft(applyPitch)
       setSavedDraft(applyPitch)
       // The option on screen is ready; write the ones it will be compared
       // against while the operator reads this one.
       void prefetchOtherAngles(angleIndex)
     } catch (error) {
+      if (generation !== pitchGenerationRef.current || !activeRef.current) return
       void queryClient.invalidateQueries({ queryKey: shortlistQueryKey })
       // Whatever just changed for this podcast, the editor's field values
       // changed with it.
       void queryClient.invalidateQueries({ queryKey: promptPreviewQueryKey })
       showOperationError(error, 'The pitch could not be written from research.', { billingHref, providerHref: `${campaignHref.split('/client-campaigns')[0]}/settings#ai-keys`, canManageProviders: viewerRole === 'owner' || viewerRole === 'platform_admin', canManageBilling: viewerRole !== 'member' })
     } finally {
-      setPitchLoadingKey((current) => (current === key ? null : current))
+      if (generation === pitchGenerationRef.current) {
+        setPitchLoadingKey((current) => (current === key ? null : current))
+      }
     }
   }
 
@@ -630,6 +644,9 @@ export function ClientCampaignPrep({
   const [promptDraft, setPromptDraft] = useState(RESEARCH_PROMPT_DEFAULTS_BY_ID.podcast_research.content)
   const [promptTouched, setPromptTouched] = useState(false)
   const [selectedAngleIndex, setSelectedAngleIndex] = useState(0)
+  const selectedPitchKeyRef = useRef<string | null>(null)
+  selectedPitchKeyRef.current = podcast ? pitchKey(podcast.id, selectedAngleIndex) : null
+  const [previewingSavedSequence, setPreviewingSavedSequence] = useState(false)
   const [activeSequenceEmail, setActiveSequenceEmail] = useState<SequenceEmailStep>('opening')
   const [hostName, setHostName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -820,7 +837,7 @@ export function ClientCampaignPrep({
   const researchStatusTitle = researchRegenerating && activeResearchStep
     ? `${activeResearchStep.title} · ${completedResearchStepCount} of ${researchProgressSteps.length} prompts complete`
     : researchComplete
-    ? `Research ready · ${researchProgressSteps.length} of ${researchProgressSteps.length} steps complete`
+    ? 'Research complete'
     : researchStale
       ? `Research stopped · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
     : researchFailed
@@ -833,7 +850,7 @@ export function ClientCampaignPrep({
   const researchStatusDetail = researchRegenerating && activeResearchStep
     ? `Running your saved workspace prompts against live podcast data. ${activeResearchStep.detail}.`
     : researchComplete
-    ? 'The research is saved to this podcast and will still be here when you return.'
+    ? 'Saved to this podcast. Choose a direction below, then review the emails.'
     : researchStale
       ? `This run stopped before it finished${failedResearchStep ? ` at ${failedResearchStep.title.toLowerCase()}` : ''} and is no longer going. Everything completed before that is saved — run research again to pick it up.`
     : researchFailed
@@ -918,7 +935,6 @@ export function ClientCampaignPrep({
       ?? promptOverrides[promptId]?.content
       ?? RESEARCH_PROMPT_DEFAULTS_BY_ID[promptId].content
   const promptPhases = useMemo(() => researchPromptPhases(), [])
-  const promptStepNumbers = useMemo(() => researchPromptStepNumbers(promptPhases), [promptPhases])
   const selectedPromptDefault = RESEARCH_PROMPT_DEFAULTS_BY_ID[selectedPromptId]
   const selectedPromptCustomized = Boolean(clientPrompts[selectedPromptId]?.content ?? promptOverrides[selectedPromptId]?.content)
   const promptDirty = promptDraft !== effectivePromptContent(selectedPromptId)
@@ -1062,7 +1078,13 @@ export function ClientCampaignPrep({
     mutationFn: ({ promptId, content }: { promptId: ResearchPromptId; content: string }) =>
       setClientSdrPrompt(workspaceId, clientId, promptId, content),
     onSuccess: (_result, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['client-sdr-prompts', workspaceId, clientId] })
+      const queryKey = ['client-sdr-prompts', workspaceId, clientId]
+      queryClient.setQueryData<Awaited<ReturnType<typeof getClientSdrPrompts>>>(queryKey, (current) => ({
+        ...current,
+        [variables.promptId]: { content: variables.content, updated_at: new Date().toISOString() },
+      }))
+      setPromptTouched(false)
+      void queryClient.invalidateQueries({ queryKey, refetchType: 'none' })
       toast.success(`${RESEARCH_PROMPT_DEFAULTS_BY_ID[variables.promptId].label} prompt saved for ${clientName} only.`)
     },
     onError: (error) => {
@@ -1172,6 +1194,7 @@ export function ClientCampaignPrep({
       followUpTwoSubject: target?.follow_up_2_subject || initial.followUpTwoSubject,
       followUpTwoBody: target?.follow_up_2_body || initial.followUpTwoBody,
     }
+    setPreviewingSavedSequence(Boolean(target?.pitch_body))
     setDraft(nextDraft)
     setSavedDraft(nextDraft)
     // Seeded once per open and podcast; the rest of these only matter on that
@@ -1230,7 +1253,6 @@ export function ClientCampaignPrep({
   const savePromptChanges = () => {
     const prompt = promptDraft.trim()
     if (!prompt || promptBusy) return
-    setPromptTouched(false)
     savePromptMutation.mutate({ promptId: selectedPromptId, content: prompt })
   }
   const restorePromptDefault = () => {
@@ -1284,9 +1306,11 @@ export function ClientCampaignPrep({
       return
     }
     setSelectedAngleIndex(angleIndex)
+    setPreviewingSavedSequence(false)
     if (!podcast) return
+    selectedPitchKeyRef.current = pitchKey(podcast.id, angleIndex)
     const nextDraft = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio, angleIndex })
-    const cached = aiPitches[pitchKey(podcast.id, angleIndex)]
+    const cached = aiPitchesRef.current[pitchKey(podcast.id, angleIndex)]
     const selectedDraft = {
       ...nextDraft,
       ...(cached ? { subject: cached.subject, pitchBody: cached.body } : {}),
@@ -1298,6 +1322,23 @@ export function ClientCampaignPrep({
     setSavedDraft(selectedDraft)
     if (!cached) void loadAiPitch(angleIndex)
   }
+  const openedResearchRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!active) openedResearchRef.current = null
+    if (!active || campaignQuery.isLoading || activeStep !== 'research' || !researchComplete || !podcast
+      || !relationshipCanProceed || pitchAngles.length === 0 || previewingSavedSequence) return
+    const generationKey = `${podcast.id}:${angleSignature}`
+    if (openedResearchRef.current === generationKey) return
+    openedResearchRef.current = generationKey
+    choosePitchAngle(selectedAngleIndex)
+    // Run once per researched angle set; failed writes have an explicit retry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, activeStep, researchComplete, podcast?.id, angleSignature, relationshipCanProceed, previewingSavedSequence, campaignQuery.isLoading])
+
+  const selectedSequenceLoading = Boolean(podcast && pitchLoadingKey === pitchKey(podcast.id, selectedAngleIndex))
+  const hasSavedSequence = previewingSavedSequence
+  const selectedSequenceReady = researchComplete && !selectedSequenceLoading
+    && (Boolean(selectedPitchMeta) || hasSavedSequence || pitchAngles.length === 0)
   const normalizedEmail = contactEmail.trim().toLowerCase()
 
   // Sending to Client Campaign creates the Instantly lead in the campaign
@@ -1730,20 +1771,20 @@ export function ClientCampaignPrep({
               <nav
                 aria-label="Pitch workflow steps"
                 className={page
-                  ? 'grid gap-2 sm:grid-cols-3 lg:sticky lg:top-4 lg:grid-cols-1'
+                  ? 'grid grid-cols-3 gap-2 lg:sticky lg:top-4 lg:grid-cols-1'
                   : 'grid gap-2 border-b bg-muted/20 px-5 py-4 sm:grid-cols-3 sm:px-6'}
               >
                 {pitchSteps.map((item) => {
                   const active = activeStep === item.id
                   const lockedUntilEmail = item.id !== 'email' && !emailReady
-                  const lockedUntilResearch = item.id === 'pitch' && !researchComplete
+                  const lockedUntilResearch = item.id === 'pitch' && !selectedSequenceReady
                   const lockedUntilRelationship = item.id !== 'email' && !relationshipCanProceed
                   const lockedStepLabel = lockedUntilRelationship
                     ? `Step ${item.step}: ${item.title} locked until the relationship warning is reviewed`
                     : lockedUntilEmail
                     ? `Step ${item.step}: ${item.title} locked until an email is ready`
                     : lockedUntilResearch
-                      ? `Step ${item.step}: ${item.title} locked until research is complete`
+                      ? `Step ${item.step}: ${item.title} locked until ${researchComplete ? 'the sequence is ready' : 'research is complete'}`
                       : `Go to step ${item.step}: ${item.title}`
                   return (
                     <button
@@ -1752,11 +1793,11 @@ export function ClientCampaignPrep({
                       aria-label={lockedStepLabel}
                       aria-current={active ? 'step' : undefined}
                       disabled={lockedUntilRelationship || lockedUntilEmail || lockedUntilResearch}
-                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
+                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${page ? 'flex-col lg:flex-row' : ''} ${active ? 'border-primary bg-primary/5 shadow-sm' : 'bg-background hover:border-primary/40 hover:bg-muted/30'}`}
                       onClick={() => setActiveStep(item.id)}
                     >
                       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>{item.step}</span>
-                      <span className="min-w-0"><span className="block text-sm font-semibold">{item.title}</span><span className="block truncate text-xs text-muted-foreground">{lockedUntilRelationship ? 'Review relationship first' : lockedUntilEmail ? 'Email required first' : lockedUntilResearch ? 'Research must finish first' : item.detail}</span></span>
+                      <span className={`min-w-0 ${page ? 'text-center lg:text-left' : ''}`}><span className="block text-sm font-semibold">{item.title}</span><span className={`${page ? 'hidden lg:block' : 'block'} truncate text-xs text-muted-foreground`}>{lockedUntilRelationship ? 'Review relationship first' : lockedUntilEmail ? 'Email required first' : lockedUntilResearch ? 'Preparing the sequence' : item.detail}</span></span>
                     </button>
                   )
                 })}
@@ -1896,16 +1937,16 @@ export function ClientCampaignPrep({
               {activeStep === 'research' && (
                 <div className={page ? undefined : 'mx-auto max-w-5xl p-5 sm:p-8'}>
                   <section aria-labelledby="campaign-research-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                    <div className="border-b bg-gradient-to-br from-sky-50 via-primary/5 to-background p-5 sm:p-6">
+                    <div className="border-b p-5 sm:p-6">
                       <div className="flex gap-3">
                         <div className="h-fit rounded-xl bg-sky-100 p-2.5 text-sky-700"><FileSearch className="h-5 w-5" /></div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">Step 2</Badge>
-                            <Badge variant="outline" className="border-border bg-muted text-muted-foreground">Your AI provider account</Badge>
+                            <span className="text-xs text-muted-foreground">Your AI provider account</span>
                           </div>
-                          <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Research and Pitch</h3>
-                          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Review the show, its audience, and the strongest reasons to feature {clientName} before choosing the angle for the pitch.</p>
+                          <h3 id="campaign-research-heading" className="mt-2 text-xl font-semibold">Choose your pitch</h3>
+                          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Compare directions for {clientName}, preview the emails, then continue to edit your choice.</p>
                         </div>
                       </div>
 
@@ -1929,7 +1970,7 @@ export function ClientCampaignPrep({
                             {canManageCampaigns && (
                               <Button
                                 type="button"
-                                variant={researchProgress || researchRegenerating ? 'outline' : 'default'}
+                                variant={researchProgress || researchRegenerating ? 'ghost' : 'default'}
                                 size="sm"
                                 className={researchProgress || researchRegenerating ? 'bg-background' : undefined}
                                 disabled={researchWorking || !relationshipCanProceed}
@@ -1957,7 +1998,7 @@ export function ClientCampaignPrep({
                                 aria-controls="campaign-research-progress-steps"
                                 onClick={() => setShowResearchSteps((current) => !current)}
                               >
-                                {showResearchSteps ? 'Hide steps' : 'View steps'}
+                                {showResearchSteps ? 'Hide research details' : 'Research details'}
                                 <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showResearchSteps ? 'rotate-180' : ''}`} />
                               </Button>
                             )}
@@ -2083,17 +2124,46 @@ export function ClientCampaignPrep({
 
                     </div>
 
-                    <div className="space-y-5 p-5 sm:p-6">
-                      <section className="rounded-2xl border p-5">
-                        <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Recommended pitch angles</h4></div>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Each direction creates its own opening pitch and two follow-ups. Select an option to compare the complete sequence below.</p>
+                    <div className="space-y-6 p-5 sm:p-6">
+                      {researchComplete && (podcast.ai_clean_description || fitReasons.length > 0) && (
+                        <section aria-labelledby="pitch-research-summary-heading" className="rounded-xl bg-muted/30 p-4">
+                          <h4 id="pitch-research-summary-heading" className="text-sm font-semibold">Why this show fits</h4>
+                          {podcast.ai_clean_description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">{podcast.ai_clean_description}</p>}
+                          {fitReasons.length > 0 && <ul className="mt-3 space-y-2">{fitReasons.slice(0, 2).map((reason, index) => <li key={index} className="flex gap-2 text-sm leading-6"><Check className="mt-1 h-4 w-4 shrink-0 text-primary" /><span>{reason}</span></li>)}</ul>}
+                        </section>
+                      )}
+                      <section>
+                        <div className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-primary" /><h4 className="font-semibold">Choose a direction</h4></div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Select an option to preview its opening email and two follow-ups. You can edit them in the next step.</p>
                         {researchComplete && pitchAngles.length > 0
-                          ? <div className="mt-4 grid gap-3 lg:grid-cols-3">{pitchAngles.slice(0, 3).map((angle, index) => <button key={`${angle.title}-${index}`} type="button" aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selectedAngleIndex === index} disabled={researchWorking || !relationshipCanProceed} className={`relative flex min-h-48 flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selectedAngleIndex === index ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`} onClick={() => choosePitchAngle(index)}><div className="flex items-center justify-between gap-2"><Badge variant="secondary">Option {index + 1}</Badge>{selectedAngleIndex === index && <Badge className="bg-primary text-primary-foreground hover:bg-primary">Selected</Badge>}</div><span className="mt-4 block text-sm font-semibold leading-5">{angle.title}</span><span className="mt-2 block text-xs leading-5 text-muted-foreground">{angle.description}</span><span className="mt-auto pt-4 text-xs font-semibold text-primary">{selectedAngleIndex === index ? 'Previewing this sequence' : 'View this sequence'}</span></button>)}</div>
+                          ? <div className="mt-4 grid gap-3 xl:grid-cols-3">
+                              {pitchAngles.slice(0, 3).map((angle, index) => {
+                                const selected = selectedAngleIndex === index
+                                const ready = Boolean(aiPitches[pitchKey(podcast.id, index)])
+                                return (
+                                  <button key={`${angle.title}-${index}`} type="button"
+                                    aria-label={`Select sequence ${index + 1}: ${angle.title}`} aria-pressed={selected}
+                                    disabled={researchWorking || !relationshipCanProceed}
+                                    className={`flex flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selected ? 'border-primary bg-primary/5 ring-1 ring-primary/15' : 'bg-background hover:border-primary/40'}`}
+                                    onClick={() => choosePitchAngle(index)}>
+                                    <div className="flex w-full items-center justify-between gap-2">
+                                      <span className="text-xs font-medium text-muted-foreground">Option {index + 1}</span>
+                                      {selected && <CheckCircle2 className="h-4 w-4 text-primary" aria-label="Selected" />}
+                                    </div>
+                                    <span className="mt-3 text-sm font-semibold leading-5">{angle.title}</span>
+                                    <span className="mt-2 text-sm leading-6 text-muted-foreground">{angle.description}</span>
+                                    <span className="mt-auto pt-4 text-xs font-medium text-primary">
+                                      {selected ? selectedSequenceLoading ? 'Preparing emails…' : 'Previewing below' : ready ? 'Ready · Preview sequence' : 'Prepare sequence'}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
                           : (
                             <p className="mt-3 rounded-xl border border-dashed p-3 text-sm leading-6 text-muted-foreground">
                               {researchWorking
-                                ? 'The prompt pipeline is running — three sequence directions appear here when every stage above completes.'
-                                : 'Pitch angles are written by the research pipeline. Run research above and the three options appear here when it finishes.'}
+                                ? 'Finding the strongest directions for this show…'
+                                : 'Run research to prepare pitch options for this show.'}
                             </p>
                           )}
                       </section>
@@ -2104,9 +2174,9 @@ export function ClientCampaignPrep({
                             <div className="flex gap-3">
                               <div className="h-fit rounded-xl bg-violet-100 p-2.5 text-violet-700"><Send className="h-5 w-5" /></div>
                               <div>
-                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-800">Selected sequence</Badge></div>
+                                <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-sequence-preview-heading" className="font-semibold">Pitch and follow-ups</h4><Badge variant="secondary">Option {Math.min(selectedAngleIndex + 1, sequenceOptionCount)} of {sequenceOptionCount}</Badge><Badge variant="outline">{selectedSequenceLoading ? 'Preparing emails' : selectedPitchMeta ? 'Ready to review' : hasSavedSequence ? 'Saved sequence' : 'Draft preview'}</Badge></div>
                                 {selectedPitchAngle && <p className="mt-2 text-sm font-medium text-foreground">{selectedPitchAngle.title}</p>}
-                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Read-only preview. Compare the options above, then continue to Finalize Pitch to edit and save the sequence you prefer.</p>
+                                <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Preview your choice below. Continue when you’re ready to edit and save.</p>
                                 <div className="mt-3 max-w-2xl">
                                   <PitchTrustPanel
                                     generated={Boolean(selectedPitchMeta)}
@@ -2118,13 +2188,22 @@ export function ClientCampaignPrep({
                             </div>
                           </div>
 
-                          <div className="space-y-4 p-5">
+                          {selectedSequenceLoading ? (
+                            <div role="status" className="flex items-center gap-3 p-8 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Preparing the emails for Option {selectedAngleIndex + 1}…</div>
+                          ) : !selectedSequenceReady ? (
+                            <div className="space-y-3 p-5">
+                              <p className="text-sm text-muted-foreground">This sequence is not ready yet. Try preparing it again.</p>
+                              <Button type="button" variant="outline" disabled={!relationshipCanProceed} onClick={() => void loadAiPitch(selectedAngleIndex)}>Prepare this sequence</Button>
+                            </div>
+                          ) : <div className="space-y-4 p-5">
                             <article aria-label="Opening pitch preview" className="rounded-xl border bg-muted/10 p-4">
                               <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 1 · Opening pitch</Badge><span className="text-[11px] font-medium text-muted-foreground">Sends first</span></div>
                               <p className="mt-3 text-sm font-semibold">{draft.subject || 'Opening pitch subject'}</p><p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.pitchBody || 'The personalized opening pitch will appear here when the research is ready.'}</p>
                             </article>
 
-                            <div className="grid gap-4 lg:grid-cols-2">
+                            <details className="group rounded-xl border">
+                              <summary className="flex cursor-pointer list-none items-center justify-between p-4 text-sm font-medium">Follow-ups · 2 emails<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></summary>
+                              <div className="grid gap-4 px-4 pb-4 lg:grid-cols-2">
                               <article aria-label="First follow-up preview" className="rounded-xl border p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 2 · Follow-up</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
                                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpOneBody || 'The first follow-up will appear here.'}</p>
@@ -2134,8 +2213,9 @@ export function ClientCampaignPrep({
                                 <div className="flex flex-wrap items-center justify-between gap-2"><Badge variant="secondary">Email 3 · Close the loop</Badge><span className="text-[11px] font-medium text-muted-foreground">Same thread</span></div>
                                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{draft.followUpTwoBody || 'The final follow-up will appear here.'}</p>
                               </article>
-                            </div>
-                          </div>
+                              </div>
+                            </details>
+                          </div>}
                         </section>
                       )}
 
@@ -2241,48 +2321,44 @@ export function ClientCampaignPrep({
     </>
   ) : null
 
-  // Owner-only prompt engineering, out of the flow. Inside the research step
-  // it tripled the step's height for everyone who opened it; here it is one
-  // collapsed section under the steps, and the same editor when expanded.
+  // Keep configuration out of the comparison flow, while preserving client scope.
   const promptSettings = podcast && canCustomizePrompts ? (
-                        <section aria-labelledby="campaign-research-prompt-heading" className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                          <div className="flex flex-col gap-3 bg-muted/20 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2"><h4 id="campaign-research-prompt-heading" className="text-sm font-semibold">Research prompts</h4><Badge variant="secondary">Owner controls</Badge>{customPromptCount > 0 && <Badge variant="outline">{customPromptCount} customized</Badge>}</div>
-                              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Choose a stage and adjust the instructions used the next time research runs. Saving applies to this client only and does not interrupt research already in progress.</p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="shrink-0 bg-background"
-                              disabled={researchRegenerating}
-                              aria-expanded={showPromptSettings}
-                              aria-controls="campaign-research-prompt-editor"
-                              onClick={togglePromptSettings}
-                            >
-                              <PenLine className="mr-2 h-3.5 w-3.5" />
-                              {showPromptSettings ? 'Close prompt editor' : 'Edit stage prompts'}
-                              <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${showPromptSettings ? 'rotate-180' : ''}`} />
-                            </Button>
-                          </div>
-
-                          {showPromptSettings && (
-                          <div id="campaign-research-prompt-editor" className="grid border-t lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-                            {/* Grouped and numbered, because the first seven are
-                                one run in order and the last two fire when a
-                                host replies. Flat and identical, they read as
-                                nine unrelated settings. */}
-                            <nav aria-label="Research prompt stages" className="space-y-4 border-b bg-muted/10 p-3 lg:border-b-0 lg:border-r">
+    <Dialog open={showPromptSettings} onOpenChange={(open) => { if (open !== showPromptSettings) togglePromptSettings() }}>
+      <div className="flex justify-end">
+        <DialogTrigger asChild>
+        <Button type="button" variant="ghost" size="sm" disabled={researchRegenerating}
+          aria-expanded={showPromptSettings}>
+          <PenLine className="mr-2 h-3.5 w-3.5" />Research instructions
+          {customPromptCount > 0 && <span className="ml-2 text-muted-foreground">{customPromptCount} customized</span>}
+        </Button>
+        </DialogTrigger>
+      </div>
+        <DialogContent className="flex max-h-[90dvh] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left">
+            <DialogTitle>Research instructions</DialogTitle>
+            <DialogDescription>Customize how we research shows and write pitches for {clientName}. Prompt edits apply to this client’s next run.</DialogDescription>
+          </DialogHeader>
+          <section aria-label="Research prompts" className="min-h-0 overflow-y-auto">
+            <div className="border-b p-4 md:hidden">
+              <Label htmlFor="research-instruction-stage">Stage</Label>
+              <select id="research-instruction-stage" className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={selectedPromptId} onChange={(event) => selectPromptStage(event.target.value as ResearchPromptId)}>
+                {promptPhases.map((phase) => <optgroup key={phase.id} label={phase.label}>
+                  {phase.prompts.map((prompt) => <option key={prompt.id} value={prompt.id}>{prompt.label}</option>)}
+                </optgroup>)}
+              </select>
+            </div>
+                          <div id="campaign-research-prompt-editor" className="grid md:grid-cols-[13rem_minmax(0,1fr)]">
+                            {/* Keep research and writing grouped in execution order. */}
+                            <nav aria-label="Research prompt stages" className="hidden space-y-4 border-r bg-muted/10 p-3 md:block">
                               {promptPhases.map((phase) => (
                                 <div key={phase.id}>
                                   <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{phase.label}</p>
                                   <p className="mt-0.5 px-1 text-[10px] leading-4 text-muted-foreground/80">{phase.hint}</p>
-                                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-1">
+                                  <div className="mt-2 grid gap-1.5">
                                     {phase.prompts.map((prompt) => {
                                       const selected = prompt.id === selectedPromptId
                                       const customized = Boolean(clientPrompts[prompt.id]?.content ?? promptOverrides[prompt.id]?.content)
-                                      const step = promptStepNumbers.get(prompt.id)
                                       return (
                                         <button
                                           key={prompt.id}
@@ -2291,14 +2367,9 @@ export function ClientCampaignPrep({
                                           className={`flex items-start gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border/70 bg-background hover:border-border hover:bg-muted/40'}`}
                                           onClick={() => selectPromptStage(prompt.id)}
                                         >
-                                          <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                                            {step ?? '·'}
-                                          </span>
                                           <span className="min-w-0 flex-1">
                                             <span className="block text-xs font-semibold leading-4">{prompt.label}</span>
-                                            {/* Only the exception is labelled. Nine
-                                                repetitions of "Workspace default"
-                                                buried the one that had changed. */}
+                                            {/* Label overrides so changed instructions are easy to find. */}
                                             {customized && (
                                               <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
                                                 Customized
@@ -2318,9 +2389,11 @@ export function ClientCampaignPrep({
                                 <div><p className="text-sm font-semibold">{selectedPromptDefault.label}</p><p className="mt-1 text-xs text-muted-foreground">{selectedPromptDefault.description}</p></div>
                                 <Badge variant={selectedPromptCustomized ? 'outline' : 'secondary'} className="w-fit">{selectedPromptCustomized ? 'Custom prompt' : 'Default prompt'}</Badge>
                               </div>
-                              <div className="mt-3 rounded-lg border p-3">
+                              <details className="mt-4 rounded-lg border p-3">
+                                <summary className="cursor-pointer text-xs font-medium">Advanced settings · model and system instruction</summary>
+                                <div className="mt-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <Label htmlFor="campaign-research-stage-model" className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Model this stage runs on</Label>
+                                  <Label htmlFor="campaign-research-stage-model" className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Model for this stage · workspace-wide</Label>
                                   {promptModelsQuery.isError && (
                                     <button
                                       type="button"
@@ -2356,15 +2429,17 @@ export function ClientCampaignPrep({
                                     ? 'The model list could not be read from your selected AI provider, so this cannot be changed right now. Everything else on this stage still saves.'
                                     : promptModelsQuery.isLoading
                                       ? 'Reading the models this workspace can use…'
-                                      : 'Read live from your selected AI provider. Change the default provider in Billing to use Claude or OpenAI models.'}
+                                      : 'Available models come from your selected AI provider. Change the default provider in Billing to use Claude or OpenAI. Model changes save immediately for every client in this workspace.'}
                                 </p>
                               </div>
                               <div className="mt-3 rounded-lg border bg-muted/20 p-3">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">System instruction (fixed)</p>
                                 <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{selectedPromptDefault.system}</p>
                               </div>
+                              </details>
                               <div className="mt-4 space-y-2">
-                                <Label htmlFor="campaign-research-stage-prompt">Prompt instructions</Label>
+                                <Label htmlFor="campaign-research-stage-prompt">Instructions</Label>
+                                <p className="text-xs leading-5 text-muted-foreground">Required-field switches save immediately for every client in this workspace. Save and Discard below apply to the instruction text only.</p>
                                 <PromptVariableTextarea
                                   omitVariableIds={omittedVariableIds}
                                   availability={promptFieldAvailability}
@@ -2395,14 +2470,15 @@ export function ClientCampaignPrep({
                                   podcastName={podcast?.podcast_name}
                                 />
                               </div>
-                              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="sticky bottom-0 -mx-4 mt-4 flex flex-col-reverse gap-2 border-t bg-background px-4 py-3 sm:-mx-5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                                 <Button type="button" variant="ghost" size="sm" disabled={promptBusy} onClick={restorePromptDefault}><RefreshCw className="mr-2 h-3.5 w-3.5" />Restore default</Button>
                                 <div className="flex justify-end gap-2"><Button type="button" variant="outline" size="sm" disabled={!promptDirty || promptBusy} onClick={discardPromptChanges}>Discard changes</Button><Button type="button" size="sm" disabled={!promptDirty || !promptDraft.trim() || promptBusy} onClick={savePromptChanges}>{savePromptMutation.isPending ? 'Saving…' : 'Save prompt'}</Button></div>
                               </div>
                             </div>
                           </div>
-                          )}
-                        </section>
+          </section>
+        </DialogContent>
+      </Dialog>
   ) : null
 
   const flow = podcast ? (
@@ -2643,7 +2719,7 @@ export function ClientCampaignPrep({
                     : 'Research is running. Closing this panel is fine; the run needs this tab to stay open, and every finished stage is saved if it stops.'
                   : researchFailed
                     ? 'Research paused before the pitch could be prepared. Completed stages are saved.'
-                    : 'Research is saved to this podcast and used to shape the pitch.')}
+                    : selectedSequenceLoading ? 'Preparing your selected sequence…' : selectedSequenceReady ? `Next: edit and save ${pitchAngles.length > 0 ? `Option ${selectedAngleIndex + 1}` : 'your draft'}. Nothing sends in this step.` : 'Prepare a sequence to continue.')}
                 {activeStep === 'pitch' && (!emailReady
                   ? 'No valid contact email is set. Go back to Find email and choose or enter one before sending.'
                   : draftHasUnsavedEdits
@@ -2654,7 +2730,7 @@ export function ClientCampaignPrep({
                       ? `All edits are saved. Sending ${alreadyStaged ? 'updates' : 'adds'} ${hostName.trim() || 'this host'} ${alreadyStaged ? 'in' : 'to'} ${chosenCampaign?.name || campaign?.name || 'the campaign'}, and that campaign is live, so the opening email goes out on its next send window.`
                       : 'All edits are saved. Sending adds this host to the campaign as a lead. The campaign is paused, so nothing goes out until you start outreach.')}
               </p>
-              <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+              <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end ${activeStep === 'research' ? 'grid-cols-2' : ''}`}>
                 {/* Only when there is a choice to make. One campaign needs no
                     picker, and a picker offering one option reads as a setting
                     somebody forgot to finish. */}
@@ -2717,7 +2793,7 @@ export function ClientCampaignPrep({
                 )}
                 {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />{page ? 'Previous step' : 'Back'}</Button>}
                 {activeStep === 'email' && <Button type="button" disabled={!emailReady || !relationshipCanProceed} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
-                {activeStep === 'research' && <Button type="button" disabled={!researchComplete} onClick={() => { setActiveSequenceEmail('opening'); setActiveStep('pitch') }}>Finalize selected pitch<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'research' && <Button type="button" className="col-span-2 row-start-1" disabled={!selectedSequenceReady || !relationshipCanProceed} onClick={() => { setActiveSequenceEmail('opening'); setActiveStep('pitch') }}>Continue with {pitchAngles.length > 0 ? `Option ${selectedAngleIndex + 1}` : 'this draft'}<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'pitch' && <Button type="button" variant={submitWillSend ? 'destructive' : 'default'} disabled={submitDisabled} onClick={() => (submitWillSend ? setConfirmSendOpen(true) : prepareMutation.mutate())}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{submitWillSend ? 'Send to Client Campaign (goes live)' : alreadyStaged ? 'Update in Client Campaign' : 'Send to Client Campaign'}</Button>}
               </div>
             </div>

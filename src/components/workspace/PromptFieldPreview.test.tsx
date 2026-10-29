@@ -126,8 +126,8 @@ describe('PromptFieldPreview', () => {
   // it still run, against "Not available".
   it('warns that instructions built on an empty field still run', () => {
     render(<PromptFieldPreview content={PROMPT} preview={preview()} />)
-    expect(screen.getByText(/quote or summarise/)).toBeInTheDocument()
-    expect(screen.getByText(/will be written from/)).toBeInTheDocument()
+    expect(screen.getByText(/^Missing:/)).toHaveTextContent('Latest episode transcript')
+    expect(screen.getByText(/These fields reach the model as/)).toBeInTheDocument()
   })
 
   it('says nothing about empty fields when every field is filled', () => {
