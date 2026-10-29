@@ -6,10 +6,10 @@ serve(async req => {
  const secret = Deno.env.get('RESEARCH_TICK_SECRET')
  if (req.method !== 'POST' || !secret || !(await secretsMatch(req.headers.get('x-research-secret') ?? '',secret))) return new Response('Unauthorized',{status:401})
  const admin = createAdminClient()
- const {data:jobs,error} = await admin.rpc('claim_client_research_job')
+ const {data:jobs,error} = await admin.rpc('claim_client_research_jobs', {p_limit:4})
  if (error) return new Response('Claim failed',{status:500})
- const job = jobs?.[0]
- if (!job) return Response.json({idle:true})
+ if (!jobs?.length) return Response.json({idle:true})
+ const results = await Promise.allSettled(jobs.map(async (job: {id:string;phase:string;workspace_id:string;client_id:string;shortlist_podcast_id:string;continue_token:string|null;lease:string}) => {
  try {
    const body = {action:job.phase === 'research' ? 'research-run':'pitch-generate',workspace_id:job.workspace_id,client_id:job.client_id,shortlist_podcast_id:job.shortlist_podcast_id,
      ...(job.phase === 'research' && job.continue_token ? {continue_token:job.continue_token}:{}),...(job.phase === 'pitch'?{angle_index:0}:{})}
@@ -22,5 +22,7 @@ serve(async req => {
  } catch(error) {
    await admin.from('client_research_jobs').update({status:'failed',message:String(error instanceof Error?error.message:error).slice(0,500),updated_at:new Date().toISOString()}).eq('id',job.id).eq('lease',job.lease).eq('status','running')
  }
- return Response.json({processed:job.id})
+ return job.id
+ }))
+ return Response.json({processed:results.filter(result=>result.status==='fulfilled').length,claimed:jobs.length})
 })

@@ -8,6 +8,7 @@ const { loadModule, parseSync } = require('libpg-query')
 const root = fileURLToPath(new URL('..', import.meta.url))
 
 const SQL_INPUTS = [
+  'supabase/migrations/20261031000600_parallel_bulk_research.sql',
   'supabase/migrations/20261031000500_bulk_research.sql',
   'supabase/migrations/20261031000300_workspace_checkout_attempts.sql',
   'supabase/migrations/20261031000400_legacy_credit_reviews.sql',
