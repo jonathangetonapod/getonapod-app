@@ -10,7 +10,31 @@ import { toFunctionError } from '@/lib/functionErrors'
 
 interface Job {
  id: string; shortlist_podcast_id: string; batch_id: string; podcast_name: string; status: 'queued'|'running'|'completed'|'failed'|'skipped'; phase: string; message: string|null
+ research_progress?: {completed_stages?:string[];current_stage?:string|null;updated_at?:string|null}|null
+ pitch_steps_completed?:number
  pitch: {subject:string;body:string;follow_up_1_body?:string;follow_up_2_body?:string}|null
+}
+const RESEARCH_STEPS = ['podcast_profile','recent_episodes','host_profile','guest_patterns','guest_fit','pitch_angles']
+const STAGE_LABELS:Record<string,string> = {
+ podcast_profile:'podcast research',recent_episodes:'episode analysis',host_profile:'host identification',
+ guest_patterns:'guest verification',guest_fit:'topic alignment',pitch_angles:'final research summary',
+}
+function savedResearchSteps(job:Job) {
+ return job.phase === 'pitch' || job.status === 'completed' ? 6
+   : RESEARCH_STEPS.filter(id=>job.research_progress?.completed_stages?.includes(id)).length
+}
+function jobStatus(job:Job) {
+ if (['completed','failed','skipped'].includes(job.status)) return job.status
+ const running = job.status === 'running'
+ if (job.phase === 'pitch') {
+   const saved=job.pitch_steps_completed ?? 0
+   const next=saved===0?'pitch draft':saved===1?'claim audit':'pitch cleanup'
+   return `Research complete${saved ? ` · ${saved} pitch steps saved` : ''} · ${running?'Working on':'Waiting for'} ${next}`
+ }
+ const saved=savedResearchSteps(job)
+ if (!saved && !running) return 'Waiting to start'
+ const stage=STAGE_LABELS[job.research_progress?.current_stage ?? ''] ?? 'research'
+ return `${saved}/6 research steps saved · ${running?'Working on':'Waiting for'} ${stage}`
 }
 export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHref}:{workspaceId:string;clientId:string;selectedIds:string[];pitchHref?:(id:string)=>string}) {
  const cache = useQueryClient()
@@ -28,11 +52,13 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
  const [selectedBatch,setSelectedBatch] = useState<string>('')
  const batchIds = [...new Set(jobs.map(job=>job.batch_id))]
  const visible = jobs.filter(job=>job.batch_id === (selectedBatch || batchIds[0]))
- const transitions = jobs.map(job=>`${job.id}:${job.status}:${job.phase}`).join('|')
+ const transitions = jobs.map(job=>`${job.id}:${job.status}:${job.phase}:${job.research_progress?.updated_at ?? ''}`).join('|')
  useEffect(()=>{
    if (transitions) void cache.invalidateQueries({queryKey:['client-shortlist',workspaceId,clientId]})
  },[transitions,cache,workspaceId,clientId])
- const active = visible.filter(job=>['queued','running'].includes(job.status)).length
+ const running = visible.filter(job=>job.status==='running').length
+ const waiting = visible.filter(job=>job.status==='queued').length
+ const progress = visible.reduce((sum,job)=>sum + (['completed','failed','skipped'].includes(job.status)?1:Math.min(0.95,(savedResearchSteps(job)+(job.pitch_steps_completed ?? 0))/9)),0)
  const completed = visible.filter(job=>job.status==='completed').length
  const failed = visible.filter(job=>job.status==='failed').length
  const skipped = visible.filter(job=>job.status==='skipped').length
@@ -51,13 +77,13 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
    {selectedIds.length>0 && <Button variant="outline" onClick={()=>setReview(true)} disabled={busy}><FlaskConical className="mr-2 h-4 w-4"/>Run research on {selectedIds.length} selected</Button>}
    {query.isError && <p role="alert" className="text-sm text-destructive">Research batches could not be loaded. <button className="underline" onClick={()=>void query.refetch()}>Retry</button></p>}
    {visible.length>0 && <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
-     <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">Bulk research</h3><p role="status" className="text-sm">{completed} complete · {active} queued or running · {failed} need attention · {skipped} skipped</p></div>
+     <div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">Bulk research</h3><p role="status" className="text-sm">{completed} complete · {running} running · {waiting} waiting · {failed} need attention · {skipped} skipped</p></div>
      <label className="block text-sm">Batch history<select aria-label="Batch history" className="ml-2 rounded border bg-background p-1" value={selectedBatch || batchIds[0]} onChange={event=>setSelectedBatch(event.target.value)}>{batchIds.map((id,index)=><option key={id} value={id}>{index===0 ? 'Latest batch' : `Earlier batch ${batchIds.length-index}`}</option>)}</select></label>
-     <progress aria-label="Batch progress" className="w-full accent-primary" max={visible.length} value={completed+failed+skipped}/>
-     <p className="text-xs text-muted-foreground">Runs in the background. Drafts are saved here for review; no emails are sent.</p>
+     <progress aria-label="Batch progress" className="w-full accent-primary" max={visible.length} value={progress}/>
+     <p className="text-xs text-muted-foreground">Runs in the background, one step at a time. Waiting between steps is normal; the worker checks the queue every minute. Drafts are saved here for review; no emails are sent.</p>
      <div className="max-h-80 overflow-auto divide-y">{visible.map(job=><div key={job.id} className="flex items-start gap-2 py-3 text-sm">
        {job.status==='running'?<Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-600"/>:job.status==='completed'?<CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"/>:job.status==='failed'?<AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600"/>:<Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/>}
-       <div className="min-w-0 flex-1"><p className="font-medium">{job.podcast_name}</p><p className="text-xs text-muted-foreground">{job.status==='running' ? (job.phase==='pitch'?'Writing pitch':'Researching'):job.status==='queued' && job.phase==='pitch'?'Queued for pitch':job.status}{job.message?` — ${job.message}`:''}</p></div>
+       <div className="min-w-0 flex-1"><p className="font-medium">{job.podcast_name}</p><p className="text-xs text-muted-foreground">{jobStatus(job)}{job.message?` — ${job.message}`:''}</p>{['queued','running'].includes(job.status) && <progress aria-label={`Research progress for ${job.podcast_name}`} className="mt-2 h-1.5 w-full accent-primary" max={9} value={savedResearchSteps(job)+(job.pitch_steps_completed ?? 0)}/>}</div>
        {job.status==='failed' && <Button size="sm" variant="outline" disabled={busy} onClick={()=>void act('research-batch-retry',{job_id:job.id})}>Retry</Button>}
        {job.pitch && <Button size="sm" variant="outline" onClick={()=>setDraft(job)}>View draft</Button>}
      </div>)}</div>

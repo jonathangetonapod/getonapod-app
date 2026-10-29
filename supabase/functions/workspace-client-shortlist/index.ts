@@ -935,10 +935,13 @@ serve(async (req) => {
     if (action === 'research-batch-list') {
       requireOnlyKeys(body, ['action','workspace_id','client_id'])
       const { data, error } = await authContext.admin.from('client_research_jobs')
-        .select('id,batch_id,shortlist_podcast_id,podcast_name,status,phase,message,pitch,created_at,updated_at')
+        .select('id,batch_id,shortlist_podcast_id,podcast_name,status,phase,message,pitch,pitch_outputs,created_at,updated_at,podcast:client_dashboard_podcasts!shortlist_podcast_id(research_progress)')
         .eq('workspace_id',workspaceId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(1000)
       if (error) throw new HttpError(500,'BATCH_READ_FAILED','Could not read research batches')
-      return jsonResponse(req,METHODS,200,{jobs:data})
+      return jsonResponse(req,METHODS,200,{jobs:(data ?? []).map(({podcast,pitch_outputs,...job}) => {
+        const joined = (Array.isArray(podcast) ? podcast[0] : podcast) as {research_progress?:unknown} | null
+        return {...job,research_progress:joined?.research_progress ?? null,pitch_steps_completed:Array.isArray(pitch_outputs)?pitch_outputs.length:0}
+      })})
     }
     if (action === 'research-batch-start') {
       if (!Deno.env.get('RESEARCH_TICK_SECRET')) throw new HttpError(503,'BATCH_NOT_CONFIGURED','Background research is not configured yet')

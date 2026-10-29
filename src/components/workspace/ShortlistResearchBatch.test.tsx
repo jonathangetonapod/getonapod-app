@@ -17,7 +17,7 @@ it('only queues the selected shortlist row ids after reviewing the batch',async(
 it('shows saved progress and retries only the failed job',async()=>{
  invoke.mockResolvedValue({data:{jobs:[{id:'one',batch_id:'batch',podcast_name:'One',status:'completed',phase:'pitch',pitch:{subject:'Guest idea',body:'Saved email'}},{id:'two',batch_id:'batch',podcast_name:'Two',status:'failed',phase:'research',message:'Missing transcript'}]},error:null})
  mount()
- expect(await screen.findByText(/1 complete · 0 queued or running · 1 need attention/)).toBeInTheDocument()
+ expect(await screen.findByText(/1 complete · 0 running · 0 waiting · 1 need attention/)).toBeInTheDocument()
  fireEvent.click(screen.getByRole('button',{name:'View draft'}))
  expect(screen.getByText('Saved email')).toBeInTheDocument()
  fireEvent.click(screen.getByRole('button',{name:'Close'}))
@@ -46,4 +46,12 @@ it('refreshes shortlist data when background job status changes',async()=>{
  invoke.mockResolvedValue({data:{jobs:[{...job,status:'completed',phase:'pitch'}]},error:null})
  await client.invalidateQueries({queryKey:['research-batches','workspace','client']})
  await waitFor(()=>expect(invalidate).toHaveBeenCalledWith({queryKey:['client-shortlist','workspace','client']}))
+})
+
+it('shows saved research while a show waits between stages',async()=>{
+ invoke.mockResolvedValue({data:{jobs:[{id:'one',batch_id:'batch',podcast_name:'Show in progress',status:'queued',phase:'research',research_progress:{completed_stages:['podcast_profile','recent_episodes'],current_stage:'host_profile'}}]},error:null})
+ mount()
+ expect(await screen.findByText('2/6 research steps saved · Waiting for host identification')).toBeInTheDocument()
+ expect(screen.getByRole('progressbar',{name:'Batch progress'})).toHaveAttribute('value',String(2/9))
+ expect(screen.getByRole('progressbar',{name:'Research progress for Show in progress'})).toHaveAttribute('value','2')
 })
