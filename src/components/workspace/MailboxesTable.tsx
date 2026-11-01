@@ -12,6 +12,7 @@ import { MailboxListBody } from './mailboxes/MailboxListBody'
 import { MailboxPager } from './mailboxes/MailboxPager'
 import { MailboxSummary } from './mailboxes/MailboxSummary'
 import { MailboxTableHead } from './mailboxes/MailboxTableHead'
+import { responseProviderLabel } from '@/lib/outreachProviders'
 
 /**
  * Every sending mailbox, worst first, and who it sends for.
@@ -68,7 +69,7 @@ export const MailboxesTable = ({
     onDone: (emails) => list.setMany(emails, false),
     canPause: data?.capabilities?.mailboxPause !== false,
   })
-  const providerLabel = data?.provider_label || 'Instantly'
+  const providerLabel = responseProviderLabel(data) ?? 'Your sending platform'
   // Said once, above the list, so a missing control reads as a fact about the
   // platform rather than as something broken here.
   const providerLimits = [

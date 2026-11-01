@@ -52,7 +52,7 @@ describe('campaignErrorGuidance', () => {
   it('gives Email Bison and ReachInbox failures the same advice, naming the right provider', () => {
     expect(campaignErrorGuidance('EMAILBISON_KEY_REJECTED')?.title).toBe('Email Bison rejected the workspace API key')
     expect(campaignErrorGuidance('REACHINBOX_RATE_LIMITED')?.remedy).toEqual({ kind: 'retry', label: 'Try again' })
-    expect(campaignErrorGuidance('EMAILBISON_URL_INVALID')?.explanation).toMatch(/https:\/\/send\.youragency\.com/)
+    expect(campaignErrorGuidance('EMAILBISON_URL_INVALID')?.explanation).toMatch(/send\.youragency\.com/)
     expect(campaignErrorGuidance('EMAILBISON_RESOURCE_NOT_FOUND')?.remedy).toEqual(
       campaignErrorGuidance('INSTANTLY_RESOURCE_NOT_FOUND')?.remedy,
     )
@@ -93,6 +93,13 @@ describe('campaignErrorGuidance', () => {
         .map((code) => campaignErrorGuidance(code)?.title),
     )
     expect(titles.size).toBe(3)
+  })
+
+  it('tells a blocked platform switch to clear mappings, not to change the key', () => {
+    const guidance = campaignErrorGuidance('PROVIDER_SWITCH_BLOCKED')
+    expect(guidance?.title).not.toBe(campaignErrorGuidance('INSTANTLY_WORKSPACE_MISMATCH')?.title)
+    expect(guidance?.explanation).toMatch(/unlink or clear/i)
+    expect(guidance?.explanation).not.toMatch(/right key/i)
   })
 
   it('offers a retry for the provider faults that pass on their own', () => {

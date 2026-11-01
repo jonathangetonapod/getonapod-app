@@ -54,7 +54,9 @@ export async function createOutreachProvider(
     if (!origin) {
       throw new OutreachProviderError(409, "EMAILBISON_URL_INVALID", "Email Bison instance URL is missing");
     }
-    await assertPublicProviderHost(origin, "Email Bison", "EMAILBISON");
+    await assertPublicProviderHost(origin, "Email Bison", "EMAILBISON", {
+      allowListed: emailBisonAllowedSuffixes().length > 0,
+    });
     return new EmailBisonProvider(origin, apiKey);
   }
   if (kind === "reachinbox") return new ReachInboxProvider(apiKey);

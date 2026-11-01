@@ -1752,4 +1752,24 @@ assert.match(sdrShared, /input\.leadEmail\.trim\(\)\.toLowerCase\(\)/u)
 assert.match(sdrShared, /'inbox_reply_package',\s+workspaceId,\s+clientId,\s+input\.referenceKind,\s+leadEmail,\s+input\.threadKey \?\? null,\s+input\.emailId \?\? null,/u)
 assert.match(sdrShared, /chargeEntryId: charge\.replayed \? null : charge\.entryId/u)
 
+// Outreach providers: switching provider, base URL or provider workspace is
+// refused while anything still carries the old provider's ids, including a
+// campaign whose create is in flight.
+{
+  const connect = edge.slice(edge.indexOf('action === "connect-instantly"'))
+  assert.match(connect, /connectionKind\(existing\) !== kind[\s\S]*?\(existing\.provider_base_url \?\? null\) !== baseUrl[\s\S]*?provider_sync_state\.in\.\(creating,syncing\)[\s\S]*?client_instantly_campaign_links[\s\S]*?workspace_client_campaign_targets[\s\S]*?\.not\("instantly_lead_id", "is", null\)[\s\S]*?PROVIDER_SWITCH_BLOCKED[\s\S]*?INSTANTLY_WORKSPACE_MISMATCH[\s\S]*?\.eq\("provider", kind\)/u)
+}
+// Raw Instantly calls (inbox actions) refuse any other provider's key.
+assert.match(edge, /function integrationApiKey[\s\S]*?connectionKind\(connection\) !== "instantly"[\s\S]*?unsupportedFeature/u)
+assert.match(enrollTick, /\.eq\('provider', 'instantly'\)/u)
+assert.match(nudgeTick, /\(connection\.provider \?\? 'instantly'\) === 'instantly'/u)
+// The scheduled sync gives each connection its own budget and runs them side
+// by side, so one slow tenant-chosen host cannot starve the rest.
+assert.match(edge, /const CRON_CONNECTION_BUDGET_MS = 40_000;/u)
+// The sweep must rotate: ordering by last_verified_at (advanced only on
+// success) let five always-failing connections starve every other workspace.
+assert.match(edge, /\.eq\("status", "connected"\)[\s\S]{0,400}?\.order\("updated_at", \{ ascending: true \}\)/u)
+assert.match(edge, /finally \{[\s\S]{0,300}?\.update\(\{ updated_at: new Date\(\)\.toISOString\(\) \}\)/u)
+assert.match(edge, /if \(Date\.now\(\) > deadline\) break;[\s\S]*?Promise\.allSettled\([\s\S]*?\.map\(syncConnection\)/u)
+
 console.log('Workspace Client Campaign inbox write-safety checks passed')

@@ -155,6 +155,28 @@ describe('WorkspaceCampaignDetail', () => {
     expect(await screen.findByText(/reached its daily sending limit/i)).toBeInTheDocument()
   })
 
+  // Instantly explains a stalled campaign here; a platform that cannot must
+  // say so rather than leave a gap that reads as "nothing is wrong".
+  it('says when the platform cannot report why a campaign is not sending', async () => {
+    mockedCampaign.mockResolvedValue({
+      ...campaignState,
+      integration: {
+        ...campaignState.integration,
+        provider: 'emailbison',
+        provider_label: 'Email Bison',
+        capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+      },
+    } as never)
+
+    renderPage()
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Schedule' }), { button: 0 })
+
+    expect(await screen.findByTestId('sending-status-unsupported')).toHaveTextContent(
+      'Email Bison does not report why a campaign is not sending.',
+    )
+    expect(getWorkspaceCampaignSendingStatus).not.toHaveBeenCalled()
+  })
+
   it('opens on the podcast list and keeps the saved sequence under Podcasts', async () => {
     renderPage()
 

@@ -150,6 +150,11 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
     explanation: 'The stored campaigns belong to a workspace this key cannot see, so nothing here matches what the sending platform returns. Reconnecting with the right key resolves it.',
     remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
   },
+  PROVIDER_SWITCH_BLOCKED: {
+    title: 'This workspace still has campaigns on its current sending platform',
+    explanation: 'Their campaign and lead ids only mean something on that platform, so switching now would strand them. The details list what is still mapped; unlink or clear those campaigns and staged leads first, then connect the new platform.',
+    remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
+  },
   INSTANTLY_CREDENTIAL_INVALID: {
     title: 'The stored key could not be read',
     explanation: 'The saved credential failed to decrypt, so no call was made and nothing was sent. Reconnecting the sending platform stores a fresh one.',
@@ -257,7 +262,13 @@ function providerFamilyGuidance(label: string, failure: string): CampaignErrorGu
     case 'URL_INVALID':
       return {
         title: `That ${label} address cannot be used`,
-        explanation: `Enter the address you log in to ${label} at, for example https://send.youragency.com — https, no path, a public domain.`,
+        explanation: `Enter the address you log in to ${label} at, for example send.youragency.com — no path, a public domain.`,
+        remedy: { kind: 'none' },
+      }
+    case 'URL_UNVERIFIABLE':
+      return {
+        title: `${label} addresses need to be approved first`,
+        explanation: `This server cannot confirm where the ${label} address points, so it is not contacted. Ask Get On A Pod support to add your instance domain, then connect again.`,
         remedy: { kind: 'none' },
       }
     case 'REDIRECT_REFUSED':

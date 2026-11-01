@@ -31,6 +31,22 @@ export function integrationProviderLabel(
   return integration?.provider_label || OUTREACH_PROVIDER_LABELS[integrationProvider(integration)]
 }
 
+/**
+ * The platform a response names, or null when there is none to name.
+ *
+ * Responses written before other providers existed omit the field and could
+ * only mean Instantly. The server sends null when no platform is connected,
+ * and a screen still loading has no response at all; both read as null so the
+ * copy says "your sending platform" instead of naming a brand that may be wrong.
+ */
+export function responseProviderLabel(
+  response: { provider_label?: string | null } | null | undefined,
+): string | null {
+  if (!response) return null
+  if (response.provider_label === undefined) return 'Instantly'
+  return response.provider_label || null
+}
+
 export interface OutreachProviderInfo {
   kind: OutreachProviderKind
   label: string

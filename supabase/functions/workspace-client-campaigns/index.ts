@@ -2550,14 +2550,21 @@ async function syncProviderCampaign(
     .eq("workspace_id", campaign.workspace_id);
 }
 
+/** Per-connection time budget for one scheduled sync run. */
+const CRON_CONNECTION_BUDGET_MS = 40_000;
+
 function providerHttpError(error: OutreachProviderError): HttpError {
+  // Our own input refusals (a mistyped instance URL, an unknown provider) and
+  // a provider's 400/422 are the caller's to fix, so 400 — not a 502.
   const status = error.status === 429
     ? 429
-    : error.status === 401
+    : error.status === 401 || error.status === 400 || error.status === 422
     ? 400
     : error.status === 402 || error.status === 403 || error.status === 404 ||
         error.status === 409
     ? 409
+    : error.status === 503
+    ? 503
     : 502;
   return new HttpError(status, error.code, error.message);
 }
@@ -2577,11 +2584,19 @@ serve(async (req) => {
         .from("workspace_instantly_integrations")
         .select(CONNECTION_COLUMNS)
         .eq("status", "connected")
-        .order("last_verified_at", { ascending: true, nullsFirst: true })
+        // updated_at, not last_verified_at: only a successful sync advances
+        // last_verified_at, so five connections that always fail (a revoked
+        // key, an unverifiable Email Bison host) would hold the head of the
+        // queue forever. Every connection the sweep visits is touched below.
+        .order("updated_at", { ascending: true })
         .limit(5);
       let synced = 0;
       let failed = 0;
-      for (const connection of (connections ?? []) as unknown as ConnectionRow[]) {
+      // Connections run side by side, each with its own time budget, so one
+      // slow or hostile provider host (a tenant chooses its Email Bison URL)
+      // cannot use up the invocation and starve every other workspace.
+      const syncConnection = async (connection: ConnectionRow) => {
+        const deadline = Date.now() + CRON_CONNECTION_BUDGET_MS;
         try {
           const { data: owner } = await admin
             .from("workspace_memberships")
@@ -2606,6 +2621,7 @@ serve(async (req) => {
             user: { id: owner?.user_id ?? null },
           } as unknown as AuthContext;
           for (const campaign of (campaigns ?? []) as unknown as CampaignRow[]) {
+            if (Date.now() > deadline) break;
             try {
               await syncProviderCampaign(cronContext, connection, campaign);
               synced += 1;
@@ -2615,8 +2631,19 @@ serve(async (req) => {
           }
         } catch (_error) {
           failed += 1;
+        } finally {
+          // Rotate this connection to the back of the queue, pass or fail.
+          // The row trigger stamps updated_at; this write changes nothing else.
+          await admin
+            .from("workspace_instantly_integrations")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("workspace_id", connection.workspace_id)
+            .then(() => undefined, () => undefined);
         }
-      }
+      };
+      await Promise.allSettled(
+        ((connections ?? []) as unknown as ConnectionRow[]).map(syncConnection),
+      );
       return jsonResponse(req, METHODS, 200, { synced, failed });
     }
 
@@ -2638,6 +2665,8 @@ serve(async (req) => {
       ) {
         return jsonResponse(req, METHODS, 200, {
           connected: false,
+          provider: connection ? connectionKind(connection) : null,
+          provider_label: connection ? connectionLabel(connection) : null,
           provider_workspace_name: connection?.provider_workspace_name || null,
           accounts: [],
           last_synced_at: connection?.last_verified_at || null,
@@ -3006,7 +3035,9 @@ serve(async (req) => {
             .from("workspace_client_campaigns")
             .select("id", { count: "exact", head: true })
             .eq("workspace_id", workspaceId)
-            .not("instantly_campaign_id", "is", null),
+            // A campaign still being created has no id yet but will write
+            // one, from the old provider, when the in-flight call returns.
+            .or("instantly_campaign_id.not.is.null,provider_sync_state.in.(creating,syncing)"),
           context.admin
             .from("client_instantly_campaign_links")
             .select("instantly_campaign_id", { count: "exact", head: true })
@@ -3024,13 +3055,37 @@ serve(async (req) => {
             "Existing campaign mappings could not be checked",
           );
         }
-        if ((mappedCampaigns.count || 0) + (linkedCampaigns.count || 0) + (stagedTargets.count || 0) > 0) {
+        // Same provider and instance, another workspace: the pre-provider rule
+        // (mapped campaigns only). Old links and launched targets are inert
+        // there — Instantly ids are UUIDs, unique across workspaces — and
+        // launched targets cannot be cleared, so counting them would block the
+        // move forever. A provider or instance change counts everything,
+        // because small-integer ids from the old side would address unrelated
+        // records on the new one.
+        const crossesProvider = connectionKind(existing) !== kind ||
+          (existing.provider_base_url ?? null) !== baseUrl;
+        const blockingCount = (mappedCampaigns.count || 0) +
+          (crossesProvider ? (linkedCampaigns.count || 0) + (stagedTargets.count || 0) : 0);
+        if (blockingCount > 0) {
+          if (crossesProvider) {
+            // Its own code: the fix is clearing what is mapped, not a new key.
+            const blocking = [
+              mappedCampaigns.count ? `${mappedCampaigns.count} client campaign${mappedCampaigns.count === 1 ? "" : "s"}` : null,
+              linkedCampaigns.count ? `${linkedCampaigns.count} linked campaign${linkedCampaigns.count === 1 ? "" : "s"}` : null,
+              stagedTargets.count ? `${stagedTargets.count} staged lead${stagedTargets.count === 1 ? "" : "s"}` : null,
+            ].filter(Boolean).join(", ");
+            throw new HttpError(
+              409,
+              "PROVIDER_SWITCH_BLOCKED",
+              connectionKind(existing) !== kind
+                ? `${connectionLabel(existing)} still holds ${blocking} for this workspace. Clear them before switching to ${label}.`
+                : `The current ${label} instance still holds ${blocking} for this workspace. Clear them before connecting a different instance.`,
+            );
+          }
           throw new HttpError(
             409,
             "INSTANTLY_WORKSPACE_MISMATCH",
-            connectionKind(existing) !== kind
-              ? `This workspace has campaigns mapped in ${connectionLabel(existing)}. Unlink them before switching to ${label}.`
-              : `This workspace already has campaigns mapped to a different ${label} workspace`,
+            `This workspace already has campaigns mapped to a different ${label} workspace`,
           );
         }
       }
@@ -4871,7 +4926,7 @@ serve(async (req) => {
       }
       return jsonResponse(req, METHODS, 200, {
         connected,
-        provider_label: connectionLabel(connection),
+        provider_label: connection ? connectionLabel(connection) : null,
         links: buildLinks(
           new Map(providerCampaigns.map((campaign) => [campaign.id, campaign.rendersOurPitch])),
           new Map(providerCampaigns.map((campaign) => [campaign.id, campaign.status])),

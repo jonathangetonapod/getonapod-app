@@ -2748,7 +2748,7 @@ export function ClientCampaignPrep({
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         Which campaign this host joins. Only campaigns created in this app
-                        appear here — one built in Instantly carries its own copy, so a pitch
+                        appear here — one built in your sending platform carries its own copy, so a pitch
                         sent into it would go out as that copy instead of this one.
                       </TooltipContent>
                     </Tooltip>

@@ -141,13 +141,20 @@ export function reachInboxCampaignStatus(row: Json): number {
 /** ReachInbox lead → Instantly lead code. */
 export function reachInboxLeadStatus(row: Json): number | null {
   const status = typeof row.status === "string" ? row.status.trim().toUpperCase() : "";
-  if (row.isBlocked === true) return -3;
+  // Live rows carry isBlocked as 0/1 (checked 2026-11-01); a boolean is still read.
+  if (row.isBlocked === true || row.isBlocked === 1) return -3;
   if (status.includes("BOUNCE")) return -1;
   if (status.includes("UNSUBSCRIB")) return -2;
-  if (row.completed === true || status === "COMPLETED" || row.sequenceStopped === 1 || row.manuallyStopped === true) {
+  if (
+    row.completed === true || status === "COMPLETED" || count(row.sequenceStopped) > 0 || row.manuallyStopped === true
+  ) {
     return 3;
   }
-  if (row.isPaused === true || row.paused === true || status === "PAUSED") return 2;
+  // Live (2026-11-01): `isPaused` mirrors the CAMPAIGN — every lead of a
+  // draft or paused campaign carries isPaused: true — so it is not read here.
+  // Reading it locked every pitch staged into a not-yet-launched campaign.
+  // The lead's own pause is `paused`.
+  if (row.paused === true || status === "PAUSED") return 2;
   if (!status && row.completed === undefined) return null;
   return 1;
 }
@@ -171,10 +178,36 @@ export async function reachInboxKeyFingerprint(apiKey: string): Promise<string> 
   return `key-${(await sha256Hex(apiKey)).slice(0, 32)}`;
 }
 
-function scheduleBody(campaignId: number, spec: CampaignSpec) {
+/** A campaign's own IANA zone when the listing row carries one. */
+function campaignTimezone(row: Json): string | null {
+  const schedule = record(row.schedule) ?? record(row.campaignSchedule) ??
+    (Array.isArray(row.schedules) ? record(row.schedules[0]) : null);
+  for (const value of [row.timezone, row.timeZone, schedule?.timezone, schedule?.timeZone]) {
+    const zone = text(value, 100);
+    if (!zone) continue;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone });
+      return zone;
+    } catch {
+      // Not an IANA name; keep looking.
+    }
+  }
+  return null;
+}
+
+/**
+ * set-schedule refuses a body without both dates ("startDate and endDate are
+ * required.", live 2026-11-01; null is refused too). Instantly has no end
+ * date, so the window opens now and runs five years: in effect, open-ended.
+ */
+const SCHEDULE_SPAN_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+
+function scheduleBody(campaignId: number, spec: CampaignSpec, now = Date.now()) {
   const days = new Set(spec.sendDays?.length ? spec.sendDays : [1, 2, 3, 4, 5]);
   return {
     campaignId,
+    startDate: new Date(now).toISOString(),
+    endDate: new Date(now + SCHEDULE_SPAN_MS).toISOString(),
     schedules: [{
       name: "Sending window",
       timing: { from: spec.windowStart ?? "09:00", to: spec.windowEnd ?? "17:00" },
@@ -252,14 +285,25 @@ export class ReachInboxProvider implements OutreachProvider {
     const accounts = this.accountSummaries(rows);
     await this.request<unknown>("/campaigns/all", { query: new URLSearchParams({ limit: "1", offset: "0" }) });
     const workspaceId = reachInboxWorkspaceId(user?.workspaceId);
-    // A mailbox in that workspace names it; the user record does not.
-    const named = rows.map((row) => record(row.workspace))
-      .find((workspace) => workspace && (!workspaceId || String(workspace.id) === workspaceId));
-    const workspaceName = text(named?.name, 300);
+    // A mailbox in that workspace names it; the user record does not. A
+    // user-level key (live 2026-11-01: workspaceId null, mailboxes from several
+    // workspaces) is named for no single one of them.
+    const names = new Map<string, string>();
+    for (const workspace of rows.map((row) => record(row.workspace))) {
+      if (!workspace || (workspaceId && String(workspace.id) !== workspaceId)) continue;
+      const name = text(workspace.name, 300);
+      if (name) names.set(String(workspace.id), name);
+    }
+    // The bare name, as Email Bison stores it: the UI prefixes the platform.
+    const workspaceName = names.size === 1
+      ? [...names.values()][0]
+      : names.size > 1
+      ? `${names.size} workspaces`
+      : "Workspace";
     return {
       workspace: {
         id: workspaceId ?? await reachInboxKeyFingerprint(this.target.apiKey),
-        name: workspaceName ? `ReachInbox · ${workspaceName}` : "ReachInbox workspace",
+        name: workspaceName,
       },
       accounts,
     };
@@ -371,7 +415,9 @@ export class ReachInboxProvider implements OutreachProvider {
       name,
       senderAccounts: [...new Set((senders ?? (Array.isArray(row.accountsToUse) ? row.accountsToUse : []))
         .flatMap((value) => typeof value === "string" ? [value.trim().toLowerCase()] : []))],
-      timezone: REACHINBOX_DEFAULT_TIMEZONE,
+      // The listing's own zone when it carries one; the default is only a
+      // display fallback, and is never pushed to a campaign we did not build.
+      timezone: campaignTimezone(row) ?? REACHINBOX_DEFAULT_TIMEZONE,
       dailyLimit: Math.min(
         1_000,
         maxLeads && maxLeads > 0 ? maxLeads : totalLimit ? Math.max(1, Math.ceil(totalLimit / EMAILS_PER_HOST)) : 30,
@@ -398,20 +444,28 @@ export class ReachInboxProvider implements OutreachProvider {
         filter: "All",
       });
       if (contains) query.set("contains", contains);
-      const batch = dataOf(await this.request<unknown>("/campaigns/all", { query }));
-      if (!Array.isArray(batch)) throw invalid("campaign list");
+      // The live API (checked 2026-11-01) wraps the page as
+      // { totalCount, totalSearchedCount, rows }; a bare array is still read.
+      const data = dataOf(await this.request<unknown>("/campaigns/all", { query }));
+      const page = record(data);
+      const batch = Array.isArray(data) ? data : Array.isArray(page?.rows) ? page.rows : null;
+      if (!batch) throw invalid("campaign list");
+      const total = optionalCount(contains ? page?.totalSearchedCount : page?.totalCount);
       offset += batch.length;
-      // No total is returned and the server's page cap is undocumented, so a
-      // short page does not prove the end: only an empty page, or one that
-      // repeats rows already seen (an ignored offset), does.
+      // A short page does not prove the end (the server's page cap is
+      // undocumented); the total or an empty page does. A page of rows
+      // already seen means the offset was ignored, so the listing is
+      // truncated, never complete: "absent" would then forget a live mapping.
       const fresh = (batch.filter(record) as Json[]).filter((row) => {
         const id = riId(row.id);
         if (!id || seen.has(id)) return false;
         seen.add(id);
         return true;
       });
-      if (fresh.length === 0) return { rows, complete: true };
+      if (batch.length === 0) return { rows, complete: true };
+      if (fresh.length === 0) return { rows, complete: false };
       rows.push(...fresh);
+      if (total !== null && rows.length >= total) return { rows, complete: true };
     }
     return { rows, complete: false };
   }
@@ -450,30 +504,41 @@ export class ReachInboxProvider implements OutreachProvider {
     return this.campaign(row, senders);
   }
 
-  private async writeAll(id: string, spec: CampaignSpec, includeSequence: boolean) {
+  /**
+   * `ours` is false for an agency's hand-built campaign mapped here. Its name
+   * and schedule are its own: renaming it would add the GOAP- marker, which is
+   * what makes a campaign count as sending our pitch, and pushing a schedule
+   * would move it to a zone it never chose. Only limits and senders change.
+   */
+  private async writeAll(id: string, spec: CampaignSpec, includeSequence: boolean, ours = true) {
     const campaignId = numericId(id);
     await this.request<unknown>("/campaigns/update-details", {
       method: "POST",
-      body: {
-        campaignId,
-        dailyLimit: spec.dailyLimit * EMAILS_PER_HOST,
-        maxNewLeads: spec.dailyLimit,
-        tracking: true,
-        linkTracking: false,
-        stopOnReply: true,
-        // Text-only on every step: these are one-to-one pitches.
-        deliveryOptimizations: 1,
-        unsubscribeHeader: true,
-        prioritizeNewLeads: true,
-        allowRiskyEmails: false,
-        bounceProtection: true,
-      },
+      body: ours || includeSequence
+        ? {
+          campaignId,
+          dailyLimit: spec.dailyLimit * EMAILS_PER_HOST,
+          maxNewLeads: spec.dailyLimit,
+          tracking: true,
+          linkTracking: false,
+          stopOnReply: true,
+          // Text-only on every step: these are one-to-one pitches.
+          deliveryOptimizations: 1,
+          unsubscribeHeader: true,
+          prioritizeNewLeads: true,
+          allowRiskyEmails: false,
+          bounceProtection: true,
+        }
+        // A hand-built campaign keeps its own delivery settings.
+        : { campaignId, dailyLimit: spec.dailyLimit * EMAILS_PER_HOST, maxNewLeads: spec.dailyLimit },
     });
-    await this.request<unknown>("/campaigns/set-name", {
-      method: "PUT",
-      body: { campaignId: String(campaignId), name: spec.name },
-    });
-    await this.request<unknown>("/campaigns/set-schedule", { method: "PUT", body: scheduleBody(campaignId, spec) });
+    if (ours || includeSequence) {
+      await this.request<unknown>("/campaigns/set-name", {
+        method: "PUT",
+        body: { campaignId: String(campaignId), name: spec.name },
+      });
+      await this.request<unknown>("/campaigns/set-schedule", { method: "PUT", body: scheduleBody(campaignId, spec) });
+    }
     await this.request<unknown>("/campaigns/set-accounts", {
       method: "PUT",
       body: { campaignId, accountsToUse: spec.senderAccounts },
@@ -510,7 +575,8 @@ export class ReachInboxProvider implements OutreachProvider {
   }
 
   async updateCampaign(id: string, spec: CampaignSpec, options: { includeSequence: boolean }) {
-    await this.writeAll(id, spec, options.includeSequence);
+    const ours = options.includeSequence || (await this.getCampaign(id)).rendersOurPitch;
+    await this.writeAll(id, spec, options.includeSequence, ours);
     return await this.getCampaign(id);
   }
 
@@ -649,15 +715,12 @@ export class ReachInboxProvider implements OutreachProvider {
 
   async getLead(leadId: string, campaignId: string | null): Promise<ProviderLead | null> {
     if (!campaignId) return null;
-    try {
-      const row = record(dataOf(await this.request<unknown>("/leads/details", {
-        query: new URLSearchParams({ id: leadId, campaignId }),
-      })));
-      return row ? this.lead(row) : null;
-    } catch (error) {
-      if (error instanceof OutreachProviderError && error.status === 404) return null;
-      throw error;
-    }
+    // A 404 propagates: the interface reads it as "deleted upstream", which
+    // is what clears a stale lead status.
+    const row = record(dataOf(await this.request<unknown>("/leads/details", {
+      query: new URLSearchParams({ id: leadId, campaignId }),
+    })));
+    return row ? this.lead(row) : null;
   }
 
   async updateLeadVariables(lead: ProviderLead, campaignId: string, variables: PitchVariables) {

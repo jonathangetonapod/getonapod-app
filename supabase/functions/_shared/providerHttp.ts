@@ -81,7 +81,7 @@ function failure(target: ProviderRequestTarget, status: number, detail: string |
 }
 
 /** A short, provider-written reason from an error body, never the whole body. */
-function errorDetail(raw: string): string | null {
+function errorDetail(raw: string, apiKey: string): string | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const message = typeof parsed.message === "string" ? parsed.message : null;
@@ -89,10 +89,55 @@ function errorDetail(raw: string): string | null {
       ? Object.values(parsed.errors as Record<string, unknown>).flat()[0]
       : null;
     const text = typeof firstError === "string" ? firstError : message;
-    return text ? text.replace(/\s+/g, " ").trim().slice(0, 200) : null;
+    return text ? (scrubKey(text, apiKey) ?? "").replace(/\s+/g, " ").trim().slice(0, 200) : null;
   } catch {
     return null;
   }
+}
+
+async function readCapped(response: Response, target: ProviderRequestTarget): Promise<string> {
+  const tooLarge = () =>
+    new OutreachProviderError(
+      502,
+      `${target.codePrefix}_RESPONSE_INVALID`,
+      `${target.label} returned an invalid response`,
+    );
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof OutreachProviderError) throw error;
+    throw new OutreachProviderError(
+      0,
+      `${target.codePrefix}_UNAVAILABLE`,
+      `${target.label} could not be reached`,
+    );
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/** Provider-written error text is stored and shown; the key must never be in it. */
+function scrubKey(detail: string | null, apiKey: string): string | null {
+  if (!detail || !apiKey || apiKey.length < 8) return detail;
+  return detail.split(apiKey).join("[redacted]");
 }
 
 export async function providerRequest<T>(
@@ -100,7 +145,18 @@ export async function providerRequest<T>(
   path: string,
   options: ProviderRequestOptions = {},
 ): Promise<T> {
-  if (!path.startsWith("/") || path.includes("://") || path.includes("\\") || path.includes("..")) {
+  // Traversal is a whole "." or ".." segment (raw or percent-decoded). A ".."
+  // inside one segment, as in a.b..c@host.com, is an ordinary character run.
+  const traversal = path.split(/[/?#]/).some((segment) => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      return true;
+    }
+    return decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\");
+  });
+  if (!path.startsWith("/") || path.includes("://") || path.includes("\\") || traversal) {
     throw new OutreachProviderError(
       500,
       `${target.codePrefix}_PATH_INVALID`,
@@ -159,24 +215,10 @@ export async function providerRequest<T>(
         `${target.label} returned an invalid response`,
       );
     }
-    let raw: string;
-    try {
-      raw = await response.text();
-    } catch {
-      throw new OutreachProviderError(
-        0,
-        `${target.codePrefix}_UNAVAILABLE`,
-        `${target.label} could not be reached`,
-      );
-    }
-    if (new TextEncoder().encode(raw).byteLength > MAX_PROVIDER_RESPONSE_BYTES) {
-      throw new OutreachProviderError(
-        502,
-        `${target.codePrefix}_RESPONSE_INVALID`,
-        `${target.label} returned an invalid response`,
-      );
-    }
-    if (!response.ok) throw failure(target, response.status, errorDetail(raw));
+    // Counted while streaming, so an undeclared or lying length cannot make
+    // the worker buffer more than the cap.
+    const raw = await readCapped(response, target);
+    if (!response.ok) throw failure(target, response.status, errorDetail(raw, target.apiKey));
     if (response.status === 204 || raw.trim() === "") return undefined as T;
     try {
       return JSON.parse(raw) as T;
@@ -327,14 +369,23 @@ export async function assertPublicProviderHost(
   origin: string,
   label: string,
   codePrefix: string,
+  options: { allowListed?: boolean } = {},
 ): Promise<void> {
   const host = new URL(origin).hostname;
   const resolve = (Deno as unknown as {
     resolveDns?: (name: string, type: "A" | "AAAA") => Promise<string[]>;
   }).resolveDns;
-  // Where the runtime has no resolver at all, the hostname rules and the
-  // optional EMAILBISON_ALLOWED_HOST_SUFFIXES allow-list are what stands.
-  if (typeof resolve !== "function") return;
+  // Without a resolver nothing proves where fetch will go. An operator
+  // allow-list of instance domains is then the only acceptable guard, so the
+  // check fails closed unless one is configured.
+  if (typeof resolve !== "function") {
+    if (options.allowListed) return;
+    throw new OutreachProviderError(
+      503,
+      `${codePrefix}_URL_UNVERIFIABLE`,
+      `${label} addresses cannot be verified on this server yet. Ask support to allow your instance domain.`,
+    );
+  }
   const answers: string[] = [];
   for (const type of ["A", "AAAA"] as const) {
     try {

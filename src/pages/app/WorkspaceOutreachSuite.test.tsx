@@ -395,7 +395,7 @@ describe('WorkspaceOutreachSuite', () => {
     renderPage('mailboxes')
 
     expect(await screen.findByRole('heading', { name: 'No sending platform is connected' })).toBeInTheDocument()
-    expect(screen.getByText('Connect this workspace to load its sending accounts.')).toBeInTheDocument()
+    expect(screen.getByText(/Its sending accounts appear here once it is connected/)).toBeInTheDocument()
   })
 
   it('explains a rejected Instantly key instead of rendering a plain disconnect', async () => {

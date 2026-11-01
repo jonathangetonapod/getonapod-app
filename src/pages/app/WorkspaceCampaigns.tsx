@@ -63,6 +63,7 @@ import {
   type WorkspaceInstantlyIntegration,
 } from '@/services/workspaceCampaigns'
 import { type WorkspaceClient } from '@/services/clients'
+import { clearMailboxCaches } from '@/lib/mailboxCache'
 import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
 import {
   DEFAULT_NEW_HOSTS_PER_DAY,
@@ -477,6 +478,9 @@ const WorkspaceCampaigns = ({
    * named the old provider) until their own stale time ran out.
    */
   const invalidateConnectionViews = async () => {
+    // The stored mailbox list belongs to the platform that was connected; a
+    // reload must not draw it under the new one (or under none).
+    clearMailboxCaches()
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
       queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
@@ -817,7 +821,7 @@ const WorkspaceCampaigns = ({
             {canAssign && (
               <Button type="button" variant="outline" onClick={() => setAssignOpen(true)}>Assign campaigns</Button>
             )}
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-start gap-1 sm:items-end">
               <Button
                 onClick={() => openCreateFor(null)}
                 disabled={clientsLoading || campaignOverviewQuery.isLoading || Boolean(newCampaignBlockedReason)}
@@ -909,7 +913,11 @@ const WorkspaceCampaigns = ({
 
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-muted/15 p-4">
-          <p className="mb-3 text-xs text-muted-foreground">Every row is a real {providerName} campaign assigned to one client.</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {integration?.connected || integration?.status === 'error'
+              ? `Every row is a real ${providerName} campaign assigned to one client.`
+              : 'Every row is a real campaign on your sending platform, assigned to one client.'}
+          </p>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* The search box used to take every pixel the row would give it,
                 so a field holding a campaign name ran the width of the page

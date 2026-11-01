@@ -82,6 +82,13 @@ export const MailboxRow = ({
               </span>
             ))}
           </p>
+          {columnCount <= 4 && (
+            // On a phone the Status column folds in here, so the address
+            // keeps the width it needs to be read.
+            <div className="mt-1.5">
+              <StatusSummary account={account} status={status} />
+            </div>
+          )}
           {error && (
             <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs">
               <span className="truncate text-red-700/80" title={error.hint}>{error.hint}</span>
@@ -106,9 +113,11 @@ export const MailboxRow = ({
         <TableCell className="hidden py-3 align-top text-xs xl:table-cell">
           <span className={warmup === 'Not warming' ? 'text-muted-foreground' : 'text-foreground'}>{warmup}</span>
         </TableCell>
-        <TableCell className="py-3 align-top">
-          <StatusSummary account={account} status={status} />
-        </TableCell>
+        {columnCount > 4 && (
+          <TableCell className="py-3 align-top">
+            <StatusSummary account={account} status={status} />
+          </TableCell>
+        )}
         <TableCell className="py-3 align-top">
           <MailboxClientMenu account={account} canManage={canManage} clients={clients} clientsError={clientsError} actions={actions} />
         </TableCell>

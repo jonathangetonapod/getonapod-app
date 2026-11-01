@@ -102,8 +102,9 @@ export interface WorkspaceMailboxAccount {
 export interface WorkspaceMailboxesResponse {
   connected: boolean
   reason?: 'key_rejected' | 'scope_missing'
-  provider?: OutreachProviderKind
-  provider_label?: string
+  /** Null when no platform has ever been connected. */
+  provider?: OutreachProviderKind | null
+  provider_label?: string | null
   capabilities?: OutreachProviderCapabilities
   provider_workspace_name: string | null
   /** The zone the sending day is measured in, never the viewer's. */
@@ -1048,8 +1049,11 @@ export interface ClientLinkableInstantlyCampaign {
 
 export interface ClientInstantlyCampaignLinksResponse {
   connected: boolean
-  /** The connected platform's name: Instantly, Email Bison or ReachInbox. */
-  provider_label?: string
+  /**
+   * The connected platform's name: Instantly, Email Bison or ReachInbox.
+   * Null when nothing is connected; absent from responses older than providers.
+   */
+  provider_label?: string | null
   links: ClientInstantlyCampaignLink[]
   provider_campaigns: ClientLinkableInstantlyCampaign[]
 }

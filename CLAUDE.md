@@ -189,7 +189,7 @@ AI, email, Google, Instantly, and webhook secrets are server-only.
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` — AI features / embeddings
 - `PODSCAN_API_KEY` — podcast data
 - `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts every workspace's sending-platform key (Instantly, Email Bison, ReachInbox)
-- `EMAILBISON_ALLOWED_HOST_SUFFIXES` — optional comma-separated allow-list of Email Bison instance domains; when set, any other instance URL is refused
+- `EMAILBISON_ALLOWED_HOST_SUFFIXES` — comma-separated allow-list of Email Bison instance domains; when set, any other instance URL is refused. Where the runtime cannot resolve DNS it is required: without it every Email Bison connection fails closed (`EMAILBISON_URL_UNVERIFIABLE`)
 - `N8N_EMAIL_WEBHOOK_URL`, `N8N_EMAIL_WEBHOOK_SECRET` — transactional email. Every app email posts an
   event to the n8n `GOAP email` workflow (`_shared/appEmail.ts`), which renders it and sends it from
   Google Workspace; the copy lives in n8n, not here. Supabase Auth invites and password resets go

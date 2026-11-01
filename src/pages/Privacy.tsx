@@ -60,6 +60,8 @@ const sections: LegalSection[] = [
       'Supabase: hosting, database, authentication and file storage.',
       'Stripe: subscriptions and credit purchases.',
       'Instantly: outreach email sending, when an agency connects its own Instantly account.',
+      'ReachInbox: outreach email sending, when an agency connects its own ReachInbox account.',
+      'Email Bison: outreach email sending, on the Email Bison instance an agency connects. The agency chooses and operates that instance.',
       'Google Workspace: transactional email such as invitations and notifications.',
       'Sentry: error monitoring.',
       'Anthropic and OpenAI: AI drafting and matching, on the text supplied for that purpose.',

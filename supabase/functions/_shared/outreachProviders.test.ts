@@ -14,7 +14,7 @@ import {
 import { InstantlyApiError, safeInstantlyError } from "./instantly.ts";
 import { normalizeProviderId, OutreachProviderError } from "./outreachProvider.ts";
 import { providerBaseUrl, requireProviderKind } from "./outreachProviderFactory.ts";
-import { isPrivateAddress, normalizeProviderOrigin, providerRequest } from "./providerHttp.ts";
+import { assertPublicProviderHost, isPrivateAddress, normalizeProviderOrigin, providerRequest } from "./providerHttp.ts";
 import {
   reachInboxCampaignStatus,
   reachInboxKeyFingerprint,
@@ -283,6 +283,32 @@ Deno.test("Bison connection reads the team as the provider workspace", async () 
   });
 });
 
+Deno.test("Bison connection reads the live `workspace` field and never keeps its webhook secret", async () => {
+  // Shape captured from a live instance on 2026-11-01.
+  await withFetch((call) => {
+    if (call.url.pathname === "/api/users") {
+      return {
+        body: {
+          data: {
+            id: 1,
+            name: "Owner",
+            email: "owner@agency.com",
+            workspace: { id: 12, name: "Main", personal_team: true, main: true, parent_id: 1, webhooks_secret_key: "whsec-must-not-leak" },
+          },
+        },
+      };
+    }
+    if (call.url.pathname === "/api/sender-emails") return { body: { data: [], meta: { last_page: 1 } } };
+    if (call.url.pathname === "/api/warmup/sender-emails") return { body: { data: [], meta: { last_page: 1 } } };
+    if (call.url.pathname === "/api/campaigns") return { body: { data: [], meta: { last_page: 1 } } };
+    return { status: 404 };
+  }, async () => {
+    const result = await new EmailBisonProvider("https://send.agency.com", "k".repeat(30)).verifyConnection();
+    assertEquals(result.workspace, { id: "12", name: "Main" }, "workspace id and name");
+    assert(!JSON.stringify(result).includes("whsec-must-not-leak"), "webhook secret is not carried");
+  });
+});
+
 Deno.test("Bison refuses a single-mailbox pause rather than pretending", async () => {
   const provider = new EmailBisonProvider("https://send.agency.com", "k".repeat(30));
   await rejects(() => provider.setAccountPaused(), "PROVIDER_FEATURE_UNSUPPORTED", "unsupported");
@@ -378,7 +404,8 @@ Deno.test("ReachInbox statuses translate into the app's Instantly codes", () => 
   assertEquals(reachInboxLeadStatus({ status: "IN_PROGRESS" }), 1, "in progress");
   assertEquals(reachInboxLeadStatus({ status: "COMPLETED" }), 3, "completed");
   assertEquals(reachInboxLeadStatus({ status: "BOUNCED" }), -1, "bounced");
-  assertEquals(reachInboxLeadStatus({ status: "IN_PROGRESS", isPaused: true }), 2, "paused");
+  assertEquals(reachInboxLeadStatus({ status: "IN_PROGRESS", paused: true }), 2, "lead paused");
+  assertEquals(reachInboxLeadStatus({ status: "IN_PROGRESS", isPaused: true }), 1, "campaign-level isPaused is not a lead pause");
 });
 
 Deno.test("ReachInbox identity is a stable fingerprint, never the key", async () => {
@@ -391,13 +418,14 @@ Deno.test("ReachInbox identity is a stable fingerprint, never the key", async ()
 Deno.test("ReachInbox treats only app-built campaigns as sendable", async () => {
   await withFetch((call) => {
     if (call.url.pathname === "/api/v1/campaigns/all") {
+      if (call.url.searchParams.get("offset") !== "0") return { body: { data: [] } };
       return { body: { data: [{ id: 8, name: "Acme · GOAP-abc", isActive: false }, { id: 9, name: "Hand built", isActive: true }] } };
     }
     return { body: { data: { accounts: [] } } };
   }, async () => {
     const provider = new ReachInboxProvider("k".repeat(30));
     const { campaigns, complete } = await provider.listCampaigns();
-    assert(complete, "short page means complete");
+    assert(complete, "an empty page ends the listing");
     assertEquals(campaigns.map((campaign) => [campaign.id, campaign.rendersOurPitch]), [["8", true], ["9", false]], "provenance decides");
   });
 });
@@ -440,5 +468,146 @@ Deno.test("Bison refuses to remove a lead with an id it cannot send exactly", as
     await rejects(() => provider.removeLead("42", "abc"), "EMAILBISON_LEAD_INVALID", "non-numeric id");
     await rejects(() => provider.removeLead("42", "99999999999999999"), "EMAILBISON_LEAD_INVALID", "past 2^53");
     assertEquals(calls.length, 0, "nothing was sent");
+  });
+});
+
+// --- DNS guard ---------------------------------------------------------------
+
+async function withResolver(
+  resolver: ((name: string, type: "A" | "AAAA") => Promise<string[]>) | undefined,
+  run: () => Promise<void>,
+) {
+  const target = Deno as unknown as { resolveDns?: unknown };
+  const original = Object.getOwnPropertyDescriptor(Deno, "resolveDns");
+  Object.defineProperty(target, "resolveDns", { value: resolver, configurable: true, writable: true });
+  try {
+    await run();
+  } finally {
+    if (original) Object.defineProperty(target, "resolveDns", original);
+    else delete target.resolveDns;
+  }
+}
+
+async function guardCode(run: () => Promise<void>): Promise<string | null> {
+  try {
+    await run();
+    return null;
+  } catch (error) {
+    return error instanceof OutreachProviderError ? error.code : "UNEXPECTED";
+  }
+}
+
+Deno.test("DNS guard fails closed without a resolver unless an allow-list is set", async () => {
+  await withResolver(undefined, async () => {
+    assertEquals(
+      await guardCode(() => assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON")),
+      "EMAILBISON_URL_UNVERIFIABLE",
+      "no resolver, no allow-list",
+    );
+    assertEquals(
+      await guardCode(() =>
+        assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON", { allowListed: true })
+      ),
+      null,
+      "no resolver, allow-listed",
+    );
+  });
+});
+
+Deno.test("DNS guard refuses private answers and empty answers", async () => {
+  await withResolver(async (_name, type) => (type === "A" ? ["10.0.0.5"] : []), async () => {
+    assertEquals(
+      await guardCode(() => assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON")),
+      "EMAILBISON_URL_INVALID",
+      "private A record",
+    );
+  });
+  await withResolver(async () => { throw new Error("no record"); }, async () => {
+    assertEquals(
+      await guardCode(() => assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON")),
+      "EMAILBISON_URL_INVALID",
+      "resolver answers nothing",
+    );
+  });
+  await withResolver(async (_name, type) => (type === "A" ? ["93.184.216.34"] : ["::ffff:127.0.0.1"]), async () => {
+    assertEquals(
+      await guardCode(() => assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON")),
+      "EMAILBISON_URL_INVALID",
+      "one private answer is enough to refuse",
+    );
+  });
+  await withResolver(async (_name, type) => (type === "A" ? ["93.184.216.34"] : []), async () => {
+    assertEquals(
+      await guardCode(() => assertPublicProviderHost("https://send.agency.com", "Email Bison", "EMAILBISON")),
+      null,
+      "public answer",
+    );
+  });
+});
+
+// --- request hardening -------------------------------------------------------
+
+const hardenTarget = {
+  origin: "https://send.agency.com",
+  prefix: "/api",
+  apiKey: "secretkey-".repeat(4),
+  label: "Email Bison",
+  codePrefix: "EMAILBISON",
+};
+
+Deno.test("path guard refuses traversal segments but allows dots inside an address", async () => {
+  for (const path of ["/../admin", "/a/%2e%2e/admin", "/a/./b", "/a%2Fb", "/a://b", "users"]) {
+    await withFetch(() => ({ body: {} }), async (calls) => {
+      await rejects(() => providerRequest(hardenTarget, path), "EMAILBISON_PATH_INVALID", `refused ${path}`);
+      assertEquals(calls.length, 0, `no request for ${path}`);
+    });
+  }
+  await withFetch(() => ({ body: {} }), async (calls) => {
+    await rejects(
+      () => providerRequest({ ...hardenTarget, prefix: "" }, "//evil.example/x"),
+      "EMAILBISON_PATH_INVALID",
+      "a protocol-relative path cannot change the host",
+    );
+    assertEquals(calls.length, 0, "no request to another host");
+  });
+  await withFetch(() => ({ body: { data: { id: 1 } } }), async (calls) => {
+    await providerRequest(hardenTarget, `/leads/${encodeURIComponent("a..b@show.com")}`);
+    assertEquals(calls.length, 1, "consecutive dots in one segment are an ordinary address");
+  });
+});
+
+Deno.test("an undeclared oversized body is cut off while streaming", async () => {
+  const original = globalThis.fetch;
+  let pulled = 0;
+  globalThis.fetch = (() => {
+    const chunk = new Uint8Array(256 * 1024);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 40) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    return Promise.resolve(new Response(body, { status: 200 }));
+  }) as typeof fetch;
+  try {
+    await rejects(() => providerRequest(hardenTarget, "/x"), "EMAILBISON_RESPONSE_INVALID", "over 2 MB refused");
+    assert(pulled < 40, "stopped reading before the end of the stream");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("provider error text never carries the API key", async () => {
+  await withFetch(() => ({ status: 422, body: { message: `Bad token ${hardenTarget.apiKey} for this route` } }), async () => {
+    try {
+      await providerRequest(hardenTarget, "/x");
+    } catch (error) {
+      assert(error instanceof OutreachProviderError, "coded");
+      assert(!error.message.includes(hardenTarget.apiKey), "key removed");
+      assert(error.message.includes("[redacted]"), "marked as redacted");
+      return;
+    }
+    throw new Error("did not reject");
   });
 });

@@ -621,6 +621,37 @@ describe('WorkspaceCampaigns', () => {
     ))
   })
 
+  // Owners type their instance address as they know it: send.leadgenjay.com.
+  it('accepts a bare Email Bison host and sends it as https', async () => {
+    mockedConnectInstantly.mockResolvedValue(undefined as never)
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: /Email Bison/ }))
+    fireEvent.change(screen.getByLabelText('Email Bison API token'), { target: { value: 'bison-api-user-token-123456' } })
+    const address = screen.getByLabelText('Email Bison address')
+    fireEvent.change(address, { target: { value: ' send.leadgenjay.com ' } })
+    expect(address).toHaveAttribute('aria-invalid', 'false')
+    fireEvent.click(screen.getByRole('button', { name: /verify and connect email bison/i }))
+
+    await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalledWith(
+      workspaceId,
+      'bison-api-user-token-123456',
+      { provider: 'emailbison', baseUrl: 'https://send.leadgenjay.com' },
+    ))
+  })
+
+  it('refuses a plain http Email Bison address before sending', async () => {
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: /Email Bison/ }))
+    fireEvent.change(screen.getByLabelText('Email Bison API token'), { target: { value: 'bison-api-user-token-123456' } })
+    fireEvent.change(screen.getByLabelText('Email Bison address'), { target: { value: 'http://send.leadgenjay.com' } })
+    expect(screen.getByRole('button', { name: /verify and connect email bison/i })).toBeDisabled()
+    expect(mockedConnectInstantly).not.toHaveBeenCalled()
+  })
+
   // The server refuses an address with a path; saying so before the round
   // trip spares a confusing rejection after a pasted dashboard URL.
   it('holds the Email Bison connection until the address has no path', async () => {
@@ -667,6 +698,29 @@ describe('WorkspaceCampaigns', () => {
     // The refusal is shown where the key was typed, not only in a toast.
     expect(await screen.findByRole('alert')).toHaveTextContent('That key was rejected by Instantly.')
     await waitFor(() => expect(screen.getByLabelText('Instantly V2 API key')).toHaveValue('instantly-owner-key-longer-than-20'))
+  })
+
+  // A blocked switch is fixed by clearing mappings, not by a new key: the
+  // guidance and the server's list of what blocks it are read separately, and
+  // focus lands back on the key once the field is usable again.
+  it('shows a blocked platform switch as guidance plus the server details', async () => {
+    mockedConnectInstantly.mockRejectedValue(Object.assign(
+      new Error('Email Bison still holds 2 client campaigns for this workspace. Clear them before switching to ReachInbox.'),
+      { name: 'PROVIDER_SWITCH_BLOCKED' },
+    ))
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: /ReachInbox/ }))
+    const input = screen.getByLabelText('ReachInbox API key')
+    fireEvent.change(input, { target: { value: 'reachinbox-key-longer-than-twenty' } })
+    fireEvent.click(screen.getByRole('button', { name: /verify and connect reachinbox/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('This workspace still has campaigns on its current sending platform')
+    expect(within(alert).getByText(/still holds 2 client campaigns/)).toHaveTextContent(/^Details:/)
+    expect(alert).not.toHaveTextContent(/right key/i)
+    await waitFor(() => expect(screen.getByLabelText('ReachInbox API key')).toHaveFocus())
   })
 
   it('keeps campaign creation and credential controls owner-manager only', async () => {

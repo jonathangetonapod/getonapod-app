@@ -1435,6 +1435,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       )}
                     </div>
                   )}
+                  {integration?.capabilities?.sendingStatus === false && (
+                    // Instantly shows a live "why is this not sending" readout
+                    // here. Saying it is unavailable beats leaving a gap the
+                    // user reads as "nothing is wrong".
+                    <p data-testid="sending-status-unsupported" className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
+                      {providerName} does not report why a campaign is not sending. If sends stop, check the campaign and its mailboxes in {providerName}.
+                    </p>
+                  )}
                   {providerSchedule ? (
                     <>
                       <div className="flex items-center justify-between gap-3 rounded-xl border p-3"><span className="text-sm text-muted-foreground">Sending days</span><strong className="text-right text-sm">{providerScheduleDays}</strong></div>

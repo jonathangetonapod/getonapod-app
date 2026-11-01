@@ -43,7 +43,10 @@ interface OutreachConnectionDialogProps {
 
 interface ConnectError {
   title: string
+  /** What the code means and how to fix it. */
   detail: string | null
+  /** The server's own words, shown apart so the guidance stays readable. */
+  reason: string | null
 }
 
 const MIN_KEY_LENGTH = 20
@@ -86,6 +89,12 @@ export const OutreachConnectionDialog = ({
   const connectedLabel = integrationProviderLabel(integration)
   const switching = Boolean(connectedKind && connectedKind !== kind)
 
+  // Back to the key once the field is enabled again, so a typo is one
+  // keystroke away; the error sits right under it and is announced as an alert.
+  useEffect(() => {
+    if (error && !saving) keyRef.current?.focus()
+  }, [error, saving])
+
   // Each opening starts from what is connected, never from a half-typed key.
   useEffect(() => {
     if (!open) return
@@ -103,13 +112,18 @@ export const OutreachConnectionDialog = ({
     setError(null)
   }
 
-  const trimmedUrl = baseUrl.trim()
+  // The owner types their instance address as they know it, e.g.
+  // send.leadgenjay.com; https:// is added when it is left off.
+  const typedUrl = baseUrl.trim()
+  const trimmedUrl = typedUrl.length === 0 || /^[a-z][a-z0-9+.-]*:\/\//i.test(typedUrl)
+    ? typedUrl
+    : `https://${typedUrl}`
   // What is wrong with the address, said before the server refuses it. The
   // server checks again; this only spares a round trip for the common slips.
   const urlProblem = !info.needsBaseUrl || trimmedUrl.length === 0
     ? null
     : !/^https:\/\//i.test(trimmedUrl)
-      ? 'Start the address with https://.'
+      ? 'Use the https address, for example send.youragency.com.'
       : addressHasPath(trimmedUrl)
         ? 'Use only the address, without a path such as /dashboard.'
         : null
@@ -118,7 +132,7 @@ export const OutreachConnectionDialog = ({
     ? null
     : apiKey.trim().length < MIN_KEY_LENGTH
       ? 'Paste the full key to continue.'
-      : info.needsBaseUrl && trimmedUrl.length <= 3
+      : info.needsBaseUrl && typedUrl.length <= 3
         ? 'Enter your Email Bison address to continue.'
         : urlProblem
   const canSave = !saving && blockedReason === null
@@ -140,9 +154,8 @@ export const OutreachConnectionDialog = ({
       const guidance = campaignErrorGuidance(errorCode(caught))
       const message = caught instanceof Error ? caught.message : `${info.label} could not be connected.`
       setError(guidance
-        ? { title: guidance.title, detail: guidance.explanation === message ? null : `${guidance.explanation} ${message}` }
-        : { title: `${info.label} could not be connected`, detail: message })
-      keyRef.current?.focus()
+        ? { title: guidance.title, detail: guidance.explanation, reason: guidance.explanation === message ? null : message }
+        : { title: `${info.label} could not be connected`, detail: message, reason: null })
     } finally {
       setSaving(false)
     }
@@ -208,7 +221,7 @@ export const OutreachConnectionDialog = ({
 
         {switching && (
           <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-            Connecting {info.label} replaces {connectedLabel} for this whole workspace. It is refused while any client still has a {connectedLabel} campaign mapped or linked; unlink those first.
+            Connecting {info.label} replaces {connectedLabel} for this whole workspace. It is refused while any campaign, linked campaign or staged lead still points at {connectedLabel}; clear those first.
           </p>
         )}
 
@@ -217,11 +230,11 @@ export const OutreachConnectionDialog = ({
             <Label htmlFor="outreach-base-url">Email Bison address</Label>
             <Input
               id="outreach-base-url"
-              type="url"
+              type="text"
               inputMode="url"
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="https://send.youragency.com"
+              placeholder="send.youragency.com"
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
@@ -231,7 +244,7 @@ export const OutreachConnectionDialog = ({
             />
             <p id="outreach-base-url-help" className={`text-xs leading-5 ${urlLooksWrong ? 'text-red-700' : 'text-muted-foreground'}`}>
               {urlProblem
-                ?? 'The address you sign in to Email Bison at, starting with https://. Leave off any path.'}
+                ?? 'The address you sign in to Email Bison at, e.g. send.youragency.com. Leave off any path.'}
             </p>
           </div>
         )}
@@ -256,19 +269,23 @@ export const OutreachConnectionDialog = ({
           <p id="outreach-api-key-help" className="text-xs leading-5 text-muted-foreground">{info.keyHelp}</p>
         </div>
 
+        {error && (
+          <div id="outreach-connect-error" role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">{error.title}</p>
+              {error.detail && <p className="text-red-800">{error.detail}</p>}
+              {error.reason && <p className="break-words text-red-800"><span className="font-medium">Details: </span>{error.reason}</p>}
+            </div>
+          </div>
+        )}
+
         {info.limitations.length > 0 && (
           <div className="rounded-xl border bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
             <p className="font-medium text-foreground">What {info.label} does not support here</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
               {info.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
             </ul>
-          </div>
-        )}
-
-        {error && (
-          <div id="outreach-connect-error" role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            <div><p className="font-medium">{error.title}</p>{error.detail && <p className="mt-0.5 text-red-800">{error.detail}</p>}</div>
           </div>
         )}
 

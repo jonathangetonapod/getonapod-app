@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { MailboxListState } from '@/hooks/useMailboxList'
 import { formatRelativeTime, type MailboxFilter, type MailboxGroupBy } from '@/lib/mailboxView'
 import type { WorkspaceMailboxesResponse } from '@/services/workspaceCampaigns'
+import { responseProviderLabel } from '@/lib/outreachProviders'
 
 /** Re-renders every 30 seconds so "Synced 2 min ago" does not freeze. */
 const useNow = () => {
@@ -33,6 +34,12 @@ export const MailboxesHeader = ({ data, loading, syncing, list, onRetry }: Mailb
   const connected = Boolean(data?.connected)
   const allAccounts = data?.accounts ?? []
   const syncedAgo = formatRelativeTime(data?.last_synced_at, now)
+  // Where the list came from. Nothing is named when no platform is: a stale
+  // "Instantly" here used to label an Email Bison workspace after disconnect.
+  const providerLabel = responseProviderLabel(data)
+  const providerSource = providerLabel
+    ? `${providerLabel}${data?.provider_workspace_name ? ` / ${data.provider_workspace_name}` : ''}`
+    : null
   const filtering = list.filter !== 'all' || list.search.trim() !== ''
   return (
     <CardHeader className="space-y-3 rounded-t-lg border-b border-border/70 bg-muted/20 px-4 py-4 sm:px-5">
@@ -58,7 +65,7 @@ export const MailboxesHeader = ({ data, loading, syncing, list, onRetry }: Mailb
           {/* Parse-checked: an unparseable timestamp said "Invalid Date". */}
           {syncedAgo && (
             <span data-testid="mailbox-sync-status" className="text-xs text-muted-foreground" title={data?.last_synced_at ?? undefined}>
-              Synced {syncedAgo} · {data?.provider_label || 'Instantly'}{data?.provider_workspace_name ? ` / ${data.provider_workspace_name}` : ''}
+              {data?.connected ? 'Synced' : 'Last synced'} {syncedAgo}{providerSource ? ` · ${providerSource}` : ''}
             </span>
           )}
           <Button type="button" variant="outline" size="sm" className="h-8 bg-background" onClick={onRetry} disabled={syncing} aria-busy={syncing}>

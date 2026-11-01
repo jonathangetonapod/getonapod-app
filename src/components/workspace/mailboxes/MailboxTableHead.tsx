@@ -61,13 +61,13 @@ export const MailboxTableHead = ({ sort, onSort, allSelected, someSelected, onSe
         <SortButton label="Sent today" sortKey="sent" sort={sort} onSort={onSort} />
       </TableHead>
       <TableHead className="hidden w-40 xl:table-cell">Warmup</TableHead>
-      <TableHead className="w-36" aria-sort={ariaSort(sort, ['status', 'health'])}>
+      <TableHead className="hidden w-36 sm:table-cell" aria-sort={ariaSort(sort, ['status', 'health'])}>
         <span className="flex flex-wrap items-center gap-x-2">
           <SortButton label="Status" sortKey="status" sort={sort} onSort={onSort} />
           <SortButton label="Health" sortKey="health" sort={sort} onSort={onSort} />
         </span>
       </TableHead>
-      <TableHead className="w-44" aria-sort={ariaSort(sort, ['client'])}>
+      <TableHead className="w-32 sm:w-44" aria-sort={ariaSort(sort, ['client'])}>
         <SortButton label="Client" sortKey="client" sort={sort} onSort={onSort} />
       </TableHead>
       <TableHead className="w-10 pl-0 pr-4"><span className="sr-only">Actions</span></TableHead>

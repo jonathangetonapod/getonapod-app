@@ -10,6 +10,7 @@ import type { MailboxActions } from './MailboxMenus'
 import { MailboxPager } from './MailboxPager'
 import { useMailboxColumnCount } from '@/hooks/useMailboxColumnCount'
 import { MailboxRow } from './MailboxRow'
+import { responseProviderLabel } from '@/lib/outreachProviders'
 
 const SKELETON_ROWS = 8
 
@@ -60,7 +61,9 @@ interface MailboxListBodyProps {
 
 export const MailboxListBody = ({ data, loading, error, list, canManage, clients, clientsError, actions }: MailboxListBodyProps) => {
   const columnCount = useMailboxColumnCount()
-  const providerLabel = data?.provider_label || 'Instantly'
+  // Named only when the response names it; mid-sentence otherwise.
+  const providerLabel = responseProviderLabel(data) ?? 'your sending platform'
+  const ProviderLabel = providerLabel.charAt(0).toUpperCase() + providerLabel.slice(1)
   if (loading) return <SkeletonRows />
   // The banner above names the failure; with no earlier list there is nothing to show.
   if (!data) {
@@ -76,13 +79,13 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
   if (!data.connected) {
     return (
       <MessageRow columnCount={columnCount}>
-        <h2 className="font-semibold">{data.reason ? `${providerLabel} declined the connected key` : 'No sending platform is connected'}</h2>
+        <h2 className="font-semibold">{data.reason ? `${ProviderLabel} declined the connected key` : 'No sending platform is connected'}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {data.reason === 'key_rejected'
-            ? `${providerLabel} rejected the saved API key. Reconnect ${providerLabel} in Client Campaigns with a current key.`
+            ? `${ProviderLabel} rejected the saved API key. Reconnect ${providerLabel} in Client Campaigns with a current key.`
             : data.reason === 'scope_missing'
               ? `The saved API key cannot read accounts. Reconnect ${providerLabel} with a key that has all scopes enabled.`
-              : 'Connect this workspace to load its sending accounts.'}
+              : 'The workspace owner connects Instantly, Email Bison or ReachInbox in Client Campaigns. Its sending accounts appear here once it is connected.'}
         </p>
       </MessageRow>
     )
@@ -91,7 +94,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
     return (
       <MessageRow columnCount={columnCount}>
         <h2 className="font-semibold">No mailboxes found</h2>
-        <p className="mt-1 text-sm text-muted-foreground">This {providerLabel} workspace has no sending accounts.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{responseProviderLabel(data) ? `This ${providerLabel} workspace has no sending accounts.` : 'The connected workspace has no sending accounts.'}</p>
       </MessageRow>
     )
   }

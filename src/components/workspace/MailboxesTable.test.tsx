@@ -300,4 +300,64 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     expect(screen.getByTestId('mailbox-sync-status')).toHaveTextContent('Synced 12 min ago · Instantly / Power Payback 1')
     expect(screen.getByTestId('mailbox-capacity')).toHaveTextContent('106 / 530 sent today, resets midnight America/Detroit')
   })
+
+  it('names the connected platform, and none once nothing is connected', () => {
+    renderTable({ ...payload(3), provider: 'emailbison', provider_label: 'Email Bison' })
+    expect(screen.getByTestId('mailbox-sync-status')).toHaveTextContent('Synced 12 min ago · Email Bison / Power Payback 1')
+  })
+
+  it('does not call a disconnected workspace Instantly', () => {
+    renderTable({
+      connected: false,
+      provider: null,
+      provider_label: null,
+      provider_workspace_name: null,
+      accounts: [],
+      last_synced_at: null,
+      analytics_errors: [],
+    })
+    // It may list the platforms on offer; it must not claim one is in use.
+    expect(screen.queryByText(/Instantly \/|· Instantly|Instantly declined|Instantly workspace/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mailbox-sync-status')).not.toBeInTheDocument()
+    expect(screen.getByText('No sending platform is connected')).toBeInTheDocument()
+    expect(screen.getByText(/in Client Campaigns/)).toBeInTheDocument()
+  })
+
+  it('says "Last synced" and keeps the platform name after a disconnect', () => {
+    renderTable({
+      connected: false,
+      provider: 'emailbison',
+      provider_label: 'Email Bison',
+      provider_workspace_name: 'Agency Outreach',
+      accounts: [],
+      last_synced_at: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(),
+      analytics_errors: [],
+    })
+    expect(screen.getByTestId('mailbox-sync-status')).toHaveTextContent(/^Last synced .* · Email Bison \/ Agency Outreach$/)
+  })
+
+  it('folds Status into the address cell on a phone so the address keeps its width', () => {
+    const original = Object.getOwnPropertyDescriptor(window, 'matchMedia')
+    const phone = ((query: string) => ({
+      matches: query === '(max-width: 639px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia
+    Object.defineProperty(window, 'matchMedia', { configurable: true, value: phone })
+    try {
+      const table = renderTable(payload(8))
+      const firstRow = within(table).getAllByRole('row')[1]
+      // One cell fewer than the 7 rendered at other widths (jsdom keeps the
+      // CSS-hidden Sent and Warmup cells): the Status cell is gone.
+      expect(within(firstRow).getAllByRole('cell')).toHaveLength(6)
+      expect(within(within(firstRow).getAllByRole('cell')[1]).getByText('Gmail daily limit')).toBeInTheDocument()
+    } finally {
+      if (original) Object.defineProperty(window, 'matchMedia', original)
+    }
+  })
 })

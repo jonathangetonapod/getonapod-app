@@ -96,6 +96,23 @@ function timestamp(value: unknown): string | null {
 }
 
 /** Bison campaign status → Instantly campaign code. Unknown reads as attention. */
+/**
+ * This campaign's entry in a lead's `lead_campaign_data`, which the API
+ * documents only as a list (one entry per campaign) but may return as a single
+ * object on a campaign-scoped listing. Matched on the campaign id or not at
+ * all: another campaign's entry would report its sends and replies as this
+ * one's. A single object without a campaign id is trusted only on a listing
+ * already scoped to this campaign.
+ */
+export function campaignLinkFor(row: Json, campaignId: string): Json | null {
+  const data = row.lead_campaign_data;
+  const entries = Array.isArray(data) ? data.filter(record) as Json[] : record(data) ? [data as Json] : [];
+  const matched = entries.find((entry) => bisonId(entry.campaign_id) === campaignId);
+  if (matched) return matched;
+  if (!Array.isArray(data) && entries.length === 1 && entries[0].campaign_id === undefined) return entries[0];
+  return null;
+}
+
 export function bisonCampaignStatus(value: unknown): number {
   const status = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (status) {
@@ -396,7 +413,11 @@ export class EmailBisonProvider implements OutreachProvider {
       // Read probe: a key that can see its user but not campaigns is useless here.
       this.request<unknown>("/campaigns", { query: new URLSearchParams({ per_page: "1" }) }),
     ]);
-    const team = record(record(dataOf(user))?.team);
+    // Live instances (checked 2026-11-01) name it `workspace`; older API
+    // references call it `team`. Only id and name are read: the same object
+    // carries the workspace's webhooks_secret_key, which must go nowhere.
+    const userData = record(dataOf(user));
+    const team = record(userData?.workspace) ?? record(userData?.team);
     const id = bisonId(team?.id);
     const name = text(team?.name, 300);
     if (!id || !name) throw invalid("workspace");
@@ -583,7 +604,15 @@ export class EmailBisonProvider implements OutreachProvider {
         }
         throw error;
       }),
-      this.pages(`/campaigns/${encodeURIComponent(id)}/sender-emails`).catch(() => ({ items: [] as Json[], complete: false })),
+      // Only a 404 means "no senders". Reading any other failure as an empty
+      // list would make a later save compute nothing to remove, report
+      // success, and leave an unassigned mailbox sending.
+      this.pages(`/campaigns/${encodeURIComponent(id)}/sender-emails`).catch((error) => {
+        if (error instanceof OutreachProviderError && error.status === 404) {
+          return { items: [] as Json[], complete: true };
+        }
+        throw error;
+      }),
     ]);
     const row = record(dataOf(detail));
     if (!row) throw invalid("campaign");
@@ -643,20 +672,30 @@ export class EmailBisonProvider implements OutreachProvider {
     }
   }
 
-  private async writeSettings(id: string, spec: CampaignSpec): Promise<void> {
+  /**
+   * `ours` is false for a campaign the agency built in Email Bison and mapped
+   * here: it keeps its own name, schedule and delivery settings, and only the
+   * limits this app manages are written.
+   */
+  private async writeSettings(id: string, spec: CampaignSpec, ours = true): Promise<void> {
+    // Every email, follow-ups included, against new hosts per day; see the
+    // Instantly adapter for why these are two different numbers.
+    const limits = {
+      max_emails_per_day: spec.dailyLimit * EMAILS_PER_HOST,
+      max_new_leads_per_day: spec.dailyLimit,
+    };
     await this.request<unknown>(`/campaigns/${encodeURIComponent(id)}/update`, {
       method: "PATCH",
-      body: {
-        name: spec.name,
-        // Every email, follow-ups included, against new hosts per day; see the
-        // Instantly adapter for why these are two different numbers.
-        max_emails_per_day: spec.dailyLimit * EMAILS_PER_HOST,
-        max_new_leads_per_day: spec.dailyLimit,
-        plain_text: true,
-        open_tracking: true,
-        can_unsubscribe: true,
-        sequence_prioritization: "new_leads",
-      },
+      body: ours
+        ? {
+          name: spec.name,
+          ...limits,
+          plain_text: true,
+          open_tracking: true,
+          can_unsubscribe: true,
+          sequence_prioritization: "new_leads",
+        }
+        : limits,
     });
   }
 
@@ -803,8 +842,10 @@ export class EmailBisonProvider implements OutreachProvider {
     options: { includeSequence: boolean },
   ): Promise<ProviderCampaign> {
     const before = await this.getCampaign(id);
-    await this.writeSettings(id, spec);
-    await this.writeSchedule(id, spec, before.schedule !== null);
+    // A hand-built campaign is never renamed or rescheduled by a settings save.
+    const ours = options.includeSequence || before.rendersOurPitch;
+    await this.writeSettings(id, spec, ours);
+    if (ours) await this.writeSchedule(id, spec, before.schedule !== null);
     await this.writeSenders(id, spec.senderAccounts, before.senderAccounts);
     if (options.includeSequence) await this.writeSequence(id, spec);
     return await this.getCampaign(id);
@@ -872,7 +913,7 @@ export class EmailBisonProvider implements OutreachProvider {
     // Per-campaign figures only. overall_stats spans every campaign the contact
     // is in, so a host who replied to another client would read as replied
     // here the moment this pitch launched.
-    const link = campaignLink === undefined ? record(row.lead_campaign_data) : campaignLink;
+    const link = campaignLink === undefined ? null : campaignLink;
     return {
       id,
       email,
@@ -897,7 +938,7 @@ export class EmailBisonProvider implements OutreachProvider {
     const query = email ? new URLSearchParams({ search: email }) : undefined;
     const { items } = await this.pages(`/campaigns/${encodeURIComponent(campaignId)}/leads`, query);
     return items.flatMap((row) => {
-      const lead = this.lead(row);
+      const lead = this.lead(row, campaignLinkFor(row, campaignId));
       return lead ? [lead] : [];
     });
   }
@@ -905,11 +946,7 @@ export class EmailBisonProvider implements OutreachProvider {
   async getLead(leadId: string, campaignId: string | null): Promise<ProviderLead | null> {
     const row = record(dataOf(await this.request<unknown>(`/leads/${encodeURIComponent(leadId)}`)));
     if (!row) return null;
-    const links = Array.isArray(row.lead_campaign_data) ? row.lead_campaign_data.filter(record) as Json[] : [];
-    // Matched on the campaign or not at all: another campaign's entry would
-    // report that campaign's sends and replies as this one's.
-    const link = links.find((entry) => campaignId && bisonId(entry.campaign_id) === campaignId) ?? null;
-    return this.lead(row, link);
+    return this.lead(row, campaignId ? campaignLinkFor(row, campaignId) : null);
   }
 
   async updateLeadVariables(

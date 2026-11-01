@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { InstantlyAccountPicker } from '@/components/workspace/InstantlyAccountPicker'
+import { responseProviderLabel } from '@/lib/outreachProviders'
 import {
   createClientInstantlyCampaign,
   getClientInstantlyCampaignLinks,
@@ -60,7 +61,10 @@ export const ClientInstantlyCampaignsCard = ({
     staleTime: 30_000,
   })
   const data = linksQuery.data ?? null
-  const providerName = data?.provider_label || 'Instantly'
+  const providerLabel = responseProviderLabel(data)
+  // Mid-sentence name. Before a platform answers (or with none connected) the
+  // copy names no brand rather than guessing Instantly.
+  const providerName = providerLabel ?? 'your sending platform'
   const savedIds = useMemo(
     () => new Set((data?.links ?? []).map((link) => link.instantly_campaign_id)),
     [data],
@@ -158,12 +162,12 @@ export const ClientInstantlyCampaignsCard = ({
       <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle id="client-instantly-campaigns-heading" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-muted-foreground" />{providerName} campaigns
+            <Link2 className="h-4 w-4 text-muted-foreground" />{providerLabel ? `${providerLabel} campaigns` : 'Sending-platform campaigns'}
           </CardTitle>
           <CardDescription>
-            Link the {providerName} campaigns that belong to {clientName}. Pitches can
+            Link the {providerLabel ? `${providerLabel} campaigns` : 'campaigns'} that belong to {clientName}. Pitches can
             only be sent into campaigns created here, because a campaign built in
-            {providerName} carries copy of its own.
+            {' '}{providerName} carries copy of its own.
           </CardDescription>
         </div>
         {canManage && (

@@ -43,8 +43,12 @@ do-not-contact list in step, and pause everything on workspace deletion.
 6. **Self-hosted base URL, treated as hostile input.** Email Bison runs on a
    per-customer host (`https://send.agency.com`). The URL must be `https`, port
    443, a DNS name (no IP literals, no `localhost`, no internal suffixes), no
-   credentials, no path. Redirects are never followed. Optional
-   `EMAILBISON_ALLOWED_HOST_SUFFIXES` narrows it further. The token is encrypted
+   credentials, no path. Redirects are never followed. Each session resolves
+   the host and refuses private answers or no answers. If the runtime has no
+   resolver the check fails closed (`EMAILBISON_URL_UNVERIFIABLE`) unless
+   `EMAILBISON_ALLOWED_HOST_SUFFIXES` is set, which also narrows hosts in
+   general. Residual risk: DNS rebinding between the check and fetch is not
+   pinned; the allow-list is the control for that. The token is encrypted
    exactly like the Instantly key.
 7. **Gaps are explicit.** Where Email Bison has no equivalent the action returns
    `409 PROVIDER_FEATURE_UNSUPPORTED` and the UI hides the control:

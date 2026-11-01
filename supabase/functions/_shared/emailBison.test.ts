@@ -2,7 +2,7 @@
  * Email Bison adapter behaviour checked against the documented API
  * (https://dedi.emailbison.com/api/reference.openapi and docs.emailbison.com).
  */
-import { bisonSequenceSteps, bisonVariableNames, EmailBisonProvider } from "./emailBison.ts";
+import { bisonSequenceSteps, bisonVariableNames, campaignLinkFor, EmailBisonProvider } from "./emailBison.ts";
 import { type CampaignSpec, OutreachProviderError } from "./outreachProvider.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -269,5 +269,46 @@ Deno.test("Bison blocklist lookup is exact, by address, and 404 means not listed
   }, async () => {
     // A 422 confirmed by the exact lookup is the state that was asked for.
     await new EmailBisonProvider(ORIGIN, KEY).blockAddress("host@show.com");
+  });
+});
+
+Deno.test("a failed sender read fails the campaign read instead of reading as no senders", async () => {
+  await withFetch((call) => {
+    if (call.url.pathname.endsWith("/sender-emails")) return { status: 500, body: {} };
+    if (call.url.pathname === "/api/campaigns/42") return { body: { data: { id: 42, name: "C", status: "active" } } };
+    return { status: 404, body: {} };
+  }, async () => {
+    let code = "";
+    try {
+      await new EmailBisonProvider(ORIGIN, KEY).getCampaign("42");
+    } catch (error) {
+      code = error instanceof OutreachProviderError ? error.code : "UNEXPECTED";
+    }
+    assertEquals(code, "EMAILBISON_REQUEST_FAILED", "a 500 is not an empty sender list");
+  });
+});
+
+Deno.test("lead figures come only from this campaign's entry, list or object", () => {
+  const list = { lead_campaign_data: [{ campaign_id: 7, replies: 3 }, { campaign_id: 42, replies: 1 }] };
+  assertEquals(campaignLinkFor(list, "42")?.replies, 1, "matched entry in a list");
+  assertEquals(campaignLinkFor(list, "9"), null, "no entry for another campaign");
+  assertEquals(campaignLinkFor({ lead_campaign_data: { campaign_id: 7, replies: 3 } }, "42"), null, "another campaign's object");
+  assertEquals(campaignLinkFor({ lead_campaign_data: { replies: 2 } }, "42")?.replies, 2, "scoped object without an id");
+  assertEquals(campaignLinkFor({}, "42"), null, "absent");
+});
+
+Deno.test("a settings save on a hand-built Bison campaign writes only our limits", async () => {
+  await withFetch(() => ({ body: { data: {} } }), async (calls) => {
+    const provider = new EmailBisonProvider(ORIGIN, KEY);
+    const stub = provider as unknown as {
+      getCampaign(id: string): Promise<unknown>;
+      writeSenders(...args: unknown[]): Promise<void>;
+    };
+    stub.getCampaign = () => Promise.resolve({ id: "42", rendersOurPitch: false, schedule: { timezone: "Europe/London" }, senderAccounts: [] });
+    stub.writeSenders = () => Promise.resolve();
+    await provider.updateCampaign("42", SPEC, { includeSequence: false });
+    const update = calls.find((call) => call.url.pathname === "/api/campaigns/42/update");
+    assertEquals(Object.keys(update?.body as object).sort(), ["max_emails_per_day", "max_new_leads_per_day"], "no rename, no delivery settings");
+    assert(!calls.some((call) => call.url.pathname.includes("/schedule")), "schedule left alone");
   });
 });
