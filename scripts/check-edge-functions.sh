@@ -49,7 +49,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   --frozen \
   --lock=deno.lock \
   --node-modules-dir=none \
-  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL,ANTHROPIC_API_KEY,PODSCAN_API_KEY,OPENAI_API_KEY,BLITZ_API_KEY,WINNR_API_TOKEN,TEXT_AI_PROVIDER,INSTANTLY_CREDENTIAL_ENCRYPTION_KEY,CREDIT_ENFORCEMENT_ENABLED \
+  --allow-env=ALLOWED_ORIGIN,ALLOWED_ORIGINS,APP_URL,ENVIRONMENT,WEB_URL,ANTHROPIC_API_KEY,PODSCAN_API_KEY,OPENAI_API_KEY,BLITZ_API_KEY,WINNR_API_TOKEN,TEXT_AI_PROVIDER,INSTANTLY_CREDENTIAL_ENCRYPTION_KEY,EMAILBISON_ALLOWED_HOST_SUFFIXES,CREDIT_ENFORCEMENT_ENABLED \
   supabase/functions/_shared/accountContextDto.test.ts \
   supabase/functions/_shared/auditEntity.test.ts \
   supabase/functions/_shared/clientFitProfile.test.ts \
@@ -69,6 +69,9 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/hostContactDiscovery.test.ts \
   supabase/functions/_shared/catalogContacts.test.ts \
   supabase/functions/_shared/instantly.test.ts \
+  supabase/functions/_shared/outreachProviders.test.ts \
+  supabase/functions/_shared/emailBison.test.ts \
+  supabase/functions/_shared/reachInbox.test.ts \
   supabase/functions/_shared/autopilotSearch.test.ts \
   supabase/functions/_shared/podcastEpisodes.test.ts \
   supabase/functions/_shared/podscan.test.ts \

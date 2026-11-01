@@ -117,6 +117,9 @@ serve(async (req) => {
     .select('workspace_id, status, api_key_ciphertext, api_key_iv, auto_draft_cursor_ts, last_error')
     .in('workspace_id', [...autoClientIdsByWorkspace.keys()])
     .eq('status', 'connected')
+    // Instantly only: this tick speaks Instantly's API, and another provider's
+    // key must never be sent to Instantly.
+    .eq('provider', 'instantly')
     // Rotation orders by when a workspace was last LOOKED AT, not by its mail
     // cursor: the cursor only moves when the provider returns mail, so three
     // quiet or broken workspaces used to pin the three slots forever and

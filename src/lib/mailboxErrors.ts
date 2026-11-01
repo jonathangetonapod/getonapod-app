@@ -39,7 +39,7 @@ export const MAILBOX_ERROR_PATTERNS: MailboxErrorPattern[] = [
     id: 'reconnect',
     test: /can['’]?t create new access token/i,
     label: 'Reconnect needed',
-    hint: 'The OAuth token expired. Reconnect this mailbox in Instantly.',
+    hint: 'The OAuth token expired. Reconnect this mailbox in your sending platform.',
     kind: 'disconnected',
   },
 ]
@@ -76,7 +76,7 @@ export function humanizeMailboxError(status: number, rawMessage: string | null |
   return {
     id: raw ? 'unmatched' : `status-${status}`,
     label: raw ? 'Sending error' : fallback.label,
-    hint: raw ? truncateHint(raw) : 'Instantly did not say why. Open the mailbox in Instantly to check it.',
+    hint: raw ? truncateHint(raw) : 'The sending platform did not say why. Open the mailbox there to check it.',
     kind: fallback.kind,
     raw,
   }

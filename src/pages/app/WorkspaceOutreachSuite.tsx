@@ -71,7 +71,7 @@ const suiteItems = [
 const moduleConfigs: Record<OutreachWorkspaceModule, ModuleConfig> = {
   'client-campaigns': {
     ...suiteItems[0],
-    description: 'Plan, launch, and monitor Instantly-powered outreach without losing the client context behind each campaign.',
+    description: 'Plan, launch, and monitor outreach through Instantly, Email Bison or ReachInbox without losing the client context behind each campaign.',
   },
   mailboxes: {
     ...suiteItems[1],

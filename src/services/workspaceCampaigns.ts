@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { withDecodedPodcastName, withDecodedPodcastNamesIn } from '@/lib/feedText'
 import { defaultInstantlyTimezone } from '@/lib/instantlyTimezones'
+import { OUTREACH_PROVIDER_LABELS } from '@/lib/outreachProviders'
 
 export type WorkspaceCampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'attention'
 export type WorkspaceCampaignTargetStatus = 'draft' | 'ready' | 'launching' | 'in_outreach' | 'replied' | 'completed' | 'failed'
@@ -22,9 +23,26 @@ export interface InstantlySendingAccount {
   has_signature?: boolean
 }
 
+/** The outreach platforms a workspace can send through. One per workspace. */
+export type OutreachProviderKind = 'instantly' | 'emailbison' | 'reachinbox'
+
+/** What the connected provider's API can do; the UI hides what it cannot. */
+export interface OutreachProviderCapabilities {
+  mailboxPause: boolean
+  mailboxSendHistory: boolean
+  sendingStatus: boolean
+  inbox: boolean
+}
+
 export interface WorkspaceInstantlyIntegration {
   connected: boolean
   status: 'connected' | 'error' | 'disconnected'
+  /** Absent from responses written before providers other than Instantly. */
+  provider?: OutreachProviderKind
+  provider_label?: string
+  /** Email Bison instance origin; null for providers with a fixed origin. */
+  provider_base_url?: string | null
+  capabilities?: OutreachProviderCapabilities
   provider_workspace_id: string | null
   provider_workspace_name: string | null
   api_key_last_four: string | null
@@ -84,6 +102,9 @@ export interface WorkspaceMailboxAccount {
 export interface WorkspaceMailboxesResponse {
   connected: boolean
   reason?: 'key_rejected' | 'scope_missing'
+  provider?: OutreachProviderKind
+  provider_label?: string
+  capabilities?: OutreachProviderCapabilities
   provider_workspace_name: string | null
   /** The zone the sending day is measured in, never the viewer's. */
   send_day_timezone?: string
@@ -367,15 +388,24 @@ export async function getWorkspaceCampaign(
   }, 'The client campaign could not be loaded.')
 }
 
+/**
+ * Connects the workspace's outreach provider. Instantly is the default, so a
+ * caller that passes only a key keeps its old behaviour; Email Bison also needs
+ * the agency's instance URL.
+ */
 export async function connectWorkspaceInstantly(
   workspaceId: string,
   apiKey: string,
+  options: { provider?: OutreachProviderKind; baseUrl?: string | null } = {},
 ): Promise<WorkspaceInstantlyIntegration> {
+  const provider = options.provider ?? 'instantly'
   const response = await invokeWorkspaceCampaigns<{ integration: WorkspaceInstantlyIntegration }>({
     action: 'connect-instantly',
     workspace_id: workspaceId,
     api_key: apiKey,
-  }, 'Instantly could not be connected.')
+    ...(provider === 'instantly' ? {} : { provider }),
+    ...(provider === 'emailbison' ? { base_url: options.baseUrl ?? '' } : {}),
+  }, `${OUTREACH_PROVIDER_LABELS[provider]} could not be connected.`)
   return response.integration
 }
 
@@ -383,7 +413,7 @@ export async function refreshWorkspaceInstantly(workspaceId: string): Promise<Wo
   const response = await invokeWorkspaceCampaigns<{ integration: WorkspaceInstantlyIntegration }>({
     action: 'refresh-instantly',
     workspace_id: workspaceId,
-  }, 'The Instantly connection could not be refreshed.')
+  }, 'The outreach provider connection could not be refreshed.')
   return response.integration
 }
 
@@ -391,7 +421,7 @@ export async function disconnectWorkspaceInstantly(workspaceId: string): Promise
   const response = await invokeWorkspaceCampaigns<{ integration: WorkspaceInstantlyIntegration }>({
     action: 'disconnect-instantly',
     workspace_id: workspaceId,
-  }, 'The Instantly connection could not be removed.')
+  }, 'The outreach provider connection could not be removed.')
   return response.integration
 }
 
@@ -605,7 +635,7 @@ export async function syncWorkspaceCampaign(
     action: 'sync',
     workspace_id: workspaceId,
     client_id: clientId,
-  }, 'The Instantly campaign could not be synced.')
+  }, 'The campaign could not be synced with your sending platform.')
 }
 
 export interface WorkspaceCampaignAnalyticsRefresh {
@@ -937,7 +967,7 @@ export async function getWorkspaceTargetLeadStatus(input: {
     workspace_id: input.workspaceId,
     client_id: input.clientId,
     shortlist_podcast_id: input.shortlistPodcastId,
-  }, 'The delivery status could not be read from Instantly.')
+  }, 'The delivery status could not be read from the sending platform.')
 }
 
 /**
@@ -948,6 +978,9 @@ export async function getWorkspaceTargetLeadStatus(input: {
  * accounts are unavailable and why.
  */
 export interface WorkspaceCampaignSendingStatus {
+  /** False when the connected provider offers no sending diagnosis. */
+  supported?: boolean
+  provider_label?: string
   /** Provider status code: 'healthy', 'out_of_schedule', 'daily_limit_met'… */
   status: string | null
   /** The provider's own sentence. Not paraphrased here. */
@@ -975,7 +1008,7 @@ export async function getWorkspaceCampaignSendingStatus(
     action: 'campaign-sending-status',
     workspace_id: workspaceId,
     client_id: clientId,
-  }, 'The sending status could not be read from Instantly.')
+  }, 'The sending status could not be read from the sending platform.')
 }
 
 export interface ClientInstantlyCampaignLink {
@@ -1015,6 +1048,8 @@ export interface ClientLinkableInstantlyCampaign {
 
 export interface ClientInstantlyCampaignLinksResponse {
   connected: boolean
+  /** The connected platform's name: Instantly, Email Bison or ReachInbox. */
+  provider_label?: string
   links: ClientInstantlyCampaignLink[]
   provider_campaigns: ClientLinkableInstantlyCampaign[]
 }
@@ -1027,7 +1062,7 @@ export async function getClientInstantlyCampaignLinks(
     action: 'client-links-list',
     workspace_id: workspaceId,
     client_id: clientId,
-  }, 'Linked Instantly campaigns could not be loaded.')
+  }, 'Linked campaigns could not be loaded.')
 }
 
 export async function setClientInstantlyCampaignLinks(
@@ -1040,7 +1075,7 @@ export async function setClientInstantlyCampaignLinks(
     workspace_id: workspaceId,
     client_id: clientId,
     campaign_ids: campaignIds,
-  }, 'The linked Instantly campaigns could not be saved.')
+  }, 'The linked campaigns could not be saved.')
   return data.links ?? []
 }
 
@@ -1071,7 +1106,7 @@ export async function createClientInstantlyCampaign(input: {
     // The function requires both; a null would 400 before the campaign exists.
     timezone: input.timezone ?? defaultInstantlyTimezone(),
     daily_limit: input.dailyLimit ?? DEFAULT_INSTANTLY_DAILY_LIMIT,
-  }, 'The campaign could not be created in Instantly.')
+  }, 'The campaign could not be created in your sending platform.')
   return data.link
 }
 
@@ -1224,7 +1259,7 @@ export async function setWorkspaceInboxLeadInterest(
     action: 'inbox-interest-set',
     workspace_id: workspaceId,
     ...input,
-  }, 'The lead status could not be updated in Instantly.')
+  }, 'The lead status could not be updated in your sending platform.')
 }
 
 export async function setWorkspaceInboxThreadStatus(

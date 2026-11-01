@@ -39,6 +39,12 @@ interface AssignInput {
 interface MailboxActionOptions {
   /** Called with the mailboxes a write succeeded for, so the page can drop them from the selection. */
   onDone?: (emails: string[]) => void
+  /**
+   * Whether the connected provider can pause one mailbox. False for Email
+   * Bison and ReachInbox, whose APIs have no such call; the menus hide the
+   * control rather than offer one that can only fail.
+   */
+  canPause?: boolean
 }
 
 function jobEmails(jobs: AssignJob[]): string[] {
@@ -68,7 +74,7 @@ function errorMessage(error: unknown, fallback: string): string {
  * writes it back whole, so two in flight would drop each other's mailbox. A
  * second click while one is saving queues behind it.
  */
-export const useMailboxActions = (workspaceId: string, { onDone }: MailboxActionOptions = {}) => {
+export const useMailboxActions = (workspaceId: string, { onDone, canPause = true }: MailboxActionOptions = {}) => {
   const queryClient = useQueryClient()
   // Emails with a write in flight, so only those rows show a spinner.
   const [pendingEmails, setPendingEmails] = useState<Set<string>>(() => new Set())
@@ -260,6 +266,7 @@ export const useMailboxActions = (workspaceId: string, { onDone }: MailboxAction
     assign,
     unassign,
     setPaused,
+    canPause,
     copyEmails,
     pendingEmails,
     busy: assignMutation.isPending || pauseMutation.isPending,

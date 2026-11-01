@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { integrationProvider, integrationProviderLabel } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -37,6 +38,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AssignInstantlyCampaignsDialog } from '@/components/workspace/AssignInstantlyCampaignsDialog'
+import { OutreachConnectionDialog } from '@/components/workspace/OutreachConnectionDialog'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
@@ -52,7 +54,6 @@ import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  connectWorkspaceInstantly,
   disconnectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
   refreshWorkspaceCampaignAnalytics,
@@ -393,12 +394,16 @@ const WorkspaceCampaigns = ({
   const [campaignDailyLimitEdited, setCampaignDailyLimitEdited] = useState(false)
   const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
   const [connectionOpen, setConnectionOpen] = useState(false)
-  const [apiKeyDraft, setApiKeyDraft] = useState('')
-  const [connectionSaving, setConnectionSaving] = useState(false)
 
   const integration = campaignOverviewQuery.data?.integration || null
   const canManageCampaigns = Boolean(campaignOverviewQuery.data?.can_manage_campaigns)
   const sendingAccounts = integration?.accounts || []
+  // The connected platform's name, everywhere this page names it. Before any
+  // connection, the copy speaks of "a sending platform" rather than one brand.
+  const providerLabel = integration?.connected || integration?.status === 'error'
+    ? integrationProviderLabel(integration)
+    : 'your sending platform'
+  const providerName = integrationProviderLabel(integration)
   const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
   const unassignedProviderCampaigns = providerCampaigns.filter((campaign) => !campaign.mapped_client_id)
 
@@ -412,7 +417,7 @@ const WorkspaceCampaigns = ({
       try {
         await refreshWorkspaceInstantly(workspaceId)
       } catch (error) {
-        throw new Error(`Instantly connection: ${error instanceof Error ? error.message : 'could not be checked.'}`)
+        throw new Error(`${providerName} connection: ${error instanceof Error ? error.message : 'could not be checked.'}`)
       }
       try {
         return await refreshWorkspaceCampaignAnalytics(workspaceId)
@@ -426,9 +431,9 @@ const WorkspaceCampaigns = ({
       // rather than counted as done; its numbers on this page are the last
       // ones anybody saw.
       if (result.missing > 0) {
-        toast.warning(`Synced. ${result.missing} of ${result.requested} campaigns could not be found in Instantly.`)
+        toast.warning(`Synced. ${result.missing} of ${result.requested} campaigns could not be found in ${providerName}.`)
       } else {
-        toast.success('Synced with Instantly.')
+        toast.success(`Synced with ${providerName}.`)
       }
     },
     onError: async () => {
@@ -466,15 +471,33 @@ const WorkspaceCampaigns = ({
   const bounceAlarm = analyticsTotals.sent >= 20
     && bouncedCount / analyticsTotals.sent > 0.03
 
+  /*
+   * Everything that renders the connection, not only this page's overview:
+   * the setup checklist and the mailbox lists kept saying "connected" (or
+   * named the old provider) until their own stale time ran out.
+   */
+  const invalidateConnectionViews = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: ['workspace-mailboxes', workspaceId] }),
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey.includes('mailboxes') && query.queryKey.includes(workspaceId),
+      }),
+    ])
+  }
+
   const disconnectMutation = useMutation({
     mutationFn: () => disconnectWorkspaceInstantly(workspaceId),
     onSuccess: async () => {
-      setApiKeyDraft('')
       setConnectionOpen(false)
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      toast.success('Instantly API access removed from this workspace.')
+      await invalidateConnectionViews()
+      toast.success(`${providerLabel} access removed from this workspace.`)
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Instantly could not be disconnected.'),
+    onError: (error) => {
+      const report = campaignErrorToast(error, `${providerLabel} could not be disconnected.`)
+      toast.error(report.title, report.description ? { description: report.description } : undefined)
+    },
   })
   const saveCampaignMutation = useMutation({
     mutationFn: saveWorkspaceCampaign,
@@ -508,6 +531,7 @@ const WorkspaceCampaigns = ({
   const newHostsNote = newHostsPerDayNote(
     wholeNumberOrNull(campaignDailyLimit),
     mailboxCapacity(sendingAccounts, selectedSenderAccounts),
+    providerName,
   )
   const normalizedSearch = search.trim().toLowerCase()
   const statusMatches = (summary: CampaignSummary, value: CampaignFilter) => value === 'all'
@@ -545,8 +569,8 @@ const WorkspaceCampaigns = ({
   })
 
   const syncFreshness = useMemo(
-    () => describeSyncFreshness(scopedSummaries.map((summary) => summary.campaign?.last_synced_at), Date.now()),
-    [scopedSummaries],
+    () => describeSyncFreshness(scopedSummaries.map((summary) => summary.campaign?.last_synced_at), Date.now(), providerName),
+    [scopedSummaries, providerName],
   )
   const sendingNow = useMemo(() => {
     const sending = summaries.filter((summary) => (summary.campaign?.target_counts.staged_sending || 0) > 0)
@@ -570,7 +594,7 @@ const WorkspaceCampaigns = ({
   const newCampaignBlockedReason = clientsLoading || campaignOverviewQuery.isLoading
     ? null
     : !integration?.connected
-      ? 'Connect Instantly first'
+      ? 'Connect a sending platform first'
       : activeClients.length === 0
         ? 'Add an active client first'
         : availableCampaignClients.length === 0
@@ -579,29 +603,6 @@ const WorkspaceCampaigns = ({
   const selectedProviderCampaign = selectedProviderCampaignId === 'new'
     ? null
     : unassignedProviderCampaigns.find((campaign) => campaign.id === selectedProviderCampaignId) || null
-
-  const saveInstantlyConnection = async () => {
-    let apiKey = apiKeyDraft.trim()
-    if (apiKey.length < 20 || connectionSaving) return
-    setConnectionSaving(true)
-    try {
-      await connectWorkspaceInstantly(workspaceId, apiKey)
-      // Cleared only once it worked: a rejected key stays in the field so a
-      // typo can be fixed without pasting it again.
-      setApiKeyDraft('')
-      setConnectionOpen(false)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
-        queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
-      ])
-      toast.success('Instantly connected. You can create and launch campaigns.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Instantly could not be connected.')
-    } finally {
-      apiKey = ''
-      setConnectionSaving(false)
-    }
-  }
 
   function resetCreateDialog() {
     setCreateOpen(false)
@@ -665,7 +666,7 @@ const WorkspaceCampaigns = ({
      * the same name instead of linking the one the operator picked.
      */
     if (selectedProviderCampaignId !== 'new' && !selectedProviderCampaign) {
-      toast.error('That Instantly campaign is no longer available to assign. Reopen the campaign picker and choose again.')
+      toast.error(`That ${providerName} campaign is no longer available to assign. Reopen the campaign picker and choose again.`)
       return
     }
     const dailyLimit = campaignDailyLimit.trim() === '' ? Number.NaN : Number(campaignDailyLimit)
@@ -726,17 +727,17 @@ const WorkspaceCampaigns = ({
               {/* Named as the Instantly account: on its own the account's
                   name read like a client, or like a different workspace. */}
               {integration?.connected && !campaignOverviewQuery.isLoading && (
-                <p className="text-xs font-medium text-muted-foreground">Instantly account</p>
+                <p className="text-xs font-medium text-muted-foreground">{providerName} account</p>
               )}
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold">
                   {campaignOverviewQuery.isLoading
-                    ? 'Checking Instantly connection…'
+                    ? 'Checking the sending platform connection…'
                     : integration?.connected
-                      ? integration.provider_workspace_name || 'Instantly connected'
+                      ? integration.provider_workspace_name || `${providerName} connected`
                       : integration?.status === 'error'
-                        ? 'Instantly needs attention'
-                        : 'Connect Instantly to launch outreach'}
+                        ? `${providerName} needs attention`
+                        : 'Connect a sending platform to launch outreach'}
                 </p>
                 {integration?.connected && <Badge variant="outline" className="border-emerald-200 bg-background text-emerald-800">Connected</Badge>}
               </div>
@@ -745,7 +746,7 @@ const WorkspaceCampaigns = ({
                   ? campaignOverviewQuery.error.message
                   : integration?.connected
                     ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · ${providerCampaigns.length} campaign${providerCampaigns.length === 1 ? '' : 's'}${unassignedProviderCampaigns.length > 0 ? ` (${unassignedProviderCampaigns.length} unassigned)` : ''}`
-                    : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects one V2 API key before anyone sends.'}
+                    : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects Instantly, Email Bison or ReachInbox before anyone sends.'}
               </p>
             </div>
           </div>
@@ -759,7 +760,7 @@ const WorkspaceCampaigns = ({
             {integration?.connected && canManageCampaigns && (
               <Button type="button" variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
-                {syncMutation.isPending ? 'Syncing campaigns...' : 'Sync with Instantly'}
+                {syncMutation.isPending ? 'Syncing campaigns…' : `Sync with ${providerName}`}
               </Button>
             )}
             {integration?.can_manage && (
@@ -770,7 +771,7 @@ const WorkspaceCampaigns = ({
                 onClick={() => setConnectionOpen(true)}
                 title={integration.connected && integration.api_key_last_four ? `Key ending ${integration.api_key_last_four}` : undefined}
               >
-                <KeyRound className="mr-2 h-4 w-4" />{integration.connected ? 'Manage key' : 'Connect Instantly'}
+                <KeyRound className="mr-2 h-4 w-4" />{integration.connected ? 'Manage connection' : 'Connect a sending platform'}
               </Button>
             )}
           </div>
@@ -781,7 +782,7 @@ const WorkspaceCampaigns = ({
                 <button type="button" className="font-medium underline underline-offset-2" onClick={() => syncMutation.mutate()}>Try again</button>
               </p>
             ) : syncMutation.isPending ? (
-              <p className="text-muted-foreground">Syncing campaigns...</p>
+              <p className="text-muted-foreground">Syncing campaigns…</p>
             ) : integration?.connected && lastSyncedLabel ? (
               <p className="text-muted-foreground">{lastSyncedLabel}</p>
             ) : null}
@@ -793,7 +794,7 @@ const WorkspaceCampaigns = ({
       {campaignOverviewQuery.data?.provider_campaigns_error && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div><p className="font-medium">Instantly campaigns could not be refreshed</p><p className="mt-0.5 text-amber-800">{campaignOverviewQuery.data.provider_campaigns_error}</p></div>
+          <div><p className="font-medium">{providerName} campaigns could not be refreshed</p><p className="mt-0.5 text-amber-800">{campaignOverviewQuery.data.provider_campaigns_error}</p></div>
         </div>
       )}
 
@@ -838,12 +839,12 @@ const WorkspaceCampaigns = ({
       ) : (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label={`Campaign stats, ${scopeLabel.toLowerCase()}`}>
         <SummaryMetric label="Active campaigns" value={activeCount} detail={`Sending now · ${scopeLabel}`} icon={CheckCircle2} />
-        <SummaryMetric label="Emails sent" value={sentCount} detail={`Synced from Instantly · ${scopeLabel}`} icon={Mail} />
+        <SummaryMetric label="Emails sent" value={sentCount} detail={`Synced from ${providerName} · ${scopeLabel}`} icon={Mail} />
         <SummaryMetric
           label="Positive replies"
           value={integration?.connected ? positiveReplyCount : '—'}
           detail={!integration?.connected
-            ? 'Available after Instantly sync'
+            ? `Available after ${providerName} sync`
             : replyCount === 0
               ? 'No replies yet'
               : `${replyRate} of ${contactedCount} contacted replied`}
@@ -856,7 +857,7 @@ const WorkspaceCampaigns = ({
           label="Bounce rate"
           value={integration?.connected ? bounceRate : '—'}
           detail={!integration?.connected
-            ? 'Available after Instantly sync'
+            ? `Available after ${providerName} sync`
             : analyticsTotals.sent === 0
               ? 'No emails sent yet'
               : bouncedCount === 0 && unsubscribedCount === 0
@@ -908,7 +909,7 @@ const WorkspaceCampaigns = ({
 
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-muted/15 p-4">
-          <p className="mb-3 text-xs text-muted-foreground">Every row is a real Instantly campaign assigned to one client.</p>
+          <p className="mb-3 text-xs text-muted-foreground">Every row is a real {providerName} campaign assigned to one client.</p>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* The search box used to take every pixel the row would give it,
                 so a field holding a campaign name ran the width of the page
@@ -991,17 +992,17 @@ const WorkspaceCampaigns = ({
               {filteredClient
                 ? `${filteredClient.name} has no campaign yet`
                 : unassignedProviderCampaigns.length > 0
-                  ? `${unassignedProviderCampaigns.length} campaign${unassignedProviderCampaigns.length === 1 ? '' : 's'} found in Instantly, none assigned yet`
+                  ? `${unassignedProviderCampaigns.length} campaign${unassignedProviderCampaigns.length === 1 ? '' : 's'} found in ${providerName}, none assigned yet`
                   : campaignOverviewQuery.data?.provider_campaigns_error
                     ? 'No campaigns assigned yet'
                     : 'No campaigns yet'}
             </h3>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
               {!integration?.connected
-                ? 'Connect Instantly to create or assign a campaign.'
+                ? 'Connect a sending platform to create or assign a campaign.'
                 : unassignedProviderCampaigns.length > 0
                   ? `Assign an existing campaign to ${filteredClient ? filteredClient.name : 'a client'}, or create a new one.`
-                  : `Create one${filteredClient ? '' : ' for a client'}. It is created in Instantly for you.`}
+                  : `Create one${filteredClient ? '' : ' for a client'}. It is created in ${providerName} for you.`}
             </p>
             {canManageCampaigns && integration?.connected && (
               <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -1037,7 +1038,7 @@ const WorkspaceCampaigns = ({
                         <div className="min-w-0"><p className="truncate font-semibold">{summary.campaign?.name || `${summary.client.name} Podcast Outreach`}</p><p className="truncate text-xs text-muted-foreground">{summary.client.name}</p></div>
                         <span className="flex shrink-0 items-center gap-1.5">
                           {summary.campaign?.provider_missing && (
-                            <Badge variant="outline" className="border-red-200 bg-red-50 text-red-800">Not in Instantly</Badge>
+                            <Badge variant="outline" className="border-red-200 bg-red-50 text-red-800">Not in {providerName}</Badge>
                           )}
                           <CampaignStatusBadge status={summary.status} />
                         </span>
@@ -1047,7 +1048,7 @@ const WorkspaceCampaigns = ({
                       <div><p className="text-xs text-muted-foreground">Progress</p><p className="mt-1 font-medium">{metrics.progress === null ? '—' : `${metrics.progress}%`}</p></div>
                       <div><p className="text-xs text-muted-foreground">Sent</p><p className="mt-1 font-medium">{metrics.sent.toLocaleString()}</p></div>
                       <div className="col-span-2"><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : `${metrics.replies.toLocaleString()}${metrics.positiveReplies === null ? '' : ` · ${metrics.positiveReplies.toLocaleString()} interested`}`}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Waiting in Instantly</p><p className={metrics.stagedSending > 0 ? 'mt-1 font-semibold text-amber-700' : 'mt-1 font-medium'}>{metrics.staged === 0 ? '—' : metrics.staged}{metrics.stagedSending > 0 ? ` · ${metrics.stagedSending} sending` : ''}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Waiting in {providerName}</p><p className={metrics.stagedSending > 0 ? 'mt-1 font-semibold text-amber-700' : 'mt-1 font-medium'}>{metrics.staged === 0 ? '—' : metrics.staged}{metrics.stagedSending > 0 ? ` · ${metrics.stagedSending} sending` : ''}</p></div>
                     </div>
                     <Link to={summary.nextAction.href} className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm font-medium text-primary hover:bg-muted">
                       <span><span className="block text-xs font-normal text-muted-foreground">Next step</span>{summary.nextAction.label}</span>
@@ -1090,7 +1091,7 @@ const WorkspaceCampaigns = ({
                             {/* Deleted upstream: the row's numbers are last-seen,
                                 and a send into this campaign will 409. */}
                             {summary.campaign?.provider_missing && (
-                              <Badge variant="outline" className="border-red-200 bg-red-50 text-red-800">Not in Instantly</Badge>
+                              <Badge variant="outline" className="border-red-200 bg-red-50 text-red-800">Not in {providerName}</Badge>
                             )}
                             <CampaignStatusBadge status={summary.status} />
                           </span>
@@ -1130,6 +1131,7 @@ const WorkspaceCampaigns = ({
         clients={availableCampaignClients}
         defaultClientId={filteredClient?.id ?? null}
         statusLabel={instantlyStatusLabel}
+        providerLabel={providerName}
         onAssigned={async (assigned) => {
           await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
           toast.success(`${assigned} campaign${assigned === 1 ? '' : 's'} assigned.`)
@@ -1163,11 +1165,11 @@ const WorkspaceCampaigns = ({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="instantly-campaign">Instantly campaign</Label>
+                <Label htmlFor="instantly-campaign">{providerName} campaign</Label>
                 <Select value={selectedProviderCampaignId} onValueChange={selectProviderCampaign} disabled={!selectedClient}>
                   <SelectTrigger id="instantly-campaign"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="new">Create a new Instantly campaign</SelectItem>
+                    <SelectItem value="new">Create a new {providerName} campaign</SelectItem>
                     {unassignedProviderCampaigns.map((campaign) => (
                       <SelectItem key={campaign.id} value={campaign.id}>{campaign.name} · {instantlyStatusLabel(campaign.status)}</SelectItem>
                     ))}
@@ -1175,18 +1177,18 @@ const WorkspaceCampaigns = ({
                 </Select>
                 {campaignOverviewQuery.data?.provider_campaigns_error ? (
                   <p className="text-xs font-medium text-amber-700">
-                    The Instantly campaign list could not be loaded, so existing campaigns are not shown here — an
+                    The {providerName} campaign list could not be loaded, so existing campaigns are not shown here — an
                     empty list above does not mean there are none. Retry from the campaigns page before creating a
                     duplicate.
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Choose an existing unassigned campaign, or create a new provider campaign for this client.</p>
+                  <p className="text-xs text-muted-foreground">Choose an existing unassigned campaign, or create a new {providerName} campaign for this client.</p>
                 )}
               </div>
               {selectedProviderCampaign ? (
                 <div className="rounded-xl border bg-muted/20 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div><p className="font-semibold">{selectedProviderCampaign.name}</p><p className="mt-1 text-xs text-muted-foreground">This exact Instantly campaign will be assigned to {selectedClient?.name}.</p></div>
+                    <div><p className="font-semibold">{selectedProviderCampaign.name}</p><p className="mt-1 text-xs text-muted-foreground">This exact {providerName} campaign will be assigned to {selectedClient?.name}.</p></div>
                     <CampaignStatusBadge status={instantlyStatusLabel(selectedProviderCampaign.status)} />
                   </div>
                   <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
@@ -1199,7 +1201,7 @@ const WorkspaceCampaigns = ({
                 <div className="space-y-2">
                   <Label htmlFor="campaign-name">Campaign name</Label>
                   <Input id="campaign-name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} disabled={!selectedClient} />
-                  <p className="text-xs text-muted-foreground">This name will also be used for the new campaign in Instantly.</p>
+                  <p className="text-xs text-muted-foreground">This name will also be used for the new campaign in {providerName}.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -1221,8 +1223,11 @@ const WorkspaceCampaigns = ({
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    When this campaign may email. Instantly has no New York or Los Angeles.
-                    America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry.
+                    {integrationProvider(integration) === 'instantly'
+                      ? 'When this campaign may email. Instantly has no New York or Los Angeles. America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry.'
+                      : integrationProvider(integration) === 'emailbison'
+                        ? 'When this campaign may email. Email Bison receives the matching zone on the same clock.'
+                        : 'When this campaign may email. America/Detroit is Eastern Time and America/Dawson is Pacific Time.'}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -1263,13 +1268,13 @@ const WorkspaceCampaigns = ({
               </div>
               <div className="grid gap-3 rounded-xl border bg-muted/15 p-4 text-sm sm:grid-cols-2">
                 <div><p className="text-xs text-muted-foreground">Client</p><p className="mt-1 font-medium">{selectedClient?.name}</p></div>
-                <div><p className="text-xs text-muted-foreground">Instantly campaign</p><p className="mt-1 font-medium">{selectedProviderCampaign?.name || campaignName}</p></div>
+                <div><p className="text-xs text-muted-foreground">{providerName} campaign</p><p className="mt-1 font-medium">{selectedProviderCampaign?.name || campaignName}</p></div>
               </div>
             </div>
           )}
 
           <div className="rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-            Saving creates or assigns a real Instantly campaign and ties it to this client. Email only begins after a podcast message is explicitly approved.
+            Saving creates or assigns a real {providerName} campaign and ties it to this client. Email only begins after a podcast message is explicitly approved.
           </div>
 
           <DialogFooter>
@@ -1286,92 +1291,18 @@ const WorkspaceCampaigns = ({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={connectionOpen} onOpenChange={(open) => {
-        setConnectionOpen(open)
-        if (!open) setApiKeyDraft('')
-      }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <KeyRound className="h-5 w-5" />
-            </div>
-            <DialogTitle>{integration?.connected ? 'Manage Instantly connection' : 'Connect your Instantly workspace'}</DialogTitle>
-            <DialogDescription>
-              Enter a V2 API key for this agency workspace. The key is verified against Instantly, encrypted server-side, and never shown again.
-            </DialogDescription>
-          </DialogHeader>
-
-          {integration?.connected && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-              <p className="font-semibold text-emerald-900">{integration.provider_workspace_name}</p>
-              <p className="mt-1 text-emerald-800">Key ending {integration.api_key_last_four} · {integration.active_account_count} active sender{integration.active_account_count === 1 ? '' : 's'}</p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="instantly-api-key">{integration?.connected ? 'Replacement API key' : 'Instantly V2 API key'}</Label>
-            <Input
-              id="instantly-api-key"
-              type="password"
-              value={apiKeyDraft}
-              onChange={(event) => setApiKeyDraft(event.target.value)}
-              placeholder="Paste the workspace API key"
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-            <p className="text-xs leading-5 text-muted-foreground">
-              Required scopes: workspace and account read; campaign read/create/update; lead read/create/update. No inbox or subsequence permissions are needed.
-            </p>
-          </div>
-
-          <div className="flex gap-3 rounded-xl border border-dashed bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <p>Staff can use the connected campaign tools, but only the workspace owner can replace or remove the credential.</p>
-          </div>
-
-          <DialogFooter className="gap-2 sm:justify-between">
-            <div>
-              {integration?.connected && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="ghost" className="text-destructive hover:text-destructive">Disconnect</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Disconnect Instantly?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This removes the stored API key immediately. Existing Instantly campaigns keep running there until they are paused in Instantly or reconnected here.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Keep connected</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        disabled={disconnectMutation.isPending}
-                        onClick={() => disconnectMutation.mutate()}
-                      >
-                        Remove API key
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setConnectionOpen(false)}>Cancel</Button>
-              <Button
-                type="button"
-                disabled={apiKeyDraft.trim().length < 20 || connectionSaving}
-                onClick={() => void saveInstantlyConnection()}
-              >
-                {connectionSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Verify &amp; save key
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <OutreachConnectionDialog
+        open={connectionOpen}
+        onOpenChange={setConnectionOpen}
+        workspaceId={workspaceId}
+        integration={integration}
+        onConnected={async (label) => {
+          await invalidateConnectionViews()
+          toast.success(`${label} connected. You can create and launch campaigns.`)
+        }}
+        onDisconnect={() => disconnectMutation.mutate()}
+        disconnecting={disconnectMutation.isPending}
+      />
     </div>
   )
 }

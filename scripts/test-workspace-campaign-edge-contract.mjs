@@ -3,6 +3,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/workspace-client-campaigns/index.ts', 'utf8')
 const provider = readFileSync('supabase/functions/_shared/instantly.ts', 'utf8')
+// Instantly's request shapes moved out of the edge function into its adapter
+// when Email Bison and ReachInbox joined it (docs/outreach-providers.md). The
+// assertions below follow the code there; the edge-side ones assert it calls
+// through the provider interface.
+const adapter = readFileSync('supabase/functions/_shared/instantlyProvider.ts', 'utf8')
+const providerCore = readFileSync('supabase/functions/_shared/outreachProvider.ts', 'utf8')
 const migration = readFileSync(
   'supabase/migrations/20260724000100_workspace_client_campaigns.sql',
   'utf8',
@@ -53,10 +59,13 @@ assert.match(edge, /action === "mailboxes"[\s\S]*?if \(!Array\.isArray\(accounts
 // workspace's key can see right now.
 assert.match(edge, /action === "mailbox-pause"[\s\S]*?requireOnlyKeys\(body, \["action", "workspace_id", "emails", "paused"\]\)[\s\S]*?requireCampaignManager\(access\)/u)
 assert.match(edge, /action === "mailbox-pause"[\s\S]*?MAX_MAILBOX_PAUSE_EMAILS[\s\S]*?refreshProviderAccounts[\s\S]*?!providerEmails\.has\(email\)[\s\S]*?const sendable = requested\.filter/u)
-assert.match(edge, /action === "mailbox-pause"[\s\S]*?\/accounts\/\$\{encodeURIComponent\(/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?outreach\.setAccountPaused\(providerEmails\.get\(email\)!/u)
+assert.match(adapter, /\/accounts\/\$\{encodeURIComponent\(providerEmail\)\}\/\$\{paused \? "pause" : "resume"\}/u)
+// A provider with no single-mailbox pause refuses before anything is audited.
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?!outreach\.capabilities\.mailboxPause[\s\S]*?unsupportedFeature/u)
 // Audited before the provider calls (a run cut off mid-way still leaves a
 // trace) and after, with counts rather than every address.
-assert.match(edge, /action === "mailbox-pause"[\s\S]*?"workspace\.mailbox\.paused"[\s\S]*?writeAudit\([\s\S]*?\.requested`[\s\S]*?instantlyRequest[\s\S]*?writeAudit\([\s\S]*?action: auditAction[\s\S]*?sample: updated\.slice\(0, 10\)/u)
+assert.match(edge, /action === "mailbox-pause"[\s\S]*?"workspace\.mailbox\.paused"[\s\S]*?writeAudit\([\s\S]*?\.requested`[\s\S]*?outreach\.setAccountPaused[\s\S]*?writeAudit\([\s\S]*?action: auditAction[\s\S]*?sample: updated\.slice\(0, 10\)/u)
 assert.match(edge, /action === "launch-pitch"[\s\S]*?requireCampaignManager\(access\)/u)
 // Client ↔ Instantly campaign links: manager-gated writes, one client per
 // campaign, and inbox attribution that tolerates the pre-migration state.
@@ -106,11 +115,12 @@ assert.match(edge, /\.from\("clients"\)[\s\S]*?\.eq\("id", clientId\)[\s\S]*?\.e
 assert.match(edge, /encryptInstantlyApiKey\(apiKey\)/u)
 assert.match(edge, /api_key_ciphertext: encrypted\.ciphertext[\s\S]*?api_key_iv: encrypted\.iv[\s\S]*?api_key_last_four: apiKey\.slice\(-4\)/u)
 assert.match(edge, /providerCampaignName[\s\S]*?GOAP-\$\{campaign\.id\}/u)
-assert.match(edge, /verifyProviderReadAccess[\s\S]*?"\/campaigns"[\s\S]*?"\/leads\/list"/u)
-assert.match(edge, /listProviderCampaigns[\s\S]*?starting_after[\s\S]*?provider_campaigns/u)
+assert.match(adapter, /verifyReadAccess[\s\S]*?"\/campaigns"[\s\S]*?"\/leads\/list"/u)
+assert.match(adapter, /async listCampaigns\(\)[\s\S]*?starting_after/u)
+assert.match(edge, /\.listCampaigns\(\)[\s\S]*?provider_campaigns/u)
 assert.match(edge, /provider_campaign_id[\s\S]*?CAMPAIGN_ALREADY_MAPPED/u)
-assert.match(edge, /if \(!campaign\.instantly_campaign_id\) \{[\s\S]*?ensureProviderCampaign\(context, campaign, apiKey\)/u)
-assert.match(edge, /skip_if_in_workspace: false,[\s\S]*?skip_if_in_campaign: false,[\s\S]*?skip_if_in_list: false/u)
+assert.match(edge, /if \(!campaign\.instantly_campaign_id\) \{[\s\S]*?ensureProviderCampaign\(context, campaign, outreach\)/u)
+assert.match(adapter, /skip_if_in_workspace: false,[\s\S]*?skip_if_in_campaign: false,[\s\S]*?skip_if_in_list: false/u)
 assert.match(edge, /CAMPAIGN_CONTACT_ALREADY_IN_OUTREACH/u)
 assert.match(edge, /\.from\("podcast_outreach_actions"\)[\s\S]*?webhook_response_status[\s\S]*?CAMPAIGN_PREVIOUS_OUTREACH_EXISTS/u)
 assert.match(edge, /\.eq\("campaign_id", campaign\.id\)[\s\S]*?\.eq\("contact_email", target\.contact_email\)/u)
@@ -133,7 +143,7 @@ assert.match(
 // sendable without the sequence behind it.
 assert.match(
   edge,
-  /\/variables`,\s*\n\s*\{ method: "POST", body: \{ variables: \[\.\.\.PROVISIONED_CAMPAIGN_VARIABLES\] \} \},\s*\n\s*\);[\s\S]*?provisioned_at: new Date\(\)\.toISOString\(\)/u,
+  /const created = await outreach\.finishProvisioning\([\s\S]*?provisioned_at: new Date\(\)\.toISOString\(\)/u,
   'a link may only be marked provisioned after its variables are registered',
 )
 
@@ -141,22 +151,22 @@ assert.match(
 // days 0 through 4 under the name "Weekdays", but Instantly indexes from
 // Sunday, so every campaign sent on Sunday and never on Friday.
 assert.doesNotMatch(
-  edge,
+  edge + adapter,
   /days: \{\s*\n\s*"0": true,/u,
   'the schedule must not hardcode Sunday as a sending day',
 )
 assert.match(
-  edge,
+  adapter,
   /const sendDays = new Set\(input\.sendDays\?\.length \? input\.sendDays : \[1, 2, 3, 4, 5\]\)/u,
   'the default sending week must be Monday to Friday',
 )
 assert.match(
-  edge,
-  /days,\s*\n\s*timezone: campaign\.timezone,/u,
+  adapter,
+  /days,\s*\n\s*timezone: input\.timezone,/u,
   'the schedule days must come from the campaign',
 )
 assert.match(
-  edge,
+  adapter,
   /delay: followUpOneDelay,[\s\S]*?delay: followUpTwoDelay,/u,
   'both follow-up delays must be configurable',
 )
@@ -228,12 +238,12 @@ assert.match(
 // every email, follow-ups included, so it gets room for the whole sequence;
 // sending one number as both let new hosts crowd follow-ups out of the day.
 assert.match(
-  edge,
-  /daily_limit: campaign\.daily_limit \* EMAILS_PER_HOST,\s*daily_max_leads: campaign\.daily_limit,/u,
+  adapter,
+  /daily_limit: input\.dailyLimit \* EMAILS_PER_HOST,\s*daily_max_leads: input\.dailyLimit,/u,
   'the total email cap must leave room for follow-ups',
 )
 assert.match(
-  edge,
+  adapter,
   /const maxLeads = wholeLimit\(item\.daily_max_leads\);/u,
   'a provider campaign must be read by its new-leads cap, not its total',
 )
@@ -243,8 +253,8 @@ assert.match(
 // included, which silently replaced the three emails on any campaign built by
 // hand in Instantly.
 assert.match(
-  edge,
-  /if \(options\?\.includeSequence === false\) delete configuration\.sequences;/u,
+  adapter,
+  /if \(!options\.includeSequence\) delete configuration\.sequences;/u,
   'the sequence must be omittable from a settings save',
 )
 assert.ok(
@@ -288,7 +298,7 @@ assert.match(
 )
 assert.match(
   edge,
-  /target-lead-status[\s\S]*?`\/leads\/\$\{encodeURIComponent\(target\.instantly_lead_id\)\}`/u,
+  /target-lead-status[\s\S]*?outreach\.getLead\(\s*target\.instantly_lead_id,/u,
   'it must read the lead from the provider by id',
 )
 // A lead deleted upstream is an answer, not a fault.
@@ -336,18 +346,18 @@ assert.match(
 // subject as a reply; giving it one starts a separate conversation, so a host
 // who ignored the pitch received three unrelated emails instead of one thread.
 assert.match(
-  edge,
+  adapter,
   /subject: "",\s*\n\s*body: "\{\{goapFollowUpOneBody\}\}"/u,
   'follow-up one must reply into the thread, not open its own',
 )
 assert.match(
-  edge,
+  adapter,
   /subject: "",\s*\n\s*body: "\{\{goapFollowUpTwoBody\}\}"/u,
   'follow-up two must reply into the thread, not open its own',
 )
 // The opening email is the only step that names the conversation.
 assert.match(
-  edge,
+  adapter,
   /subject: "\{\{goapPitchSubject\}\}",\s*\n\s*body: "\{\{goapPitchBody\}\}"/u,
   'the opening email must still carry the written subject',
 )
@@ -358,7 +368,7 @@ assert.match(
 // mapping on a transient fault would orphan running outreach.
 assert.match(
   edge,
-  /InstantlyApiError\) \|\| error\.status !== 404\) throw error;\s*\n\s*await forgetDeadProviderCampaign/u,
+  /OutreachProviderError\) \|\| error\.status !== 404\) throw error;\s*\n\s*await forgetDeadProviderCampaign/u,
   'only a 404 may clear the provider mapping',
 )
 // The clear is conditional on the dead ID still being the mapped one, so a
@@ -383,20 +393,21 @@ assert.match(
 assert.match(edge, /provider_sync_state: "creating"[\s\S]*?\.in\("provider_sync_state", \["idle", "error"\]\)/u)
 assert.match(edge, /provider_sync_state", "creating"[\s\S]*?\.lt\("provider_sync_started_at", staleBefore\)/u)
 assert.doesNotMatch(edge, /subsequence|workspace[_ -]group/iu)
-assert.match(edge, /goapFollowUpOneSubject/u)
-assert.match(edge, /goapFollowUpOneBody/u)
-assert.match(edge, /goapFollowUpTwoSubject/u)
-assert.match(edge, /goapFollowUpTwoBody/u)
+assert.match(adapter, /goapFollowUpOneSubject/u)
+assert.match(adapter, /goapFollowUpOneBody/u)
+assert.match(adapter, /goapFollowUpTwoSubject/u)
+assert.match(adapter, /goapFollowUpTwoBody/u)
 // One list, shared by the client's own campaign and by every campaign created
 // from the client card. These are what a written pitch renders through, so a
 // campaign missing them would send its own copy instead.
 assert.match(
-  edge,
+  adapter,
   /PROVISIONED_CAMPAIGN_VARIABLES = \[[\s\S]*?"goapFollowUpOneSubject"[\s\S]*?"goapFollowUpTwoBody"/u,
   'the provisioned variable list must still carry the sequence variables',
 )
 assert.ok(
-  (edge.match(/variables: \[\.\.\.PROVISIONED_CAMPAIGN_VARIABLES\]/gu) || []).length >= 2,
+  (edge.match(/outreach\.finishProvisioning\(/gu) || []).length >= 2 &&
+    /async finishProvisioning[\s\S]*?variables: \[\.\.\.PROVISIONED_CAMPAIGN_VARIABLES\]/u.test(adapter),
   'both the client campaign and a created campaign must register the variables',
 )
 // The gate that decides whether a host gets the written pitch or a stranger's
@@ -404,13 +415,13 @@ assert.ok(
 // that merely looks app-built, and it must run BEFORE the lead is created —
 // after would mean refusing a send that already happened.
 assert.match(
-  edge,
+  adapter,
   /function sequenceRendersOurPitch[\s\S]*?includes\("\{\{goapPitchBody\}\}"\)/u,
   'sendability must be read off the live sequence',
 )
 assert.match(
   edge,
-  /if \(!providerCampaignValue\.rendersOurPitch\) \{[\s\S]*?"CAMPAIGN_NOT_SENDABLE"[\s\S]*?\}[\s\S]*?listProviderLeads\(/u,
+  /if \(!providerCampaignValue\.rendersOurPitch\) \{[\s\S]*?"CAMPAIGN_NOT_SENDABLE"[\s\S]*?\}[\s\S]*?outreach\.listLeads\(/u,
   'the sequence gate must run before any lead is created',
 )
 // Naming the client's own campaign must route through ensureProviderCampaign,
@@ -446,12 +457,12 @@ assert.doesNotMatch(
 // created rather than build a second one.
 assert.match(
   edge,
-  /const created = orphan \?\? providerCampaign\(/u,
+  /orphan \?\? await outreach\.createCampaign\(/u,
   'creating a campaign must reuse an adoptable orphan first',
 )
 assert.match(
   edge,
-  /function findAdoptableProviderCampaign[\s\S]*?parsed\.name === providerName && parsed\.rendersOurPitch/u,
+  /function findAdoptableProviderCampaign[\s\S]*?candidate\.name === providerName && candidate\.rendersOurPitch/u,
   'adoption must require an exact name and our own sequence',
 )
 assert.match(
@@ -487,7 +498,7 @@ assert.match(edge, /instantly_campaign_id: target\.instantly_campaign_id,/u)
 // page cap means a large workspace comes back short, and calling those
 // campaigns deleted would strip send targets that work perfectly.
 assert.match(
-  edge,
+  adapter,
   /if \(!next \|\| next === startingAfter\) \{\s*\n\s*complete = true;/u,
   'completeness must mean the pages actually ran out',
 )
@@ -725,8 +736,8 @@ assert.doesNotMatch(
 assert.match(stageBody[0], /CAMPAIGN_PITCH_LOCKED[\s\S]*?already moved through the sequence/u)
 assert.match(stageBody[0], /email_reply_count > 0[\s\S]*?CAMPAIGN_PITCH_LOCKED/u)
 // The pasted v2 create-lead endpoint, with the campaign attached.
-assert.match(stageBody[0], /instantlyRequest<unknown>\(apiKey, "\/leads", \{[\s\S]*?campaign: providerCampaignValue\.id/u)
-assert.match(stageBody[0], /skip_if_in_campaign: true/u)
+assert.match(stageBody[0], /outreach\.addLead\(providerCampaignValue\.id, \{[\s\S]*?\{ skipIfInCampaign: true \}/u)
+assert.match(adapter, /if \(options\.skipIfInCampaign\) \{[\s\S]*?"\/leads", \{[\s\S]*?campaign: campaignId,[\s\S]*?skip_if_in_campaign: true/u)
 // Whether the host is now in a sending sequence travels back to the caller, so
 // the dialog can never report "saved" when the truth is "sent".
 assert.match(stageBody[0], /willSend: providerCampaignValue\.status === 1/u)
@@ -793,13 +804,13 @@ assert.match(prepDialog, /const alreadyStaged = Boolean\(target\?\.lead_staged_a
 assert.match(edge, /action === "unstage-podcast"[\s\S]*?requireCampaignManager\(access\)/u)
 const unstageAction = edge.match(/action === "unstage-podcast"[\s\S]*?action === "upsert"/u)
 assert.ok(unstageAction, 'unstage-podcast action must exist')
-assert.match(unstageAction[0], /method: "DELETE"/u)
-assert.match(unstageAction[0], /`\/leads\/\$\{encodeURIComponent\(target\.instantly_lead_id\)\}`/u)
+assert.match(unstageAction[0], /outreach\.removeLead\(\s*target\.instantly_campaign_id \?\? campaign\.instantly_campaign_id,\s*target\.instantly_lead_id,/u)
+assert.match(adapter, /async removeLead[\s\S]*?`\/leads\/\$\{encodeURIComponent\(leadId\)\}`,\s*\{ method: "DELETE" \}/u)
 // Launched outreach owns approval, an activated campaign, and reply tracking;
 // unwinding it here would leave launched_at pointing at a deleted lead.
 assert.match(unstageAction[0], /if \(target\.launched_at\)[\s\S]*?CAMPAIGN_TARGET_ALREADY_LAUNCHED/u)
 // Already gone at the provider is the state we asked for, not a failure.
-assert.match(unstageAction[0], /error instanceof InstantlyApiError && error\.status === 404[\s\S]*?if \(!missing\) throw error/u)
+assert.match(unstageAction[0], /error instanceof OutreachProviderError && error\.status === 404[\s\S]*?if \(!missing\) throw error/u)
 assert.match(unstageAction[0], /instantly_lead_id: null,[\s\S]*?lead_staged_at: null,[\s\S]*?lead_staged_campaign_status: null/u)
 assert.match(unstageAction[0], /action: "workspace\.client_campaign\.lead_removed"/u)
 assert.match(provider, /method\?: "GET" \| "POST" \| "PATCH" \| "DELETE"/u)
@@ -873,7 +884,7 @@ assert.equal(
 // strings under a heading claiming it was what Instantly applied. Nothing read
 // the provider, so the card could not disagree with reality. It now reports
 // what the campaign actually holds.
-assert.match(edge, /interface ProviderSchedule \{[\s\S]*?days: boolean\[\];/u)
+assert.match(providerCore, /interface ProviderSchedule \{[\s\S]*?days: boolean\[\];/u)
 assert.match(edge, /provider_schedule: provider\.schedule,\s+provider_email_gap: provider\.emailGap,/u)
 assert.match(edge, /provider_schedule: campaign\.provider_schedule \?\? null/u)
 assert.match(scheduleMigration, /ADD COLUMN IF NOT EXISTS provider_schedule JSONB/u)
@@ -962,7 +973,7 @@ assert.match(refreshAnalyticsAction[0], /requireCampaignManager\(access\)/u)
 assert.match(refreshAnalyticsAction[0], /INSTANTLY_NOT_CONNECTED/u)
 // A campaign mid-sync is left to its own writer.
 assert.match(refreshAnalyticsAction[0], /\.in\("provider_sync_state", \["idle", "error"\]\)/u)
-assert.match(refreshAnalyticsAction[0], /listInstantlyCampaignAnalytics\(/u)
+assert.match(refreshAnalyticsAction[0], /\.bulkCampaignAnalytics\(/u)
 assert.match(refreshAnalyticsAction[0], /withStoredOpportunityCounts\(/u)
 // Totals are not per-recipient state: stamping last_synced_at here would claim
 // a full sync that never ran.
@@ -1018,7 +1029,7 @@ assert.match(mailboxesAction[0], /campaigns: linksByEmail\.get\(account\.email\.
 // alongside the analytics requests rather than ahead of them.
 assert.match(
   mailboxesAction[0],
-  /const senderLinksRead = readMailboxSenderLinks\(context\.admin, workspaceId\);[\s\S]*?await listInstantlyAccounts\(apiKey\)[\s\S]*?await senderLinksRead;/u,
+  /const senderLinksRead = readMailboxSenderLinks\(context\.admin, workspaceId\);[\s\S]*?await outreach\.listAccounts\(\)[\s\S]*?await senderLinksRead;/u,
 )
 assert.match(mailboxesAction[0], /Promise\.allSettled\(\[\s*saveAccountsSnapshot\(/u)
 
@@ -1071,7 +1082,7 @@ const notSendingMigration = readFileSync(
 const campaignDetailPage = readFileSync('src/pages/app/WorkspaceCampaignDetail.tsx', 'utf8')
 
 assert.match(notSendingMigration, /ADD COLUMN IF NOT EXISTS provider_not_sending_status INTEGER/u)
-assert.match(edge, /const notSendingStatus = typeof item\.not_sending_status === "number"/u)
+assert.match(adapter, /const notSendingStatus = typeof item\.not_sending_status === "number"/u)
 assert.match(edge, /provider_not_sending_status: campaign\.provider_not_sending_status \?\? null/u)
 assert.match(edge, /provider_not_sending_status: provider\.notSendingStatus/u)
 assert.match(campaignDetailPage, /function notSendingStatusLabel\(status: number \| null\)/u)

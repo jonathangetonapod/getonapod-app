@@ -175,11 +175,11 @@ export const MailboxActionsMenu = ({
               />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
-          {account.status === 2
+          {actions.canPause && (account.status === 2
             ? <DropdownMenuItem onSelect={() => actions.setPaused([account], false)}>Resume sending</DropdownMenuItem>
-            : <DropdownMenuItem onSelect={() => actions.setPaused([account], true)}>Pause sending</DropdownMenuItem>}
-          {/* TODO(mailboxes): Reconnect. Instantly's API has no endpoint to
-              re-run a mailbox's OAuth; it has to be done in Instantly. */}
+            : <DropdownMenuItem onSelect={() => actions.setPaused([account], true)}>Pause sending</DropdownMenuItem>)}
+          {/* TODO(mailboxes): Reconnect. No supported provider's API can
+              re-run a mailbox's OAuth; it has to be done in the provider. */}
           <DropdownMenuSeparator />
         </>
       )}

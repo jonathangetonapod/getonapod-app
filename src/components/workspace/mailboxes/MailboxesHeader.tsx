@@ -58,7 +58,7 @@ export const MailboxesHeader = ({ data, loading, syncing, list, onRetry }: Mailb
           {/* Parse-checked: an unparseable timestamp said "Invalid Date". */}
           {syncedAgo && (
             <span data-testid="mailbox-sync-status" className="text-xs text-muted-foreground" title={data?.last_synced_at ?? undefined}>
-              Synced {syncedAgo} · Instantly{data?.provider_workspace_name ? ` / ${data.provider_workspace_name}` : ''}
+              Synced {syncedAgo} · {data?.provider_label || 'Instantly'}{data?.provider_workspace_name ? ` / ${data.provider_workspace_name}` : ''}
             </span>
           )}
           <Button type="button" variant="outline" size="sm" className="h-8 bg-background" onClick={onRetry} disabled={syncing} aria-busy={syncing}>

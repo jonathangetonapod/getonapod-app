@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { integrationProviderLabel } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import {
@@ -1071,10 +1072,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                           <Send className="h-4 w-4" />
                         </span>
                         <div className="min-w-0">
-                          <p className="font-semibold">Instantly</p>
+                          <p className="font-semibold">{setupProgress.integration?.connected ? integrationProviderLabel(setupProgress.integration) : 'Sending platform'}</p>
                           <p className="text-sm text-muted-foreground" data-testid="instantly-status">
                             {setupProgress.integration?.connected
-                              ? `Connected to ${setupProgress.integration.provider_workspace_name || 'your Instantly workspace'} · `
+                              ? `Connected to ${setupProgress.integration.provider_workspace_name || `your ${integrationProviderLabel(setupProgress.integration)} workspace`} · `
                               : 'Not connected · '}
                             <Link to={`${baseHref}/client-campaigns`} className="font-medium text-foreground underline underline-offset-2">
                               {setupProgress.integration?.connected ? 'Manage in Client Campaigns' : 'Connect in Client Campaigns'}

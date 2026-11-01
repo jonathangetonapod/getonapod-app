@@ -26,13 +26,13 @@ import {
   setClientInstantlyCampaignLinks,
 } from '@/services/workspaceCampaigns'
 
-// Instantly campaign_status values that read as "running" to operators.
+// Provider campaign status codes (Instantly's vocabulary, which every adapter speaks).
 const campaignStatusLabel = (status: number | null): string => {
   if (status === 1) return 'Active'
   if (status === 2) return 'Paused'
   if (status === 3) return 'Completed'
   if (status === 0) return 'Draft'
-  return 'In Instantly'
+  return 'At the provider'
 }
 
 interface ClientInstantlyCampaignsCardProps {
@@ -60,6 +60,7 @@ export const ClientInstantlyCampaignsCard = ({
     staleTime: 30_000,
   })
   const data = linksQuery.data ?? null
+  const providerName = data?.provider_label || 'Instantly'
   const savedIds = useMemo(
     () => new Set((data?.links ?? []).map((link) => link.instantly_campaign_id)),
     [data],
@@ -87,7 +88,7 @@ export const ClientInstantlyCampaignsCard = ({
       ))
       void queryClient.invalidateQueries({ queryKey: linksQueryKey })
       void queryClient.invalidateQueries({ queryKey: ['workspace-inbox', workspaceId] })
-      toast.success(`Instantly campaigns linked to ${clientName}.`)
+      toast.success(`${providerName} campaigns linked to ${clientName}.`)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'The linked campaigns could not be saved.')
@@ -157,12 +158,12 @@ export const ClientInstantlyCampaignsCard = ({
       <CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <CardTitle id="client-instantly-campaigns-heading" className="flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-muted-foreground" />Instantly campaigns
+            <Link2 className="h-4 w-4 text-muted-foreground" />{providerName} campaigns
           </CardTitle>
           <CardDescription>
-            Link the Instantly campaigns that belong to {clientName}. Pitches can
+            Link the {providerName} campaigns that belong to {clientName}. Pitches can
             only be sent into campaigns created here, because a campaign built in
-            Instantly carries copy of its own.
+            {providerName} carries copy of its own.
           </CardDescription>
         </div>
         {canManage && (
@@ -184,7 +185,7 @@ export const ClientInstantlyCampaignsCard = ({
       <CardContent>
         {linksQuery.isLoading ? (
           <div className="flex min-h-24 items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />Loading Instantly campaigns…
+            <Loader2 className="h-4 w-4 animate-spin" />Loading campaigns…
           </div>
         ) : linksQuery.isError ? (
           <div className="flex min-h-24 flex-col items-center justify-center gap-3 text-center">
@@ -202,13 +203,13 @@ export const ClientInstantlyCampaignsCard = ({
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
               {savedIds.size > 0
-                ? `${savedIds.size} campaign${savedIds.size === 1 ? ' is' : 's are'} linked, but Instantly is not reachable right now — connect Instantly in Client Campaigns to manage the list.`
-                : 'Connect Instantly in Client Campaigns to load this workspace’s campaigns and link them to the client.'}
+                ? `${savedIds.size} campaign${savedIds.size === 1 ? ' is' : 's are'} linked, but ${providerName} is not reachable right now — reconnect it in Client Campaigns to manage the list.`
+                : 'Connect a sending platform in Client Campaigns to load this workspace’s campaigns and link them to the client.'}
             </p>
           </div>
         ) : data.provider_campaigns.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No campaigns exist in this Instantly workspace yet.
+            No campaigns exist in this {providerName} workspace yet.
           </p>
         ) : (() => {
           const query = search.trim().toLowerCase()
@@ -223,7 +224,7 @@ export const ClientInstantlyCampaignsCard = ({
             .filter((link) => !providerIds.has(link.instantly_campaign_id))
             .map((link) => ({
               id: link.instantly_campaign_id,
-              name: link.campaign_name || 'Campaign removed from Instantly',
+              name: link.campaign_name || `Campaign removed from ${providerName}`,
               status: null as number | null,
               linked_client_id: clientId,
               linked_client_name: null,
@@ -244,17 +245,17 @@ export const ClientInstantlyCampaignsCard = ({
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search campaigns…"
-                  aria-label="Search Instantly campaigns"
+                  aria-label={`Search ${providerName} campaigns`}
                   className="h-8 w-full sm:w-64"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {selection.size} linked · {data.provider_campaigns.length} campaign{data.provider_campaigns.length === 1 ? '' : 's'} in Instantly
+                  {selection.size} linked · {data.provider_campaigns.length} campaign{data.provider_campaigns.length === 1 ? '' : 's'} in {providerName}
                 </p>
               </div>
               {campaigns.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">No campaigns match “{search.trim()}”.</p>
               ) : (
-                <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border px-3" aria-label="Instantly campaigns">
+                <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border px-3" aria-label={`${providerName} campaigns`}>
                   {campaigns.map((campaign) => {
               const linkedElsewhere = Boolean(
                 (campaign.linked_client_id && campaign.linked_client_id !== clientId)
@@ -276,7 +277,7 @@ export const ClientInstantlyCampaignsCard = ({
                   >
                     <span className="block truncate text-sm font-medium">{campaign.name}</span>
                     <span className="block text-xs text-muted-foreground">
-                      {campaign.missing_from_provider ? 'No longer in Instantly — uncheck to remove' : campaignStatusLabel(campaign.status)}
+                      {campaign.missing_from_provider ? `No longer in ${providerName} — uncheck to remove` : campaignStatusLabel(campaign.status)}
                       {campaign.managed_client_id === clientId ? ' · Managed by this client’s app campaign' : ''}
                     </span>
                   </label>
@@ -289,7 +290,7 @@ export const ClientInstantlyCampaignsCard = ({
                       <TooltipTrigger asChild>
                         {deletedIds.has(campaign.id) ? (
                           <Badge variant="outline" className="shrink-0 cursor-help border-destructive/40 bg-destructive/5 text-destructive">
-                            Deleted in Instantly
+                            Deleted in {providerName}
                           </Badge>
                         ) : sendableIds.has(campaign.id) ? (
                           <Badge variant="outline" className="shrink-0 cursor-help border-emerald-300 bg-emerald-50 text-emerald-800">
@@ -303,10 +304,10 @@ export const ClientInstantlyCampaignsCard = ({
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         {deletedIds.has(campaign.id)
-                          ? 'This campaign no longer exists in Instantly, so it can neither send nor receive replies. Uncheck it and press Save campaigns to remove it.'
+                          ? `This campaign no longer exists in ${providerName}, so it can neither send nor receive replies. Uncheck it and press Save campaigns to remove it.`
                           : sendableIds.has(campaign.id)
                             ? 'Built here, so its emails read the pitch written for each podcast. Pitches can be sent into it.'
-                            : 'Built in Instantly, so it carries its own copy. Replies still get attributed to this client, but a pitch sent into it would go out as that copy instead — use Create campaign to make one that can receive pitches.'}
+                            : `Built in ${providerName}, so it carries its own copy. Replies still get attributed to this client, but a pitch sent into it would go out as that copy instead — use Create campaign to make one that can receive pitches.`}
                       </TooltipContent>
                     </Tooltip>
                     </TooltipProvider>
@@ -333,7 +334,7 @@ export const ClientInstantlyCampaignsCard = ({
           <DialogHeader>
             <DialogTitle>Create a campaign for {clientName}</DialogTitle>
             <DialogDescription>
-              This builds the campaign in Instantly with the three-step sequence pitches
+              This builds the campaign in {providerName} with the three-step sequence pitches
               are written into, and links it to {clientName}. It starts paused, so nothing
               sends until you approve outreach.
             </DialogDescription>

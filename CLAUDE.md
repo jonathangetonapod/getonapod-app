@@ -25,7 +25,7 @@ Podcast placement platform, mid-migration from a single-agency admin tool to an 
 - **Charts:** Recharts
 - **Backend:** Supabase (auth, Postgres with RLS, edge functions, storage) — Deno **2.5.2** pinned for edge functions
 - **AI:** Anthropic Claude API + OpenAI embeddings (server-side only)
-- **Outreach:** Instantly.ai (per-workspace API keys, AES-GCM encrypted in DB) + legacy Email Bison
+- **Outreach:** one sending platform per workspace — Instantly, Email Bison (self-hosted, agency supplies its instance URL) or ReachInbox — behind `_shared/outreachProvider.ts` (per-workspace API keys, AES-GCM encrypted in DB; see `docs/outreach-providers.md`). The legacy single-agency Email Bison functions are retired
 - **Podcast data:** Podscan API (proxied through edge functions)
 - **Monitoring:** Sentry (`@sentry/react`, sanitized breadcrumbs, tracing off)
 - **Icons:** Lucide React
@@ -188,7 +188,8 @@ AI, email, Google, Instantly, and webhook secrets are server-only.
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — auto-injected
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` — AI features / embeddings
 - `PODSCAN_API_KEY` — podcast data
-- `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts per-workspace Instantly keys
+- `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts every workspace's sending-platform key (Instantly, Email Bison, ReachInbox)
+- `EMAILBISON_ALLOWED_HOST_SUFFIXES` — optional comma-separated allow-list of Email Bison instance domains; when set, any other instance URL is refused
 - `N8N_EMAIL_WEBHOOK_URL`, `N8N_EMAIL_WEBHOOK_SECRET` — transactional email. Every app email posts an
   event to the n8n `GOAP email` workflow (`_shared/appEmail.ts`), which renders it and sends it from
   Google Workspace; the copy lives in n8n, not here. Supabase Auth invites and password resets go

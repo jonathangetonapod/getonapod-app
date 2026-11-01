@@ -200,7 +200,7 @@ describe('WorkspaceOutreachSuite', () => {
 
     expect(screen.getByRole('heading', { name: 'Client Campaigns', level: 1 })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'No active clients' })).toBeInTheDocument()
-    expect(await screen.findByTestId('instantly-connection-card')).toHaveTextContent('Connect Instantly')
+    expect(await screen.findByTestId('instantly-connection-card')).toHaveTextContent('Connect a sending platform')
     expect(screen.queryByRole('navigation', { name: 'Outreach suite' })).not.toBeInTheDocument()
     expect(screen.getByText('My Workspace')).toBeInTheDocument()
     expect(mockedView).not.toHaveBeenCalled()
@@ -394,7 +394,7 @@ describe('WorkspaceOutreachSuite', () => {
 
     renderPage('mailboxes')
 
-    expect(await screen.findByRole('heading', { name: 'Instantly is not connected' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No sending platform is connected' })).toBeInTheDocument()
     expect(screen.getByText('Connect this workspace to load its sending accounts.')).toBeInTheDocument()
   })
 

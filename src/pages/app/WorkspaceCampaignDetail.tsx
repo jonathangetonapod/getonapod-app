@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { integrationProviderLabel } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
@@ -151,9 +152,9 @@ function providerLeadOutcome(
 ): { label: string; detail: string; className: string } | null {
   if (status === -1) return { label: 'Bounced', detail: 'The address rejected it', className: 'border-destructive/40 bg-destructive/5 text-destructive' }
   if (status === -2) return { label: 'Unsubscribed', detail: 'The host opted out', className: 'border-amber-200 bg-amber-50 text-amber-800' }
-  if (status === -3) return { label: 'Skipped', detail: 'Instantly did not send to this lead', className: 'border-amber-200 bg-amber-50 text-amber-800' }
+  if (status === -3) return { label: 'Skipped', detail: 'The sending platform did not send to this lead', className: 'border-amber-200 bg-amber-50 text-amber-800' }
   if (typeof status === 'number' && status < 0) {
-    return { label: 'Delivery issue', detail: `Instantly reports lead status ${status}`, className: 'border-amber-200 bg-amber-50 text-amber-800' }
+    return { label: 'Delivery issue', detail: `The sending platform reports lead status ${status}`, className: 'border-amber-200 bg-amber-50 text-amber-800' }
   }
   return null
 }
@@ -287,9 +288,9 @@ function notSendingStatusLabel(status: number | null): string | null {
   if (status === 2) return 'Waiting for a lead to process. Nothing is queued to send.'
   if (status === 3) return 'The campaign has reached its daily sending limit.'
   if (status === 4) return 'Every sending account on this campaign has hit its own daily limit.'
-  if (status === 99) return 'Instantly reports an error on this campaign. Their support can say what it is.'
+  if (status === 99) return 'The sending platform reports an error on this campaign. Their support can say what it is.'
   // A code this build predates is still worth saying out loud.
-  if (typeof status === 'number') return `Instantly reports reason code ${status}, which this build does not recognise.`
+  if (typeof status === 'number') return `The sending platform reports reason code ${status}, which this build does not recognise.`
   return null
 }
 
@@ -416,6 +417,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const campaignState = data?.campaignState
   const campaign = campaignState?.campaign || null
   const integration = campaignState?.integration || null
+  // Named once, so every line on this page says which platform does the sending.
+  const providerName = integrationProviderLabel(integration)
   const storedCampaignTargets = useMemo(() => campaignState?.targets || [], [campaignState?.targets])
   const campaignTargets = useMemo(
     () => storedCampaignTargets.filter(targetWasSentToCampaign),
@@ -565,7 +568,9 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const sendingStatusQuery = useQuery({
     queryKey: ['workspace-campaign-sending-status', workspaceId, clientId],
     queryFn: () => getWorkspaceCampaignSendingStatus(workspaceId, clientId),
-    enabled: Boolean(campaign?.instantly_campaign_id) && Boolean(integration?.connected),
+    // Not asked at all where the provider has no diagnosis to give.
+    enabled: Boolean(campaign?.instantly_campaign_id) && Boolean(integration?.connected)
+      && integration?.capabilities?.sendingStatus !== false,
     retry: false,
     staleTime: 60_000,
   })
@@ -796,11 +801,18 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           ? 'Campaign inactive · Completed'
           : 'Campaign inactive · Not launched'
   const providerSchedule = campaign?.provider_schedule ?? null
-  const notSendingReason = notSendingStatusLabel(campaign?.provider_not_sending_status ?? null)
+  // The stored reason is one of Instantly's own codes; another platform's
+  // campaign never carries one, and a translated guess would mislead.
+  const notSendingReason = providerName === 'Instantly'
+    ? notSendingStatusLabel(campaign?.provider_not_sending_status ?? null)
+    : null
   const providerScheduleDays = scheduleDaysLabel(providerSchedule)
   const providerScheduleWindow = scheduleWindowLabel(providerSchedule)
+  // Compared on the clock, not the name: Email Bison stores America/New_York
+  // for the America/Detroit chosen here, which is the same time everywhere.
   const providerTimezoneMismatch = Boolean(
-    providerSchedule?.timezone && settingsTimezone && providerSchedule.timezone !== settingsTimezone,
+    providerSchedule?.timezone && settingsTimezone &&
+      toInstantlyTimezone(providerSchedule.timezone) !== toInstantlyTimezone(settingsTimezone),
   )
   // Podcasts already sitting in the provider campaign. Activating emails them.
   const stagedWaitingCount = campaign?.target_counts.staged ?? 0
@@ -830,7 +842,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const repliedPodcastCount = campaignTargets.filter((target) => target.email_reply_count > 0 || target.status === 'replied').length
   const podcastReplyRate = emailedPodcastCount > 0 ? Math.round((repliedPodcastCount / emailedPodcastCount) * 100) : 0
   const providerAccounts = integration?.accounts || []
-  const dailyLimitNote = newHostsPerDayNote(dailyLimitValue, mailboxCapacity(providerAccounts, settingsSenders))
+  const dailyLimitNote = newHostsPerDayNote(dailyLimitValue, mailboxCapacity(providerAccounts, settingsSenders), providerName)
   const canManageCampaign = Boolean(campaignState?.can_manage_campaigns)
   // All four save buttons post the same payload, so an invalid schedule has
   // to stop every one of them, not only the button on the Schedule tab.
@@ -859,7 +871,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                   : 'border-amber-200 bg-amber-50 text-amber-800'}
               >
-                {integration?.connected ? `Instantly · ${integration.active_account_count} sender${integration.active_account_count === 1 ? '' : 's'}` : 'Instantly not connected'}
+                {integration?.connected ? `${providerName} · ${integration.active_account_count} sender${integration.active_account_count === 1 ? '' : 's'}` : 'Sending platform not connected'}
               </Badge>
             </div>
             <h1 className="mt-2 truncate text-3xl font-bold tracking-tight">{campaign?.name || `${client.name} Podcast Outreach`}</h1>
@@ -982,7 +994,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                                   <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Where this host stands</p>
-                                      <p className="mt-1 text-sm text-muted-foreground">Read from Instantly just now, not from the stored counts above.</p>
+                                      <p className="mt-1 text-sm text-muted-foreground">Read from {providerName} just now, not from the stored counts above.</p>
                                     </div>
                                     <Button size="sm" variant="outline" disabled={leadStatusQuery.isFetching} onClick={() => void leadStatusQuery.refetch()}>
                                       {leadStatusQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Check again
@@ -993,7 +1005,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                                   ) : leadStatusQuery.isError ? (
                                     <p className="mt-3 text-sm text-destructive">{leadStatusQuery.error instanceof Error ? leadStatusQuery.error.message : 'The delivery status could not be read.'}</p>
                                   ) : leadStatusQuery.data?.deleted_upstream ? (
-                                    <p className="mt-3 text-sm text-amber-800">This lead no longer exists in Instantly, so no further emails will go out to this host.</p>
+                                    <p className="mt-3 text-sm text-amber-800">This lead no longer exists in {providerName}, so no further emails will go out to this host.</p>
                                   ) : leadStatusQuery.data?.lead && !leadHasActivity(leadStatusQuery.data.lead) ? (
                                     <p className="mt-3 text-sm text-muted-foreground">Nothing has been sent to this host yet, so there is no delivery activity to report.</p>
                                   ) : leadStatusQuery.data?.lead ? (
@@ -1046,7 +1058,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             </Card>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.7fr)]">
               <Card>
-                <CardHeader><CardTitle>Outreach timeline</CardTitle><CardDescription>Launches and reply activity synced from this client’s Instantly campaign.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Outreach timeline</CardTitle><CardDescription>Launches and reply activity synced from this client’s {providerName} campaign.</CardDescription></CardHeader>
                 <CardContent>
                   {activityTargets.length === 0 ? (
                     <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed text-center">
@@ -1072,7 +1084,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 </CardContent>
               </Card>
               <Card>
-                <CardHeader><CardTitle>Live activity</CardTitle><CardDescription>{campaign?.last_synced_at ? `Automatically synced · Updated ${formatDate(campaign.last_synced_at)}` : 'Automatically synced from Instantly after launch.'}</CardDescription></CardHeader>
+                <CardHeader><CardTitle>Live activity</CardTitle><CardDescription>{campaign?.last_synced_at ? `Automatically synced · Updated ${formatDate(campaign.last_synced_at)}` : `Automatically synced from ${providerName} after launch.`}</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
@@ -1269,7 +1281,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               <Card>
                 <CardHeader>
                   <CardTitle>Sending schedule</CardTitle>
-                  <CardDescription>What you set here is pushed to Instantly, which does the sending.</CardDescription>
+                  <CardDescription>What you set here is pushed to {providerName}, which does the sending.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -1289,7 +1301,9 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                           <option key={zone} value={zone}>{instantlyTimezoneLabel(zone)}</option>
                         ))}
                       </select>
-                      <p className="text-xs text-muted-foreground">Only the zones Instantly offers. It has no New York or Los Angeles; America/Detroit is Eastern Time and America/Dawson is its Pacific Time entry. The window below is read in this zone.</p>
+                      <p className="text-xs text-muted-foreground">{providerName === 'Instantly'
+                        ? 'America/Detroit is Eastern Time and America/Dawson is Pacific Time (Instantly has no New York or Los Angeles). The window below is read in this zone.'
+                        : 'America/Detroit is Eastern Time and America/Dawson is Pacific Time. The window below is read in this zone.'}</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="campaign-detail-limit">New hosts per day</Label>
@@ -1364,7 +1378,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               </Card>
               <Card>
                 <CardHeader>
-                  <CardTitle>What Instantly is set to</CardTitle>
+                  <CardTitle>What {providerName} is set to</CardTitle>
                   <CardDescription>
                     {providerSchedule
                       ? `Read from the campaign${campaign?.last_synced_at ? ` on ${formatDate(campaign.last_synced_at)}` : ''}, not assumed.`
@@ -1429,18 +1443,20 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                       <div className="flex items-center justify-between gap-3 rounded-xl border p-3"><span className="text-sm text-muted-foreground">Gap between emails</span><strong className="text-right text-sm">{campaign?.provider_email_gap === null || campaign?.provider_email_gap === undefined ? 'Not reported' : `${campaign.provider_email_gap} min`}</strong></div>
                       {providerTimezoneMismatch && (
                         <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          Instantly is sending in {providerSchedule.timezone}, but this campaign is set to {settingsTimezone}. Save the schedule to push your timezone across.
+                          {providerName} is sending in {providerSchedule.timezone}, but this campaign is set to {settingsTimezone}. Save the schedule to push your timezone across.
                         </p>
                       )}
                       <p className="text-xs leading-5 text-muted-foreground">
-                        Day names follow Instantly numbering days from Sunday. Their API reference does not state the mapping anywhere; this was confirmed against a real campaign.
+                        {providerName === 'Instantly'
+                          ? 'Day names follow Instantly numbering days from Sunday. Their API reference does not state the mapping anywhere; this was confirmed against a real campaign.'
+                          : `Day names are read from ${providerName}'s own schedule.`}
                       </p>
                     </>
                   ) : (
                     <div className="rounded-xl border border-dashed p-4 text-center">
                       <p className="text-sm font-medium">Nothing read yet</p>
                       <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-muted-foreground">
-                        This campaign has not been synced with Instantly, so its real sending window is unknown. It is deliberately blank rather than guessed.
+                        This campaign has not been synced with {providerName}, so its real sending window is unknown. It is deliberately blank rather than guessed.
                       </p>
                     </div>
                   )}
@@ -1462,7 +1478,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader><CardTitle>Accounts to use</CardTitle><CardDescription>The Instantly mailboxes this campaign sends from.</CardDescription></CardHeader>
+                  <CardHeader><CardTitle>Accounts to use</CardTitle><CardDescription>The {providerName} mailboxes this campaign sends from.</CardDescription></CardHeader>
                   {/* A workspace can hold hundreds of mailboxes — this one holds
                       648 — and the whole list was inline, pushing every other
                       setting off the screen. The card states the choice; the
@@ -1521,7 +1537,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           <DialogHeader>
             <DialogTitle>Start sending from {campaign?.name || 'this campaign'}?</DialogTitle>
             <DialogDescription>
-              Instantly begins working through this campaign on its next send window.
+              {providerName} begins working through this campaign on its next send window.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-3">

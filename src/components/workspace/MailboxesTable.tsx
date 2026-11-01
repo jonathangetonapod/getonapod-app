@@ -64,7 +64,17 @@ export const MailboxesTable = ({
   const list = useMailboxList(allAccounts)
   // A mailbox an action succeeded for leaves the selection, so the next bulk
   // action cannot reach it by accident after it moves out of view.
-  const actions = useMailboxActions(workspaceId, { onDone: (emails) => list.setMany(emails, false) })
+  const actions = useMailboxActions(workspaceId, {
+    onDone: (emails) => list.setMany(emails, false),
+    canPause: data?.capabilities?.mailboxPause !== false,
+  })
+  const providerLabel = data?.provider_label || 'Instantly'
+  // Said once, above the list, so a missing control reads as a fact about the
+  // platform rather than as something broken here.
+  const providerLimits = [
+    data?.capabilities?.mailboxPause === false ? 'pause single mailboxes' : null,
+    data?.capabilities?.mailboxSendHistory === false ? 'read daily send history' : null,
+  ].filter(Boolean)
   const connected = Boolean(data?.connected)
   const showRows = connected && !loading
 
@@ -87,6 +97,12 @@ export const MailboxesTable = ({
         <Notice>
           Clients could not be loaded, so mailboxes cannot be connected to one right now: {clientsError.message}{' '}
           <button type="button" className="font-semibold underline underline-offset-2" onClick={onRetryClients}>Try again</button>
+        </Notice>
+      )}
+
+      {data?.connected && providerLimits.length > 0 && !loading && (
+        <Notice>
+          {providerLabel} does not let us {providerLimits.join(' or ')}. Manage {providerLimits.length === 1 ? 'that' : 'those'} in {providerLabel}.
         </Notice>
       )}
 

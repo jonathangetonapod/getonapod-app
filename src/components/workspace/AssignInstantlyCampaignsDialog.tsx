@@ -27,6 +27,8 @@ interface AssignInstantlyCampaignsDialogProps {
   clients: WorkspaceClient[]
   /** Pre-filled on the first campaign, when opened for one client. */
   defaultClientId?: string | null
+  /** The connected platform's name, for the copy. */
+  providerLabel?: string
   statusLabel: (status: number) => string
   /** Called after a run that assigned at least one campaign. */
   onAssigned: (assigned: number) => Promise<void> | void
@@ -57,6 +59,7 @@ export const AssignInstantlyCampaignsDialog = ({
   campaigns,
   clients,
   defaultClientId,
+  providerLabel = 'Instantly',
   statusLabel,
   onAssigned,
 }: AssignInstantlyCampaignsDialogProps) => {
@@ -165,10 +168,10 @@ export const AssignInstantlyCampaignsDialog = ({
           instead of pushing the list past the dialog's edge. */}
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{reviewing ? 'Confirm assignments' : 'Assign Instantly campaigns'}</DialogTitle>
+          <DialogTitle>{reviewing ? 'Confirm assignments' : `Assign ${providerLabel} campaigns`}</DialogTitle>
           <DialogDescription>
             {reviewing
-              ? 'Each campaign below is linked to the client next to it. Nothing changes in Instantly.'
+              ? `Each campaign below is linked to the client next to it. Nothing changes in ${providerLabel}.`
               : 'Pick a client for each campaign you want to assign. A client can hold one campaign.'}
           </DialogDescription>
         </DialogHeader>
@@ -198,7 +201,7 @@ export const AssignInstantlyCampaignsDialog = ({
             ))}
           </ul>
         ) : campaigns.length === 0 ? (
-          <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every Instantly campaign is already assigned.</p>
+          <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every {providerLabel} campaign is already assigned.</p>
         ) : clients.length === 0 ? (
           <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Every active client already has a campaign. Add or reactivate a client to assign another.</p>
         ) : (
@@ -209,14 +212,14 @@ export const AssignInstantlyCampaignsDialog = ({
               value={query}
               onChange={(event) => { setQuery(event.target.value); setPage(0) }}
               placeholder="Search campaigns"
-              aria-label="Search Instantly campaigns"
+              aria-label={`Search ${providerLabel} campaigns`}
               className="h-9 pl-9"
             />
           </div>
           {matching.length === 0 ? (
             <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">No campaigns match "{query.trim()}".</p>
           ) : (
-          <ul className="min-w-0 divide-y rounded-xl border" aria-label="Unassigned Instantly campaigns">
+          <ul className="min-w-0 divide-y rounded-xl border" aria-label={`Unassigned ${providerLabel} campaigns`}>
             {pageRows.map((campaign) => {
               const chosen = clientByCampaign[campaign.id] || ''
               return (

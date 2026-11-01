@@ -101,6 +101,37 @@ describe('workspaceCampaigns service', () => {
     })
   })
 
+  it('names Email Bison and its instance URL, and never sends a URL for other providers', async () => {
+    invoke.mockResolvedValue({ data: { integration }, error: null } as never)
+
+    await connectWorkspaceInstantly(workspaceId, 'bison-api-user-token-123456', {
+      provider: 'emailbison',
+      baseUrl: 'https://send.agency.com',
+    })
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: {
+        action: 'connect-instantly',
+        workspace_id: workspaceId,
+        api_key: 'bison-api-user-token-123456',
+        provider: 'emailbison',
+        base_url: 'https://send.agency.com',
+      },
+    })
+
+    await connectWorkspaceInstantly(workspaceId, 'reachinbox-key-1234567890', {
+      provider: 'reachinbox',
+      baseUrl: 'https://ignored.example.com',
+    })
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: {
+        action: 'connect-instantly',
+        workspace_id: workspaceId,
+        api_key: 'reachinbox-key-1234567890',
+        provider: 'reachinbox',
+      },
+    })
+  })
+
   it('maps campaign drafts and explicit pitch launches to narrow actions', async () => {
     invoke
       .mockResolvedValueOnce({ data: { campaign: null, targets: [] }, error: null } as never)

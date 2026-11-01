@@ -85,7 +85,10 @@ const EXPECTED_COUNTS = Object.freeze({
   // 198: reconcile the 197 tracked files and add flatBilling.test.ts for
   // subscription access and retirement of credit debits.
   // Includes shared checkout coordination and provider error helpers with tests.
-  edgeTypeScriptFiles: 217,
+  // 224: outreach providers (2026-11-01) — outreachProvider, outreachProviderFactory,
+  // providerHttp, instantlyProvider, emailBison, reachInbox and their tests.
+  // 226: emailBison.test.ts and reachInbox.test.ts (2026-11-01).
+  edgeTypeScriptFiles: 226,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

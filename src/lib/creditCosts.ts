@@ -71,5 +71,5 @@ export function creditCostSuffix(
  * the header tooltip moves when the ledger does.
  */
 export function oneCreditBuys(): string {
-  return 'Historical credit balance. Workspaces choose Claude or OpenAI and supply their own Instantly key; other services are platform-managed.'
+  return 'Historical credit balance. Workspaces choose Claude or OpenAI and supply their own sending-platform key (Instantly, Email Bison or ReachInbox); other services are platform-managed.'
 }

@@ -1,7 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import { HttpError } from '../_shared/httpError.ts'
-import { decryptInstantlyApiKey, instantlyRequest } from '../_shared/instantly.ts'
+import { decryptInstantlyApiKey } from '../_shared/instantly.ts'
+import { type OutreachProvider, OutreachProviderError } from '../_shared/outreachProvider.ts'
+import { createOutreachProvider, requireProviderKind } from '../_shared/outreachProviderFactory.ts'
 import { deleteProviderDomain, providerOfRow } from '../_shared/domainProviders.ts'
 import {
   createAdminClient,
@@ -152,7 +154,7 @@ serve(async (req) => {
     const reason = optionalString(body.reason, 'reason', 500)
 
     // ---------------------------------------------------------------------
-    // 1. Instantly. Abort on failure.
+    // 1. The outreach provider (Instantly, Email Bison or ReachInbox). Abort on failure.
     //
     // Sending is paused before billing is cancelled because a pause can be
     // undone and a cancellation cannot: with the order reversed, an Instantly
@@ -160,29 +162,50 @@ serve(async (req) => {
     // ---------------------------------------------------------------------
     const { data: integration } = await admin
       .from('workspace_instantly_integrations')
-      .select('api_key_ciphertext,api_key_iv')
+      .select('api_key_ciphertext,api_key_iv,provider,provider_base_url')
       .eq('workspace_id', workspaceId)
       .maybeSingle()
 
     let campaignsPaused = 0
     if (integration?.api_key_ciphertext && integration?.api_key_iv) {
-      const { data: campaigns } = await admin
-        .from('workspace_client_campaigns')
-        .select('instantly_campaign_id')
-        .eq('workspace_id', workspaceId)
-        .not('instantly_campaign_id', 'is', null)
+      // The client's own campaigns AND the extra ones this app built for them
+      // (provisioned links): both send pitches written here.
+      const [{ data: campaigns, error: campaignsError }, { data: links, error: linksError }] = await Promise.all([
+        admin
+          .from('workspace_client_campaigns')
+          .select('instantly_campaign_id')
+          .eq('workspace_id', workspaceId)
+          .not('instantly_campaign_id', 'is', null),
+        admin
+          .from('client_instantly_campaign_links')
+          .select('instantly_campaign_id')
+          .eq('workspace_id', workspaceId)
+          .not('provisioned_at', 'is', null),
+      ])
+      if (campaignsError || linksError) {
+        throw new HttpError(
+          502,
+          'OUTREACH_STOP_FAILED',
+          'The campaigns to stop could not be listed, so nothing was deleted. Try again',
+        )
+      }
 
-      const ids = (campaigns ?? [])
+      const ids = [...new Set([...(campaigns ?? []), ...(links ?? [])]
         .map((row) => row.instantly_campaign_id)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0))]
 
       if (ids.length > 0) {
-        let apiKey: string
+        let provider: OutreachProvider
         try {
-          apiKey = await decryptInstantlyApiKey({
+          const apiKey = await decryptInstantlyApiKey({
             ciphertext: integration.api_key_ciphertext,
             iv: integration.api_key_iv,
           })
+          provider = await createOutreachProvider(
+            requireProviderKind(integration.provider ?? 'instantly'),
+            apiKey,
+            integration.provider_base_url ?? null,
+          )
         } catch {
           throw new HttpError(
             502,
@@ -193,13 +216,12 @@ serve(async (req) => {
 
         for (const id of ids) {
           try {
-            await instantlyRequest<unknown>(
-              apiKey,
-              `/campaigns/${encodeURIComponent(id)}/pause`,
-              { method: 'POST' },
-            )
+            await provider.pauseCampaign(id)
             campaignsPaused += 1
-          } catch {
+          } catch (error) {
+            // Deleted at the provider already: nothing is sending from it, so
+            // it must not hold the whole deletion hostage.
+            if (error instanceof OutreachProviderError && error.status === 404) continue
             // One campaign left running is one client still being mailed on
             // behalf of an agency that has closed. That is not a partial
             // success, so it stops here with everything still intact.

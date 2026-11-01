@@ -27,10 +27,10 @@ import {
   writeAudit,
 } from '../_shared/workspaceAuth.ts'
 import {
-  addInstantlyBlockListEntry,
   decryptInstantlyApiKey,
-  removeInstantlyBlockListEntry,
 } from '../_shared/instantly.ts'
+import { createOutreachProvider, requireProviderKind } from '../_shared/outreachProviderFactory.ts'
+import { outreachProviderLabel } from '../_shared/outreachProvider.ts'
 
 const METHODS = ['POST'] as const
 const MANAGER_ROLES = new Set(['owner', 'admin', 'platform_admin'])
@@ -260,29 +260,39 @@ async function syncInstantlyBlockList(
   contactEmail: string,
   intent: 'block' | 'unblock',
 ): Promise<{ synced: boolean; reason: string | null }> {
+  // Whichever provider the workspace sends through: Instantly, Email Bison or
+  // ReachInbox. The name stays because the audit fields it feeds are named so.
+  let label = 'The outreach provider'
   try {
     const { data: connection } = await admin
       .from('workspace_instantly_integrations')
-      .select('api_key_ciphertext, api_key_iv, status')
+      .select('api_key_ciphertext, api_key_iv, status, provider, provider_base_url')
       .eq('workspace_id', workspaceId)
       .maybeSingle()
-    if (!connection?.api_key_ciphertext || !connection?.api_key_iv) {
-      return { synced: false, reason: 'Instantly is not connected for this workspace' }
+    const kind = requireProviderKind(connection?.provider ?? 'instantly')
+    label = outreachProviderLabel(kind)
+    if (!connection?.api_key_ciphertext || !connection?.api_key_iv || connection.status === 'disconnected') {
+      return { synced: false, reason: 'No outreach provider is connected for this workspace' }
     }
     const apiKey = await decryptInstantlyApiKey({
       ciphertext: connection.api_key_ciphertext,
       iv: connection.api_key_iv,
     })
+    const provider = await createOutreachProvider(kind, apiKey, connection.provider_base_url ?? null)
     if (intent === 'block') {
-      await addInstantlyBlockListEntry(apiKey, contactEmail)
-    } else {
-      await removeInstantlyBlockListEntry(apiKey, contactEmail)
+      await provider.blockAddress(contactEmail)
+      return { synced: true, reason: null }
     }
-    return { synced: true, reason: null }
+    // Nothing to remove is not the same as removed: say so, so the page does
+    // not claim the far side was changed when it was never on the list there.
+    const removed = await provider.unblockAddress(contactEmail)
+    return removed
+      ? { synced: true, reason: null }
+      : { synced: true, reason: `${label} had no block-list entry for this address` }
   } catch (error) {
     return {
       synced: false,
-      reason: error instanceof Error ? error.message.slice(0, 200) : 'Instantly refused the request',
+      reason: error instanceof Error ? error.message.slice(0, 200) : `${label} refused the request`,
     }
   }
 }

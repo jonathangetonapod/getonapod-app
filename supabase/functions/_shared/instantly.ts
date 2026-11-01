@@ -1,4 +1,5 @@
 import { HttpError } from "./httpError.ts";
+import { OutreachProviderError } from "./outreachProvider.ts";
 
 const INSTANTLY_API_ORIGIN = "https://api.instantly.ai";
 const INSTANTLY_API_PREFIX = "/api/v2";
@@ -74,15 +75,10 @@ export interface InstantlyAnalyticsSummary {
   total_meeting_booked: number;
 }
 
-export class InstantlyApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
+export class InstantlyApiError extends OutreachProviderError {
   constructor(status: number, code: string, message: string) {
-    super(message);
+    super(status, code, message);
     this.name = "InstantlyApiError";
-    this.status = status;
-    this.code = code;
   }
 }
 
@@ -762,7 +758,9 @@ export function localCampaignStatus(
 export function safeInstantlyError(
   error: unknown,
 ): { code: string; message: string; status: number } {
-  if (error instanceof InstantlyApiError) {
+  // Any provider's failure, not only Instantly's: the same normalizer serves
+  // every adapter behind _shared/outreachProvider.ts.
+  if (error instanceof OutreachProviderError) {
     return { code: error.code, message: error.message, status: error.status };
   }
   if (error instanceof HttpError) {

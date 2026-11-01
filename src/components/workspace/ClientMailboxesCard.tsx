@@ -73,7 +73,7 @@ export const ClientMailboxesCard = ({ workspaceId, clientId, clientName, canMana
             </Button>
           </div>
         ) : !mailboxesQuery.data?.connected ? (
-          <p className="text-sm text-muted-foreground">Connect Instantly to assign sending mailboxes.</p>
+          <p className="text-sm text-muted-foreground">Connect a sending platform to assign sending mailboxes.</p>
         ) : assigned.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No mailboxes send for {clientName} yet. Assign them from the Mailboxes page.

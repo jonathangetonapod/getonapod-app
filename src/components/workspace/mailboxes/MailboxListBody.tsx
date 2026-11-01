@@ -60,6 +60,7 @@ interface MailboxListBodyProps {
 
 export const MailboxListBody = ({ data, loading, error, list, canManage, clients, clientsError, actions }: MailboxListBodyProps) => {
   const columnCount = useMailboxColumnCount()
+  const providerLabel = data?.provider_label || 'Instantly'
   if (loading) return <SkeletonRows />
   // The banner above names the failure; with no earlier list there is nothing to show.
   if (!data) {
@@ -75,12 +76,12 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
   if (!data.connected) {
     return (
       <MessageRow columnCount={columnCount}>
-        <h2 className="font-semibold">{data.reason ? 'Instantly declined the connected key' : 'Instantly is not connected'}</h2>
+        <h2 className="font-semibold">{data.reason ? `${providerLabel} declined the connected key` : 'No sending platform is connected'}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {data.reason === 'key_rejected'
-            ? 'Instantly rejected the saved API key. Reconnect Instantly in Client Campaigns with a current key.'
+            ? `${providerLabel} rejected the saved API key. Reconnect ${providerLabel} in Client Campaigns with a current key.`
             : data.reason === 'scope_missing'
-              ? 'The saved API key cannot read accounts. Reconnect Instantly with a key that has all scopes enabled.'
+              ? `The saved API key cannot read accounts. Reconnect ${providerLabel} with a key that has all scopes enabled.`
               : 'Connect this workspace to load its sending accounts.'}
         </p>
       </MessageRow>
@@ -90,7 +91,7 @@ export const MailboxListBody = ({ data, loading, error, list, canManage, clients
     return (
       <MessageRow columnCount={columnCount}>
         <h2 className="font-semibold">No mailboxes found</h2>
-        <p className="mt-1 text-sm text-muted-foreground">This Instantly workspace has no sending accounts.</p>
+        <p className="mt-1 text-sm text-muted-foreground">This {providerLabel} workspace has no sending accounts.</p>
       </MessageRow>
     )
   }

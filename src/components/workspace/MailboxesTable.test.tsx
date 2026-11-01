@@ -159,6 +159,24 @@ describe('MailboxesTable', { timeout: 20_000 }, () => {
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk actions' })).not.toBeInTheDocument())
   })
 
+  // Email Bison and ReachInbox have no single-mailbox pause. The control is
+  // not offered, and the page says why, instead of one that can only fail.
+  it('hides pause controls where the provider cannot pause one mailbox, and says so', () => {
+    renderTable({
+      ...payload(8),
+      provider: 'emailbison',
+      provider_label: 'Email Bison',
+      capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+    })
+
+    expect(screen.getByText(/Email Bison does not let us pause single mailboxes or read daily send history/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shown mailboxes' }))
+    const bar = screen.getByRole('region', { name: 'Bulk actions' })
+    expect(within(bar).queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
+    expect(within(bar).queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /Assign to clients/ })).toBeInTheDocument()
+  })
+
   it('never runs two assignments at once, even from different rows', async () => {
     let finishFirst: () => void = () => undefined
     vi.mocked(setWorkspaceMailboxClient)

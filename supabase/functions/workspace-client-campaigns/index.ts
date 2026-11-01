@@ -1,25 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 import {
-  type AccountSendDay,
   decryptInstantlyApiKey,
   encryptInstantlyApiKey,
-  getInstantlyAccountSendHistory,
-  getInstantlyWarmupAnalytics,
-  getInstantlyWorkspace,
-  type InstantlyAccountSummary,
   InstantlyApiError,
-  instantlyCampaignStatus,
   instantlyRequest,
-  type InstantlyWarmupAccountAnalytics,
-  listInstantlyAccounts,
-  listInstantlyCampaignAnalytics,
   localCampaignStatus,
   safeInstantlyAccount,
   safeInstantlyAnalytics,
   safeInstantlyError,
   withStoredOpportunityCounts,
 } from "../_shared/instantly.ts";
+import {
+  type AccountSendDay,
+  type AccountSummary as InstantlyAccountSummary,
+  type CampaignSpec,
+  normalizeProviderId,
+  type OutreachProvider,
+  type OutreachProviderKind,
+  OutreachProviderError,
+  outreachProviderLabel,
+  type PitchVariables,
+  type ProviderCampaign,
+  type ProviderLead,
+  unsupportedFeature,
+  type WarmupAccountAnalytics as InstantlyWarmupAccountAnalytics,
+} from "../_shared/outreachProvider.ts";
+import {
+  createOutreachProvider,
+  providerBaseUrl,
+  requireProviderKind,
+} from "../_shared/outreachProviderFactory.ts";
 import { detectDeterministicReply } from "../_shared/inboxSdr.ts";
 import { normalizeRequiredVariables } from "../_shared/promptRequirements.ts";
 import { resolveTextAiKey } from "../_shared/workspaceAiKeys.ts";
@@ -191,6 +202,8 @@ const TARGET_COLUMNS = [
 ].join(",");
 const CONNECTION_COLUMNS = [
   "workspace_id",
+  "provider",
+  "provider_base_url",
   "provider_workspace_id",
   "provider_workspace_name",
   "status",
@@ -215,6 +228,10 @@ interface WorkspaceClientRow {
 
 interface ConnectionRow {
   workspace_id: string;
+  /** Older rows predate the column and read as Instantly. */
+  provider: OutreachProviderKind | null;
+  /** Email Bison instance origin; null for providers with a fixed origin. */
+  provider_base_url: string | null;
   provider_workspace_id: string;
   provider_workspace_name: string;
   status: "connected" | "error" | "disconnected";
@@ -304,79 +321,6 @@ interface TargetRow {
   updated_at: string;
 }
 
-/**
- * The sending window Instantly actually holds for a campaign.
- *
- * Day keys are '0'..'6'. Instantly's API reference does not state which day '0'
- * is, so this carries the raw booleans through untranslated and lets the UI
- * label them under one stated convention (0 = Sunday, matching JavaScript's
- * getDay). Showing the real values is the point: the page used to assert
- * "Monday–Friday" from a hardcoded string, which could not disagree with
- * reality and so could never reveal that it did.
- */
-interface ProviderSchedule {
-  name: string | null;
-  from: string | null;
-  to: string | null;
-  timezone: string | null;
-  /** Index 0..6 in key order, true when sending is allowed that day. */
-  days: boolean[];
-}
-
-interface ProviderCampaign {
-  id: string;
-  status: number;
-  /**
-   * The opening step actually reads the pitch variables this app writes.
-   *
-   * The property that decides whether a pitch may be sent here, checked against
-   * the live sequence rather than inferred from who created the campaign or
-   * what it is called. A campaign built by hand carries its own copy, so
-   * staging a lead into it would send that copy while the screen reported the
-   * written pitch as sent. False when Instantly returned no sequence at all,
-   * which is the safe reading: unknown is not a licence to send.
-   */
-  rendersOurPitch: boolean;
-  name: string;
-  senderAccounts: string[];
-  timezone: string;
-  dailyLimit: number;
-  /** Minutes between sends, as configured at the provider. */
-  emailGap: number | null;
-  /** Why the provider is not sending right now, when it says. */
-  notSendingStatus: number | null;
-  schedule: ProviderSchedule | null;
-  timestampCreated: string | null;
-  timestampUpdated: string | null;
-}
-
-interface ProviderLead {
-  id: string;
-  email: string;
-  status: number | null;
-  email_open_count: number;
-  email_reply_count: number;
-  timestamp_updated: string | null;
-  /**
-   * The rest of what the provider knows about a lead. Read on demand rather
-   * than stored, because the question these answer — where does this host
-   * stand right now — is worth nothing at the freshness of the last sync.
-   */
-  email_click_count: number;
-  /** Which step of the sequence has actually gone out, opened, been replied to. */
-  last_step_id: string | null;
-  email_opened_step: number | null;
-  email_replied_step: number | null;
-  /** Interest, as set in the inbox or by Instantly. */
-  lt_interest_status: number | null;
-  /** Whether the address itself was ever verified, and how it came out. */
-  verification_status: number | null;
-  timestamp_last_contact: string | null;
-  timestamp_last_open: string | null;
-  timestamp_last_reply: string | null;
-  timestamp_last_click: string | null;
-}
-
 interface OutreachSequence {
   subject: string;
   body: string;
@@ -403,7 +347,7 @@ function requireIntegrationOwner(access: WorkspaceFeatureAccess): void {
     throw new HttpError(
       403,
       "WORKSPACE_OWNER_REQUIRED",
-      "Only the workspace owner can manage the Instantly API key",
+      "Only the workspace owner can manage the outreach provider connection",
     );
   }
 }
@@ -445,7 +389,7 @@ async function readConnection(
     throw new HttpError(
       500,
       "INSTANTLY_CONNECTION_LOOKUP_FAILED",
-      "The Instantly connection could not be loaded",
+      "The outreach provider connection could not be loaded",
     );
   }
   return data as ConnectionRow | null;
@@ -589,9 +533,16 @@ function connectionDto(
   access: WorkspaceFeatureAccess,
 ) {
   const accounts = accountsFromSnapshot(connection?.accounts_snapshot);
+  const kind = connectionKind(connection);
   return {
     connected: connection?.status === "connected",
     status: connection?.status || "disconnected",
+    // Which provider this workspace sends through, and what it can do. The UI
+    // names the provider and hides controls the provider has no API for.
+    provider: kind,
+    provider_label: outreachProviderLabel(kind),
+    provider_base_url: connection?.provider_base_url || null,
+    capabilities: PROVIDER_CAPABILITIES[kind],
     provider_workspace_id: connection?.provider_workspace_id || null,
     provider_workspace_name: connection?.provider_workspace_name || null,
     api_key_last_four: connection?.api_key_last_four || null,
@@ -602,17 +553,41 @@ function connectionDto(
     last_verified_at: connection?.last_verified_at || null,
     last_error: connection?.last_error || null,
     can_manage: INTEGRATION_MANAGER_ROLES.has(access.role),
-    required_scopes: [
-      "workspaces:read",
-      "accounts:read",
-      "campaigns:read",
-      "campaigns:create",
-      "campaigns:update",
-      "leads:read",
-      "leads:create",
-      "leads:update",
-    ],
+    required_scopes: kind === "instantly"
+      ? [
+        "workspaces:read",
+        "accounts:read",
+        "campaigns:read",
+        "campaigns:create",
+        "campaigns:update",
+        "leads:read",
+        "leads:create",
+        "leads:update",
+      ]
+      : [],
   };
+}
+
+/** Mirrors each adapter's capabilities, for screens that render without a key. */
+const PROVIDER_CAPABILITIES: Record<OutreachProviderKind, {
+  mailboxPause: boolean;
+  mailboxSendHistory: boolean;
+  sendingStatus: boolean;
+  inbox: boolean;
+}> = {
+  instantly: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true },
+  emailbison: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+  reachinbox: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+};
+
+function connectionKind(connection: ConnectionRow | null): OutreachProviderKind {
+  return connection?.provider === "emailbison" || connection?.provider === "reachinbox"
+    ? connection.provider
+    : "instantly";
+}
+
+function connectionLabel(connection: ConnectionRow | null): string {
+  return outreachProviderLabel(connectionKind(connection));
 }
 
 function targetCounts(targets: TargetRow[]) {
@@ -827,16 +802,41 @@ const TIMEZONE_SUBSTITUTES: Record<string, string> = {
   "Australia/Sydney": "Australia/Melbourne",
 };
 
-function campaignTimezone(value: unknown): string {
+function isIanaTimezone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A sending timezone the workspace's provider will take.
+ *
+ * Instantly (and ReachInbox, which uses the same schedule shape) pin an enum,
+ * so the value must be on that list. Email Bison carries a different list that
+ * includes America/New_York; its adapter maps any real zone onto a listed one
+ * on the same clock, so here a valid IANA name is enough.
+ */
+function campaignTimezone(value: unknown, kind: OutreachProviderKind = "instantly"): string {
   const timezone = requireString(value, "timezone", { max: 100 });
+  if (kind === "emailbison") {
+    if (isIanaTimezone(timezone)) return timezone;
+    throw new HttpError(
+      400,
+      "CAMPAIGN_TIMEZONE_UNSUPPORTED",
+      `${timezone} is not a timezone. Choose one from the list.`,
+    );
+  }
   if (INSTANTLY_TIMEZONES.has(timezone)) return timezone;
   const substitute = TIMEZONE_SUBSTITUTES[timezone];
   throw new HttpError(
     400,
     "CAMPAIGN_TIMEZONE_UNSUPPORTED",
     substitute
-      ? `Instantly does not offer ${timezone}. Use ${substitute}, its entry for that clock.`
-      : `Instantly does not offer ${timezone} as a sending timezone. Choose one from the list.`,
+      ? `${outreachProviderLabel(kind)} does not offer ${timezone}. Use ${substitute}, its entry for that clock.`
+      : `${outreachProviderLabel(kind)} does not offer ${timezone} as a sending timezone. Choose one from the list.`,
   );
 }
 
@@ -885,246 +885,17 @@ function completeTargetSequence(target: Pick<
   );
 }
 
-function providerUuid(value: unknown): string | null {
-  return typeof value === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        value,
-      )
-    ? value.toLowerCase()
-    : null;
-}
-
 /**
- * Does this sequence send the copy we write, or copy of its own?
- *
- * Checks the opening step for the pitch-body variable. Naming and provenance
- * both lie — a campaign can be renamed in Instantly, and one created here can
- * have its sequence replaced there — so the only trustworthy answer comes from
- * the sequence itself. Anything unrecognised reads as false, because a wrong
- * "yes" sends a host the wrong email while reporting success.
+ * A provider campaign id from a request: an Instantly UUID or an Email Bison /
+ * ReachInbox integer. Refused otherwise, which also keeps it safe to place in a
+ * PostgREST filter list.
  */
-function sequenceRendersOurPitch(value: unknown): boolean {
-  if (!Array.isArray(value)) return false;
-  const first = value[0];
-  if (!first || typeof first !== "object" || Array.isArray(first)) return false;
-  const steps = (first as Record<string, unknown>).steps;
-  if (!Array.isArray(steps) || steps.length === 0) return false;
-  const opening = steps[0];
-  if (!opening || typeof opening !== "object" || Array.isArray(opening)) return false;
-  const variants = (opening as Record<string, unknown>).variants;
-  if (!Array.isArray(variants)) return false;
-  return variants.some((variant) => (
-    variant && typeof variant === "object" && !Array.isArray(variant) &&
-    typeof (variant as Record<string, unknown>).body === "string" &&
-    ((variant as Record<string, unknown>).body as string).includes("{{goapPitchBody}}")
-  ));
-}
-
-function providerCampaign(value: unknown): ProviderCampaign {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new InstantlyApiError(
-      502,
-      "INSTANTLY_RESPONSE_INVALID",
-      "Instantly returned an invalid campaign",
-    );
+function requireProviderId(value: unknown, field: string): string {
+  const id = normalizeProviderId(value);
+  if (!id) {
+    throw new HttpError(400, "INVALID_FIELD", `${field} must be a valid campaign id`);
   }
-  const item = value as Record<string, unknown>;
-  const id = providerUuid(item.id);
-  const status = instantlyCampaignStatus(item.status);
-  const name = typeof item.name === "string" ? item.name.trim() : "";
-  if (!id || status === null || !name) {
-    throw new InstantlyApiError(
-      502,
-      "INSTANTLY_RESPONSE_INVALID",
-      "Instantly returned an invalid campaign",
-    );
-  }
-  const senderAccounts = Array.isArray(item.email_list)
-    ? Array.from(new Set(item.email_list.flatMap((candidate) => {
-      if (typeof candidate !== "string") return [];
-      const email = candidate.trim().toLowerCase();
-      return email && email.length <= 254 ? [email] : [];
-    })))
-    : [];
-  const rendersOurPitch = sequenceRendersOurPitch(item.sequences);
-  const schedule = item.campaign_schedule &&
-      typeof item.campaign_schedule === "object" &&
-      !Array.isArray(item.campaign_schedule)
-    ? item.campaign_schedule as Record<string, unknown>
-    : null;
-  const firstSchedule = Array.isArray(schedule?.schedules) &&
-      schedule.schedules[0] &&
-      typeof schedule.schedules[0] === "object" &&
-      !Array.isArray(schedule.schedules[0])
-    ? schedule.schedules[0] as Record<string, unknown>
-    : null;
-  const timezone = typeof firstSchedule?.timezone === "string" &&
-      firstSchedule.timezone.trim() && firstSchedule.timezone.length <= 100
-    ? firstSchedule.timezone.trim()
-    // US Eastern, and a zone Instantly actually carries. America/New_York is
-    // not in its enum, so falling back to that produced a value we could read
-    // but never send back.
-    : DEFAULT_CAMPAIGN_TIMEZONE;
-  // The local daily_limit is new hosts per day, which Instantly calls
-  // daily_max_leads. A hand-built campaign may only carry the total email cap,
-  // so that is read as hosts by dividing out the sequence; taking it as-is
-  // would triple the campaign's volume on its first settings save.
-  const wholeLimit = (candidate: unknown): number | null =>
-    typeof candidate === "number" && Number.isInteger(candidate) &&
-      candidate >= 1
-      ? candidate
-      : null;
-  const maxLeads = wholeLimit(item.daily_max_leads);
-  const totalLimit = wholeLimit(item.daily_limit);
-  const dailyLimit = Math.min(
-    1_000,
-    maxLeads ?? (totalLimit ? Math.ceil(totalLimit / EMAILS_PER_HOST) : 30),
-  );
-  const emailGap = typeof item.email_gap === "number" &&
-      Number.isFinite(item.email_gap) && item.email_gap >= 0 &&
-      item.email_gap <= 1_440
-    ? Math.round(item.email_gap)
-    : null;
-  const scheduleDays = firstSchedule?.days &&
-      typeof firstSchedule.days === "object" && !Array.isArray(firstSchedule.days)
-    ? firstSchedule.days as Record<string, unknown>
-    : null;
-  const timeOfDay = (candidate: unknown): string | null => (
-    typeof candidate === "string" && /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(candidate)
-      ? candidate
-      : null
-  );
-  const timing = firstSchedule?.timing &&
-      typeof firstSchedule.timing === "object" && !Array.isArray(firstSchedule.timing)
-    ? firstSchedule.timing as Record<string, unknown>
-    : null;
-  const providerSchedule: ProviderSchedule | null = firstSchedule
-    ? {
-      name: typeof firstSchedule.name === "string"
-        ? firstSchedule.name.slice(0, 120)
-        : null,
-      from: timeOfDay(timing?.from),
-      to: timeOfDay(timing?.to),
-      timezone: typeof firstSchedule.timezone === "string"
-        ? firstSchedule.timezone.slice(0, 100)
-        : null,
-      days: scheduleDays
-        ? Array.from({ length: 7 }, (_value, index) => scheduleDays[String(index)] === true)
-        : [],
-    }
-    : null;
-  const timestamp = (candidate: unknown): string | null => (
-      typeof candidate === "string" && !Number.isNaN(Date.parse(candidate))
-        ? candidate
-        : null
-    );
-  // Answers "active, but why is nothing going out". Kept as the provider's own
-  // integer rather than a phrase, so a code this build does not recognise
-  // still arrives instead of being dropped in translation.
-  const notSendingStatus = typeof item.not_sending_status === "number" &&
-      Number.isInteger(item.not_sending_status)
-    ? item.not_sending_status
-    : null;
-  return {
-    id,
-    status,
-    rendersOurPitch,
-    name: name.slice(0, 500),
-    senderAccounts,
-    timezone,
-    dailyLimit,
-    emailGap,
-    notSendingStatus,
-    schedule: providerSchedule,
-    timestampCreated: timestamp(item.timestamp_created),
-    timestampUpdated: timestamp(item.timestamp_updated),
-  };
-}
-
-/**
- * Every campaign, and whether that is genuinely every campaign.
- *
- * The page cap means a long-enough list comes back short, and the difference
- * matters: a campaign missing from a COMPLETE listing has been deleted, while
- * one missing from a truncated listing may be perfectly alive further down.
- * Treating those the same would either leave dead campaigns showing as
- * sendable, or mark a large workspace's working campaigns dead.
- */
-async function listProviderCampaignPage(
-  apiKey: string,
-): Promise<{ campaigns: ProviderCampaign[]; complete: boolean }> {
-  const campaigns = new Map<string, ProviderCampaign>();
-  let startingAfter = "";
-  let complete = false;
-  for (let page = 0; page < MAX_PROVIDER_CAMPAIGN_PAGES; page += 1) {
-    const query = new URLSearchParams({ limit: "100" });
-    if (startingAfter) query.set("starting_after", startingAfter);
-    const value = await instantlyRequest<unknown>(apiKey, "/campaigns", { query });
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new InstantlyApiError(
-        502,
-        "INSTANTLY_RESPONSE_INVALID",
-        "Instantly returned an invalid campaign list",
-      );
-    }
-    const response = value as Record<string, unknown>;
-    if (!Array.isArray(response.items)) {
-      throw new InstantlyApiError(
-        502,
-        "INSTANTLY_RESPONSE_INVALID",
-        "Instantly returned an invalid campaign list",
-      );
-    }
-    for (const item of response.items) {
-      const campaign = providerCampaign(item);
-      campaigns.set(campaign.id, campaign);
-    }
-    const next = typeof response.next_starting_after === "string"
-      ? response.next_starting_after.trim()
-      : "";
-    // Running out of pages is the only way to know nothing was left behind.
-    if (!next || next === startingAfter) {
-      complete = true;
-      break;
-    }
-    startingAfter = next;
-  }
-  return {
-    campaigns: Array.from(campaigns.values()).sort((left, right) => (
-      (right.timestampUpdated || right.timestampCreated || "").localeCompare(
-        left.timestampUpdated || left.timestampCreated || "",
-      ) || left.name.localeCompare(right.name)
-    )),
-    complete,
-  };
-}
-
-async function listProviderCampaigns(apiKey: string): Promise<ProviderCampaign[]> {
-  return (await listProviderCampaignPage(apiKey)).campaigns;
-}
-
-async function verifyProviderReadAccess(apiKey: string): Promise<void> {
-  const [campaigns, leads] = await Promise.all([
-    instantlyRequest<unknown>(apiKey, "/campaigns", {
-      query: new URLSearchParams({ limit: "1" }),
-    }),
-    instantlyRequest<unknown>(apiKey, "/leads/list", {
-      method: "POST",
-      body: { limit: 1 },
-    }),
-  ]);
-  for (const value of [campaigns, leads]) {
-    if (
-      !value || typeof value !== "object" || Array.isArray(value) ||
-      !Array.isArray((value as Record<string, unknown>).items)
-    ) {
-      throw new InstantlyApiError(
-        502,
-        "INSTANTLY_RESPONSE_INVALID",
-        "Instantly returned an invalid list response",
-      );
-    }
-  }
+  return id;
 }
 
 function cleanContactEmail(value: unknown): string | null {
@@ -1168,9 +939,9 @@ function currentWaveStart(): string {
   return now.toISOString().slice(0, 10);
 }
 
-async function integrationApiKey(
+async function decryptedConnectionKey(
   connection: ConnectionRow | null,
-  requireConnected = true,
+  requireConnected: boolean,
 ): Promise<string> {
   if (
     !connection ||
@@ -1181,13 +952,40 @@ async function integrationApiKey(
     throw new HttpError(
       409,
       "INSTANTLY_NOT_CONNECTED",
-      "Connect Instantly before using this campaign action",
+      "Connect an outreach provider before using this campaign action",
     );
   }
   return await decryptInstantlyApiKey({
     ciphertext: connection.api_key_ciphertext,
     iv: connection.api_key_iv,
   });
+}
+
+/** The workspace's outreach provider, ready to call. */
+async function integrationProvider(
+  connection: ConnectionRow | null,
+  requireConnected = true,
+): Promise<OutreachProvider> {
+  const apiKey = await decryptedConnectionKey(connection, requireConnected);
+  return await createOutreachProvider(
+    connectionKind(connection),
+    apiKey,
+    connection?.provider_base_url ?? null,
+  );
+}
+
+/**
+ * The raw Instantly key, for the inbox actions that only Instantly supports.
+ * Any other provider is refused before a request is shaped for the wrong API.
+ */
+async function integrationApiKey(
+  connection: ConnectionRow | null,
+  requireConnected = true,
+): Promise<string> {
+  if (connection && connectionKind(connection) !== "instantly") {
+    throw unsupportedFeature(connectionLabel(connection), "the inbox from this screen");
+  }
+  return await decryptedConnectionKey(connection, requireConnected);
 }
 
 function verifySelectedAccounts(
@@ -1209,7 +1007,7 @@ function verifySelectedAccounts(
     throw new HttpError(
       409,
       "INSTANTLY_SENDER_UNAVAILABLE",
-      "Choose active Instantly sending accounts for this campaign",
+      "Choose active sending accounts for this campaign",
     );
   }
 }
@@ -1228,8 +1026,8 @@ async function freshOrSnapshotAccounts(
 ): Promise<InstantlyAccountSummary[]> {
   if (!connection) return accountsFromSnapshot(null);
   try {
-    const apiKey = await integrationApiKey(connection);
-    return await refreshProviderAccounts(context.admin, connection, apiKey);
+    const provider = await integrationProvider(connection);
+    return await refreshProviderAccounts(context.admin, connection, provider);
   } catch (_error) {
     return accountsFromSnapshot(connection.accounts_snapshot);
   }
@@ -1271,9 +1069,9 @@ async function readMailboxSenderLinks(
 async function refreshProviderAccounts(
   admin: AuthContext["admin"],
   connection: ConnectionRow,
-  apiKey: string,
+  provider: OutreachProvider,
 ): Promise<InstantlyAccountSummary[]> {
-  const accounts = await listInstantlyAccounts(apiKey);
+  const accounts = await provider.listAccounts();
   await saveAccountsSnapshot(admin, connection, accounts);
   return accounts;
 }
@@ -1298,7 +1096,7 @@ async function saveAccountsSnapshot(
     throw new HttpError(
       500,
       "INSTANTLY_CONNECTION_UPDATE_FAILED",
-      "The Instantly connection could not be updated",
+      "The outreach provider connection could not be updated",
     );
   }
 }
@@ -1647,36 +1445,19 @@ function providerCampaignName(campaign: CampaignRow): string {
   return `${campaign.name.slice(0, 150)} · GOAP-${campaign.id}`;
 }
 
-/** The goap* variables the three steps below read. Registering them is what
- * makes a written pitch render; a campaign without them sends its own copy. */
-const PROVISIONED_CAMPAIGN_VARIABLES = [
-  "goapPitchSubject",
-  "goapPitchBody",
-  "goapFollowUpOneSubject",
-  "goapFollowUpOneBody",
-  "goapFollowUpTwoSubject",
-  "goapFollowUpTwoBody",
-  "clientName",
-  "podcastName",
-  "goapTargetId",
-] as const;
-
 /**
- * The provider config for a settings save.
+ * What this app writes into the provider for a campaign row.
  *
- * `includeSequence` decides whether the three steps go with it. Sending them
- * keeps an app-built campaign's cadence in step with what the form shows, which
- * is how an edited follow-up delay reaches Instantly at all. Sending them to a
- * campaign somebody wrote by hand overwrites their copy — and it happened on a
- * daily-limit change or a mailbox assignment, neither of which reads like an
- * instruction to replace three emails.
+ * Whether the three steps go with it is decided at the call (updateCampaign's
+ * includeSequence): sending them keeps an app-built campaign's cadence in step
+ * with the form, which is how an edited follow-up delay reaches the provider at
+ * all. Sending them to a campaign somebody wrote by hand overwrites their copy
+ * — and it happened on a daily-limit change or a mailbox assignment, neither of
+ * which reads like an instruction to replace three emails.
  */
-function campaignConfiguration(
-  campaign: CampaignRow,
-  options?: { includeSequence?: boolean },
-): Record<string, unknown> {
-  const configuration = provisionedCampaignConfiguration({
-    providerName: providerCampaignName(campaign),
+function campaignSpec(campaign: CampaignRow): CampaignSpec {
+  return {
+    name: providerCampaignName(campaign),
     timezone: campaign.timezone,
     dailyLimit: campaign.daily_limit,
     senderAccounts: campaign.sender_accounts,
@@ -1685,16 +1466,8 @@ function campaignConfiguration(
     windowEnd: campaign.send_window_end,
     followUpOneDelayDays: campaign.follow_up_one_delay_days,
     followUpTwoDelayDays: campaign.follow_up_two_delay_days,
-  });
-  if (options?.includeSequence === false) delete configuration.sequences;
-  return configuration;
+  };
 }
-
-/** The pitch and its two follow-ups: what one new host costs in sends. */
-const EMAILS_PER_HOST = 3;
-
-/** Instantly's schedule is keyed "0".."6" starting at Sunday. */
-const SEND_DAY_KEYS = ["0", "1", "2", "3", "4", "5", "6"] as const;
 
 /**
  * The days a campaign may send, as Instantly indexes them.
@@ -1755,121 +1528,6 @@ function followUpDelay(value: unknown, field: string): number | null {
 }
 
 /**
- * The provider config for a campaign this app owns the sequence of.
- *
- * Shared by the client's own campaign and by the extra campaigns an operator
- * creates from the client card, because "sendable" means exactly this shape:
- * three steps reading the goap* variables. A campaign built by hand in Instantly
- * has its own sequence and none of these, which is why it can be linked for
- * reply attribution but never chosen as a send target.
- */
-function provisionedCampaignConfiguration(input: {
-  providerName: string;
-  timezone: string;
-  dailyLimit: number;
-  senderAccounts: string[];
-  sendDays?: number[];
-  windowStart?: string;
-  windowEnd?: string;
-  followUpOneDelayDays?: number;
-  followUpTwoDelayDays?: number;
-}): Record<string, unknown> {
-  const campaign = {
-    name: input.providerName,
-    timezone: input.timezone,
-    daily_limit: input.dailyLimit,
-    sender_accounts: input.senderAccounts,
-  };
-  // Monday to Friday. This used to be written as days 0 through 4 under the
-  // name "Weekdays", but 0 is Sunday, so every campaign built here sent on
-  // Sunday and never on Friday.
-  const sendDays = new Set(input.sendDays?.length ? input.sendDays : [1, 2, 3, 4, 5]);
-  const days = Object.fromEntries(
-    SEND_DAY_KEYS.map((key) => [key, sendDays.has(Number(key))]),
-  );
-  const followUpOneDelay = input.followUpOneDelayDays ?? 6;
-  const followUpTwoDelay = input.followUpTwoDelayDays ?? 7;
-  return {
-    name: input.providerName,
-    is_evergreen: true,
-    campaign_schedule: {
-      schedules: [{
-        name: "Sending window",
-        timing: {
-          from: input.windowStart ?? "09:00",
-          to: input.windowEnd ?? "17:00",
-        },
-        days,
-        timezone: campaign.timezone,
-      }],
-    },
-    sequences: [{
-      steps: [
-        {
-          type: "email",
-          // Instantly reads a step's delay as the wait before the NEXT email,
-          // so the opening step carries the gap to follow-up one. Default six
-          // days: under three reads as pestering, and each follow-up has to
-          // add something new.
-          delay: followUpOneDelay,
-          delay_unit: "days",
-          variants: [{
-            subject: "{{goapPitchSubject}}",
-            body: "{{goapPitchBody}}",
-            v_disabled: false,
-          }],
-        },
-        {
-          type: "email",
-          delay: followUpTwoDelay,
-          delay_unit: "days",
-          variants: [{
-            // Empty on purpose. Instantly threads a step with no subject as a
-            // reply to the opening email; giving it one starts a separate
-            // conversation, so a host who ignored the pitch got three unrelated
-            // emails instead of one thread they could scroll back through.
-            subject: "",
-            body: "{{goapFollowUpOneBody}}",
-            v_disabled: false,
-          }],
-        },
-        {
-          type: "email",
-          delay: 0,
-          delay_unit: "days",
-          variants: [{
-            // Empty for the same reason as the step above: this one replies
-            // into the thread rather than opening a third.
-            subject: "",
-            body: "{{goapFollowUpTwoBody}}",
-            v_disabled: false,
-          }],
-        },
-      ],
-    }],
-    email_list: campaign.sender_accounts,
-    // Two different caps. daily_max_leads is how many new hosts start the
-    // sequence each day; daily_limit is every email, follow-ups included.
-    // Setting both to the same number let new hosts use up the day and push
-    // follow-ups back, since new leads go first.
-    daily_limit: campaign.daily_limit * EMAILS_PER_HOST,
-    daily_max_leads: campaign.daily_limit,
-    email_gap: 15,
-    random_wait_max: 10,
-    text_only: true,
-    first_email_text_only: true,
-    stop_on_reply: true,
-    stop_on_auto_reply: false,
-    open_tracking: true,
-    link_tracking: false,
-    prioritize_new_leads: true,
-    insert_unsubscribe_header: true,
-    allow_risky_contacts: false,
-    disable_bounce_protect: false,
-  };
-}
-
-/**
  * Drops a mapping to a campaign Instantly no longer has.
  *
  * A campaign deleted on the provider side left this client pointing at an ID
@@ -1906,7 +1564,7 @@ async function forgetDeadProviderCampaign(
     throw new HttpError(
       500,
       "CAMPAIGN_PROVIDER_MAPPING_FAILED",
-      "The stale Instantly campaign mapping could not be cleared",
+      "The stale provider campaign mapping could not be cleared",
     );
   }
   await writeAudit(context.admin, {
@@ -1950,6 +1608,9 @@ async function forgetDeadCampaignLink(
     action: "client.instantly_campaign_link.deleted_upstream",
     entityType: "client_instantly_campaign_link",
     entityId: providerCampaignId,
+    // An integer provider id is not a UUID entity id; this keeps every
+    // provider's rows findable with one query.
+    metadata: { provider_campaign_id: providerCampaignId },
   });
 }
 
@@ -1963,18 +1624,13 @@ async function forgetDeadCampaignLink(
 async function readProviderCampaignOrForget(
   context: AuthContext,
   campaign: CampaignRow,
-  apiKey: string,
+  provider: OutreachProvider,
   providerCampaignId: string,
 ): Promise<ProviderCampaign | null> {
   try {
-    return providerCampaign(
-      await instantlyRequest<unknown>(
-        apiKey,
-        `/campaigns/${encodeURIComponent(providerCampaignId)}`,
-      ),
-    );
+    return await provider.getCampaign(providerCampaignId);
   } catch (error) {
-    if (!(error instanceof InstantlyApiError) || error.status !== 404) throw error;
+    if (!(error instanceof OutreachProviderError) || error.status !== 404) throw error;
     await forgetDeadProviderCampaign(context, campaign, providerCampaignId);
     return null;
   }
@@ -1983,13 +1639,13 @@ async function readProviderCampaignOrForget(
 async function ensureProviderCampaign(
   context: AuthContext,
   campaign: CampaignRow,
-  apiKey: string,
+  outreach: OutreachProvider,
 ): Promise<ProviderCampaign> {
   if (campaign.instantly_campaign_id) {
     const mapped = await readProviderCampaignOrForget(
       context,
       campaign,
-      apiKey,
+      outreach,
       campaign.instantly_campaign_id,
     );
     if (mapped) return mapped;
@@ -2058,7 +1714,7 @@ async function ensureProviderCampaign(
       const mapped = await readProviderCampaignOrForget(
         context,
         current,
-        apiKey,
+        outreach,
         current.instantly_campaign_id,
       );
       // A mapping that turned out to be dead is cleared by the read above, so
@@ -2074,52 +1730,15 @@ async function ensureProviderCampaign(
 
   try {
     const marker = `GOAP-${campaign.id}`;
-    const query = new URLSearchParams({ limit: "10", search: marker });
-    const searchResponse = await instantlyRequest<unknown>(
-      apiKey,
-      "/campaigns",
-      { query },
-    );
-    const searchRecord = searchResponse && typeof searchResponse === "object" &&
-        !Array.isArray(searchResponse)
-      ? searchResponse as Record<string, unknown>
-      : null;
-    const matches = Array.isArray(searchRecord?.items)
-      ? searchRecord.items.flatMap((item) => {
-        try {
-          const parsed = providerCampaign(item);
-          return parsed.name.includes(marker) ? [parsed] : [];
-        } catch {
-          return [];
-        }
-      })
-      : [];
-    let provider = matches[0];
-    if (!provider) {
-      provider = providerCampaign(
-        await instantlyRequest<unknown>(apiKey, "/campaigns", {
-          method: "POST",
-          body: campaignConfiguration(campaign),
-        }),
-      );
-    }
-    if (provider.status === 1) {
-      provider = providerCampaign(
-        await instantlyRequest<unknown>(
-          apiKey,
-          `/campaigns/${encodeURIComponent(provider.id)}/pause`,
-          { method: "POST" },
-        ),
-      );
-    }
-    await instantlyRequest<unknown>(
-      apiKey,
-      `/campaigns/${encodeURIComponent(provider.id)}/variables`,
-      {
-        method: "POST",
-        body: { variables: [...PROVISIONED_CAMPAIGN_VARIABLES] },
-      },
-    );
+    const matches = (await outreach.searchCampaigns(marker, 10))
+      .filter((candidate) => candidate.name.includes(marker));
+    // Created paused, with the pitch variables registered. A campaign that
+    // started sending the moment it existed would reach hosts before anybody
+    // chose who belongs in it.
+    const spec = campaignSpec(campaign);
+    const provider = matches[0]
+      ? await outreach.finishProvisioning(matches[0], spec, { adopted: true })
+      : await outreach.finishProvisioning(await outreach.createCampaign(spec), spec, { adopted: false });
     // Conditional on still holding the claim. Without this, a call the reaper
     // had already given up on would come back and overwrite a mapping written
     // by the caller that replaced it, stranding that campaign in Instantly with
@@ -2146,7 +1765,7 @@ async function ensureProviderCampaign(
       throw new HttpError(
         500,
         "CAMPAIGN_PROVIDER_MAPPING_FAILED",
-        "The Instantly campaign mapping could not be saved",
+        "The provider campaign mapping could not be saved",
       );
     }
     if (!written) {
@@ -2170,7 +1789,7 @@ async function ensureProviderCampaign(
         const mapped = await readProviderCampaignOrForget(
           context,
           current,
-          apiKey,
+          outreach,
           current.instantly_campaign_id,
         );
         if (mapped) return mapped;
@@ -2203,121 +1822,29 @@ async function ensureProviderCampaign(
   }
 }
 
-function providerLead(value: unknown): ProviderLead | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const lead = value as Record<string, unknown>;
-  const id = providerUuid(lead.id);
-  const email = typeof lead.email === "string"
-    ? lead.email.trim().toLowerCase()
-    : "";
-  if (!id || !email) return null;
-  return {
-    id,
-    email,
-    status: typeof lead.status === "number" && Number.isInteger(lead.status)
-      ? lead.status
-      : null,
-    email_open_count: typeof lead.email_open_count === "number" &&
-        Number.isInteger(lead.email_open_count)
-      ? Math.max(0, lead.email_open_count)
-      : 0,
-    email_reply_count: typeof lead.email_reply_count === "number" &&
-        Number.isInteger(lead.email_reply_count)
-      ? Math.max(0, lead.email_reply_count)
-      : 0,
-    timestamp_updated: typeof lead.timestamp_updated === "string"
-      ? lead.timestamp_updated
-      : null,
-    email_click_count: wholeCount(lead.email_click_count),
-    last_step_id: nullableString(lead.last_step_id),
-    email_opened_step: nullableWhole(lead.email_opened_step),
-    email_replied_step: nullableWhole(lead.email_replied_step),
-    lt_interest_status: nullableWhole(lead.lt_interest_status),
-    verification_status: nullableWhole(lead.verification_status),
-    timestamp_last_contact: nullableString(lead.timestamp_last_contact),
-    timestamp_last_open: nullableString(lead.timestamp_last_open),
-    timestamp_last_reply: nullableString(lead.timestamp_last_reply),
-    timestamp_last_click: nullableString(lead.timestamp_last_click),
-  };
-}
-
-function wholeCount(value: unknown): number {
-  return typeof value === "number" && Number.isInteger(value)
-    ? Math.max(0, value)
-    : 0;
-}
-
-/** Kept null rather than defaulted: "not reported" is not the same as zero. */
-function nullableWhole(value: unknown): number | null {
-  return typeof value === "number" && Number.isInteger(value) ? value : null;
-}
-
-function nullableString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-async function listProviderLeads(
-  apiKey: string,
-  campaignId: string,
-  search?: string,
-): Promise<ProviderLead[]> {
-  const leads: ProviderLead[] = [];
-  let startingAfter = "";
-  for (let page = 0; page < 10; page += 1) {
-    const response = await instantlyRequest<unknown>(apiKey, "/leads/list", {
-      method: "POST",
-      body: {
-        campaign: campaignId,
-        limit: 100,
-        ...(search ? { search } : {}),
-        ...(startingAfter ? { starting_after: startingAfter } : {}),
-      },
-    });
-    if (!response || typeof response !== "object" || Array.isArray(response)) {
-      throw new InstantlyApiError(
-        502,
-        "INSTANTLY_RESPONSE_INVALID",
-        "Instantly returned an invalid lead list",
-      );
-    }
-    const record = response as Record<string, unknown>;
-    if (!Array.isArray(record.items)) {
-      throw new InstantlyApiError(
-        502,
-        "INSTANTLY_RESPONSE_INVALID",
-        "Instantly returned an invalid lead list",
-      );
-    }
-    leads.push(...record.items.flatMap((item) => {
-      const parsed = providerLead(item);
-      return parsed ? [parsed] : [];
-    }));
-    const next = typeof record.next_starting_after === "string"
-      ? record.next_starting_after
-      : "";
-    if (!next || next === startingAfter || search) break;
-    startingAfter = next;
-  }
-  return leads;
-}
-
-/** The variables the Instantly sequence renders. One shape, two callers. */
-function outreachCustomVariables(
+/** What one lead's sequence renders. Each adapter names these its own way. */
+function outreachPitchVariables(
   client: WorkspaceClientRow,
   target: TargetRow,
   sequence: OutreachSequence,
-): Record<string, unknown> {
+): PitchVariables {
   return {
-    goapPitchSubject: sequence.subject,
-    goapPitchBody: sequence.body,
-    goapFollowUpOneSubject: sequence.followUpOneSubject,
-    goapFollowUpOneBody: sequence.followUpOneBody,
-    goapFollowUpTwoSubject: sequence.followUpTwoSubject,
-    goapFollowUpTwoBody: sequence.followUpTwoBody,
+    pitchSubject: sequence.subject,
+    pitchBody: sequence.body,
+    followUpOneSubject: sequence.followUpOneSubject,
+    followUpOneBody: sequence.followUpOneBody,
+    followUpTwoSubject: sequence.followUpTwoSubject,
+    followUpTwoBody: sequence.followUpTwoBody,
     clientName: client.name,
     podcastName: target.podcast_name,
-    goapTargetId: target.id,
+    targetId: target.id,
   };
+}
+
+/** Contact details shared by both lead-creating paths. */
+function hostNameParts(hostName: string | null) {
+  const parts = hostName?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return { firstName: parts[0] || undefined, lastName: parts.slice(1).join(" ") || undefined };
 }
 
 export interface StagedLeadResult {
@@ -2358,23 +1885,18 @@ export interface StagedLeadResult {
 async function readChosenProviderCampaign(
   context: AuthContext,
   workspaceId: string,
-  apiKey: string,
+  outreach: OutreachProvider,
   providerCampaignId: string,
 ): Promise<ProviderCampaign> {
   try {
-    return providerCampaign(
-      await instantlyRequest<unknown>(
-        apiKey,
-        `/campaigns/${encodeURIComponent(providerCampaignId)}`,
-      ),
-    );
+    return await outreach.getCampaign(providerCampaignId);
   } catch (error) {
-    if (!(error instanceof InstantlyApiError) || error.status !== 404) throw error;
+    if (!(error instanceof OutreachProviderError) || error.status !== 404) throw error;
     await forgetDeadCampaignLink(context, workspaceId, providerCampaignId);
     throw new HttpError(
       409,
       "CAMPAIGN_LINK_DELETED",
-      "That campaign no longer exists in Instantly, so it is no longer offered as a send target. Choose another campaign, or create one from the client page.",
+      `That campaign no longer exists in ${outreach.label}, so it is no longer offered as a send target. Choose another campaign, or create one from the client page.`,
     );
   }
 }
@@ -2392,23 +1914,12 @@ async function readChosenProviderCampaign(
 async function findAdoptableProviderCampaign(
   context: AuthContext,
   workspaceId: string,
-  apiKey: string,
+  outreach: OutreachProvider,
   providerName: string,
 ): Promise<ProviderCampaign | null> {
-  const query = new URLSearchParams({ limit: "20", search: providerName });
-  const response = await instantlyRequest<unknown>(apiKey, "/campaigns", { query });
-  const items = response && typeof response === "object" && !Array.isArray(response)
-    ? (response as Record<string, unknown>).items
-    : null;
-  if (!Array.isArray(items)) return null;
-  const candidates = items.flatMap((item) => {
-    try {
-      const parsed = providerCampaign(item);
-      return parsed.name === providerName && parsed.rendersOurPitch ? [parsed] : [];
-    } catch {
-      return [];
-    }
-  });
+  const candidates = (await outreach.searchCampaigns(providerName, 20)).filter(
+    (candidate) => candidate.name === providerName && candidate.rendersOurPitch,
+  );
   if (candidates.length === 0) return null;
   const { data: linkedRows, error } = await context.admin
     .from("client_instantly_campaign_links")
@@ -2501,7 +2012,7 @@ async function stageCampaignLead(
     );
   }
 
-  const apiKey = await integrationApiKey(connection);
+  const outreach = await integrationProvider(connection);
   // A chosen campaign is read, never created: the caller has already checked it
   // is a provisioned link for this client, and creating one here would silently
   // invent a send target the operator did not pick.
@@ -2509,10 +2020,10 @@ async function stageCampaignLead(
     ? await readChosenProviderCampaign(
       context,
       campaign.workspace_id,
-      apiKey,
+      outreach,
       chosenProviderCampaignId,
     )
-    : await ensureProviderCampaign(context, campaign, apiKey);
+    : await ensureProviderCampaign(context, campaign, outreach);
   // The last gate, and the only one checked against the live sequence.
   //
   // Every earlier check reasons about provenance — who created the campaign,
@@ -2563,9 +2074,8 @@ async function stageCampaignLead(
     );
   }
 
-  const customVariables = outreachCustomVariables(client, target, sequence);
-  const existingLeads = await listProviderLeads(
-    apiKey,
+  const pitchVariables = outreachPitchVariables(client, target, sequence);
+  const existingLeads = await outreach.listLeads(
     providerCampaignValue.id,
     target.contact_email,
   );
@@ -2583,7 +2093,7 @@ async function stageCampaignLead(
       throw new HttpError(
         409,
         "CAMPAIGN_PITCH_LOCKED",
-        "This contact has already moved through the sequence in Instantly. The pitch can no longer be edited from here.",
+        `This contact has already moved through the sequence in ${outreach.label}. The pitch can no longer be edited from here.`,
       );
     }
     if (existing.email_reply_count > 0) {
@@ -2593,39 +2103,24 @@ async function stageCampaignLead(
         "This host has already replied. Continue the conversation in the Master Inbox instead of editing the pitch.",
       );
     }
-    const patched = await instantlyRequest<unknown>(
-      apiKey,
-      `/leads/${encodeURIComponent(existing.id)}`,
-      { method: "PATCH", body: { custom_variables: customVariables } },
-    );
-    lead = providerLead(patched) || existing;
+    lead = await outreach.updateLeadVariables(
+      existing,
+      providerCampaignValue.id,
+      pitchVariables,
+    ) || existing;
   } else {
-    const created = await instantlyRequest<unknown>(apiKey, "/leads", {
-      method: "POST",
-      body: {
-        campaign: providerCampaignValue.id,
-        email: target.contact_email,
-        first_name: target.host_name?.split(/\s+/)[0] || undefined,
-        last_name: target.host_name?.split(/\s+/).slice(1).join(" ") || undefined,
-        company_name: target.podcast_name,
-        website: target.podcast_url || undefined,
-        personalization: sequence.body,
-        custom_variables: customVariables,
-        // The workspace pitches one show for many clients over time, so a
-        // contact known elsewhere is not a reason to skip this one. Duplicates
-        // within THIS campaign are already refused above, on our own records.
-        skip_if_in_workspace: false,
-        skip_if_in_campaign: true,
-        skip_if_in_list: false,
-        verify_leads_on_import: false,
-      },
-    });
-    lead = providerLead(created);
+    lead = await outreach.addLead(providerCampaignValue.id, {
+      email: target.contact_email,
+      ...hostNameParts(target.host_name),
+      company: target.podcast_name,
+      website: target.podcast_url || undefined,
+      personalization: sequence.body,
+      variables: pitchVariables,
+    }, { skipIfInCampaign: true });
     if (!lead) {
-      // skip_if_in_campaign returns no lead when one already existed; recover it
-      // rather than reporting a failure that did not happen.
-      const recovered = await listProviderLeads(
-        apiKey,
+      // A provider that skips an existing lead returns none; recover it rather
+      // than reporting a failure that did not happen.
+      const recovered = await outreach.listLeads(
         providerCampaignValue.id,
         target.contact_email,
       );
@@ -2634,10 +2129,10 @@ async function stageCampaignLead(
       ) || null;
     }
     if (!lead) {
-      throw new InstantlyApiError(
+      throw new OutreachProviderError(
         409,
         "INSTANTLY_LEAD_NOT_CREATED",
-        "Instantly did not add this podcast contact",
+        `${outreach.label} did not add this podcast contact`,
       );
     }
   }
@@ -2670,7 +2165,7 @@ async function launchTarget(
     throw new HttpError(
       409,
       "CAMPAIGN_SENDER_REQUIRED",
-      "Choose at least one active Instantly sending account",
+      "Choose at least one active sending account",
     );
   }
   if (["in_outreach", "replied", "completed"].includes(target.status)) {
@@ -2784,20 +2279,19 @@ async function launchTarget(
       );
     }
 
-    const apiKey = await integrationApiKey(connection);
+    const outreach = await integrationProvider(connection);
     const accounts = await refreshProviderAccounts(
       context.admin,
       connection,
-      apiKey,
+      outreach,
     );
     verifySelectedAccounts(campaign.sender_accounts, accounts);
     const providerCampaignValue = await ensureProviderCampaign(
       context,
       campaign,
-      apiKey,
+      outreach,
     );
-    const existingLeads = await listProviderLeads(
-      apiKey,
+    const existingLeads = await outreach.listLeads(
       providerCampaignValue.id,
       target.contact_email,
     );
@@ -2818,7 +2312,7 @@ async function launchTarget(
         throw new HttpError(
           500,
           "CAMPAIGN_CONTACT_DEDUPE_FAILED",
-          "The Instantly lead mapping could not be verified",
+          "The provider lead mapping could not be verified",
         );
       }
       if (mappedTarget) {
@@ -2831,58 +2325,24 @@ async function launchTarget(
         );
       }
     }
-    const customVariables = outreachCustomVariables(client, target, sequence);
+    const pitchVariables = outreachPitchVariables(client, target, sequence);
     if (lead) {
-      const patched = await instantlyRequest<unknown>(
-        apiKey,
-        `/leads/${encodeURIComponent(lead.id)}`,
-        {
-          method: "PATCH",
-          body: { custom_variables: customVariables },
-        },
-      );
-      lead = providerLead(patched) || lead;
+      lead = await outreach.updateLeadVariables(
+        lead,
+        providerCampaignValue.id,
+        pitchVariables,
+      ) || lead;
     } else {
-      const importResponse = await instantlyRequest<unknown>(
-        apiKey,
-        "/leads/add",
-        {
-          method: "POST",
-          body: {
-            campaign_id: providerCampaignValue.id,
-            leads: [{
-              email: target.contact_email,
-              first_name: target.host_name?.split(/\s+/)[0] || undefined,
-              company_name: target.podcast_name,
-              website: target.podcast_url || undefined,
-              personalization: sequence.body,
-              custom_variables: customVariables,
-            }],
-            verify_leads_on_import: false,
-            skip_if_in_workspace: false,
-            skip_if_in_campaign: false,
-            skip_if_in_list: false,
-          },
-        },
-      );
-      if (
-        !importResponse || typeof importResponse !== "object" ||
-        Array.isArray(importResponse)
-      ) {
-        throw new InstantlyApiError(
-          502,
-          "INSTANTLY_RESPONSE_INVALID",
-          "Instantly returned an invalid lead result",
-        );
-      }
-      const imported = importResponse as Record<string, unknown>;
-      const created = Array.isArray(imported.created_leads)
-        ? imported.created_leads.map(providerLead).find(Boolean) || null
-        : null;
-      lead = created;
+      lead = await outreach.addLead(providerCampaignValue.id, {
+        email: target.contact_email,
+        firstName: hostNameParts(target.host_name).firstName,
+        company: target.podcast_name,
+        website: target.podcast_url || undefined,
+        personalization: sequence.body,
+        variables: pitchVariables,
+      }, { skipIfInCampaign: false });
       if (!lead) {
-        const recovered = await listProviderLeads(
-          apiKey,
+        const recovered = await outreach.listLeads(
           providerCampaignValue.id,
           target.contact_email,
         );
@@ -2891,23 +2351,17 @@ async function launchTarget(
         ) || null;
       }
       if (!lead) {
-        throw new InstantlyApiError(
+        throw new OutreachProviderError(
           409,
           "INSTANTLY_LEAD_NOT_CREATED",
-          "Instantly did not add this podcast contact",
+          `${outreach.label} did not add this podcast contact`,
         );
       }
     }
 
     let activeCampaign = providerCampaignValue;
     if (activeCampaign.status !== 1) {
-      activeCampaign = providerCampaign(
-        await instantlyRequest<unknown>(
-          apiKey,
-          `/campaigns/${encodeURIComponent(activeCampaign.id)}/activate`,
-          { method: "POST" },
-        ),
-      );
+      activeCampaign = await outreach.activateCampaign(activeCampaign.id);
     }
     const now = new Date().toISOString();
     const [targetUpdate, campaignUpdate] = await Promise.all([
@@ -2984,7 +2438,7 @@ async function syncProviderCampaign(
       "Start outreach before syncing this campaign",
     );
   }
-  const apiKey = await integrationApiKey(connection);
+  const outreach = await integrationProvider(connection);
   /*
    * The campaign read goes through the forget helper, like every write path
    * already does. Raw, a deleted provider campaign made this sync fail
@@ -2996,23 +2450,27 @@ async function syncProviderCampaign(
   const provider = await readProviderCampaignOrForget(
     context,
     campaign,
-    apiKey,
+    outreach,
     campaign.instantly_campaign_id,
   );
   if (!provider) {
     throw new HttpError(
       409,
       "INSTANTLY_RESOURCE_NOT_FOUND",
-      "The Instantly campaign no longer exists. The link has been cleared — save the campaign settings to rebuild it.",
+      `The ${outreach.label} campaign no longer exists. The link has been cleared — save the campaign settings to rebuild it.`,
     );
   }
-  const [analyticsValue, leads] = await Promise.all([
-    instantlyRequest<unknown>(apiKey, "/campaigns/analytics/overview", {
-      query: new URLSearchParams({ id: campaign.instantly_campaign_id }),
-    }),
-    listProviderLeads(apiKey, campaign.instantly_campaign_id),
+  const [freshAnalytics, leads] = await Promise.all([
+    outreach.campaignAnalytics(campaign.instantly_campaign_id),
+    outreach.listLeads(campaign.instantly_campaign_id),
   ]);
-  const analytics = safeInstantlyAnalytics(analyticsValue);
+  // Instantly's overview carries every counter, so it is written as-is — a
+  // count that really fell to zero must read zero. Providers without a
+  // meeting-booked or interest counter report zero for it; there the last
+  // value an earlier sync established is kept instead.
+  const analytics = outreach.kind === "instantly"
+    ? freshAnalytics
+    : withStoredOpportunityCounts(freshAnalytics, campaign.analytics);
   const targets = await readTargets(
     context.admin,
     campaign.workspace_id,
@@ -3092,7 +2550,7 @@ async function syncProviderCampaign(
     .eq("workspace_id", campaign.workspace_id);
 }
 
-function providerHttpError(error: InstantlyApiError): HttpError {
+function providerHttpError(error: OutreachProviderError): HttpError {
   const status = error.status === 429
     ? 429
     : error.status === 401
@@ -3193,9 +2651,9 @@ serve(async (req) => {
       const senderLinksRead = readMailboxSenderLinks(context.admin, workspaceId);
       // Settled here so an early return below cannot leave it unhandled.
       senderLinksRead.catch(() => undefined);
-      const apiKey = await integrationApiKey(connection, false);
-      const accounts = await listInstantlyAccounts(apiKey).catch((error) => {
-        if (error instanceof InstantlyApiError) {
+      const outreach = await integrationProvider(connection, false);
+      const accounts = await outreach.listAccounts().catch((error) => {
+        if (error instanceof OutreachProviderError) {
           // A rejected or under-scoped key is a connection state, not a
           // request failure — the page renders it as "reconnect Instantly".
           if (error.status === 401) {
@@ -3211,6 +2669,8 @@ serve(async (req) => {
         return jsonResponse(req, METHODS, 200, {
           connected: false,
           reason: accounts.auth_failure,
+          provider: outreach.kind,
+          provider_label: outreach.label,
           provider_workspace_name: connection.provider_workspace_name,
           accounts: [],
           last_synced_at: connection.last_verified_at,
@@ -3250,11 +2710,11 @@ serve(async (req) => {
       // analytics requests instead of ahead of them.
       const [snapshotResult, dailyResult, warmupResult] = await Promise.allSettled([
         saveAccountsSnapshot(context.admin, connection, accounts),
-        getInstantlyAccountSendHistory(apiKey, emails, {
+        outreach.accountSendHistory(emails, {
           days: SEND_HISTORY_DAYS,
           timeZone: workspaceTimeZone,
         }),
-        getInstantlyWarmupAnalytics(apiKey, emails),
+        outreach.warmupAnalytics(emails),
       ]);
       if (snapshotResult.status === "rejected") throw snapshotResult.reason;
       const sendHistory = dailyResult.status === "fulfilled"
@@ -3275,6 +2735,9 @@ serve(async (req) => {
 
       return jsonResponse(req, METHODS, 200, {
         connected: true,
+        provider: outreach.kind,
+        provider_label: outreach.label,
+        capabilities: outreach.capabilities,
         provider_workspace_name: connection.provider_workspace_name,
         // The zone the sending day is measured in, so the page can say whose
         // "today" the numbers describe rather than implying the viewer's.
@@ -3291,6 +2754,8 @@ serve(async (req) => {
               account.status_message?.response || null,
             warmup_status: account.warmup_status,
             daily_limit: account.daily_limit,
+            // Null, not zero, where the provider has no per-day history: a
+            // mailbox that sent nothing and one we cannot see look different.
             sent_today: history.length
               ? history[history.length - 1].sent
               : null,
@@ -3348,10 +2813,13 @@ serve(async (req) => {
         ),
       ];
       const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection);
-      // Instantly's own casing is what its path expects.
+      const outreach = await integrationProvider(connection);
+      if (!outreach.capabilities.mailboxPause) {
+        throw unsupportedFeature(outreach.label, "pausing a single mailbox");
+      }
+      // The provider's own casing is what its path expects.
       const providerEmails = new Map(
-        (await refreshProviderAccounts(context.admin, connection!, apiKey)).map((
+        (await refreshProviderAccounts(context.admin, connection!, outreach)).map((
           account,
         ) => [account.email.trim().toLowerCase(), account.email]),
       );
@@ -3362,7 +2830,7 @@ serve(async (req) => {
         .map((email) => ({
           email,
           message:
-            "This mailbox is no longer in the connected Instantly workspace. Refresh and try again.",
+            `This mailbox is no longer in the connected ${outreach.label} workspace. Refresh and try again.`,
         }));
       const sendable = requested.filter((email) => providerEmails.has(email));
       const auditAction = body.paused
@@ -3386,13 +2854,7 @@ serve(async (req) => {
         await Promise.all(
           sendable.slice(start, start + 5).map(async (email) => {
             try {
-              await instantlyRequest<unknown>(
-                apiKey,
-                `/accounts/${encodeURIComponent(providerEmails.get(email)!)}/${
-                  body.paused ? "pause" : "resume"
-                }`,
-                { method: "POST" },
-              );
+              await outreach.setAccountPaused(providerEmails.get(email)!, body.paused as boolean);
               updated.push(email);
             } catch (error) {
               failed.push({ email, message: safeInstantlyError(error).message });
@@ -3464,9 +2926,7 @@ serve(async (req) => {
       let providerListingComplete = false;
       if (connection?.status === "connected") {
         try {
-          const listing = await listProviderCampaignPage(
-            await integrationApiKey(connection),
-          );
+          const listing = await (await integrationProvider(connection)).listCampaigns();
           providerCampaigns = listing.campaigns;
           providerListingComplete = listing.complete;
         } catch (error) {
@@ -3512,59 +2972,90 @@ serve(async (req) => {
       });
     }
 
+    // Connects the workspace's outreach provider. The action keeps its
+    // original name so existing callers work; `provider` defaults to Instantly
+    // and Email Bison also takes the agency's instance URL.
     if (action === "connect-instantly") {
-      requireOnlyKeys(body, ["action", "workspace_id", "api_key"]);
+      requireOnlyKeys(body, ["action", "workspace_id", "api_key", "provider", "base_url"]);
       requireIntegrationOwner(access);
+      const kind = requireProviderKind(body.provider);
+      const label = outreachProviderLabel(kind);
+      const baseUrl = providerBaseUrl(kind, body.base_url);
       const apiKey = requireString(body.api_key, "api_key", {
         min: 20,
         max: 1_000,
       });
-      const [providerWorkspace, accounts] = await Promise.all([
-        getInstantlyWorkspace(apiKey),
-        listInstantlyAccounts(apiKey),
-        verifyProviderReadAccess(apiKey),
-      ]);
+      const outreach = await createOutreachProvider(kind, apiKey, baseUrl);
+      const { workspace: providerWorkspace, accounts } = await outreach.verifyConnection();
       const existing = await readConnection(context.admin, workspaceId);
-      if (existing && existing.provider_workspace_id !== providerWorkspace.id) {
-        const { count, error } = await context.admin
-          .from("workspace_client_campaigns")
-          .select("id", { count: "exact", head: true })
-          .eq("workspace_id", workspaceId)
-          .not("instantly_campaign_id", "is", null);
-        if (error) {
+      // Moving to another provider workspace — a different account, instance or
+      // provider altogether — strands every mapped campaign, whose ids mean
+      // nothing on the other side. Refused while any exist.
+      if (
+        existing && (
+          existing.provider_workspace_id !== providerWorkspace.id ||
+          connectionKind(existing) !== kind ||
+          (existing.provider_base_url ?? null) !== baseUrl
+        )
+      ) {
+        // Targets too: a lead id left from the old provider would address an
+        // unrelated lead in the new one (Email Bison and ReachInbox both use
+        // small integers).
+        const [mappedCampaigns, linkedCampaigns, stagedTargets] = await Promise.all([
+          context.admin
+            .from("workspace_client_campaigns")
+            .select("id", { count: "exact", head: true })
+            .eq("workspace_id", workspaceId)
+            .not("instantly_campaign_id", "is", null),
+          context.admin
+            .from("client_instantly_campaign_links")
+            .select("instantly_campaign_id", { count: "exact", head: true })
+            .eq("workspace_id", workspaceId),
+          context.admin
+            .from("workspace_client_campaign_targets")
+            .select("id", { count: "exact", head: true })
+            .eq("workspace_id", workspaceId)
+            .not("instantly_lead_id", "is", null),
+        ]);
+        if (mappedCampaigns.error || linkedCampaigns.error || stagedTargets.error) {
           throw new HttpError(
             500,
             "CAMPAIGN_LOOKUP_FAILED",
             "Existing campaign mappings could not be checked",
           );
         }
-        if ((count || 0) > 0) {
+        if ((mappedCampaigns.count || 0) + (linkedCampaigns.count || 0) + (stagedTargets.count || 0) > 0) {
           throw new HttpError(
             409,
             "INSTANTLY_WORKSPACE_MISMATCH",
-            "This workspace already has campaigns mapped to a different Instantly workspace",
+            connectionKind(existing) !== kind
+              ? `This workspace has campaigns mapped in ${connectionLabel(existing)}. Unlink them before switching to ${label}.`
+              : `This workspace already has campaigns mapped to a different ${label} workspace`,
           );
         }
       }
-      const { data: providerOwner, error: providerOwnerError } = await context
-        .admin
+      let ownerQuery = context.admin
         .from("workspace_instantly_integrations")
         .select("workspace_id")
+        .eq("provider", kind)
         .eq("provider_workspace_id", providerWorkspace.id)
-        .neq("workspace_id", workspaceId)
-        .maybeSingle();
+        .neq("workspace_id", workspaceId);
+      ownerQuery = baseUrl
+        ? ownerQuery.eq("provider_base_url", baseUrl)
+        : ownerQuery.is("provider_base_url", null);
+      const { data: providerOwner, error: providerOwnerError } = await ownerQuery.maybeSingle();
       if (providerOwnerError) {
         throw new HttpError(
           500,
           "INSTANTLY_CONNECTION_LOOKUP_FAILED",
-          "The Instantly workspace mapping could not be checked",
+          `The ${label} workspace mapping could not be checked`,
         );
       }
       if (providerOwner) {
         throw new HttpError(
           409,
           "INSTANTLY_WORKSPACE_ALREADY_CONNECTED",
-          "This Instantly account is already connected to another Get On A Pod workspace. Each Instantly account can be connected once",
+          `This ${label} account is already connected to another Get On A Pod workspace. Each ${label} account can be connected once`,
         );
       }
       const encrypted = await encryptInstantlyApiKey(apiKey);
@@ -3573,6 +3064,8 @@ serve(async (req) => {
         .from("workspace_instantly_integrations")
         .upsert({
           workspace_id: workspaceId,
+          provider: kind,
+          provider_base_url: baseUrl,
           provider_workspace_id: providerWorkspace.id,
           provider_workspace_name: providerWorkspace.name,
           status: "connected",
@@ -3589,7 +3082,7 @@ serve(async (req) => {
         throw new HttpError(
           500,
           "INSTANTLY_CONNECTION_SAVE_FAILED",
-          "The Instantly connection could not be saved",
+          `The ${label} connection could not be saved`,
         );
       }
       await writeAudit(context.admin, {
@@ -3599,7 +3092,12 @@ serve(async (req) => {
         entityType: "workspace",
         entityId: workspaceId,
         metadata: {
+          provider: kind,
+          provider_base_url: baseUrl,
           provider_workspace_id: providerWorkspace.id,
+          // A reconnect replaces the key; recorded so a rotation is
+          // distinguishable from a first connection.
+          replaced_existing: Boolean(existing?.api_key_ciphertext),
           active_account_count: accounts.filter((account) =>
             account.status === 1
           ).length,
@@ -3615,25 +3113,22 @@ serve(async (req) => {
       requireOnlyKeys(body, ["action", "workspace_id"]);
       requireCampaignManager(access);
       const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection, false);
       if (!connection) {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly first",
+          "Connect an outreach provider first",
         );
       }
+      const label = connectionLabel(connection);
       try {
-        const [providerWorkspace, accounts] = await Promise.all([
-          getInstantlyWorkspace(apiKey),
-          listInstantlyAccounts(apiKey),
-          verifyProviderReadAccess(apiKey),
-        ]);
+        const outreach = await integrationProvider(connection, false);
+        const { workspace: providerWorkspace, accounts } = await outreach.verifyConnection();
         if (providerWorkspace.id !== connection.provider_workspace_id) {
           throw new HttpError(
             409,
             "INSTANTLY_WORKSPACE_MISMATCH",
-            "This API key belongs to a different Instantly workspace",
+            `This API key belongs to a different ${label} workspace`,
           );
         }
         const now = new Date().toISOString();
@@ -3651,7 +3146,7 @@ serve(async (req) => {
           throw new HttpError(
             500,
             "INSTANTLY_CONNECTION_UPDATE_FAILED",
-            "The Instantly connection could not be refreshed",
+            `The ${label} connection could not be refreshed`,
           );
         }
       } catch (error) {
@@ -3662,6 +3157,14 @@ serve(async (req) => {
           .eq("workspace_id", workspaceId);
         throw error;
       }
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: "workspace.instantly.refreshed",
+        entityType: "workspace",
+        entityId: workspaceId,
+        metadata: { provider: connectionKind(connection) },
+      });
       const refreshed = await readConnection(context.admin, workspaceId);
       return jsonResponse(req, METHODS, 200, {
         integration: connectionDto(refreshed, access),
@@ -3671,6 +3174,7 @@ serve(async (req) => {
     if (action === "disconnect-instantly") {
       requireOnlyKeys(body, ["action", "workspace_id"]);
       requireIntegrationOwner(access);
+      const before = await readConnection(context.admin, workspaceId);
       const { error } = await context.admin
         .from("workspace_instantly_integrations")
         .update({
@@ -3685,7 +3189,7 @@ serve(async (req) => {
         throw new HttpError(
           500,
           "INSTANTLY_DISCONNECT_FAILED",
-          "The Instantly connection could not be removed",
+          `The ${connectionLabel(before)} connection could not be removed`,
         );
       }
       await writeAudit(context.admin, {
@@ -3694,6 +3198,7 @@ serve(async (req) => {
         action: "workspace.instantly.disconnected",
         entityType: "workspace",
         entityId: workspaceId,
+        metadata: { provider: connectionKind(before) },
       });
       const disconnected = await readConnection(context.admin, workspaceId);
       return jsonResponse(req, METHODS, 200, {
@@ -4840,7 +4345,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly before refreshing campaign totals",
+          "Connect an outreach provider before refreshing campaign totals",
         );
       }
       const { data, error } = await context.admin
@@ -4869,8 +4374,7 @@ serve(async (req) => {
       }
       // One request for the whole workspace, where the per-campaign sync costs
       // a round trip each.
-      const analyticsById = await listInstantlyCampaignAnalytics(
-        await integrationApiKey(connection),
+      const analyticsById = await (await integrationProvider(connection)).bulkCampaignAnalytics(
         campaigns.flatMap((campaign) =>
           campaign.instantly_campaign_id ? [campaign.instantly_campaign_id] : []
         ),
@@ -5143,19 +4647,17 @@ serve(async (req) => {
         );
       }
       const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection);
+      const outreach = await integrationProvider(connection);
       let lead: ProviderLead | null = null;
       try {
-        lead = providerLead(
-          await instantlyRequest<unknown>(
-            apiKey,
-            `/leads/${encodeURIComponent(target.instantly_lead_id)}`,
-          ),
+        lead = await outreach.getLead(
+          target.instantly_lead_id,
+          target.instantly_campaign_id ?? campaign.instantly_campaign_id,
         );
       } catch (error) {
-        // A lead deleted in Instantly is a real answer, not a failure: the
+        // A lead deleted at the provider is a real answer, not a failure: the
         // sequence is not running because the lead is gone.
-        if (!(error instanceof InstantlyApiError) || error.status !== 404) throw error;
+        if (!(error instanceof OutreachProviderError) || error.status !== 404) throw error;
         /*
          * Written back, so the table stops disagreeing with this panel. The
          * row went on claiming a running sequence — counted as emailed,
@@ -5233,70 +4735,34 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_NOT_ASSIGNED",
-          "This client has no Instantly campaign yet, so there is no sending status to read",
+          "This client has no provider campaign yet, so there is no sending status to read",
         );
       }
       const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection);
-      const raw = await instantlyRequest<unknown>(
-        apiKey,
-        `/campaigns/${encodeURIComponent(campaign.instantly_campaign_id)}/sending-status`,
-      );
-      const payload = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Record<string, unknown>
-        : {};
-      const summary = payload.summary && typeof payload.summary === "object" &&
-          !Array.isArray(payload.summary)
-        ? payload.summary as Record<string, unknown>
-        : null;
-      const diagnostics = payload.diagnostics &&
-          typeof payload.diagnostics === "object" &&
-          !Array.isArray(payload.diagnostics)
-        ? payload.diagnostics as Record<string, unknown>
-        : null;
-      const nested = (source: Record<string, unknown> | null, key: string) => {
-        const value = source?.[key];
-        return value && typeof value === "object" && !Array.isArray(value)
-          ? value as Record<string, unknown>
-          : null;
-      };
-      const accounts = nested(diagnostics, "accounts_summary");
-      const unavailable = nested(accounts, "unavailable");
-      const dailyLimit = nested(diagnostics, "campaign_daily_limit");
-      const followUps = nested(diagnostics, "follow_ups_waiting");
-      const schedule = nested(diagnostics, "schedule_status");
+      const outreach = await integrationProvider(connection);
+      if (!outreach.capabilities.sendingStatus) {
+        // Answered rather than refused: the detail page asks on every open, and
+        // a provider with no diagnosis is a fact about the provider, not an
+        // error to show.
+        return jsonResponse(req, METHODS, 200, {
+          supported: false,
+          provider_label: outreach.label,
+          status: null,
+          status_message: null,
+          issue_started_at: null,
+          last_healthy_send_at: null,
+          in_schedule: null,
+          accounts: null,
+          daily_limit: null,
+          follow_ups_waiting: null,
+          checked_at: new Date().toISOString(),
+        });
+      }
+      const status = await outreach.campaignSendingStatus(campaign.instantly_campaign_id);
       return jsonResponse(req, METHODS, 200, {
-        // The provider's own words where it gives them; this app does not
-        // paraphrase a diagnosis it did not make.
-        status: nullableString(summary?.status),
-        status_message: nullableString(summary?.status_message),
-        issue_started_at: nullableString(summary?.issue_started_at),
-        last_healthy_send_at: nullableString(summary?.last_healthy_send_at),
-        in_schedule: typeof schedule?.in_schedule === "boolean"
-          ? schedule.in_schedule
-          : null,
-        accounts: accounts
-          ? {
-            total_connected: nullableWhole(accounts.total_connected),
-            available: nullableWhole(accounts.available),
-            daily_limit_hit: nullableWhole(unavailable?.daily_limit_hit),
-            disconnected: nullableWhole(unavailable?.disconnected),
-            slow_ramp_limit_hit: nullableWhole(unavailable?.slow_ramp_limit_hit),
-          }
-          : null,
-        daily_limit: dailyLimit
-          ? {
-            limit: nullableWhole(dailyLimit.limit),
-            sent: nullableWhole(dailyLimit.sent),
-            limit_hit: dailyLimit.limit_hit === true,
-          }
-          : null,
-        follow_ups_waiting: followUps
-          ? {
-            count: nullableWhole(followUps.count),
-            earliest_wait_seconds: nullableWhole(followUps.earliest_wait_time_seconds),
-          }
-          : null,
+        supported: true,
+        provider_label: outreach.label,
+        ...status,
         checked_at: new Date().toISOString(),
       });
     }
@@ -5395,9 +4861,7 @@ serve(async (req) => {
         connection.api_key_ciphertext && connection.api_key_iv
       ) {
         try {
-          const listed = await listProviderCampaignPage(
-            await integrationApiKey(connection, false),
-          );
+          const listed = await (await integrationProvider(connection, false)).listCampaigns();
           providerCampaigns = listed.campaigns;
           listingComplete = listed.complete;
           connected = true;
@@ -5407,6 +4871,7 @@ serve(async (req) => {
       }
       return jsonResponse(req, METHODS, 200, {
         connected,
+        provider_label: connectionLabel(connection),
         links: buildLinks(
           new Map(providerCampaigns.map((campaign) => [campaign.id, campaign.rendersOurPitch])),
           new Map(providerCampaigns.map((campaign) => [campaign.id, campaign.status])),
@@ -5446,9 +4911,11 @@ serve(async (req) => {
       const name = requireString(body.name, "name", { max: 180 });
       // The client card creates campaigns with only a name and senders; null
       // here used to fail as "timezone must be a string" on every click.
+      const connection = await readConnection(context.admin, workspaceId);
+      const kind = connectionKind(connection);
       const timezone = body.timezone === null || body.timezone === undefined
         ? DEFAULT_CAMPAIGN_TIMEZONE
-        : campaignTimezone(body.timezone);
+        : campaignTimezone(body.timezone, kind);
       const limit = body.daily_limit === null || body.daily_limit === undefined
         ? 30
         : dailyLimit(body.daily_limit);
@@ -5457,7 +4924,7 @@ serve(async (req) => {
         throw new HttpError(
           400,
           "CAMPAIGN_SENDER_REQUIRED",
-          "Select at least one active Instantly account",
+          "Select at least one active sending account",
         );
       }
       const client = await requireWorkspaceClient(
@@ -5465,7 +4932,6 @@ serve(async (req) => {
         workspaceId,
         clientId,
       );
-      const connection = await readConnection(context.admin, workspaceId);
       if (
         !connection || connection.status !== "connected" ||
         !connection.api_key_ciphertext || !connection.api_key_iv
@@ -5473,14 +4939,16 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly before creating a campaign",
+          "Connect an outreach provider before creating a campaign",
         );
       }
+      const outreach = await integrationProvider(connection);
+      // Live, like every other path that pushes senders: a snapshot taken
+      // before a mailbox went bad would let it through.
       verifySelectedAccounts(
         senderAccounts,
-        accountsFromSnapshot(connection.accounts_snapshot),
+        await refreshProviderAccounts(context.admin, connection, outreach),
       );
-      const apiKey = await integrationApiKey(connection);
       // The marker names the client, so a campaign left behind by a failure
       // between creating and linking is identifiable rather than anonymous.
       const providerName = `${name.slice(0, 150)} · GOAP-${clientId}`;
@@ -5496,33 +4964,17 @@ serve(async (req) => {
       const orphan = await findAdoptableProviderCampaign(
         context,
         workspaceId,
-        apiKey,
+        outreach,
         providerName,
       );
-      const created = orphan ?? providerCampaign(
-        await instantlyRequest<unknown>(apiKey, "/campaigns", {
-          method: "POST",
-          body: provisionedCampaignConfiguration({
-            providerName,
-            timezone,
-            dailyLimit: limit,
-            senderAccounts,
-          }),
-        }),
-      );
-      // Created paused. A campaign that started sending the moment it existed
-      // would reach hosts before anybody chose who belongs in it.
-      if (created.status === 1) {
-        await instantlyRequest<unknown>(
-          apiKey,
-          `/campaigns/${encodeURIComponent(created.id)}/pause`,
-          { method: "POST" },
-        );
-      }
-      await instantlyRequest<unknown>(
-        apiKey,
-        `/campaigns/${encodeURIComponent(created.id)}/variables`,
-        { method: "POST", body: { variables: [...PROVISIONED_CAMPAIGN_VARIABLES] } },
+      // Created paused, with the pitch variables registered. A campaign that
+      // started sending the moment it existed would reach hosts before anybody
+      // chose who belongs in it.
+      const spec = { name: providerName, timezone, dailyLimit: limit, senderAccounts };
+      const created = await outreach.finishProvisioning(
+        orphan ?? await outreach.createCampaign(spec),
+        spec,
+        { adopted: Boolean(orphan) },
       );
       // provisioned_at is written in the same statement that creates the link,
       // so a row can never claim to be sendable without the sequence behind it.
@@ -5540,7 +4992,7 @@ serve(async (req) => {
         throw new HttpError(
           500,
           "CAMPAIGN_LINK_FAILED",
-          "The campaign was created in Instantly but could not be linked to this client",
+          `The campaign was created in ${outreach.label} but could not be linked to this client`,
         );
       }
       await writeAudit(context.admin, {
@@ -5579,7 +5031,7 @@ serve(async (req) => {
         );
       }
       const campaignIds = [
-        ...new Set(rawIds.map((value, index) => requireUuid(value, `campaign_ids[${index}]`))),
+        ...new Set(rawIds.map((value, index) => requireProviderId(value, `campaign_ids[${index}]`))),
       ];
 
       const connection = await readConnection(context.admin, workspaceId);
@@ -5590,12 +5042,11 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly before linking campaigns",
+          "Connect an outreach provider before linking campaigns",
         );
       }
-      const providerCampaigns = await listProviderCampaigns(
-        await integrationApiKey(connection, false),
-      );
+      const { campaigns: providerCampaigns } = await (await integrationProvider(connection, false))
+        .listCampaigns();
       const providerById = new Map(providerCampaigns.map((campaign) => [campaign.id, campaign]));
       // Only newly-added ids must exist in Instantly. Ids already linked to
       // this client stay valid even when the campaign was deleted upstream
@@ -5634,7 +5085,7 @@ serve(async (req) => {
           throw new HttpError(
             404,
             "CAMPAIGN_NOT_FOUND",
-            "A selected campaign no longer exists in Instantly",
+            `A selected campaign no longer exists in ${connectionLabel(connection)}`,
           );
         }
       }
@@ -5646,13 +5097,13 @@ serve(async (req) => {
           .from("client_instantly_campaign_links")
           .select("instantly_campaign_id, client_id")
           .eq("workspace_id", workspaceId)
-          .in("instantly_campaign_id", campaignIds.length ? campaignIds : ["00000000-0000-0000-0000-000000000000"])
+          .in("instantly_campaign_id", campaignIds.length ? campaignIds : ["0"])
           .neq("client_id", clientId),
         context.admin
           .from("workspace_client_campaigns")
           .select("instantly_campaign_id, client_id")
           .eq("workspace_id", workspaceId)
-          .in("instantly_campaign_id", campaignIds.length ? campaignIds : ["00000000-0000-0000-0000-000000000000"])
+          .in("instantly_campaign_id", campaignIds.length ? campaignIds : ["0"])
           .neq("client_id", clientId),
       ]);
       if (conflictLinks.error || conflictCampaigns.error) {
@@ -5772,7 +5223,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_NOT_ASSIGNED",
-          "Create or assign an Instantly campaign to this client first",
+          "Create or assign a campaign to this client first",
         );
       }
       const existingTargets = await readTargets(
@@ -5833,7 +5284,7 @@ serve(async (req) => {
       // in the client's own campaign.
       const chosenProviderCampaignId = body.instantly_campaign_id == null
         ? null
-        : requireUuid(body.instantly_campaign_id, "instantly_campaign_id");
+        : requireProviderId(body.instantly_campaign_id, "instantly_campaign_id");
       // Which prompt-chain revision wrote this copy — the key that makes
       // reply-rate-by-version queryable once send volume exists.
       const pitchChainVersion = body.pitch_chain_version === undefined || body.pitch_chain_version === null
@@ -5879,7 +5330,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_NOT_ASSIGNED",
-          "Create or assign an Instantly campaign to this client first",
+          "Create or assign a campaign to this client first",
         );
       }
       // A chosen campaign must belong to this client, and must be one this app
@@ -5914,7 +5365,7 @@ serve(async (req) => {
           throw new HttpError(
             409,
             "CAMPAIGN_NOT_SENDABLE",
-            "That campaign was built in Instantly and carries its own copy. Create a campaign from the client page to send this pitch into it.",
+            "That campaign was built outside Get On A Pod and carries its own copy. Create a campaign from the client page to send this pitch into it.",
           );
         }
       }
@@ -6109,23 +5560,22 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_LEAD_NOT_STAGED",
-          "This podcast is not in the Instantly campaign",
+          "This podcast is not in the provider campaign",
         );
       }
 
       const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection);
+      const outreach = await integrationProvider(connection);
       try {
-        await instantlyRequest<unknown>(
-          apiKey,
-          `/leads/${encodeURIComponent(target.instantly_lead_id)}`,
-          { method: "DELETE" },
+        await outreach.removeLead(
+          target.instantly_campaign_id ?? campaign.instantly_campaign_id,
+          target.instantly_lead_id,
         );
       } catch (error) {
         // Already gone at the provider is the state we were asking for, so the
         // local record should follow rather than strand the operator with a
         // lead id that resolves to nothing.
-        const missing = error instanceof InstantlyApiError && error.status === 404;
+        const missing = error instanceof OutreachProviderError && error.status === 404;
         if (!missing) throw error;
       }
 
@@ -6148,7 +5598,7 @@ serve(async (req) => {
         throw new HttpError(
           500,
           "CAMPAIGN_LEAD_REMOVE_FAILED",
-          "The lead was removed from Instantly but the campaign record could not be updated",
+          `The lead was removed from ${outreach.label} but the campaign record could not be updated`,
         );
       }
       const updated = data as unknown as TargetRow;
@@ -6189,20 +5639,21 @@ serve(async (req) => {
         "provider_campaign_id",
       ]);
       requireCampaignManager(access);
+      const connection = await readConnection(context.admin, workspaceId);
       const name = requireString(body.name, "name", { max: 180 });
-      const timezone = campaignTimezone(body.timezone);
+      const timezone = campaignTimezone(body.timezone, connectionKind(connection));
       const limit = dailyLimit(body.daily_limit);
       const senderAccounts = emailList(body.sender_accounts);
       const requestedProviderCampaignId = body.provider_campaign_id == null
         ? null
-        : providerUuid(body.provider_campaign_id);
+        : normalizeProviderId(body.provider_campaign_id);
       if (
         body.provider_campaign_id != null && !requestedProviderCampaignId
       ) {
         throw new HttpError(
           400,
           "INVALID_FIELD",
-          "provider_campaign_id must be a valid Instantly campaign ID or null",
+          "provider_campaign_id must be a valid campaign ID or null",
         );
       }
       const shortlistIds = uuidList(
@@ -6210,27 +5661,23 @@ serve(async (req) => {
         "shortlist_podcast_ids",
         500,
       );
-      const connection = await readConnection(context.admin, workspaceId);
-      const apiKey = await integrationApiKey(connection);
+      const outreach = await integrationProvider(connection);
       let selectedProviderCampaign: ProviderCampaign | null = null;
       if (requestedProviderCampaignId) {
-        selectedProviderCampaign = providerCampaign(
-          await instantlyRequest<unknown>(
-            apiKey,
-            `/campaigns/${encodeURIComponent(requestedProviderCampaignId)}`,
-          ),
-        );
+        selectedProviderCampaign = await outreach.getCampaign(requestedProviderCampaignId);
       } else {
         if (senderAccounts.length === 0) {
           throw new HttpError(
             400,
             "CAMPAIGN_SENDER_REQUIRED",
-            "Select at least one active Instantly account",
+            "Select at least one active sending account",
           );
         }
+        // Live, as the settings save does: a mailbox disabled since the last
+        // refresh must not pass here and fail silently later.
         verifySelectedAccounts(
           senderAccounts,
-          accountsFromSnapshot(connection?.accounts_snapshot),
+          await freshOrSnapshotAccounts(context, connection),
         );
       }
       let campaign = await ensureLocalCampaign(context, workspaceId, requireClientRow(), {
@@ -6249,7 +5696,7 @@ serve(async (req) => {
         const mappedNow = await readProviderCampaignOrForget(
           context,
           campaign,
-          apiKey,
+          outreach,
           campaign.instantly_campaign_id,
         );
         if (!mappedNow) {
@@ -6264,7 +5711,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "CAMPAIGN_ALREADY_MAPPED",
-          "This client already has a different Instantly campaign",
+          `This client already has a different ${outreach.label} campaign`,
         );
       }
       if (requestedProviderCampaignId) {
@@ -6281,14 +5728,14 @@ serve(async (req) => {
           throw new HttpError(
             500,
             "CAMPAIGN_MAPPING_LOOKUP_FAILED",
-            "The Instantly campaign mapping could not be checked",
+            "The provider campaign mapping could not be checked",
           );
         }
         if (existingMapping) {
           throw new HttpError(
             409,
             "CAMPAIGN_ALREADY_MAPPED",
-            "That Instantly campaign is already assigned to another client",
+            `That ${outreach.label} campaign is already assigned to another client`,
           );
         }
       }
@@ -6326,7 +5773,7 @@ serve(async (req) => {
           throw new HttpError(
             500,
             "CAMPAIGN_UPDATE_FAILED",
-            "The Instantly campaign could not be assigned to this client",
+            `The ${outreach.label} campaign could not be assigned to this client`,
           );
         }
         campaign = data as unknown as CampaignRow;
@@ -6337,7 +5784,7 @@ serve(async (req) => {
         shortlistIds,
       );
       if (!campaign.instantly_campaign_id) {
-        await ensureProviderCampaign(context, campaign, apiKey);
+        await ensureProviderCampaign(context, campaign, outreach);
         const mappedCampaign = await readCampaign(
           context.admin,
           workspaceId,
@@ -6347,7 +5794,7 @@ serve(async (req) => {
           throw new HttpError(
             500,
             "CAMPAIGN_PROVIDER_MAPPING_FAILED",
-            "Instantly created the campaign but its client mapping could not be confirmed",
+            `${outreach.label} created the campaign but its client mapping could not be confirmed`,
           );
         }
         campaign = mappedCampaign;
@@ -6615,7 +6062,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly before starting outreach",
+          "Connect an outreach provider before starting outreach",
         );
       }
       const campaign = await ensureLocalCampaign(context, workspaceId, requireClientRow());
@@ -6672,8 +6119,9 @@ serve(async (req) => {
         "follow_up_two_delay_days",
       ]);
       requireCampaignManager(access);
+      const connection = await readConnection(context.admin, workspaceId);
       const name = requireString(body.name, "name", { max: 180 });
-      const timezone = campaignTimezone(body.timezone);
+      const timezone = campaignTimezone(body.timezone, connectionKind(connection));
       const limit = dailyLimit(body.daily_limit);
       const senderAccounts = emailList(body.sender_accounts);
       // All optional: a caller from before these were editable sends none of
@@ -6712,7 +6160,6 @@ serve(async (req) => {
           "Create the client campaign first",
         );
       }
-      const connection = await readConnection(context.admin, workspaceId);
       verifySelectedAccounts(
         senderAccounts,
         await freshOrSnapshotAccounts(context, connection),
@@ -6734,28 +6181,21 @@ serve(async (req) => {
       let providerStatus = campaign.instantly_campaign_status;
       let providerObserved: ProviderCampaign | null = null;
       if (campaign.instantly_campaign_id) {
-        const apiKey = await integrationApiKey(connection);
+        const outreach = await integrationProvider(connection);
         // Read before writing. Whether this campaign carries our sequence or
         // somebody else's decides what a settings save is allowed to replace,
         // and only the live campaign can answer that.
         const existing = await readProviderCampaignOrForget(
           context,
           campaign,
-          apiKey,
+          outreach,
           campaign.instantly_campaign_id,
         );
         if (existing) {
-          const updated = providerCampaign(
-            await instantlyRequest<unknown>(
-              apiKey,
-              `/campaigns/${encodeURIComponent(campaign.instantly_campaign_id)}`,
-              {
-                method: "PATCH",
-                body: campaignConfiguration(nextCampaign, {
-                  includeSequence: existing.rendersOurPitch,
-                }),
-              },
-            ),
+          const updated = await outreach.updateCampaign(
+            campaign.instantly_campaign_id,
+            campaignSpec(nextCampaign),
+            { includeSequence: existing.rendersOurPitch },
           );
           providerStatus = updated.status;
           providerObserved = updated;
@@ -6825,7 +6265,7 @@ serve(async (req) => {
         throw new HttpError(
           409,
           "INSTANTLY_NOT_CONNECTED",
-          "Connect Instantly before syncing",
+          "Connect an outreach provider before syncing",
         );
       }
       if (!campaign) {
@@ -6899,7 +6339,7 @@ serve(async (req) => {
           throw new HttpError(
             409,
             "INSTANTLY_SENDER_UNKNOWN",
-            "This mailbox is not in the connected Instantly workspace",
+            `This mailbox is not in the connected ${connectionLabel(connection)} workspace`,
           );
         }
       } else if (next.length === 0 && campaign.instantly_campaign_id) {
@@ -6915,27 +6355,19 @@ serve(async (req) => {
       let providerStatus = campaign.instantly_campaign_status;
       let providerObserved: ProviderCampaign | null = null;
       if (campaign.instantly_campaign_id) {
-        const apiKey = await integrationApiKey(connection);
+        const outreach = await integrationProvider(connection);
         // Assigning a mailbox is not an instruction to rewrite three emails.
         const existing = await readProviderCampaignOrForget(
           context,
           campaign,
-          apiKey,
+          outreach,
           campaign.instantly_campaign_id,
         );
         if (existing) {
-          const updated = providerCampaign(
-            await instantlyRequest<unknown>(
-              apiKey,
-              `/campaigns/${encodeURIComponent(campaign.instantly_campaign_id)}`,
-              {
-                method: "PATCH",
-                body: campaignConfiguration({
-                  ...campaign,
-                  sender_accounts: next,
-                }, { includeSequence: existing.rendersOurPitch }),
-              },
-            ),
+          const updated = await outreach.updateCampaign(
+            campaign.instantly_campaign_id,
+            campaignSpec({ ...campaign, sender_accounts: next }),
+            { includeSequence: existing.rendersOurPitch },
           );
           providerStatus = updated.status;
           providerObserved = updated;
@@ -7003,16 +6435,10 @@ serve(async (req) => {
           "Start outreach before changing campaign status",
         );
       }
-      const apiKey = await integrationApiKey(connection);
-      const provider = providerCampaign(
-        await instantlyRequest<unknown>(
-          apiKey,
-          `/campaigns/${encodeURIComponent(campaign.instantly_campaign_id)}/${
-            action === "pause" ? "pause" : "activate"
-          }`,
-          { method: "POST" },
-        ),
-      );
+      const outreach = await integrationProvider(connection);
+      const provider = action === "pause"
+        ? await outreach.pauseCampaign(campaign.instantly_campaign_id)
+        : await outreach.activateCampaign(campaign.instantly_campaign_id);
       const { data, error } = await context.admin
         .from("workspace_client_campaigns")
         .update({
@@ -7064,7 +6490,7 @@ serve(async (req) => {
     return errorResponse(
       req,
       METHODS,
-      error instanceof InstantlyApiError ? providerHttpError(error) : error,
+      error instanceof OutreachProviderError ? providerHttpError(error) : error,
     );
   }
 });

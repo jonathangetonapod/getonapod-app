@@ -183,12 +183,15 @@ serve(async (req) => {
       if (!apiKeyByWorkspace.has(raw.workspace_id)) {
         const { data: connection } = await admin
           .from('workspace_instantly_integrations')
-          .select('status, api_key_ciphertext, api_key_iv')
+          .select('status, api_key_ciphertext, api_key_iv, provider')
           .eq('workspace_id', raw.workspace_id)
           .maybeSingle()
         apiKeyByWorkspace.set(
           raw.workspace_id,
-          connection && connection.status === 'connected' && connection.api_key_ciphertext && connection.api_key_iv
+          // Instantly only: this tick speaks Instantly's API, and another
+          // provider's key must never be sent to Instantly.
+          connection && connection.status === 'connected' && (connection.provider ?? 'instantly') === 'instantly' &&
+            connection.api_key_ciphertext && connection.api_key_iv
             ? await decryptInstantlyApiKey({
               ciphertext: connection.api_key_ciphertext,
               iv: connection.api_key_iv,

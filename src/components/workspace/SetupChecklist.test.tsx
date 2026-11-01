@@ -127,7 +127,7 @@ describe('SetupChecklist', () => {
     expect(step).toHaveAttribute('data-done', 'false')
     expect(step).toHaveTextContent('Required')
     expect(screen.getByRole('link', { name: 'Open Connect a sending mailbox to a client' })).toHaveAttribute('href', '/app/mailboxes')
-    expect(screen.getByText('Connect Instantly').closest('li')).toHaveAttribute('data-done', 'true')
+    expect(screen.getByText('Connect a sending platform').closest('li')).toHaveAttribute('data-done', 'true')
     expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
   })
 

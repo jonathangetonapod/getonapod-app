@@ -18,7 +18,7 @@ describe('humanizeMailboxError', () => {
     for (const message of ["Can't create new access token", 'can’t create new access token: invalid_grant']) {
       expect(humanizeMailboxError(-1, message)).toMatchObject({
         label: 'Reconnect needed',
-        hint: 'The OAuth token expired. Reconnect this mailbox in Instantly.',
+        hint: 'The OAuth token expired. Reconnect this mailbox in your sending platform.',
         kind: 'disconnected',
       })
     }

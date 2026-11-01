@@ -63,7 +63,9 @@ for (const path of ['podscan-proxy/index.ts', 'client-autopilot-tick/index.ts', 
 // must not silently turn sending into a shared platform connection.
 const campaigns = read('supabase/functions/workspace-client-campaigns/index.ts')
 assert.match(campaigns, /const INTEGRATION_MANAGER_ROLES = new Set\(\["owner", "platform_admin"\]\)/u)
-assert.match(campaigns, /if \(action === "connect-instantly"\) \{\s*requireOnlyKeys\(body, \["action", "workspace_id", "api_key"\]\);\s*requireIntegrationOwner\(access\);/u)
+// The sending-platform key stays owner-only for every provider (Instantly,
+// Email Bison, ReachInbox); `provider` and `base_url` are the only additions.
+assert.match(campaigns, /if \(action === "connect-instantly"\) \{\s*requireOnlyKeys\(body, \["action", "workspace_id", "api_key", "provider", "base_url"\]\);\s*requireIntegrationOwner\(access\);/u)
 assert.match(campaigns, /can_manage: INTEGRATION_MANAGER_ROLES\.has\(access\.role\)/u)
 
 // The new non-secret preference inherits existing tenant SELECT isolation and

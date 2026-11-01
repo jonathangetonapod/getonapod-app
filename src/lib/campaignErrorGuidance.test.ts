@@ -49,10 +49,22 @@ describe('campaignErrorGuidance', () => {
   // A campaign deleted in Instantly leaves the client mapped to an ID that
   // 404s on every send. The refusal is permanent until setup is re-run, so a
   // retry here would loop an operator forever.
+  it('gives Email Bison and ReachInbox failures the same advice, naming the right provider', () => {
+    expect(campaignErrorGuidance('EMAILBISON_KEY_REJECTED')?.title).toBe('Email Bison rejected the workspace API key')
+    expect(campaignErrorGuidance('REACHINBOX_RATE_LIMITED')?.remedy).toEqual({ kind: 'retry', label: 'Try again' })
+    expect(campaignErrorGuidance('EMAILBISON_URL_INVALID')?.explanation).toMatch(/https:\/\/send\.youragency\.com/)
+    expect(campaignErrorGuidance('EMAILBISON_RESOURCE_NOT_FOUND')?.remedy).toEqual(
+      campaignErrorGuidance('INSTANTLY_RESOURCE_NOT_FOUND')?.remedy,
+    )
+    // An unknown provider or failure still degrades to the raw message.
+    expect(campaignErrorGuidance('SMARTLEAD_KEY_REJECTED')).toBeNull()
+    expect(campaignErrorGuidance('EMAILBISON_SOMETHING_NEW')).toBeNull()
+  })
+
   it('sends a deleted Instantly campaign to the page that rebuilds it', () => {
     const guidance = campaignErrorGuidance('INSTANTLY_RESOURCE_NOT_FOUND')
 
-    expect(guidance?.title).toBe('The Instantly campaign for this client no longer exists')
+    expect(guidance?.title).toBe('The campaign for this client no longer exists')
     expect(guidance?.remedy).toEqual({
       kind: 'link',
       label: 'Open Client Campaigns',
@@ -115,7 +127,7 @@ describe('campaignErrorGuidance', () => {
   it('does not send a deleted link off to rebuild the wrong campaign', () => {
     const guidance = campaignErrorGuidance('CAMPAIGN_LINK_DELETED')
 
-    expect(guidance?.title).toBe('That campaign was deleted in Instantly')
+    expect(guidance?.title).toBe('That campaign was deleted in the sending platform')
     expect(guidance?.remedy).toEqual({ kind: 'link', label: 'Open Clients', module: 'clients' })
     expect(guidance?.remedy).not.toEqual(campaignErrorGuidance('INSTANTLY_RESOURCE_NOT_FOUND')?.remedy)
   })

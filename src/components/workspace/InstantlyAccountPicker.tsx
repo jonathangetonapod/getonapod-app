@@ -154,11 +154,11 @@ export function InstantlyAccountPicker({
 
       {!connected ? (
         <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-          Connect Instantly to choose campaign mailboxes.
+          Connect a sending platform to choose campaign mailboxes.
         </div>
       ) : sortedAccounts.length === 0 && missingSelections.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-          No mailboxes were found in the connected Instantly workspace. Refresh the connection after adding an account.
+          No mailboxes were found in the connected workspace. Refresh the connection after adding an account.
         </div>
       ) : (
         <>
@@ -282,7 +282,7 @@ export function InstantlyAccountPicker({
                 <label key={email} className="flex cursor-pointer items-center gap-3 bg-amber-50/40 px-3 py-3">
                   <Checkbox checked onCheckedChange={(value) => setAccount(email, value === true)} disabled={disabled} aria-label={`Use ${email}`} />
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700"><Mail className="h-4 w-4" /></div>
-                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{email}</p><p className="text-xs text-amber-800">No longer returned by Instantly</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{email}</p><p className="text-xs text-amber-800">No longer returned by the sending platform</p></div>
                   <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Remove</Badge>
                 </label>
               ))}

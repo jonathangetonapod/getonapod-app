@@ -45,6 +45,7 @@ export function relativeAge(elapsedMs: number): string {
 export function describeSyncFreshness(
   timestamps: Array<string | null | undefined>,
   now: number,
+  providerLabel = 'Instantly',
 ): SyncFreshness | null {
   if (timestamps.length === 0) return null
 
@@ -52,11 +53,11 @@ export function describeSyncFreshness(
   // still counted in them, so it is named rather than skipped.
   const neverSynced = timestamps.filter((value) => !value).length
   if (neverSynced === timestamps.length) {
-    return { label: 'Totals have never been synced from Instantly', stale: true }
+    return { label: `Totals have never been synced from ${providerLabel}`, stale: true }
   }
   if (neverSynced > 0) {
     return {
-      label: `${neverSynced} campaign${neverSynced === 1 ? ' has' : 's have'} never synced from Instantly`,
+      label: `${neverSynced} campaign${neverSynced === 1 ? ' has' : 's have'} never synced from ${providerLabel}`,
       stale: true,
     }
   }
@@ -67,7 +68,7 @@ export function describeSyncFreshness(
     return lowest === null || parsed < lowest ? parsed : lowest
   }, null as number | null)
   // Unparseable timestamps are not evidence of freshness.
-  if (oldest === null) return { label: 'Totals have never been synced from Instantly', stale: true }
+  if (oldest === null) return { label: `Totals have never been synced from ${providerLabel}`, stale: true }
 
   // A clock skewed into the future should not read as an age.
   const elapsed = Math.max(0, now - oldest)

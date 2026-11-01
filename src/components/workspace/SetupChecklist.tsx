@@ -76,7 +76,7 @@ const stepHelp: Record<string, string> = {
   client: 'Add the person or company you want to book on podcasts. You can fill in more details later.',
   'reply-to': 'Give clients an email address they can reply to when you share their onboarding and updates.',
   billing: 'Activate a plan or resolve billing to add clients and use workspace features.',
-  instantly: 'Connect your agency’s Instantly account when you are ready to prepare outreach.',
+  instantly: 'Connect your agency’s sending platform — Instantly, Email Bison or ReachInbox — when you are ready to prepare outreach.',
   mailbox: 'Assign a sending mailbox to your client so their outreach uses the right email address.',
 }
 
@@ -198,7 +198,7 @@ export function useSetupProgress({
     },
     {
       key: 'instantly',
-      label: 'Connect Instantly',
+      label: 'Connect a sending platform',
       href: `${baseHref}/client-campaigns`,
       required: true,
       done: integration?.connected === true,

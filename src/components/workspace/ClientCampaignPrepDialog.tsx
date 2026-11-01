@@ -2643,7 +2643,7 @@ export function ClientCampaignPrep({
             <DialogHeader>
               <DialogTitle>Remove {podcast?.podcast_name || 'this podcast'} from the campaign?</DialogTitle>
               <DialogDescription>
-                The lead is deleted in Instantly, so no further steps of the sequence go out and the
+                The lead is removed from the campaign on your sending platform, so no further steps of the sequence go out and the
                 pitch returns to editable here.
               </DialogDescription>
             </DialogHeader>

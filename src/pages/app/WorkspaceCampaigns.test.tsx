@@ -584,16 +584,72 @@ describe('WorkspaceCampaigns', () => {
     mockedConnectInstantly.mockResolvedValue(undefined as never)
     renderCampaigns()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect Instantly' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
     const input = screen.getByLabelText('Instantly V2 API key')
     fireEvent.change(input, { target: { value: 'instantly-owner-key-longer-than-20' } })
-    fireEvent.click(screen.getByRole('button', { name: /verify & save key/i }))
+    fireEvent.click(screen.getByRole('button', { name: /verify and connect instantly/i }))
 
     await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalledWith(
       workspaceId,
       'instantly-owner-key-longer-than-20',
+      { provider: 'instantly', baseUrl: null },
     ))
     await waitFor(() => expect(screen.queryByLabelText('Instantly V2 API key')).not.toBeInTheDocument())
+  })
+
+  // Email Bison is self-hosted: its address is asked for, and only for it.
+  it('asks Email Bison for its instance address and sends it with the token', async () => {
+    mockedConnectInstantly.mockResolvedValue(undefined as never)
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    expect(screen.queryByLabelText('Email Bison address')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: /Email Bison/ }))
+    expect(screen.getByRole('radio', { name: /Email Bison/ })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText(/Mailboxes are paused and resumed in Email Bison/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Email Bison API token'), { target: { value: 'bison-api-user-token-123456' } })
+    // Not sendable until the address is there too.
+    expect(screen.getByRole('button', { name: /verify and connect email bison/i })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Email Bison address'), { target: { value: 'https://send.agency.com' } })
+    fireEvent.click(screen.getByRole('button', { name: /verify and connect email bison/i }))
+
+    await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalledWith(
+      workspaceId,
+      'bison-api-user-token-123456',
+      { provider: 'emailbison', baseUrl: 'https://send.agency.com' },
+    ))
+  })
+
+  // The server refuses an address with a path; saying so before the round
+  // trip spares a confusing rejection after a pasted dashboard URL.
+  it('holds the Email Bison connection until the address has no path', async () => {
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: /Email Bison/ }))
+    fireEvent.change(screen.getByLabelText('Email Bison API token'), { target: { value: 'bison-api-user-token-123456' } })
+    const address = screen.getByLabelText('Email Bison address')
+    fireEvent.change(address, { target: { value: 'https://send.agency.com/dashboard' } })
+
+    expect(address).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getAllByText('Use only the address, without a path such as /dashboard.').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /verify and connect email bison/i })).toBeDisabled()
+
+    fireEvent.change(address, { target: { value: 'https://send.agency.com/' } })
+    expect(address).toHaveAttribute('aria-invalid', 'false')
+    expect(screen.getByRole('button', { name: /verify and connect email bison/i })).toBeEnabled()
+    expect(mockedConnectInstantly).not.toHaveBeenCalled()
+  })
+
+  it('states ReachInbox limits before a key is pasted', async () => {
+    renderCampaigns()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
+    fireEvent.click(screen.getByRole('radio', { name: /ReachInbox/ }))
+    expect(screen.getByLabelText('ReachInbox API key')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Email Bison address')).not.toBeInTheDocument()
+    expect(screen.getByText(/Only campaigns created here can carry your written pitch/)).toBeInTheDocument()
   })
 
   // Clearing the field on submit meant a rejected key (a typo, the V1 key)
@@ -602,12 +658,14 @@ describe('WorkspaceCampaigns', () => {
     mockedConnectInstantly.mockRejectedValue(new Error('That key was rejected by Instantly.'))
     renderCampaigns()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Connect Instantly' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a sending platform' }))
     const input = screen.getByLabelText('Instantly V2 API key')
     fireEvent.change(input, { target: { value: 'instantly-owner-key-longer-than-20' } })
-    fireEvent.click(screen.getByRole('button', { name: /verify & save key/i }))
+    fireEvent.click(screen.getByRole('button', { name: /verify and connect instantly/i }))
 
     await waitFor(() => expect(mockedConnectInstantly).toHaveBeenCalled())
+    // The refusal is shown where the key was typed, not only in a toast.
+    expect(await screen.findByRole('alert')).toHaveTextContent('That key was rejected by Instantly.')
     await waitFor(() => expect(screen.getByLabelText('Instantly V2 API key')).toHaveValue('instantly-owner-key-longer-than-20'))
   })
 

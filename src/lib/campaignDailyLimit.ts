@@ -50,17 +50,21 @@ export const suggestedNewHostsPerDay = (capacity: MailboxCapacity): number => {
 const selectedMailboxes = (count: number) => (count === 1 ? 'The selected mailbox' : `The ${count} selected mailboxes`)
 const hostWord = (count: number) => (count === 1 ? '1 new host' : `${count.toLocaleString()} new hosts`)
 
-export const newHostsPerDayNote = (newHosts: number | null, capacity: MailboxCapacity): NewHostsPerDayNote | null => {
+export const newHostsPerDayNote = (
+  newHosts: number | null,
+  capacity: MailboxCapacity,
+  providerLabel = 'Instantly',
+): NewHostsPerDayNote | null => {
   if (newHosts === null) return null
   const emails = newHosts * EMAILS_PER_HOST
   const reach = `Up to ${hostWord(newHosts)} a day, about ${emails.toLocaleString()} emails with follow-ups.`
   if (capacity.emailsPerDay <= 0) {
-    return { text: `${reach} Each mailbox also has its own daily cap in Instantly.`, overCapacity: false }
+    return { text: `${reach} Each mailbox also has its own daily cap in ${providerLabel}.`, overCapacity: false }
   }
   const mailboxes = `${selectedMailboxes(capacity.mailboxes)} can send ${capacity.emailsPerDay.toLocaleString()} a day`
   if (emails <= capacity.emailsPerDay) return { text: `${reach} ${mailboxes}.`, overCapacity: false }
   return {
-    text: `${reach} ${mailboxes}, so Instantly will send less than this. Lower it to ${suggestedNewHostsPerDay(capacity)} or add mailboxes.`,
+    text: `${reach} ${mailboxes}, so ${providerLabel} will send less than this. Lower it to ${suggestedNewHostsPerDay(capacity)} or add mailboxes.`,
     overCapacity: true,
   }
 }
