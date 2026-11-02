@@ -340,6 +340,11 @@ export const OutreachConnectionDialog = ({
           </div>
         </DialogFooter>
         {blockedReason && <p className="-mt-2 text-right text-xs text-muted-foreground" aria-live="polite">{blockedReason}</p>}
+        {saving && (
+          <p className="-mt-2 text-right text-xs text-muted-foreground" aria-live="polite">
+            Reading every mailbox in the account. With a large account this can take up to 30 seconds.
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   )

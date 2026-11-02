@@ -56,6 +56,7 @@ describe('campaignErrorGuidance', () => {
     expect(campaignErrorGuidance('EMAILBISON_RESOURCE_NOT_FOUND')?.remedy).toEqual(
       campaignErrorGuidance('INSTANTLY_RESOURCE_NOT_FOUND')?.remedy,
     )
+    expect(campaignErrorGuidance('EMAILBISON_TIMEZONE_UNSUPPORTED')?.title).toBe('Email Bison has no matching time zone')
     // An unknown provider or failure still degrades to the raw message.
     expect(campaignErrorGuidance('SMARTLEAD_KEY_REJECTED')).toBeNull()
     expect(campaignErrorGuidance('EMAILBISON_SOMETHING_NEW')).toBeNull()

@@ -83,7 +83,13 @@ function failure(target: ProviderRequestTarget, status: number, detail: string |
 /** A short, provider-written reason from an error body, never the whole body. */
 function errorDetail(raw: string, apiKey: string): string | null {
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const outer = JSON.parse(raw) as Record<string, unknown>;
+    // Email Bison wraps its refusals in `data` ({data:{message, errors}}), so
+    // every Bison 422 reached the operator as "refused" with no reason.
+    const inner = outer?.data && typeof outer.data === "object" && !Array.isArray(outer.data)
+      ? outer.data as Record<string, unknown>
+      : null;
+    const parsed = typeof outer?.message === "string" || outer?.errors || !inner ? outer : inner;
     const message = typeof parsed.message === "string" ? parsed.message : null;
     const firstError = parsed.errors && typeof parsed.errors === "object"
       ? Object.values(parsed.errors as Record<string, unknown>).flat()[0]

@@ -419,3 +419,24 @@ Deno.test("Bison campaign search matches part of a name from the listing, not Bi
     assert(!calls.some((call) => call.url.searchParams.get("search")), "never uses Bison's whole-name search");
   });
 });
+
+Deno.test("a Bison refusal carries Bison's own reason, which it nests under data", async () => {
+  await withFetch((call) => {
+    if (call.method === "POST") {
+      // Live shape, captured from a real instance.
+      return {
+        status: 422,
+        body: { data: { success: false, message: "The email field must be a valid email address.", errors: { email: ["The email field must be a valid email address."] } } },
+      };
+    }
+    return { status: 404, body: { data: { success: false, message: "Not found" } } };
+  }, async () => {
+    let message = "";
+    try {
+      await new EmailBisonProvider(ORIGIN, KEY).blockAddress("not-an-email");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    assertEquals(message, "Email Bison refused the request: The email field must be a valid email address.", "reason shown");
+  });
+});

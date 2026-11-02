@@ -259,6 +259,12 @@ function providerFamilyGuidance(label: string, failure: string): CampaignErrorGu
         explanation: `${label} gave the reason below. Nothing was sent. Most often a setting it does not accept, such as a timezone or a mailbox it does not know.`,
         remedy: { kind: 'retry', label: 'Try again' },
       }
+    case 'TIMEZONE_UNSUPPORTED':
+      return {
+        title: `${label} has no matching time zone`,
+        explanation: `${label} offers no time zone on the same clock as the one chosen, so the schedule was not saved and nothing was sent. Choose a nearby time zone in the campaign settings and save again.`,
+        remedy: { kind: 'none' },
+      }
     case 'URL_INVALID':
       return {
         title: `That ${label} address cannot be used`,
