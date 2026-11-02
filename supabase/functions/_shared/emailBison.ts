@@ -580,13 +580,18 @@ export class EmailBisonProvider implements OutreachProvider {
   }
 
   async searchCampaigns(term: string, limit: number): Promise<ProviderCampaign[]> {
-    const response = record(await this.request<unknown>("/campaigns", {
-      query: new URLSearchParams({ search: term, per_page: String(Math.min(limit, PAGE_SIZE)) }),
-    }));
-    const rows = Array.isArray(response?.data) ? response.data.filter(record) as Json[] : [];
-    // Search results are summaries; callers that need rendersOurPitch read the
+    // Bison's `search` matches the whole name (SQL LIKE with no wildcards;
+    // `%` is ignored, `_` matches any one character), measured live. The
+    // marker lookup that adopts a half-built campaign on retry searches for a
+    // name prefix, which `search` never found, so every retry built another
+    // draft. The listing is read and matched here instead.
+    const wanted = term.trim().toLowerCase();
+    if (!wanted) return [];
+    const { campaigns } = await this.listCampaigns();
+    const matches = campaigns.filter((campaign) => campaign.name.toLowerCase().includes(wanted)).slice(0, limit);
+    // Listing rows are summaries; callers that need rendersOurPitch read the
     // detail, so resolve it here for the few that match.
-    return await Promise.all(rows.slice(0, limit).map((row) => this.getCampaign(String(row.id))));
+    return await Promise.all(matches.map((campaign) => this.getCampaign(campaign.id)));
   }
 
   async getCampaign(id: string): Promise<ProviderCampaign> {
@@ -700,7 +705,16 @@ export class EmailBisonProvider implements OutreachProvider {
   }
 
   private async writeSchedule(id: string, spec: CampaignSpec, exists: boolean): Promise<void> {
-    const timezone = resolveBisonTimezone(spec.timezone, await this.availableTimezones());
+    const available = await this.availableTimezones();
+    const timezone = resolveBisonTimezone(spec.timezone, available);
+    // Bison answers a zone it lacks with a bare 422; say which and why.
+    if (available.length && !available.includes(timezone)) {
+      throw new OutreachProviderError(
+        422,
+        `${CODE}_TIMEZONE_UNSUPPORTED`,
+        `${LABEL} has no time zone on the same clock as ${spec.timezone}; choose another for this campaign`,
+      );
+    }
     await this.request<unknown>(`/campaigns/${encodeURIComponent(id)}/schedule`, {
       method: exists ? "PUT" : "POST",
       body: schedulePayload(spec, timezone),
@@ -747,20 +761,36 @@ export class EmailBisonProvider implements OutreachProvider {
     await this.ensureVariables(id);
     // Only a 404 means there is no sequence yet. A rate limit or outage read as
     // "none" would POST a second sequence onto the campaign.
-    const existing = await this.sequenceSteps(id).catch((error) => {
-      if (error instanceof OutreachProviderError && error.status === 404) {
-        return { sequenceId: null, steps: [] as Json[] };
-      }
-      throw error;
-    });
+    const read = () =>
+      this.sequenceSteps(id).catch((error) => {
+        if (error instanceof OutreachProviderError && error.status === 404) {
+          return { sequenceId: null, steps: [] as Json[] };
+        }
+        throw error;
+      });
+    // Variants share their parent's order and must never be matched to a
+    // primary step's slot.
+    const primariesOf = (rows: Json[]) =>
+      rows
+        .filter((step) => step.variant !== true && bisonId(step.id))
+        .sort((left, right) => count(left.order) - count(right.order));
+    let existing = await read();
     const steps = bisonSequenceSteps(id, spec);
-    // The update call needs the id of every step it names and cannot add one,
-    // so it is used only when the live sequence already has enough primary
-    // steps. Variants share their parent's order and must never be matched
-    // to a primary step's slot.
-    const primaries = existing.steps
-      .filter((step) => step.variant !== true && bisonId(step.id))
-      .sort((left, right) => count(left.order) - count(right.order));
+    let primaries = primariesOf(existing.steps);
+    if (existing.sequenceId && primaries.length > 0 && primaries.length < steps.length) {
+      // Short of steps (one was deleted in Bison). Measured live: Bison refuses
+      // to delete a sequence's last step (400), and a POST onto an existing
+      // sequence appends rather than replaces, so "clear and rewrite" either
+      // fails or leaves the old follow-up sending as the opening email. Append
+      // the missing count, then the in-place update below rewrites every step.
+      await this.request<unknown>(`/campaigns/v1.1/${encodeURIComponent(id)}/sequence-steps`, {
+        method: "POST",
+        body: { title: "Get On A Pod pitch", sequence_steps: steps.slice(primaries.length) },
+      });
+      existing = await read();
+      primaries = primariesOf(existing.steps);
+    }
+    // The update call needs the id of every step it names and cannot add one.
     if (existing.sequenceId && primaries.length >= steps.length) {
       await this.request<unknown>(
         `/campaigns/v1.1/sequence-steps/${encodeURIComponent(existing.sequenceId)}`,
@@ -778,9 +808,9 @@ export class EmailBisonProvider implements OutreachProvider {
       await this.deleteSteps(existing.steps.filter((step) => !kept.has(bisonId(step.id))));
       return;
     }
-    // Too few steps to update in place: clear what is there and write the
-    // sequence fresh. A failure between the two leaves an empty sequence,
-    // which the next save lands here again and completes.
+    // No sequence, or one with no primary step: write it fresh. Anything left
+    // (only variants) is cleared first; the append above covers every case
+    // with a primary step to keep.
     await this.deleteSteps(existing.steps);
     await this.request<unknown>(`/campaigns/v1.1/${encodeURIComponent(id)}/sequence-steps`, {
       method: "POST",
@@ -961,7 +991,15 @@ export class EmailBisonProvider implements OutreachProvider {
       method: "PATCH",
       body: { custom_variables: bisonCustomVariables(campaignId, variables) },
     })));
-    return row ? this.lead(row) ?? lead : lead;
+    // The PATCH answer carries no lead_campaign_data, so read as a lead it has
+    // a null status, and the caller writes that status back: a null there is
+    // what marks a lead as gone. Only variables changed; this campaign's
+    // status and counts are the ones the caller already had.
+    const updated = row ? this.lead(row, campaignLinkFor(row, campaignId)) : null;
+    if (!updated || !campaignLinkFor(row!, campaignId)) {
+      return { ...lead, timestamp_updated: updated?.timestamp_updated ?? lead.timestamp_updated };
+    }
+    return updated;
   }
 
   async addLead(
@@ -970,6 +1008,10 @@ export class EmailBisonProvider implements OutreachProvider {
     options: { skipIfInCampaign: boolean },
   ): Promise<ProviderLead | null> {
     await this.ensureVariables(campaignId);
+    // Bison looks contacts up by address case-sensitively but refuses a second
+    // contact that differs only in case (422), so a mixed-case address missed
+    // the lookup and then failed the create.
+    lead = { ...lead, email: lead.email.trim().toLowerCase() };
     if (options.skipIfInCampaign) {
       const existing = (await this.listLeads(campaignId, lead.email))
         .find((candidate) => candidate.email === lead.email.toLowerCase());
@@ -1025,10 +1067,29 @@ export class EmailBisonProvider implements OutreachProvider {
     }
     // Removes the contact from this campaign only; the contact and its history
     // stay in the workspace.
-    await this.request<unknown>(`/campaigns/${encodeURIComponent(campaignId)}/leads`, {
-      method: "DELETE",
-      body: { lead_ids: [Number(id)] },
-    });
+    try {
+      await this.request<unknown>(`/campaigns/${encodeURIComponent(campaignId)}/leads`, {
+        method: "DELETE",
+        body: { lead_ids: [Number(id)] },
+      });
+    } catch (error) {
+      // Bison answers 422, not 404, for a contact that is not in the campaign
+      // (removed in Bison by hand, or deleted). The interface's "already gone"
+      // is a 404, which the caller treats as done; anything else stays an error.
+      if (!(error instanceof OutreachProviderError && error.status === 422)) throw error;
+      const row = await this.request<unknown>(`/leads/${encodeURIComponent(id)}`)
+        .then((value) => record(dataOf(value)))
+        .catch((lookup) => {
+          if (lookup instanceof OutreachProviderError && lookup.status === 404) return null;
+          throw error;
+        });
+      if (row && campaignLinkFor(row, campaignId)) throw error;
+      throw new OutreachProviderError(
+        404,
+        `${CODE}_RESOURCE_NOT_FOUND`,
+        `This contact is no longer in the ${LABEL} campaign`,
+      );
+    }
   }
 
   async blockAddress(email: string): Promise<void> {

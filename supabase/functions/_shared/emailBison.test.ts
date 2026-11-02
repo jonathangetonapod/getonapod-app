@@ -120,24 +120,107 @@ Deno.test("Bison sequence update sends an id on every step, skips variants, and 
   });
 });
 
-Deno.test("Bison sequence with too few steps is cleared and written fresh, never PUT without ids", async () => {
+Deno.test("Bison sequence short of steps appends the missing ones, then rewrites all in place", async () => {
+  // Measured live: Bison refuses to delete a sequence's last step (400) and a
+  // POST onto an existing sequence appends. Clearing and re-posting either
+  // failed or left the old follow-up as the opening email.
+  let appended = false;
   await withFetch((call) => {
     const path = call.url.pathname;
     if (path === "/api/custom-variables") return { body: variablesPage("42") };
     if (call.method === "GET" && path === "/api/campaigns/v1.1/42/sequence-steps") {
-      return { body: { data: { sequence_id: 293, sequence_steps: [{ id: 11, order: "1", variant: false }] } } };
+      const steps = [{ id: 11, order: "1", variant: false }];
+      if (appended) steps.push({ id: 21, order: "2", variant: false }, { id: 22, order: "3", variant: false });
+      return { body: { data: { sequence_id: 293, sequence_steps: steps } } };
     }
+    if (call.method === "DELETE") return { status: 400, body: { message: "cannot delete the last step" } };
+    if (call.method === "POST") appended = true;
     return { body: { data: { success: true } } };
   }, async (calls) => {
     await internals(new EmailBisonProvider(ORIGIN, KEY)).writeSequence("42", SPEC);
-    assert(!calls.some((call) => call.method === "PUT"), "no PUT with a step missing its id");
     const writes = calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.url.pathname}`);
     assertEquals(writes, [
-      "DELETE /api/campaigns/sequence-steps/11",
       "POST /api/campaigns/v1.1/42/sequence-steps",
-    ], "clear then create");
+      "PUT /api/campaigns/v1.1/sequence-steps/293",
+    ], "append, then update in place; nothing deleted");
     const post = calls.find((call) => call.method === "POST")?.body as { sequence_steps: unknown[] };
-    assertEquals(post.sequence_steps.length, 3, "three steps created");
+    assertEquals(post.sequence_steps.length, 2, "only the missing steps appended");
+    const put = calls.find((call) => call.method === "PUT")?.body as { sequence_steps: Array<{ id: number; order: number; email_body: string }> };
+    assertEquals(put.sequence_steps.map((step) => [step.order, step.id]), [[1, 11], [2, 21], [3, 22]], "every step named by id");
+    assert(put.sequence_steps[0].email_body.includes("PITCH_BODY"), "the surviving step is rewritten as the opening pitch");
+  });
+});
+
+Deno.test("Bison campaign with no sequence gets one written fresh", async () => {
+  await withFetch((call) => {
+    const path = call.url.pathname;
+    if (path === "/api/custom-variables") return { body: variablesPage("42") };
+    if (call.method === "GET") return { status: 404, body: { message: "Not found" } };
+    return { body: { data: { success: true } } };
+  }, async (calls) => {
+    await internals(new EmailBisonProvider(ORIGIN, KEY)).writeSequence("42", SPEC);
+    const writes = calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.url.pathname}`);
+    assertEquals(writes, ["POST /api/campaigns/v1.1/42/sequence-steps"], "one create");
+    assertEquals((calls.find((call) => call.method === "POST")?.body as { sequence_steps: unknown[] }).sequence_steps.length, 3, "three steps");
+  });
+});
+
+Deno.test("Bison pitch edit keeps the lead's campaign status (the PATCH answer has none)", async () => {
+  await withFetch((call) => {
+    if (call.url.pathname === "/api/custom-variables") return { body: variablesPage("42") };
+    // Live shape: the contact, no lead_campaign_data.
+    return { body: { data: { id: 7, email: "host@pod.com", status: "verified", updated_at: "2026-11-02T00:00:00Z" } } };
+  }, async () => {
+    const before = {
+      id: "7", email: "host@pod.com", status: 1, email_open_count: 2, email_reply_count: 0,
+    } as unknown as Parameters<EmailBisonProvider["updateLeadVariables"]>[0];
+    const after = await new EmailBisonProvider(ORIGIN, KEY).updateLeadVariables(before, "42", {
+      pitchSubject: "s", pitchBody: "b",
+    } as Parameters<EmailBisonProvider["updateLeadVariables"]>[2]);
+    assertEquals([after?.status, after?.email_open_count], [1, 2], "campaign figures carried over, never nulled");
+  });
+});
+
+Deno.test("Bison remove of a contact no longer in the campaign reads as already gone (404)", async () => {
+  const run = async (linked: boolean) => {
+    let code = "";
+    await withFetch((call) => {
+      if (call.method === "DELETE") return { status: 422, body: { message: "The selected lead ids is invalid." } };
+      return {
+        body: {
+          data: {
+            id: 7, email: "host@pod.com",
+            lead_campaign_data: linked ? [{ campaign_id: 42, status: "in_sequence" }] : [{ campaign_id: 99, status: "in_sequence" }],
+          },
+        },
+      };
+    }, async () => {
+      try {
+        await new EmailBisonProvider(ORIGIN, KEY).removeLead("42", "7");
+      } catch (error) {
+        code = error instanceof OutreachProviderError ? `${error.status}` : String(error);
+      }
+    });
+    return code;
+  };
+  assertEquals(await run(false), "404", "not in this campaign: the caller clears its record");
+  assertEquals(await run(true), "422", "still in the campaign: the refusal stands");
+});
+
+Deno.test("Bison addLead lowercases the address before the case-sensitive contact lookup", async () => {
+  await withFetch((call) => {
+    const path = call.url.pathname;
+    if (path === "/api/custom-variables") return { body: variablesPage("42") };
+    if (path === "/api/leads/host%40pod.com" || path === "/api/leads/host@pod.com") return { body: { data: { id: 7, email: "host@pod.com" } } };
+    if (path.startsWith("/api/leads/") && call.method === "GET") return { status: 404, body: { message: "Not found" } };
+    if (path === "/api/leads/7") return { body: { data: { id: 7, email: "host@pod.com" } } };
+    return { body: { data: { success: true } } };
+  }, async (calls) => {
+    const lead = await new EmailBisonProvider(ORIGIN, KEY).addLead("42", {
+      email: " Host@Pod.COM ", firstName: "H", variables: {} as never,
+    } as Parameters<EmailBisonProvider["addLead"]>[1], { skipIfInCampaign: false });
+    assertEquals(lead?.id, "7", "existing contact found");
+    assert(!calls.some((call) => call.method === "POST" && call.url.pathname === "/api/leads"), "no second contact created");
   });
 });
 
@@ -310,5 +393,29 @@ Deno.test("a settings save on a hand-built Bison campaign writes only our limits
     const update = calls.find((call) => call.url.pathname === "/api/campaigns/42/update");
     assertEquals(Object.keys(update?.body as object).sort(), ["max_emails_per_day", "max_new_leads_per_day"], "no rename, no delivery settings");
     assert(!calls.some((call) => call.url.pathname.includes("/schedule")), "schedule left alone");
+  });
+});
+
+Deno.test("Bison campaign search matches part of a name from the listing, not Bison's whole-name search", async () => {
+  await withFetch((call) => {
+    const path = call.url.pathname;
+    if (path === "/api/campaigns" && call.method === "GET") {
+      // Bison's own search would return nothing for a prefix; the adapter must not rely on it.
+      if (call.url.searchParams.get("search")) return { body: page([], 1, 1) };
+      return {
+        body: page([
+          { id: 1, name: "Other client", status: "active" },
+          { id: 2, name: "GOAP-abc Client", status: "draft" },
+        ], 1, 1),
+      };
+    }
+    if (path === "/api/campaigns/2") return { body: { data: { id: 2, name: "GOAP-abc Client", status: "draft" } } };
+    if (path.startsWith("/api/campaigns/2/")) return { status: 404, body: { message: "Not found" } };
+    if (path === "/api/campaigns/v1.1/2/sequence-steps") return { status: 404, body: { message: "Not found" } };
+    return { status: 404, body: { message: "Not found" } };
+  }, async (calls) => {
+    const found = await new EmailBisonProvider(ORIGIN, KEY).searchCampaigns("GOAP-abc", 10);
+    assertEquals(found.map((campaign) => campaign.id), ["2"], "prefix found");
+    assert(!calls.some((call) => call.url.searchParams.get("search")), "never uses Bison's whole-name search");
   });
 });
