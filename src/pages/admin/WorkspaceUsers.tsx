@@ -10,6 +10,7 @@ import { WorkspaceDomainsCard } from '@/components/workspace/WorkspaceDomainsCar
 import { WorkspaceRecoveryCard } from '@/components/workspace/WorkspaceRecoveryCard'
 import { insideRecoveryWindow } from '@/components/workspace/agencies/ownerStatus'
 import { NewWorkspaceDialog } from '@/components/workspace/agencies/NewWorkspaceDialog'
+import { PlatformTeamTab } from '@/components/workspace/agencies/PlatformTeamTab'
 import { TemporaryPasswordDialog, type ShownCredential } from '@/components/workspace/agencies/TemporaryPasswordDialog'
 import { WorkspacesTab } from '@/components/workspace/agencies/WorkspacesTab'
 import { isOpenJoinRequest } from '@/lib/joinRequestTriage'
@@ -18,7 +19,7 @@ import { listAdminWorkspaces, listDeletedWorkspaces } from '@/services/adminWork
 import { listWorkspaceDomains } from '@/services/workspaceDomains'
 import { listWorkspaceUsers, type ManualWorkspaceCredential } from '@/services/workspaceUsers'
 
-const TABS = ['workspaces', 'requests', 'domains', 'closed'] as const
+const TABS = ['workspaces', 'requests', 'domains', 'closed', 'team'] as const
 type AgencyTab = typeof TABS[number]
 
 const TAB_LABEL: Record<AgencyTab, string> = {
@@ -26,6 +27,7 @@ const TAB_LABEL: Record<AgencyTab, string> = {
   requests: 'Requests',
   domains: 'Domains',
   closed: 'Closed',
+  team: 'Platform team',
 }
 
 const isAgencyTab = (value: string | null): value is AgencyTab => TABS.includes(value as AgencyTab)
@@ -70,6 +72,7 @@ const WorkspaceUsers = () => {
     requests: requestsQuery.isSuccess ? requests.filter(isOpenJoinRequest).length : null,
     domains: domainsQuery.isSuccess ? domains.length : null,
     closed: deletedQuery.isSuccess ? deletedQuery.data.filter((workspace) => insideRecoveryWindow(workspace)).length : null,
+    team: null,
   }
 
   const domainWorkspaces = (workspacesQuery.data || [])
@@ -142,6 +145,10 @@ const WorkspaceUsers = () => {
           </TabsContent>
           <TabsContent value="closed" forceMount className="mt-5 data-[state=inactive]:hidden">
             <WorkspaceRecoveryCard ownerEmailFor={ownerEmailFor} />
+          </TabsContent>
+          {/* Mounted only while open: nothing on it needs to keep running. */}
+          <TabsContent value="team" className="mt-5">
+            <PlatformTeamTab />
           </TabsContent>
         </Tabs>
       </div>

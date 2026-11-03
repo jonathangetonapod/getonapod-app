@@ -130,6 +130,10 @@ verify_jwt = true
 [functions.manage-workspace-users]
 verify_jwt = true
 
+# Platform team: invite, promote and remove platform admins. Owner-only writes.
+[functions.manage-platform-team]
+verify_jwt = true
+
 [functions.manage-workspace-staff]
 verify_jwt = true
 

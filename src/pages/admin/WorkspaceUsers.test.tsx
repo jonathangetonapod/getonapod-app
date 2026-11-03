@@ -9,6 +9,7 @@ import { listDeletedWorkspaces } from '@/services/adminWorkspaces'
 import { deleteWorkspace } from '@/services/workspaceDeletion'
 import { listWorkspaceDomains } from '@/services/workspaceDomains'
 import { resetWorkspaceStaffTemporaryPassword } from '@/services/workspaceStaff'
+import { invitePlatformAdmin, listPlatformTeam, updatePlatformTeamMember, type PlatformTeamMember } from '@/services/platformTeam'
 import {
   createManualWorkspaceAccount,
   inviteWorkspaceUser,
@@ -55,6 +56,12 @@ vi.mock('@/services/workspaceDomains', () => ({
 }))
 vi.mock('@/services/workspaceStaff', () => ({
   resetWorkspaceStaffTemporaryPassword: vi.fn(),
+}))
+vi.mock('@/services/platformTeam', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/platformTeam')>()),
+  listPlatformTeam: vi.fn(),
+  invitePlatformAdmin: vi.fn(),
+  updatePlatformTeamMember: vi.fn(),
 }))
 
 const mockedCreate = vi.mocked(createManualWorkspaceAccount)
@@ -534,5 +541,100 @@ describe('Agencies page', () => {
     expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
     expect(screen.queryByText('Past Window')).toBeNull()
     expect(screen.getByRole('tab', { name: /Closed\s*\(1\)/ })).toBeInTheDocument()
+  })
+})
+
+const teamMember = (overrides: Partial<PlatformTeamMember>): PlatformTeamMember => ({
+  id: '55555555-5555-4555-8555-555555555555',
+  email: 'person@example.com',
+  full_name: 'Person',
+  role: 'admin',
+  status: 'active',
+  invited_at: '2026-07-21T00:00:00Z',
+  invite_expires_at: null,
+  accepted_at: '2026-07-21T00:00:00Z',
+  platform_admin: false,
+  platform_invite: false,
+  delivery_pending: false,
+  is_self: false,
+  ...overrides,
+})
+
+describe('Platform team tab', () => {
+  const owner = teamMember({ id: 'owner-id', email: 'jonathan@getonapod.com', full_name: 'Jonathan', role: 'owner', platform_admin: true, is_self: true })
+  const staff = teamMember({ id: 'staff-id', email: 'dianne@example.com', full_name: 'Dianne' })
+  const admin = teamMember({ id: 'admin-id', email: 'shara@getonapod.com', full_name: 'Shara', platform_admin: true })
+  const invited = teamMember({
+    id: 'invite-id', email: 'new@example.com', full_name: 'New Person', status: 'invited',
+    accepted_at: null, invite_expires_at: '2020-01-01T00:00:00Z', platform_invite: true,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedList.mockResolvedValue([])
+    vi.mocked(listJoinRequests).mockResolvedValue([])
+    vi.mocked(listWorkspaceDomains).mockResolvedValue([])
+    vi.mocked(listDeletedWorkspaces).mockResolvedValue([])
+    vi.mocked(listPlatformTeam).mockResolvedValue({ can_manage: true, members: [owner, staff, admin, invited] })
+    vi.mocked(invitePlatformAdmin).mockResolvedValue({ success: true, membership_id: 'invite-id' })
+    vi.mocked(updatePlatformTeamMember).mockResolvedValue({ success: true })
+  })
+
+  async function openTeamMenu(name: string) {
+    const trigger = await screen.findByRole('button', { name: `Actions for ${name}` })
+    trigger.focus()
+    fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+  }
+
+  it('lists the team with each person\'s access and offers no action on the owner', async () => {
+    renderPage('/app/manage-workspaces?tab=team')
+    expect(await screen.findByText('Dianne')).toBeInTheDocument()
+    expect(screen.getByText('Owner')).toBeInTheDocument()
+    expect(screen.getByText('Platform admin')).toBeInTheDocument()
+    expect(screen.getByText('Team member')).toBeInTheDocument()
+    expect(screen.getByText('Platform admin (on joining)')).toBeInTheDocument()
+    expect(screen.getByText('Invite expired')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Actions for Jonathan' })).toBeNull()
+  })
+
+  it('invites a platform admin', async () => {
+    renderPage('/app/manage-workspaces?tab=team')
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite platform admin' }))
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: ' new@example.com ' } })
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'New Person' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    await waitFor(() => expect(invitePlatformAdmin).toHaveBeenCalledWith({ email: 'new@example.com', full_name: 'New Person' }))
+  })
+
+  it('makes a team member a platform admin after confirming', async () => {
+    renderPage('/app/manage-workspaces?tab=team')
+    await openTeamMenu('Dianne')
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Make platform admin/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Make platform admin' }))
+    await waitFor(() => expect(updatePlatformTeamMember).toHaveBeenCalledWith('grant_admin', 'staff-id'))
+  })
+
+  it('removes a platform admin and resends an expired invite', async () => {
+    renderPage('/app/manage-workspaces?tab=team')
+    await openTeamMenu('Shara')
+    expect(screen.queryByRole('menuitem', { name: /Make platform admin/ })).toBeNull()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Remove from platform/ }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(updatePlatformTeamMember).toHaveBeenCalledWith('remove', 'admin-id'))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    await openTeamMenu('New Person')
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Resend invite/ }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send new invite' }))
+    await waitFor(() => expect(updatePlatformTeamMember).toHaveBeenCalledWith('resend_invite', 'invite-id'))
+  })
+
+  it('is read-only for a platform admin who is not the owner', async () => {
+    vi.mocked(listPlatformTeam).mockResolvedValue({ can_manage: false, members: [{ ...owner, is_self: false }, { ...admin, is_self: true }, staff] })
+    renderPage('/app/manage-workspaces?tab=team')
+    expect(await screen.findByText(/Only the platform owner can invite or remove people/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Invite platform admin' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Actions for Dianne' })).toBeNull()
   })
 })

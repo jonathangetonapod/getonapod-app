@@ -1818,13 +1818,13 @@ describe('WorkspaceStaff', () => {
       expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
     })
 
-    it('sends the platform roster to the platform tools instead of offering an invite', async () => {
+    it('sends the platform roster to the platform team tab instead of offering an invite', async () => {
       renderPage()
       await screen.findByRole('heading', { name: /^Team & access/ })
       expect(screen.queryByRole('button', { name: 'Invite member' })).not.toBeInTheDocument()
-      const links = screen.getAllByRole('link', { name: /Manage workspaces/ })
+      const links = screen.getAllByRole('link', { name: /Platform team|Manage platform team/ })
       expect(links.length).toBeGreaterThan(0)
-      for (const link of links) expect(link).toHaveAttribute('href', '/app/manage-workspaces')
+      for (const link of links) expect(link).toHaveAttribute('href', '/app/manage-workspaces?tab=team')
     })
 
     it('offers no action on a platform operator account', async () => {

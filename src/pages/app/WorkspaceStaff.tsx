@@ -1104,7 +1104,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       </div>
                       {platformRoster ? (
                         <Button variant="outline" asChild>
-                          <Link to="/app/manage-workspaces"><Users className="mr-2 h-4 w-4" />Manage workspaces</Link>
+                          <Link to="/app/manage-workspaces?tab=team"><Users className="mr-2 h-4 w-4" />Manage platform team</Link>
                         </Button>
                       ) : (
                         <Button
@@ -1124,7 +1124,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                       <CardHeader className="border-b border-border/70 bg-muted/15">
                         <CardDescription>
                           {platformRoster
-                            ? <>These are the people who run the platform. They are added on the platform side, not invited here. To create a workspace or change who owns one, open <Link to="/app/manage-workspaces" className="font-medium underline underline-offset-2">Manage workspaces</Link>.</>
+                            ? <>These are the people who run the platform. Invite, promote or remove them on the <Link to="/app/manage-workspaces?tab=team" className="font-medium underline underline-offset-2">Platform team</Link> tab of Manage workspaces.</>
                             : (
                               <span className="flex items-center gap-1">
                                 Owners and admins manage the workspace; members work on clients.

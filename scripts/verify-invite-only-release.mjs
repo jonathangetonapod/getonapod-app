@@ -20,8 +20,8 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 123,
-  deployedFunctions: 121,
+  changedFunctions: 124,
+  deployedFunctions: 122,
   excludedFunctions: 2,
   // 45 after the legacy Email Bison inbox, matching experiments, and other
   // admin-era functions with no caller in the app, the other functions, the
@@ -88,7 +88,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // 224: outreach providers (2026-11-01) — outreachProvider, outreachProviderFactory,
   // providerHttp, instantlyProvider, emailBison, reachInbox and their tests.
   // 226: emailBison.test.ts and reachInbox.test.ts (2026-11-01).
-  edgeTypeScriptFiles: 226,
+  // 227 with manage-platform-team: invite and remove platform admins
+  // (2026-11-03).
+  edgeTypeScriptFiles: 227,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -224,6 +226,7 @@ const EXPECTED_EXPLICIT_JWT_FUNCTIONS = Object.freeze([
   'create-client-account',
   'create-prospect-sheet',
   'manage-client-portal-password',
+  'manage-platform-team',
   'manage-workspace-staff',
   'manage-workspace-users',
   'podscan-proxy',
