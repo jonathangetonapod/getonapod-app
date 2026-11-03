@@ -18,13 +18,16 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const edge = readFileSync('supabase/functions/manage-platform-team/index.ts', 'utf8')
-const migration = readFileSync('supabase/migrations/20261103000100_platform_team.sql', 'utf8')
+const baseMigration = readFileSync('supabase/migrations/20261103000100_platform_team.sql', 'utf8')
+const hardening = readFileSync('supabase/migrations/20261103000200_platform_team_hardening.sql', 'utf8')
+// Later files redefine functions; the newest definition is the live one.
+const migration = `${baseMigration}\n${hardening}`
 const config = readFileSync('supabase/config.toml', 'utf8')
 const manifest = JSON.parse(readFileSync('docs/invite-only-edge-manifest.json', 'utf8'))
 const service = readFileSync('src/services/platformTeam.ts', 'utf8')
 
 const sqlFunction = (name) => {
-  const start = migration.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`)
+  const start = migration.lastIndexOf(`CREATE OR REPLACE FUNCTION public.${name}(`)
   assert.ok(start >= 0, `${name} must be defined`)
   const end = migration.indexOf('\n$$;', start)
   assert.ok(end > start, `${name} must have a body`)
@@ -89,6 +92,16 @@ assert.match(migration, /AFTER UPDATE OF status ON public\.workspace_memberships
 const revoke = sqlFunction('revoke_platform_admin_invite_v1')
 assert.ok(!/archived|client_portal_sessions|client_portal_tokens/u.test(revoke), 'cancelling a platform invite must not run private-workspace teardown')
 assert.match(revoke, /platform_admin_invitations/u)
+
+// Cancel never touches a membership that was ever accepted: its Auth cleanup
+// would delete a removed member's real account.
+assert.match(revoke, /IF membership\.accepted_at IS NOT NULL THEN/u)
+// The acceptance grant fires on invited -> active only.
+assert.match(hardening, /WHEN \(NEW\.status = 'active' AND OLD\.status = 'invited'\)/u)
+// Removing returns the Auth user the edge deletes, and only after the SQL
+// removal succeeded; a failed deletion is reported, not hidden.
+assert.match(sqlFunction('remove_platform_team_member_v1'), /'user_id', membership\.user_id/u)
+assert.match(edge, /sign_in_deleted: signInDeleted/u)
 
 // Removal: never yourself, never the owner; revoking advances the epoch.
 const remove = sqlFunction('remove_platform_team_member_v1')

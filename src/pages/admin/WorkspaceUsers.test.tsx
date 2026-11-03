@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceUsers from '@/pages/admin/WorkspaceUsers'
 import { formatDate } from '@/lib/dates'
@@ -57,6 +58,7 @@ vi.mock('@/services/workspaceDomains', () => ({
 vi.mock('@/services/workspaceStaff', () => ({
   resetWorkspaceStaffTemporaryPassword: vi.fn(),
 }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
 vi.mock('@/services/platformTeam', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/platformTeam')>()),
   listPlatformTeam: vi.fn(),
@@ -592,7 +594,7 @@ describe('Platform team tab', () => {
     expect(screen.getByText('Owner')).toBeInTheDocument()
     expect(screen.getByText('Platform admin')).toBeInTheDocument()
     expect(screen.getByText('Team member')).toBeInTheDocument()
-    expect(screen.getByText('Platform admin (on joining)')).toBeInTheDocument()
+    expect(screen.getByText('Platform admin when they join')).toBeInTheDocument()
     expect(screen.getByText('Invite expired')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Actions for Jonathan' })).toBeNull()
   })
@@ -626,8 +628,51 @@ describe('Platform team tab', () => {
 
     await openTeamMenu('New Person')
     fireEvent.click(await screen.findByRole('menuitem', { name: /Resend invite/ }))
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send new invite' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send invite' }))
     await waitFor(() => expect(updatePlatformTeamMember).toHaveBeenCalledWith('resend_invite', 'invite-id'))
+  })
+
+  it('says what a removal could not clean up', async () => {
+    vi.mocked(updatePlatformTeamMember).mockResolvedValue({ success: true, sign_in_deleted: false })
+    renderPage('/app/manage-workspaces?tab=team')
+    await openTeamMenu('Shara')
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Remove from platform/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/their sign-in is deleted/)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(expect.stringMatching(/Their old sign-in could not be deleted/)))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('labels access by what the person can actually do', async () => {
+    vi.mocked(listPlatformTeam).mockResolvedValue({
+      can_manage: true,
+      members: [
+        owner,
+        teamMember({ id: 'suspended-id', full_name: 'Paused', email: 'paused@example.com', status: 'suspended', platform_admin: true }),
+        teamMember({ id: 'joined-id', full_name: 'Joined', email: 'joined@example.com', platform_invite: true }),
+        teamMember({ id: 'stuck-id', full_name: 'Stuck', email: 'stuck@example.com', status: 'provisioning', accepted_at: null, platform_invite: true, delivery_pending: true, needs_review: true }),
+      ],
+    })
+    renderPage('/app/manage-workspaces?tab=team')
+    expect(await screen.findByText('Platform admin, no access while suspended')).toBeInTheDocument()
+    // Already joined without platform access: a plain team member, promotable.
+    expect(screen.getByText('Team member')).toBeInTheDocument()
+    expect(screen.getByText('Stuck: needs operator review')).toBeInTheDocument()
+    // Only the still-pending invite says access comes on joining.
+    expect(screen.getAllByText('Platform admin when they join')).toHaveLength(1)
+  })
+
+  it('clears an earlier invite error when the dialog is closed', async () => {
+    vi.mocked(invitePlatformAdmin).mockRejectedValue(new Error('This person is already on the platform team'))
+    renderPage('/app/manage-workspaces?tab=team')
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite platform admin' }))
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'dianne@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('already on the platform team')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite platform admin' }))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('is read-only for a platform admin who is not the owner', async () => {

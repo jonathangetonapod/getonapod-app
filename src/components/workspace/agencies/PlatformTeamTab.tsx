@@ -25,28 +25,32 @@ interface Confirmation {
 
 const nameOf = (member: PlatformTeamMember) => member.full_name || member.email
 
-const CONFIRM_COPY: Record<PlatformTeamAction, { title: (name: string) => string; body: (email: string) => string; button: string; destructive: boolean }> = {
+const isPending = (member: PlatformTeamMember) => member.status === 'provisioning' || member.status === 'invited'
+
+const CONFIRM_COPY: Record<PlatformTeamAction, { title: (member: PlatformTeamMember) => string; body: (member: PlatformTeamMember) => string; button: string; destructive: boolean }> = {
   resend_invite: {
-    title: (name) => `Send ${name} a new invite?`,
-    body: (email) => `A fresh link goes to ${email}. Any earlier link stops working.`,
-    button: 'Send new invite',
+    title: (member) => member.status === 'provisioning' ? `Send ${nameOf(member)} their invite?` : `Send ${nameOf(member)} a new invite?`,
+    body: (member) => member.status === 'provisioning'
+      ? `The invite link goes to ${member.email}. It expires in 24 hours.`
+      : `A fresh link goes to ${member.email}. The earlier link stops working.`,
+    button: 'Send invite',
     destructive: false,
   },
   cancel_invite: {
-    title: (name) => `Cancel the invite for ${name}?`,
-    body: (email) => `The link sent to ${email} stops working. You can invite them again later.`,
+    title: (member) => `Cancel the invite for ${nameOf(member)}?`,
+    body: (member) => `The link sent to ${member.email} stops working. You can invite them again later.`,
     button: 'Cancel invite',
     destructive: true,
   },
   grant_admin: {
-    title: (name) => `Make ${name} a platform admin?`,
-    body: (email) => `${email} will be able to open every workspace, manage agencies and use the admin pages.`,
+    title: (member) => `Make ${nameOf(member)} a platform admin?`,
+    body: (member) => `${member.email} will be able to open every workspace, manage agencies and use the admin pages.`,
     button: 'Make platform admin',
     destructive: false,
   },
   remove: {
-    title: (name) => `Remove ${name} from the platform team?`,
-    body: (email) => `${email} loses access to the platform and every workspace now, including any session they have open. You can invite them again later.`,
+    title: (member) => `Remove ${nameOf(member)} from the platform team?`,
+    body: (member) => `${member.email} loses access to the platform and every workspace now, including any session they have open, and their sign-in is deleted. You can invite them again later.`,
     button: 'Remove',
     destructive: true,
   },
@@ -54,12 +58,15 @@ const CONFIRM_COPY: Record<PlatformTeamAction, { title: (name: string) => string
 
 const accessBadge = (member: PlatformTeamMember) => {
   if (member.role === 'owner') return <Badge>Owner</Badge>
-  if (member.platform_admin) return <Badge variant="secondary">Platform admin</Badge>
-  if (member.platform_invite) return <Badge variant="outline">Platform admin (on joining)</Badge>
+  // Platform access needs an active membership, so only say so when it holds.
+  if (member.platform_admin && member.status === 'active') return <Badge variant="secondary">Platform admin</Badge>
+  if (member.platform_admin) return <Badge variant="outline">Platform admin, no access while suspended</Badge>
+  if (member.platform_invite && isPending(member)) return <Badge variant="outline">Platform admin when they join</Badge>
   return <Badge variant="outline">Team member</Badge>
 }
 
 const statusLabel = (member: PlatformTeamMember) => {
+  if (member.needs_review) return 'Stuck: needs operator review'
   if (member.status === 'active') return 'Active'
   if (member.status === 'suspended') return 'Suspended'
   if (member.status === 'revoked') return 'Cancelling'
@@ -78,7 +85,12 @@ export const PlatformTeamTab = () => {
 
   const mutation = useMutation({
     mutationFn: ({ action, member }: Confirmation) => updatePlatformTeamMember(action, member.id),
-    onSuccess: (_result, { action, member }) => {
+    onSuccess: (result, { action, member }) => {
+      if (action === 'remove' && result?.sign_in_deleted === false) {
+        toast.warning(`${nameOf(member)} was removed and has no access. Their old sign-in could not be deleted, so inviting ${member.email} again needs manual cleanup.`)
+        setConfirmation(null)
+        return
+      }
       const done: Record<PlatformTeamAction, string> = {
         resend_invite: `New invite sent to ${member.email}.`,
         cancel_invite: `Invite for ${member.email} cancelled.`,
@@ -98,9 +110,8 @@ export const PlatformTeamTab = () => {
   const menuFor = (member: PlatformTeamMember): RowMenuItem[] => {
     if (!canManage || member.is_self || member.role === 'owner') return []
     const ask = (action: PlatformTeamAction) => () => setConfirmation({ action, member })
-    const pending = member.status === 'provisioning' || member.status === 'invited'
     const items: RowMenuItem[] = []
-    if (pending && member.platform_invite) {
+    if (isPending(member) && member.platform_invite) {
       items.push({ label: 'Resend invite', icon: <Send className="h-4 w-4" />, onSelect: ask('resend_invite'), disabled: member.delivery_pending })
       items.push('divider')
       items.push({ label: 'Cancel invite', icon: <XCircle className="h-4 w-4" />, onSelect: ask('cancel_invite'), destructive: true, disabled: member.delivery_pending })
@@ -177,8 +188,8 @@ export const PlatformTeamTab = () => {
           {confirmation && copy && (
             <>
               <DialogHeader>
-                <DialogTitle>{copy.title(nameOf(confirmation.member))}</DialogTitle>
-                <DialogDescription>{copy.body(confirmation.member.email)}</DialogDescription>
+                <DialogTitle>{copy.title(confirmation.member)}</DialogTitle>
+                <DialogDescription>{copy.body(confirmation.member)}</DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button variant="outline" disabled={mutation.isPending} onClick={() => setConfirmation(null)}>Keep as is</Button>

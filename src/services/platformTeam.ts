@@ -19,6 +19,8 @@ export interface PlatformTeamMember {
   platform_invite: boolean
   /** An invite send or cancel is still in flight for this row. */
   delivery_pending: boolean
+  /** That send or cancel did not finish; an operator has to look at it. */
+  needs_review?: boolean
   is_self: boolean
 }
 
@@ -51,8 +53,14 @@ export const invitePlatformAdmin = (input: { email: string; full_name?: string }
 
 export type PlatformTeamAction = 'resend_invite' | 'cancel_invite' | 'grant_admin' | 'remove'
 
+export interface PlatformTeamChange {
+  success: true
+  /** Remove only: false when access was removed but the old sign-in could not be deleted. */
+  sign_in_deleted?: boolean
+}
+
 export const updatePlatformTeamMember = (action: PlatformTeamAction, membershipId: string) => (
-  invoke<{ success: true }>({ action, membership_id: membershipId }, 'The platform team could not be changed.')
+  invoke<PlatformTeamChange>({ action, membership_id: membershipId }, 'The platform team could not be changed.')
 )
 
 /** Expired invites need a fresh link; the database sets a 24-hour expiry when one is sent. */

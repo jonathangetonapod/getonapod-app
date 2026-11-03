@@ -90,6 +90,13 @@ function teamRpcError(message: string, fallback: HttpError): HttpError {
   if (text.includes('already a platform administrator')) {
     return new HttpError(409, 'ALREADY_PLATFORM_ADMIN', 'This person is already a platform admin')
   }
+  if (text.includes('already on the platform team')) {
+    return new HttpError(
+      409,
+      'ALREADY_ON_TEAM',
+      'This person is already on the platform team. Use Make platform admin on their row instead',
+    )
+  }
   if (text.includes('account already exists')) {
     return new HttpError(
       409,
@@ -114,6 +121,9 @@ function teamRpcError(message: string, fallback: HttpError): HttpError {
   }
   if (text.includes('identity mismatch')) {
     return new HttpError(409, 'ACCOUNT_IDENTITY_MISMATCH', 'This account needs manual review before it can be changed')
+  }
+  if (text.includes('default workspace not found')) {
+    return new HttpError(409, 'DEFAULT_WORKSPACE_UNAVAILABLE', 'The Get On A Pod workspace is not active, so the team cannot be changed')
   }
   if (text.includes('not found')) {
     return new HttpError(404, 'MEMBER_NOT_FOUND', 'That person is no longer on the platform team')
@@ -467,7 +477,7 @@ async function cancelInvite(
       authUserId,
       revoked.email_normalized,
       'AUTH_REVOKE_FAILED',
-      'The invite is cancelled, but its sign-in cleanup did not finish. Try again in a minute',
+      'The invite is cancelled, but its sign-in cleanup did not finish and needs operator review',
     )
   }
   await releaseInviteDeliveryClaim(admin, revoked.id, lockToken)
@@ -557,9 +567,22 @@ serve(async (req) => {
       }
 
       // Sent before: the old link is cancelled and a fresh one goes out, so
-      // an expired invite is fixed with one click.
+      // an expired invite is fixed with one click. Configuration is checked
+      // first so a misconfigured redirect cannot cancel a working link.
+      inviteRedirectUrl()
       const cancelled = await cancelInvite(admin, pending.membership.id, user.id, tokenIssuedAt)
-      const fresh = await beginInvite(admin, cancelled.email_normalized, cancelled.full_name, user.id, tokenIssuedAt)
+      let fresh: { membership: MembershipRow; workspace: WorkspaceRow }
+      try {
+        fresh = await beginInvite(admin, cancelled.email_normalized, cancelled.full_name, user.id, tokenIssuedAt)
+      } catch (error) {
+        const reason = error instanceof HttpError ? error.message : 'The invite could not be created'
+        throw new HttpError(
+          error instanceof HttpError ? error.status : 500,
+          'RESEND_REINVITE_FAILED',
+          `The old invite was cancelled, but a new one could not be created: ${reason}. Invite them again`,
+        )
+      }
+      // A failed send leaves a visible "Invite not sent" row with Resend.
       await deliverInvite(admin, fresh.membership, fresh.workspace, user.id)
       return jsonResponse(req, METHODS, 200, { success: true, membership_id: fresh.membership.id })
     }
@@ -575,7 +598,7 @@ serve(async (req) => {
       requireOnlyKeys(body, ['action', 'membership_id'])
       const membershipId = requireUuid(body.membership_id, 'membership_id')
       const rpc = action === 'grant_admin' ? 'grant_platform_admin_v1' : 'remove_platform_team_member_v1'
-      const { error } = await admin.rpc(rpc, {
+      const { data, error } = await admin.rpc(rpc, {
         p_membership_id: membershipId,
         p_actor_user_id: user.id,
         p_token_issued_at: tokenIssuedAt,
@@ -583,7 +606,22 @@ serve(async (req) => {
       if (error) {
         throw teamRpcError(error.message, new HttpError(500, 'TEAM_CHANGE_FAILED', 'The platform team could not be changed'))
       }
-      return jsonResponse(req, METHODS, 200, { success: true })
+      if (action === 'grant_admin') return jsonResponse(req, METHODS, 200, { success: true })
+
+      // Access is already gone. Deleting the sign-in is what lets the same
+      // email be invited again; if it cannot be deleted (another table still
+      // points at the account), say so rather than failing the removal.
+      const removed = data as { email?: unknown; user_id?: unknown } | null
+      let signInDeleted = true
+      if (typeof removed?.user_id === 'string' && typeof removed.email === 'string') {
+        try {
+          await deleteAuthUserIfPresent(admin, removed.user_id, removed.email, 'AUTH_REMOVE_FAILED', 'Sign-in cleanup failed')
+        } catch {
+          signInDeleted = false
+          console.error('[manage-platform-team] removed member sign-in was not deleted')
+        }
+      }
+      return jsonResponse(req, METHODS, 200, { success: true, sign_in_deleted: signInDeleted })
     }
 
     throw new HttpError(400, 'INVALID_ACTION', 'Unknown platform team action')

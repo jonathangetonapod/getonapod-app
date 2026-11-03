@@ -40,7 +40,15 @@ export const InvitePlatformAdminDialog = ({ open, onOpenChange, onSettled }: Inv
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next) }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (submitting) return
+        // A closed dialog starts clean next time, not with the last refusal.
+        if (!next) setError(null)
+        onOpenChange(next)
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite a platform admin</DialogTitle>
@@ -63,7 +71,7 @@ export const InvitePlatformAdminDialog = ({ open, onOpenChange, onSettled }: Inv
           </p>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="outline" disabled={submitting} onClick={() => { setError(null); onOpenChange(false) }}>Cancel</Button>
             <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Send invite
             </Button>
