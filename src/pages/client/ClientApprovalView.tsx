@@ -1,3 +1,4 @@
+import { showQualityScore } from '@/lib/showQuality'
 import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -430,10 +431,10 @@ function ClientApprovalViewContent() {
   // remove accidental duplicates before calculating any visible totals.
   const uniquePodcasts = uniqueReviewPodcasts(podcasts)
 
-  const totalReach = uniquePodcasts.reduce((sum, podcast) => sum + (podcast.audience_size || 0), 0)
   const ratings = uniquePodcasts.filter((podcast) => podcast.itunes_rating).map((podcast) => podcast.itunes_rating!)
   const avgRating = ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0
 
+  const qualityScores = new Map(uniquePodcasts.map((podcast) => [podcast.podcast_id, showQualityScore(podcast)]))
   const topMatches = [...uniquePodcasts]
     .sort((left, right) => {
       if (Boolean(left.is_featured) !== Boolean(right.is_featured)) return left.is_featured ? -1 : 1
@@ -443,12 +444,20 @@ function ClientApprovalViewContent() {
       const leftHasFit = Boolean(left.ai_fit_reasons?.length)
       const rightHasFit = Boolean(right.ai_fit_reasons?.length)
       if (leftHasFit !== rightHasFit) return leftHasFit ? -1 : 1
+      // Active, independent and sizeable before stale, corporate or tiny:
+      // the first twelve are what the client judges the whole list by.
+      const quality = (qualityScores.get(right.podcast_id) ?? 0) - (qualityScores.get(left.podcast_id) ?? 0)
+      if (Math.abs(quality) >= 0.5) return quality
       if ((left.display_order ?? 9999) !== (right.display_order ?? 9999)) {
         return (left.display_order ?? 9999) - (right.display_order ?? 9999)
       }
       return (right.audience_size || 0) - (left.audience_size || 0)
     })
     .slice(0, TOP_MATCH_COUNT)
+  // Reach of the shows the client is shown first, not the whole list: one
+  // outlier deep in a 356-show list made "4.7M combined reach" sit over a top
+  // twelve of a few hundred listeners each.
+  const totalReach = topMatches.reduce((sum, podcast) => sum + (podcast.audience_size || 0), 0)
 
   const allCategories = collectReviewCategories(uniquePodcasts)
   const counts = reviewCounts(uniquePodcasts, feedbackMap)
@@ -669,7 +678,7 @@ function ClientApprovalViewContent() {
 
               <dl className="mt-9 grid max-w-2xl grid-cols-3 divide-x divide-white/10 rounded-2xl border border-white/10 bg-white/[0.04] py-4">
                 <div className="px-3 sm:px-5">
-                  <dt className="text-[10px] uppercase tracking-[0.14em] text-white/45 sm:text-xs">Est. combined reach</dt>
+                  <dt className="text-[10px] uppercase tracking-[0.14em] text-white/45 sm:text-xs">Est. reach, top {topMatches.length}</dt>
                   <dd className="mt-1 font-editorial text-2xl text-white sm:text-3xl">{formatListeners(totalReach)}</dd>
                 </div>
                 <div className="px-3 sm:px-5">

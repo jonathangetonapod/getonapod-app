@@ -266,6 +266,25 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByText('1 show selected')).not.toBeInTheDocument()
   })
 
+  it('flags shows that stopped posting or are a company’s own feed, and filters to them', async () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      ...(await getClientShortlist(workspaceId, clientId)),
+      podcasts: [
+        podcast({ id: 'a1111111-1111-4111-8111-111111111111', podcast_id: 'p-active', podcast_name: 'Active Show', publisher_name: 'A Host', last_posted_at: daysAgo(5) }),
+        podcast({ id: 'a2222222-2222-4222-8222-222222222222', podcast_id: 'p-stale', podcast_name: 'Quiet Show', publisher_name: 'B Host', last_posted_at: daysAgo(330) }),
+        podcast({ id: 'a3333333-3333-4333-8333-333333333333', podcast_id: 'p-corp', podcast_name: 'Infosys', publisher_name: 'Infosys Ltd.', last_posted_at: daysAgo(20) }),
+      ],
+    })
+    renderEditor()
+
+    expect(await screen.findByText('Not posting')).toBeInTheDocument()
+    expect(screen.getByText('Company feed')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive or company feed 2' }))
+    await waitFor(() => expect(screen.queryByText('Active Show')).not.toBeInTheDocument())
+    expect(screen.getByText('Quiet Show')).toBeInTheDocument()
+    expect(screen.getAllByText('Infosys').length).toBeGreaterThan(0)
+  })
   it('filters shows above or below a fit score, or the unscored ones', async () => {
     vi.mocked(getClientShortlist).mockResolvedValue({
       client: { id: clientId, name: 'Taylor Client' },

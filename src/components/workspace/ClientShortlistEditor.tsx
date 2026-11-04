@@ -1,3 +1,4 @@
+import { isCorporateFeed, isRecentlyActive } from '@/lib/showQuality'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -67,8 +68,22 @@ import {
   type ClientShortlistVisibility,
 } from '@/services/clientShortlist'
 
-type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' | 'archived'
-const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'archived']
+type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' | 'low_quality' | 'archived'
+const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'low_quality', 'archived']
+
+/*
+ * Visible shows a client should not have to wade through: no episode in the
+ * Finder's 90-day window, or a company's own feed rather than a hosted show.
+ * Flagged, never hidden automatically; the operator decides.
+ */
+const qualityFlags = (podcast: { podcast_name: string; publisher_name?: string | null; last_posted_at?: string | null }) => ({
+  notPosting: isRecentlyActive(podcast.last_posted_at) === false,
+  companyFeed: isCorporateFeed(podcast),
+})
+const isLowQuality = (podcast: Parameters<typeof qualityFlags>[0]) => {
+  const flags = qualityFlags(podcast)
+  return flags.notPosting || flags.companyFeed
+}
 type FitFilter = 'any' | 'at_least' | 'below' | 'unscored'
 type ListSort = 'list_order' | 'fit_desc' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
 
@@ -298,6 +313,7 @@ export function ClientShortlistEditor({
     rejected: podcasts.filter((podcast) => podcast.visibility === 'visible' && podcast.feedback_status === 'rejected').length,
     notReviewed: podcasts.filter((podcast) => podcast.visibility === 'visible' && !podcast.feedback_status).length,
     weakFit: podcasts.filter(isWeakFit).length,
+    lowQuality: podcasts.filter((podcast) => podcast.visibility === 'visible' && isLowQuality(podcast)).length,
   }), [podcasts])
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -316,6 +332,7 @@ export function ClientShortlistEditor({
       if (filter === 'approved') return podcast.feedback_status === 'approved'
       if (filter === 'rejected') return podcast.feedback_status === 'rejected'
       if (filter === 'weak_fit') return isWeakFit(podcast)
+      if (filter === 'low_quality') return isLowQuality(podcast)
       return podcast.feedback_status === null
     })
     if (sort === 'list_order') return matching
@@ -565,6 +582,7 @@ export function ClientShortlistEditor({
                 ['approved', `Approved ${counts.approved}`],
                 ['rejected', `Passed ${counts.rejected}`],
                 ['weak_fit', `Weak fit ${counts.weakFit}`],
+                ['low_quality', `Inactive or company feed ${counts.lowQuality}`],
                 ['archived', `Archived ${counts.archived}`],
               ] as Array<[ListFilter, string]>).map(([value, label]) => (
                 <Button key={value} type="button" size="sm" variant={filter === value ? 'default' : 'outline'} onClick={() => setFilter(value)}>{label}</Button>
@@ -613,7 +631,7 @@ export function ClientShortlistEditor({
                   />
                   <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => openPodcastDetails(podcast)} aria-label={`View details for ${podcast.podcast_name}`}>
                     <PodcastArtwork podcast={podcast} />
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{podcast.prior_outreach_at && <Badge aria-label={`${podcast.podcast_name} was previously contacted`} variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{podcast.prior_outreach_at && <Badge aria-label={`${podcast.podcast_name} was previously contacted`} variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}{qualityFlags(podcast).notPosting && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900" title="No episode in the last 90 days">Not posting</Badge>}{qualityFlags(podcast).companyFeed && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900" title="Looks like a company's own feed, not a hosted show that books guests">Company feed</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
                   </button>
                   <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5 lg:w-[600px] lg:items-center">
                     <div><p className="text-xs text-muted-foreground">Fit</p><FitScoreBadge podcast={podcast} profile={shortlistQuery.data?.fit_profile ?? null} /></div>
