@@ -8,14 +8,12 @@ import {
   ChevronDown,
   ChevronsUpDown,
   ChevronUp,
-  KeyRound,
   Loader2,
   Mail,
   MessageSquare,
   Mic2,
   Plus,
   PlugZap,
-  RefreshCw,
   Search,
   ShieldCheck,
   Users,
@@ -38,7 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AssignInstantlyCampaignsDialog } from '@/components/workspace/AssignInstantlyCampaignsDialog'
-import { OutreachConnectionDialog } from '@/components/workspace/OutreachConnectionDialog'
+import { OutreachConnectionCard } from '@/components/workspace/OutreachConnectionCard'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
@@ -54,16 +52,12 @@ import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  disconnectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
-  refreshWorkspaceCampaignAnalytics,
-  refreshWorkspaceInstantly,
   saveWorkspaceCampaign,
   type WorkspaceClientCampaign,
   type WorkspaceInstantlyIntegration,
 } from '@/services/workspaceCampaigns'
 import { type WorkspaceClient } from '@/services/clients'
-import { clearMailboxCaches } from '@/lib/mailboxCache'
 import { INSTANTLY_TIMEZONES, defaultInstantlyTimezone, instantlyTimezoneLabel, toInstantlyTimezone } from '@/lib/instantlyTimezones'
 import {
   DEFAULT_NEW_HOSTS_PER_DAY,
@@ -73,7 +67,7 @@ import {
   suggestedNewHostsPerDay,
   wholeNumberOrNull,
 } from '@/lib/campaignDailyLimit'
-import { describeSyncFreshness, relativeAge } from '@/lib/syncFreshness'
+import { describeSyncFreshness } from '@/lib/syncFreshness'
 
 type CampaignFilter = 'all' | 'attention' | 'draft' | 'active' | 'paused' | 'completed'
 type CampaignStatus = 'Needs attention' | 'Draft' | 'Active' | 'Paused' | 'Completed'
@@ -394,54 +388,14 @@ const WorkspaceCampaigns = ({
   // Follows the chosen mailboxes until somebody types a number of their own.
   const [campaignDailyLimitEdited, setCampaignDailyLimitEdited] = useState(false)
   const [selectedSenderAccounts, setSelectedSenderAccounts] = useState<Set<string>>(new Set())
-  const [connectionOpen, setConnectionOpen] = useState(false)
 
   const integration = campaignOverviewQuery.data?.integration || null
   const canManageCampaigns = Boolean(campaignOverviewQuery.data?.can_manage_campaigns)
   const sendingAccounts = integration?.accounts || []
-  // The connected platform's name, everywhere this page names it. Before any
-  // connection, the copy speaks of "a sending platform" rather than one brand.
-  const providerLabel = integration?.connected || integration?.status === 'error'
-    ? integrationProviderLabel(integration)
-    : 'your sending platform'
   const providerName = integrationProviderLabel(integration)
   const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
   const unassignedProviderCampaigns = providerCampaigns.filter((campaign) => !campaign.mapped_client_id)
 
-  /*
-   * One sync for what used to be two buttons: the connection (senders and the
-   * campaign list) and then the campaign totals. Each step says which one
-   * failed, since a working key with failing totals is a different problem.
-   */
-  const syncMutation = useMutation({
-    mutationFn: async () => {
-      try {
-        await refreshWorkspaceInstantly(workspaceId)
-      } catch (error) {
-        throw new Error(`${providerName} connection: ${error instanceof Error ? error.message : 'could not be checked.'}`)
-      }
-      try {
-        return await refreshWorkspaceCampaignAnalytics(workspaceId)
-      } catch (error) {
-        throw new Error(`Campaign totals: ${error instanceof Error ? error.message : 'could not be refreshed.'}`)
-      }
-    },
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-      // A campaign Instantly no longer answers for is named as unrefreshed
-      // rather than counted as done; its numbers on this page are the last
-      // ones anybody saw.
-      if (result.missing > 0) {
-        toast.warning(`Synced. ${result.missing} of ${result.requested} campaigns could not be found in ${providerName}.`)
-      } else {
-        toast.success(`Synced with ${providerName}.`)
-      }
-    },
-    onError: async () => {
-      // The first step may have landed; show whatever it refreshed.
-      await queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] })
-    },
-  })
   const filteredClient = clientGroupFilter === 'all' ? null : clients.find((client) => client.id.toLowerCase() === clientGroupFilter) || null
   // The stats, the tab counts and the table all read this one scoped list.
   const scopedSummaries = clientGroupFilter === 'all'
@@ -472,37 +426,6 @@ const WorkspaceCampaigns = ({
   const bounceAlarm = analyticsTotals.sent >= 20
     && bouncedCount / analyticsTotals.sent > 0.03
 
-  /*
-   * Everything that renders the connection, not only this page's overview:
-   * the setup checklist and the mailbox lists kept saying "connected" (or
-   * named the old provider) until their own stale time ran out.
-   */
-  const invalidateConnectionViews = async () => {
-    // The stored mailbox list belongs to the platform that was connected; a
-    // reload must not draw it under the new one (or under none).
-    clearMailboxCaches()
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['workspace-client-campaigns', workspaceId] }),
-      queryClient.invalidateQueries({ queryKey: ['setup-checklist', workspaceId] }),
-      queryClient.invalidateQueries({ queryKey: ['workspace-mailboxes', workspaceId] }),
-      queryClient.invalidateQueries({
-        predicate: (query) => query.queryKey.includes('mailboxes') && query.queryKey.includes(workspaceId),
-      }),
-    ])
-  }
-
-  const disconnectMutation = useMutation({
-    mutationFn: () => disconnectWorkspaceInstantly(workspaceId),
-    onSuccess: async () => {
-      setConnectionOpen(false)
-      await invalidateConnectionViews()
-      toast.success(`${providerLabel} access removed from this workspace.`)
-    },
-    onError: (error) => {
-      const report = campaignErrorToast(error, `${providerLabel} could not be disconnected.`)
-      toast.error(report.title, report.description ? { description: report.description } : undefined)
-    },
-  })
   const saveCampaignMutation = useMutation({
     mutationFn: saveWorkspaceCampaign,
     onSuccess: async (_result, variables) => {
@@ -698,8 +621,6 @@ const WorkspaceCampaigns = ({
     if (clientId && availableCampaignClients.some((client) => client.id === clientId)) selectClient(clientId)
     setCreateOpen(true)
   }
-  const lastSyncedAt = integration?.last_verified_at ? Date.parse(integration.last_verified_at) : Number.NaN
-  const lastSyncedLabel = Number.isFinite(lastSyncedAt) ? `Last synced ${relativeAge(Math.max(0, Date.now() - lastSyncedAt))}` : null
   const canAssign = canManageCampaigns && Boolean(integration?.connected)
     && unassignedProviderCampaigns.length > 0 && availableCampaignClients.length > 0
   const scopeLabel = filteredClient ? `For ${filteredClient.name}` : 'All clients'
@@ -718,87 +639,7 @@ const WorkspaceCampaigns = ({
 
   return (
     <div className="space-y-5">
-      <Card
-        data-testid="instantly-connection-card"
-        className={integration?.connected ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200 bg-amber-50/40'}
-      >
-        <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${integration?.connected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              {campaignOverviewQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlugZap className="h-5 w-5" />}
-            </div>
-            <div className="min-w-0">
-              {/* Named as the Instantly account: on its own the account's
-                  name read like a client, or like a different workspace. */}
-              {integration?.connected && !campaignOverviewQuery.isLoading && (
-                <p className="text-xs font-medium text-muted-foreground">{providerName} account</p>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold">
-                  {campaignOverviewQuery.isLoading
-                    ? 'Checking the sending platform connection…'
-                    : integration?.connected
-                      ? integration.provider_workspace_name || `${providerName} connected`
-                      : integration?.status === 'error'
-                        ? `${providerName} needs attention`
-                        : 'Connect a sending platform to launch outreach'}
-                </p>
-                {integration?.connected && <Badge variant="outline" className="border-emerald-200 bg-background text-emerald-800">Connected</Badge>}
-              </div>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                {campaignOverviewQuery.error instanceof Error
-                  ? campaignOverviewQuery.error.message
-                  : integration?.connected
-                    ? `${integration.active_account_count} active sending account${integration.active_account_count === 1 ? '' : 's'} · ${providerCampaigns.length} campaign${providerCampaigns.length === 1 ? '' : 's'}${unassignedProviderCampaigns.length > 0 ? ` (${unassignedProviderCampaigns.length} unassigned)` : ''}`
-                    : integration?.last_error || 'Draft campaigns and pitches now; the workspace owner connects Instantly, Email Bison or ReachInbox before anyone sends.'}
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col gap-1.5 sm:items-end">
-          <div className="flex flex-wrap gap-2">
-            {campaignOverviewQuery.error && (
-              <Button type="button" variant="outline" size="sm" onClick={() => void campaignOverviewQuery.refetch()}>
-                <RefreshCw className="mr-2 h-4 w-4" />Try again
-              </Button>
-            )}
-            {integration?.connected && canManageCampaigns && (
-              <Button type="button" variant="outline" size="sm" disabled={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} aria-hidden="true" />
-                {syncMutation.isPending ? 'Syncing campaigns…' : `Sync with ${providerName}`}
-              </Button>
-            )}
-            {integration?.can_manage && (
-              <Button
-                type="button"
-                size="sm"
-                variant={integration.connected ? 'outline' : 'default'}
-                onClick={() => setConnectionOpen(true)}
-                title={integration.connected && integration.api_key_last_four ? `Key ending ${integration.api_key_last_four}` : undefined}
-              >
-                <KeyRound className="mr-2 h-4 w-4" />{integration.connected ? 'Manage connection' : 'Connect a sending platform'}
-              </Button>
-            )}
-          </div>
-          <div aria-live="polite" className="text-xs sm:text-right">
-            {syncMutation.isError ? (
-              <p className="flex flex-wrap items-center gap-x-2 text-red-700 sm:justify-end">
-                <span>Sync failed. {syncMutation.error instanceof Error ? syncMutation.error.message : ''}</span>
-                <button type="button" className="font-medium underline underline-offset-2" onClick={() => syncMutation.mutate()}>Try again</button>
-              </p>
-            ) : syncMutation.isPending ? (
-              <p className="text-muted-foreground">Syncing campaigns…</p>
-            ) : integration?.connected && campaignOverviewQuery.data?.provider_campaigns_error ? (
-              // last_verified_at is when the key was last checked, not when
-              // campaigns last loaded; next to a refresh error it read as a
-              // contradiction ("Last synced just now" over "could not be refreshed").
-              <p className="text-amber-800">Connected · campaigns not refreshed</p>
-            ) : integration?.connected && lastSyncedLabel ? (
-              <p className="text-muted-foreground">{lastSyncedLabel}</p>
-            ) : null}
-          </div>
-          </div>
-        </CardContent>
-      </Card>
+      <OutreachConnectionCard workspaceId={workspaceId} />
 
       {campaignOverviewQuery.data?.provider_campaigns_error && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1304,18 +1145,6 @@ const WorkspaceCampaigns = ({
         </DialogContent>
       </Dialog>
 
-      <OutreachConnectionDialog
-        open={connectionOpen}
-        onOpenChange={setConnectionOpen}
-        workspaceId={workspaceId}
-        integration={integration}
-        onConnected={async (label) => {
-          await invalidateConnectionViews()
-          toast.success(`${label} connected. You can create and launch campaigns.`)
-        }}
-        onDisconnect={() => disconnectMutation.mutate()}
-        disconnecting={disconnectMutation.isPending}
-      />
     </div>
   )
 }

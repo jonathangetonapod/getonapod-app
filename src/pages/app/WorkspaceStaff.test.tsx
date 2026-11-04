@@ -223,7 +223,7 @@ describe('WorkspaceStaff', () => {
     vi.mocked(grantWorkspaceCredits).mockResolvedValue({ granted: 100, balance: 110 })
     vi.mocked(getWorkspaceClients).mockResolvedValue([])
     vi.mocked(getWorkspaceCampaignOverview).mockResolvedValue({
-      integration: { connected: true, status: 'connected', provider_workspace_name: 'Acme Sending' },
+      integration: { connected: true, status: 'connected', provider: 'instantly', provider_workspace_name: 'Acme Sending', active_account_count: 3, can_manage: true },
       can_manage_campaigns: true,
       campaigns: [],
       provider_campaigns: [],
@@ -519,12 +519,12 @@ describe('WorkspaceStaff', () => {
     expect(within(settingsNavigation).getByRole('link', { name: /General/ })).toHaveAttribute('href', '#workspace-general')
     expect(within(settingsNavigation).getByRole('link', { name: /Sidebar order/ })).toHaveAttribute('href', '#sidebar-navigation')
     expect(within(settingsNavigation).getByRole('link', { name: /Profile/ })).toHaveAttribute('href', '#your-profile')
-    expect(within(settingsNavigation).getByRole('link', { name: /AI keys/ })).toHaveAttribute('href', '#ai-keys')
+    expect(within(settingsNavigation).getByRole('link', { name: /Integrations/ })).toHaveAttribute('href', '#ai-keys')
     // Grouped by whose setting it is; the group names replaced the small
     // uppercase labels each section used to carry.
     expect(within(settingsNavigation).getByText('Your account')).toBeInTheDocument()
     expect(within(settingsNavigation).getByText('Workspace')).toBeInTheDocument()
-    for (const label of ['YOU', 'PERSONALIZATION', 'WHITE LABEL', 'INTEGRATIONS', 'ACCESS']) {
+    for (const label of ['YOU', 'PERSONALIZATION', 'WHITE LABEL', 'ACCESS']) {
       expect(screen.queryByText(new RegExp(`^${label}$`, 'i'))).not.toBeInTheDocument()
     }
     expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
@@ -574,9 +574,14 @@ describe('WorkspaceStaff', () => {
     renderPage()
     await screen.findByText('Agency Admin')
 
-    const status = screen.getByTestId('instantly-status')
-    await waitFor(() => expect(status).toHaveTextContent('Connected to Acme Sending · Manage in Client Campaigns'))
-    expect(within(status).getByRole('link', { name: 'Manage in Client Campaigns' })).toHaveAttribute('href', '/app/client-campaigns')
+    // The connection is managed here as well as in Client Campaigns: the
+    // same card, with sync and the connect/manage dialog.
+    const card = screen.getByTestId('instantly-connection-card')
+    await waitFor(() => expect(card).toHaveTextContent('Acme Sending'))
+    expect(card).toHaveTextContent('Connected')
+    expect(card).toHaveTextContent('3 active sending accounts')
+    expect(within(card).getByRole('button', { name: /Sync with Instantly/ })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: /Manage connection/ })).toBeInTheDocument()
     // Instantly connected and credits in hand, but no client, no linked
     // mailbox and no reply-to address: two of five. It opens what is left,
     // each linking to where it is finished.
@@ -853,7 +858,7 @@ describe('WorkspaceStaff', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
 
     // Out of it: a link to another page.
-    fireEvent.click(await screen.findByRole('link', { name: 'Manage in Client Campaigns' }))
+    fireEvent.click(await screen.findByRole('link', { name: /Manage billing/ }))
     expect(await screen.findByRole('alertdialog', { name: 'Leave without saving?' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Stay on this page' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())

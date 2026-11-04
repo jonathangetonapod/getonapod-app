@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { integrationProviderLabel } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import {
@@ -33,6 +32,7 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
+import { OutreachConnectionCard } from '@/components/workspace/OutreachConnectionCard'
 import { InfoTip } from '@/components/workspace/InfoTip'
 import { useSetupProgress } from '@/components/workspace/SetupChecklist'
 import { ClientBrandingSection } from '@/components/workspace/settings/ClientBrandingSection'
@@ -691,7 +691,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
       sections: [
         { id: 'workspace-general', label: 'General', icon: Building2 },
         { id: 'client-branding', label: 'Client branding', icon: Palette },
-        { id: 'ai-keys', label: canManageAiKeys ? 'AI keys' : 'Integrations', icon: KeyRound },
+        { id: 'ai-keys', label: 'Integrations', icon: KeyRound },
         { id: 'workspace-access', label: 'Team & access', icon: Users },
         // Not while viewing another workspace: its billing is platform work
         // and lives at /app/platform/billing, against any workspace.
@@ -1054,36 +1054,19 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                   <section id="ai-keys" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="ai-keys-title">
                     <div>
                       <h2 id="ai-keys-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">
-                        {canManageAiKeys ? 'AI keys' : 'Integrations'}
+                        Integrations
                       </h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {canManageAiKeys
-                          ? 'Connect your provider accounts to enable AI features. Providers bill usage directly.'
+                          ? 'Your sending platform, and the AI provider accounts that power AI features. AI providers bill usage directly.'
                           : 'The services this workspace is connected to.'}
                       </p>
                     </div>
+                    {/* The same card Client Campaigns shows, so the sending
+                        platform can be connected, synced, or changed from
+                        either place. */}
+                    <OutreachConnectionCard workspaceId={workspaceId} />
                     {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />}
-                    {/* Read-only on purpose: the connection is made and
-                        managed in Client Campaigns. This row only says whether
-                        it exists, so nobody hunts through settings for it. */}
-                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                      <CardContent className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                          <Send className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="font-semibold">{setupProgress.integration?.connected ? integrationProviderLabel(setupProgress.integration) : 'Sending platform'}</p>
-                          <p className="text-sm text-muted-foreground" data-testid="instantly-status">
-                            {setupProgress.integration?.connected
-                              ? `Connected to ${setupProgress.integration.provider_workspace_name || `your ${integrationProviderLabel(setupProgress.integration)} workspace`} · `
-                              : 'Not connected · '}
-                            <Link to={`${baseHref}/client-campaigns`} className="font-medium text-foreground underline underline-offset-2">
-                              {setupProgress.integration?.connected ? 'Manage in Client Campaigns' : 'Connect in Client Campaigns'}
-                            </Link>
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
                   </section>
 
                   <section id="workspace-access" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-access-title">
