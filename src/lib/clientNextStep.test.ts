@@ -113,7 +113,6 @@ describe('getClientSetupItems', () => {
       ['onboarding', 'not_started', 'Start onboarding'],
       ['host_brief', 'not_started', 'Finish host brief (0/4)'],
       ['portal', 'not_started', 'Enable portal'],
-      ['shortlist', 'not_started', 'Build shortlist'],
       ['dashboard', 'not_started', 'Set up dashboard'],
     ])
   })
@@ -132,7 +131,8 @@ describe('getClientSetupItems', () => {
     // Only approved required sections count: the approved extra section and
     // the unapproved draft do not.
     expect(byKey.host_brief).toMatchObject({ status: 'in_progress', detail: '1 of 4 required', actionLabel: 'Finish host brief (1/4)' })
-    expect(byKey.shortlist).toMatchObject({ status: 'in_progress', detail: '4 of 10 reviewed', actionLabel: 'Review shortlist' })
+    // Shortlist review is not a setup step; the funnel and review queue carry it.
+    expect(byKey.shortlist).toBeUndefined()
   })
 
   it('is all done for a fully set up client', () => {
@@ -179,9 +179,15 @@ describe('getClientFunnel', () => {
     ])
   })
 
-  it('shows no percentage when a step outnumbers the one before it', () => {
+  it('never shows fewer contacted than in conversation, for placements logged by hand', () => {
     const steps = getClientFunnel(state({ outreach: { podcasts_contacted: 1 }, bookings: [booking('a'), booking('b')] }))
-    expect(steps[1]).toMatchObject({ count: 2, conversion: null })
+    expect(steps[0]).toMatchObject({ key: 'contacted', count: 2 })
+    expect(steps[1]).toMatchObject({ count: 2, conversion: 100 })
+  })
+
+  it('counts a client with no intake but outreach under way as onboarded outside intake', () => {
+    const items = getClientSetupItems(state({ outreach: { initial_emails_sent: 3 } }))
+    expect(items[0]).toMatchObject({ key: 'onboarding', status: 'done', detail: 'Done outside intake' })
   })
 })
 

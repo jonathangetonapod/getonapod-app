@@ -733,3 +733,13 @@ describe('sendWorkspaceClientPortalInvite', () => {
     )).rejects.toThrow('portal invitation response was invalid')
   })
 })
+
+describe('parseWorkspaceClientHostBrief', () => {
+  it('reads the required-sections count and rejects malformed ones', async () => {
+    const { parseWorkspaceClientHostBrief } = await import('./clients')
+    expect(parseWorkspaceClientHostBrief({ approved_required: 4, total_required: 4 })).toEqual({ approved_required: 4, total_required: 4, ready: true })
+    expect(parseWorkspaceClientHostBrief({ approved_required: 9, total_required: 4 })).toEqual({ approved_required: 4, total_required: 4, ready: true })
+    expect(parseWorkspaceClientHostBrief({ approved_required: 1 })).toBeNull()
+    expect(parseWorkspaceClientHostBrief(undefined)).toBeNull()
+  })
+})

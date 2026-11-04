@@ -378,8 +378,11 @@ export function setupItems(client: ClientPodcastSystemClient, canManage: boolean
     {
       key: 'profile',
       label: 'Host brief',
-      detail: client.profile.ready ? 'Host brief ready' : `${client.profile.completed_fields}/${client.profile.total_fields} sections complete`,
-      done: client.profile.ready,
+      // The client page's measure: required sections approved, not sections with text.
+      detail: client.profile.brief
+        ? client.profile.brief.ready ? 'Host brief ready' : `${client.profile.brief.approved_required} of ${client.profile.brief.total_required} required`
+        : client.profile.ready ? 'Host brief ready' : `${client.profile.completed_fields}/${client.profile.total_fields} sections complete`,
+      done: client.profile.brief ? client.profile.brief.ready : client.profile.ready,
       tab: 'profile',
     },
     {

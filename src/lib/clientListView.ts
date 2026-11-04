@@ -24,11 +24,13 @@ type ListClient = Pick<WorkspaceClient, 'name' | 'status' | 'email' | 'contact_p
   ai_sdr_profile_ready?: boolean
   ai_sdr_profile_completed_fields?: number | null
   ai_sdr_profile_total_fields?: number | null
+  host_brief?: { approved_required: number; total_required: number; ready: boolean } | null
 }
 
 const byName = (left: ListClient, right: ListClient) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
 
 function briefProgress(client: ListClient): number {
+  if (client.host_brief) return client.host_brief.ready ? 1 : client.host_brief.approved_required / client.host_brief.total_required
   if (client.ai_sdr_profile_ready) return 1
   const total = client.ai_sdr_profile_total_fields || 6
   return Math.min(1, (client.ai_sdr_profile_completed_fields || 0) / total)

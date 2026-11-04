@@ -64,6 +64,7 @@ interface ClientRow {
   portal_access_enabled: boolean
   portal_last_login_at: string | null
   ai_sdr_profile: Record<string, unknown> | null
+  ai_sdr_profile_approved_fields: string[] | null
   ai_sdr_profile_updated_at: string | null
   created_at: string
   updated_at: string
@@ -402,6 +403,27 @@ function latestTimestamp(values: Array<string | null | undefined>): string | nul
   return values.filter((value): value is string => Boolean(value)).sort().at(-1) || null
 }
 
+/*
+ * The host brief as the client page counts it: the four required sections,
+ * each with text and approved by an operator. The list and the pipeline used
+ * to count any of six sections with text, so one client read "0 of 6" in one
+ * place and "0 of 4 required" in another.
+ */
+function hostBriefApproval(profile: unknown, approvedFields: unknown) {
+  const source = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {}
+  const approved = Array.isArray(approvedFields) ? approvedFields : []
+  const approvedRequired = AI_SDR_CORE_FIELDS.filter((field) => (
+    approved.includes(field) && typeof source[field] === 'string' && (source[field] as string).trim().length > 0
+  )).length
+  return {
+    approved_required: approvedRequired,
+    total_required: AI_SDR_CORE_FIELDS.length,
+    ready: approvedRequired === AI_SDR_CORE_FIELDS.length,
+  }
+}
+
 function aiSdrReadiness(value: unknown) {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -535,7 +557,7 @@ serve(async (req) => {
     const clientsLoaded = await loadAll<ClientRow>('CLIENT_PODCAST_CLIENTS_UNAVAILABLE', (from, to) => {
       let query = context.admin
         .from('clients')
-        .select('id,name,status,photo_url,email,contact_person,website,bio,calendar_link,media_kit_url,dashboard_slug,portal_access_enabled,portal_last_login_at,ai_sdr_profile,ai_sdr_profile_updated_at,created_at,updated_at')
+        .select('id,name,status,photo_url,email,contact_person,website,bio,calendar_link,media_kit_url,dashboard_slug,portal_access_enabled,portal_last_login_at,ai_sdr_profile,ai_sdr_profile_approved_fields,ai_sdr_profile_updated_at,created_at,updated_at')
         .eq('workspace_id', workspaceId)
       if (onlyClientId) query = query.eq('id', onlyClientId)
       return query
@@ -1065,6 +1087,7 @@ serve(async (req) => {
           bio: client.bio,
           profile: {
             ...readiness,
+            brief: hostBriefApproval(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields),
             positioning: profileText(client.ai_sdr_profile, 'positioning'),
             updated_at: client.ai_sdr_profile_updated_at,
             has_calendar: Boolean(client.calendar_link),

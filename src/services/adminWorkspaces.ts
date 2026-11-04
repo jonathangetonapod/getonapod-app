@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { WorkspaceClient } from '@/services/clients'
-import { clientSdrProfileReadiness, isClientSdrProfile } from '@/lib/clientSdrProfile'
+import { clientBriefStatus, clientSdrProfileReadiness, isClientSdrProfile } from '@/lib/clientSdrProfile'
 
 export interface AdminWorkspace {
   id: string
@@ -58,6 +58,7 @@ const WORKSPACE_CLIENT_COLUMNS = [
   'status',
   'notes',
   'ai_sdr_profile',
+  'ai_sdr_profile_approved_fields',
   'ai_sdr_profile_updated_at',
   'created_at',
   'updated_at',
@@ -195,7 +196,7 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
 
   if (clientsError) throw new Error('The workspace clients could not be loaded.')
 
-  const clientRows = (clientsData || []) as unknown as Array<WorkspaceClient & { ai_sdr_profile: unknown }>
+  const clientRows = (clientsData || []) as unknown as Array<WorkspaceClient & { ai_sdr_profile: unknown; ai_sdr_profile_approved_fields?: unknown }>
   if (clientRows.some((client) => (
     client.workspace_id !== canonicalWorkspaceId || !isClientSdrProfile(client.ai_sdr_profile)
   ))) {
@@ -203,12 +204,14 @@ export async function getAdminWorkspaceView(workspaceId: string, signal?: AbortS
   }
   const clients = clientRows.map((client) => {
     const readiness = clientSdrProfileReadiness(client.ai_sdr_profile)
-    const { ai_sdr_profile: _profile, ...summary } = client
+    const brief = clientBriefStatus(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields)
+    const { ai_sdr_profile: _profile, ai_sdr_profile_approved_fields: _approved, ...summary } = client
     return {
       ...summary,
       ai_sdr_profile_ready: readiness.ready,
       ai_sdr_profile_completed_fields: readiness.completed_fields,
       ai_sdr_profile_total_fields: readiness.total_fields,
+      host_brief: { approved_required: brief.approved_required, total_required: brief.total_required, ready: brief.ready },
     }
   })
 

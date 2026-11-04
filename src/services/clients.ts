@@ -71,6 +71,8 @@ export interface WorkspaceClient {
   status: 'active' | 'paused' | 'churned'
   notes: string | null
   ai_sdr_profile_ready?: boolean
+  /** The four required brief sections approved, as the client page counts them. */
+  host_brief?: WorkspaceClientHostBrief | null
   ai_sdr_profile_completed_fields?: number
   ai_sdr_profile_total_fields?: number
   ai_sdr_profile_updated_at?: string | null
@@ -263,6 +265,23 @@ export interface WorkspaceClientDetail {
   prospect_page_live?: boolean | null
 }
 
+export interface WorkspaceClientHostBrief {
+  approved_required: number
+  total_required: number
+  ready: boolean
+}
+
+/** A server host_brief summary, or null from an older function build. */
+export function parseWorkspaceClientHostBrief(value: unknown): WorkspaceClientHostBrief | null {
+  if (!value || typeof value !== 'object') return null
+  const brief = value as Record<string, unknown>
+  const approved = brief.approved_required
+  const total = brief.total_required
+  if (!Number.isInteger(approved) || !Number.isInteger(total) || (total as number) <= 0) return null
+  const approvedRequired = Math.max(0, Math.min(total as number, approved as number))
+  return { approved_required: approvedRequired, total_required: total as number, ready: approvedRequired === total }
+}
+
 export interface WorkspaceClientInput {
   name: string
   email?: string
@@ -383,6 +402,7 @@ export async function getWorkspaceClients(workspaceId: string): Promise<Workspac
       ? Math.max(0, Math.min(emptyReadiness.total_fields, client.ai_sdr_profile_completed_fields || 0))
       : 0,
     ai_sdr_profile_total_fields: emptyReadiness.total_fields,
+    host_brief: parseWorkspaceClientHostBrief(client.host_brief),
     ai_sdr_profile_updated_at: typeof client.ai_sdr_profile_updated_at === 'string'
       ? client.ai_sdr_profile_updated_at
       : null,

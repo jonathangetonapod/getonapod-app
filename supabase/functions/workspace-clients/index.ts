@@ -123,6 +123,27 @@ function aiSdrApprovedFields(value: unknown): AiSdrProfileField[] | null {
   return AI_SDR_PROFILE_FIELDS.filter((field) => fields.has(field))
 }
 
+/*
+ * The host brief as the client page counts it: the four required sections,
+ * each with text and approved by an operator. The list and the pipeline used
+ * to count any of six sections with text, so one client read "0 of 6" in one
+ * place and "0 of 4 required" in another.
+ */
+function hostBriefApproval(profile: unknown, approvedFields: unknown) {
+  const source = profile && typeof profile === 'object' && !Array.isArray(profile)
+    ? profile as Record<string, unknown>
+    : {}
+  const approved = Array.isArray(approvedFields) ? approvedFields : []
+  const approvedRequired = AI_SDR_CORE_FIELDS.filter((field) => (
+    approved.includes(field) && typeof source[field] === 'string' && (source[field] as string).trim().length > 0
+  )).length
+  return {
+    approved_required: approvedRequired,
+    total_required: AI_SDR_CORE_FIELDS.length,
+    ready: approvedRequired === AI_SDR_CORE_FIELDS.length,
+  }
+}
+
 function aiSdrApprovedFieldList(value: unknown): AiSdrProfileField[] {
   return Array.isArray(value)
     ? AI_SDR_PROFILE_FIELDS.filter((field) => value.includes(field))
@@ -1253,7 +1274,7 @@ serve(async (req) => {
       await requireWorkspaceFeatureAccess(authContext, workspaceId, { billingRecovery: true })
       const { data: clients, error: clientsError } = await admin
         .from('clients')
-        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,ai_sdr_profile,ai_sdr_profile_updated_at,created_at,updated_at')
+        .select('id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,ai_sdr_profile,ai_sdr_profile_approved_fields,ai_sdr_profile_updated_at,created_at,updated_at')
         .eq('workspace_id', workspaceId)
         .order('name', { ascending: true })
         .order('id', { ascending: true })
@@ -1267,12 +1288,14 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, {
         clients: (clients || []).map((client) => {
           const readiness = aiSdrReadiness(client.ai_sdr_profile)
-          const { ai_sdr_profile: _profile, ...summary } = client
+          const brief = hostBriefApproval(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields)
+          const { ai_sdr_profile: _profile, ai_sdr_profile_approved_fields: _approved, ...summary } = client
           return {
             ...summary,
             ai_sdr_profile_ready: readiness.ready,
             ai_sdr_profile_completed_fields: readiness.completed_fields,
             ai_sdr_profile_total_fields: readiness.total_fields,
+            host_brief: brief,
           }
         }),
       })

@@ -177,3 +177,16 @@ describe('overdue placements', () => {
   })
 })
 
+describe('setupItems host brief', () => {
+  it('counts the host brief as the client page does: required sections approved', () => {
+    const owner = {
+      name: 'Dallas',
+      profile: { ready: true, completed_fields: 6, total_fields: 6, brief: { approved_required: 1, total_required: 4, ready: false } },
+      onboarding: { status: 'approved' },
+      dashboard_configured: true,
+      portal: { enabled: true },
+    } as unknown as ClientRollup['client']
+    expect(setupItems(owner, true, false)[0]).toMatchObject({ key: 'profile', done: false, detail: '1 of 4 required' })
+  })
+})
+

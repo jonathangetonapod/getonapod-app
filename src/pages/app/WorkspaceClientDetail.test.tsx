@@ -389,10 +389,9 @@ describe('WorkspaceClientDetail', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Client Campaigns' })).toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
     fireEvent.keyDown(menu, { key: 'Escape', code: 'Escape' })
 
-    // Setup stays on top while the shortlist is still being reviewed.
-    const setup = screen.getByTestId('client-setup')
-    expect(within(setup).getByText('4 of 5 complete')).toBeInTheDocument()
-    expect(within(setup).getByRole('link', { name: /Shortlist.*In progress.*8 of 12 reviewed.*Review shortlist/ })).toHaveAttribute('href', '/app/clients/' + clientId + '?tab=shortlist')
+    // Shortlist review is ongoing work, not setup: with the four setup steps
+    // done the card folds, as the pipeline's setup chip does for this client.
+    expect(screen.getByRole('button', { name: /Setup complete/ })).toBeInTheDocument()
 
     // One funnel, each step counting every show that reached it.
     const funnel = screen.getByRole('heading', { name: 'Funnel' }).closest('section') as HTMLElement
@@ -719,11 +718,12 @@ describe('WorkspaceClientDetail', () => {
     expect(startLinks).toHaveLength(2)
     startLinks.forEach((link) => expect(link).toHaveAttribute('href', `/app/onboarding?client=${clientId}`))
     const setup = screen.getByTestId('client-setup')
-    expect(within(setup).getByText('0 of 5 complete')).toBeInTheDocument()
-    expect(within(setup).getAllByText('Not started')).toHaveLength(5)
+    expect(within(setup).getByText('0 of 4 complete')).toBeInTheDocument()
+    expect(within(setup).getAllByText('Not started')).toHaveLength(4)
     expect(within(setup).getByRole('link', { name: /Finish host brief \(0\/4\)/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=brief`)
     expect(within(setup).getByRole('link', { name: /Enable portal/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=sharing`)
-    expect(within(setup).getByRole('link', { name: /Build shortlist/ })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
+    // Building the shortlist is the next step, not a setup row.
+    expect(within(setup).queryByRole('link', { name: /Build shortlist/ })).not.toBeInTheDocument()
 
     expect(screen.queryByRole('heading', { name: 'Funnel' })).not.toBeInTheDocument()
     expect(screen.getByTestId('client-outreach-pending')).toHaveTextContent('Outreach starts once the shortlist is approved.')
@@ -746,7 +746,7 @@ describe('WorkspaceClientDetail', () => {
     expect(screen.getByRole('heading', { name: 'Funnel' }).compareDocumentPosition(collapsed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     fireEvent.click(collapsed)
-    expect(within(screen.getByTestId('client-setup')).getByText('5 of 5 complete')).toBeInTheDocument()
+    expect(within(screen.getByTestId('client-setup')).getByText('4 of 4 complete')).toBeInTheDocument()
   })
 
   it('opens directly to the host brief from its stable client deep link', async () => {

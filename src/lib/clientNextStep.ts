@@ -89,6 +89,10 @@ export function hasOutreachStarted(state: ClientProgressState): boolean {
 function onboardingStatus(state: ClientProgressState): SetupItemStatus {
   const status = state.onboarding?.status
   if (status === 'approved') return 'done'
+  // No intake, but the client is already in outreach or has placements: they
+  // were onboarded another way. The pipeline says "Done outside intake" for
+  // the same client, so this must not say "not started".
+  if (!status && hasOutreachStarted(state)) return 'done'
   if (!status || status === 'expired' || status === 'revoked') return 'not_started'
   return 'in_progress'
 }
@@ -126,7 +130,7 @@ export function getClientSetupItems(state: ClientProgressState): ClientSetupItem
       key: 'onboarding',
       label: 'Onboarding',
       status,
-      detail: state.onboarding ? ONBOARDING_DETAIL[state.onboarding.status] : null,
+      detail: state.onboarding ? ONBOARDING_DETAIL[state.onboarding.status] : status === 'done' ? 'Done outside intake' : null,
       actionLabel: status === 'done' ? 'View onboarding' : CLIENT_NEXT_STEP_LABELS[onboardingAction(state)],
       target: 'onboarding',
     })
@@ -153,16 +157,9 @@ export function getClientSetupItems(state: ClientProgressState): ClientSetupItem
     target: 'sharing',
   })
 
-  const { podcast_count: podcasts, reviewed_count: reviewed, to_review_count: toReview } = state.dashboard
-  items.push({
-    key: 'shortlist',
-    label: 'Shortlist',
-    status: podcasts === 0 ? 'not_started' : toReview > 0 ? 'in_progress' : 'done',
-    detail: podcasts === 0 ? null : `${reviewed} of ${podcasts} reviewed`,
-    actionLabel: podcasts === 0 ? 'Build shortlist' : toReview > 0 ? 'Review shortlist' : 'View shortlist',
-    target: 'shortlist',
-  })
-
+  // Shortlist review is ongoing work, not setup: it is in the funnel and the
+  // review queue. Counting it here made this "2 of 5" against the
+  // pipeline's "3/4" for the same client.
   items.push({
     key: 'dashboard',
     label: 'Approval dashboard',
@@ -188,7 +185,17 @@ export function getClientFunnel(state: ClientProgressState): ClientFunnelStep[] 
     bookings.filter((booking) => statuses.includes(booking.status)).length
   )
   const counts: Omit<ClientFunnelStep, 'conversion'>[] = [
-    { key: 'contacted', label: 'Contacted', count: state.outreach.podcasts_contacted },
+    // Every show in conversation was contacted somehow; placements logged by
+    // hand never went through the app's outreach, which read "Contacted 0"
+    // above "In conversation 8".
+    {
+      key: 'contacted',
+      label: 'Contacted',
+      count: Math.max(
+        state.outreach.podcasts_contacted,
+        reached(['conversation_started', 'in_progress', 'booked', 'recorded', 'published']),
+      ),
+    },
     {
       key: 'conversation',
       label: 'In conversation',

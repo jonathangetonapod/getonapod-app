@@ -29,6 +29,8 @@ export interface ClientPodcastSystemClient {
     ready: boolean
     completed_fields: number
     total_fields: number
+    /** Required sections approved, as the client page counts them. Absent from older builds. */
+    brief?: { approved_required: number; total_required: number; ready: boolean }
     positioning: string | null
     updated_at: string | null
     has_calendar: boolean

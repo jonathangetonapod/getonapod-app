@@ -65,6 +65,7 @@ const clients: WorkspaceClient[] = clientRows.map(({ ai_sdr_profile: _profile, .
   ai_sdr_profile_ready: false,
   ai_sdr_profile_completed_fields: 0,
   ai_sdr_profile_total_fields: 6,
+  host_brief: { approved_required: 0, total_required: 4, ready: false },
 }))
 
 describe('listAdminWorkspaces', () => {
@@ -338,7 +339,7 @@ describe('getAdminWorkspaceView', () => {
     expect(viewerBuilder.in).toHaveBeenCalledWith('status', ['active', 'invited'])
     expect(viewerBuilder.order).toHaveBeenCalledWith('id', { ascending: true })
     expect(clientsBuilder.select).toHaveBeenCalledWith(
-      'id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,ai_sdr_profile,ai_sdr_profile_updated_at,created_at,updated_at',
+      'id,workspace_id,name,email,contact_person,linkedin_url,website,status,notes,ai_sdr_profile,ai_sdr_profile_approved_fields,ai_sdr_profile_updated_at,created_at,updated_at',
     )
     expect(clientsBuilder.eq).toHaveBeenCalledWith('workspace_id', workspaceId)
     expect(workspaceBuilder.abortSignal).toHaveBeenCalledWith(controller.signal)
