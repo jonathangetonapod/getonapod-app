@@ -32,6 +32,9 @@ const ACTIVITY_FILTERS = new Set(['active', 'last_30_days', 'last_90_days', 'las
 const AUDIENCE_FILTERS = new Set(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
 // Podscan's guest detection: 'yes' = takes guests, 'no' = not flagged as taking guests.
 const GUEST_FILTERS = new Set(['all', 'yes', 'no'])
+// Research data saved: Podscan episodes (and usually a transcript) already
+// fetched and stored on the show, so researching it reuses them.
+const RESEARCH_FILTERS = new Set(['all', 'saved', 'not_saved'])
 const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
 // Language and region codes as the catalogue stores them ("en", "us").
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
@@ -97,6 +100,7 @@ serve(async (req) => {
       'activity',
       'audience',
       'guests',
+      'research',
       'language',
       'region',
       'sort',
@@ -114,6 +118,7 @@ serve(async (req) => {
     const activity = optionalChoice(body.activity, 'activity', ACTIVITY_FILTERS, 'active')
     const audience = optionalChoice(body.audience, 'audience', AUDIENCE_FILTERS, 'all')
     const guests = optionalChoice(body.guests, 'guests', GUEST_FILTERS, 'all')
+    const research = optionalChoice(body.research, 'research', RESEARCH_FILTERS, 'all')
     const language = optionalLocaleCode(body.language, 'language')
     const region = optionalLocaleCode(body.region, 'region')
     const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'best_fit')
@@ -183,6 +188,9 @@ serve(async (req) => {
       p_activity: activity,
       p_audience: audience,
       p_guests: guests,
+      // Sent only when set, so the default list never depends on the
+      // migration that added the parameter (20261104000100).
+      ...(research !== 'all' ? { p_research: research } : {}),
       p_language: language,
       p_region: region,
       p_query_embedding: queryEmbedding,

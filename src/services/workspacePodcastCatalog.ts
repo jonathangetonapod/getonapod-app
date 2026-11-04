@@ -8,6 +8,8 @@ export type WorkspacePodcastCatalogEmailVerification = 'ok' | 'catch_all' | 'unk
 export type WorkspacePodcastCatalogActivityFilter = 'active' | 'last_30_days' | 'last_90_days' | 'last_180_days' | 'last_year' | 'all'
 export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_50k' | '50k_250k' | '250k_1m' | '1m_plus' | '250k_plus'
 export type WorkspacePodcastCatalogGuestsFilter = 'all' | 'yes' | 'no'
+/** Whether Podscan research data (recent episodes, usually a transcript) is saved on the show. */
+export type WorkspacePodcastCatalogResearchFilter = 'all' | 'saved' | 'not_saved'
 export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community' | 'rating' | 'reach'
 
 export interface WorkspacePodcastCatalogCategory {
@@ -82,6 +84,7 @@ export interface WorkspacePodcastCatalogParams {
   activity?: WorkspacePodcastCatalogActivityFilter
   audience?: WorkspacePodcastCatalogAudienceFilter
   guests?: WorkspacePodcastCatalogGuestsFilter
+  research?: WorkspacePodcastCatalogResearchFilter
   language?: string
   region?: string
   sort?: WorkspacePodcastCatalogSort
@@ -141,6 +144,8 @@ export async function getWorkspacePodcastCatalog(
       activity: params.activity || 'active',
       audience: params.audience || 'all',
       guests: params.guests || 'all',
+      // Only when set: a function build from before the filter refuses the key.
+      ...(params.research && params.research !== 'all' ? { research: params.research } : {}),
       language: params.language || undefined,
       region: params.region || undefined,
       sort: params.sort || 'best_fit',

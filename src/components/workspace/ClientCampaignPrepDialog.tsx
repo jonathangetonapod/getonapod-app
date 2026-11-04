@@ -1,3 +1,4 @@
+import { ResearchSourceNote } from '@/components/workspace/ResearchSourceNote'
 import { showOperationError } from '@/lib/billingRecovery'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -979,6 +980,7 @@ export function ClientCampaignPrep({
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: promptPreviewQueryKey })
       void queryClient.invalidateQueries({ queryKey: shortlistQueryKey })
+      void queryClient.invalidateQueries({ queryKey: ['client-shortlist-episodes', workspaceId, clientId, podcast?.podcast_id || 'none'] })
       if (!result.fetched) {
         toast.success('Already refreshed in the last hour — used the stored copy, no credit spent.')
       } else if (result.episodes.length === 0) {
@@ -1988,6 +1990,12 @@ export function ClientCampaignPrep({
                         </div>
                       </div>
 
+                      <ResearchSourceNote
+                        metadata={episodeMetadata}
+                        loading={episodeMetadataQuery.isLoading}
+                        onRefresh={canManageCampaigns && podcast?.podcast_id ? () => refreshEpisodesMutation.mutate() : undefined}
+                        refreshing={refreshEpisodesMutation.isPending}
+                      />
                       <div className={`mt-5 overflow-hidden rounded-xl border ${researchComplete ? 'border-emerald-200 bg-emerald-50/70' : researchFailed ? 'border-destructive/25 bg-destructive/5' : 'border-sky-200 bg-sky-50/70'}`}>
                         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex gap-3">

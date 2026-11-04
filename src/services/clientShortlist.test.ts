@@ -273,6 +273,8 @@ describe('clientShortlist service', () => {
       episodes: [{ title: 'Episode one', description: 'About storage tech', posted_at: '2026-07-20T00:00:00.000Z' }],
       last_posted_at: '2026-07-20T00:00:00.000Z',
       episodes_fetched_at: '2026-07-26T00:00:00.000Z',
+      has_transcript: false,
+      transcript_episode_title: null,
     })
   })
 

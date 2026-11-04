@@ -7,6 +7,7 @@ import {
   categoryLabel,
   CONTACT_LABELS,
   GUESTS_LABELS,
+  RESEARCH_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
 import { DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
 import { languageName, regionName } from '@/lib/podcastCatalogDisplay'
@@ -144,6 +145,16 @@ export const FilterControls = ({
       <SelectContent>
         {(Object.keys(GUESTS_LABELS) as Array<PodcastCatalogParams['guests']>).map((value) => (
           <SelectItem key={value} value={value}>{GUESTS_LABELS[value]}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+    <Select value={params.research} onValueChange={(research: PodcastCatalogParams['research']) => update({ research })}>
+      <SelectTrigger aria-label={filterName('Research', RESEARCH_LABELS[params.research], params.research === 'all')} title="Shows whose recent episodes and transcript are already saved from Podscan, so researching them reuses that data">
+        <SelectValue>{RESEARCH_LABELS[params.research]}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {(Object.keys(RESEARCH_LABELS) as Array<PodcastCatalogParams['research']>).map((value) => (
+          <SelectItem key={value} value={value}>{RESEARCH_LABELS[value]}</SelectItem>
         ))}
       </SelectContent>
     </Select>

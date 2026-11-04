@@ -4,6 +4,7 @@ import type {
   WorkspacePodcastCatalogAudienceFilter,
   WorkspacePodcastCatalogContactFilter,
   WorkspacePodcastCatalogGuestsFilter,
+  WorkspacePodcastCatalogResearchFilter,
   WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
 
@@ -75,6 +76,13 @@ export const GUESTS_LABELS: Record<WorkspacePodcastCatalogGuestsFilter, string> 
   all: 'Any guest format',
   yes: 'Takes guests',
   no: 'Not flagged for guests',
+}
+
+// Podscan data already fetched for research: recent episodes and, usually, a transcript.
+export const RESEARCH_LABELS: Record<WorkspacePodcastCatalogResearchFilter, string> = {
+  all: 'Any research status',
+  saved: 'Research data saved',
+  not_saved: 'No research data yet',
 }
 
 export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {

@@ -94,7 +94,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
   const queryClient = useQueryClient()
   const { params, update } = usePodcastCatalogParams()
-  const { search, category, contact, activity, audience, guests, language, region, sort, page, pageSize } = params
+  const { search, category, contact, activity, audience, guests, research, language, region, sort, page, pageSize } = params
   const resultsRef = useRef<HTMLDivElement>(null)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -117,6 +117,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       activity,
       audience,
       guests,
+      research,
       language,
       region,
       sort,
@@ -133,6 +134,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       activity,
       audience,
       guests,
+      research,
       language: language === 'all' ? undefined : language,
       region: region === 'all' ? undefined : region,
       sort,
@@ -172,6 +174,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         activity,
         audience,
         guests,
+        research,
         language,
         region,
         sort,
@@ -185,6 +188,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         activity,
         audience,
         guests,
+        research,
         language: language === 'all' ? undefined : language,
         region: region === 'all' ? undefined : region,
         sort,
@@ -195,7 +199,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     })
   }, [
     queryClient, validWorkspaceId, catalogQuery.isFetching, page, totalPages,
-    user?.id, workspaceId, search, category, contact, activity, audience, guests, language, region, sort, pageSize,
+    user?.id, workspaceId, search, category, contact, activity, audience, guests, research, language, region, sort, pageSize,
   ])
 
   // A failed load is shown to the person and reported, not only shown.

@@ -1678,6 +1678,10 @@ serve(async (req) => {
         episodes: captured?.episodes ?? [],
         last_posted_at: captured?.last_posted_at ?? null,
         episodes_fetched_at: captured?.episodes_fetched_at ?? null,
+        // Whether research has a full transcript to quote from, so the page
+        // can say what it is working from.
+        has_transcript: Boolean(captured?.transcript),
+        transcript_episode_title: captured?.transcript ? captured.transcript_episode_title ?? null : null,
       })
     }
 

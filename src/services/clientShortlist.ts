@@ -579,6 +579,10 @@ export interface ClientShortlistEpisodeMetadata {
   episodes: ClientShortlistEpisode[]
   last_posted_at: string | null
   episodes_fetched_at: string | null
+  /** A full transcript is saved for the newest episode. False from older function builds. */
+  has_transcript?: boolean
+  /** Which episode that transcript is from. */
+  transcript_episode_title?: string | null
 }
 
 /**
@@ -603,6 +607,8 @@ export async function ensureClientShortlistEpisodes(
     episodes: Array.isArray(data.episodes) ? data.episodes : [],
     last_posted_at: data.last_posted_at ?? null,
     episodes_fetched_at: data.episodes_fetched_at ?? null,
+    has_transcript: data.has_transcript === true,
+    transcript_episode_title: typeof data.transcript_episode_title === 'string' ? data.transcript_episode_title : null,
   }
 }
 

@@ -5,6 +5,7 @@ import type {
   WorkspacePodcastCatalogAudienceFilter,
   WorkspacePodcastCatalogContactFilter,
   WorkspacePodcastCatalogGuestsFilter,
+  WorkspacePodcastCatalogResearchFilter,
   WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
 
@@ -17,6 +18,7 @@ export interface PodcastCatalogParams {
   activity: WorkspacePodcastCatalogActivityFilter
   audience: WorkspacePodcastCatalogAudienceFilter
   guests: WorkspacePodcastCatalogGuestsFilter
+  research: WorkspacePodcastCatalogResearchFilter
   /** A language code such as "en", or 'all'. */
   language: string
   /** A region code such as "us", or 'all'. */
@@ -39,6 +41,7 @@ export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   activity: 'active',
   audience: 'all',
   guests: 'all',
+  research: 'all',
   language: 'all',
   region: 'all',
   sort: 'best_fit',
@@ -54,6 +57,7 @@ export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
   activity: DEFAULT_CATALOG_PARAMS.activity,
   audience: 'all',
   guests: 'all',
+  research: 'all',
   language: 'all',
   region: 'all',
 }
@@ -63,6 +67,7 @@ const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'l
 // 250k_plus is no longer offered, but an address that carries it still means it.
 const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
 const GUESTS = new Set<string>(['all', 'yes', 'no'])
+const RESEARCH = new Set<string>(['all', 'saved', 'not_saved'])
 const SORTS = new Set<string>(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
 
@@ -74,6 +79,7 @@ const KEYS: Record<keyof PodcastCatalogParams, string> = {
   activity: 'activity',
   audience: 'audience',
   guests: 'guests',
+  research: 'research',
   language: 'lang',
   region: 'region',
   sort: 'sort',
@@ -107,6 +113,7 @@ export function readCatalogParams(params: URLSearchParams): PodcastCatalogParams
     activity: choice(params.get(KEYS.activity), ACTIVITIES, DEFAULT_CATALOG_PARAMS.activity),
     audience: choice(params.get(KEYS.audience), AUDIENCES, DEFAULT_CATALOG_PARAMS.audience),
     guests: choice(params.get(KEYS.guests), GUESTS, DEFAULT_CATALOG_PARAMS.guests),
+    research: choice(params.get(KEYS.research), RESEARCH, DEFAULT_CATALOG_PARAMS.research),
     language: localeCode(params.get(KEYS.language)),
     region: localeCode(params.get(KEYS.region)),
     // Relevance ranks a search; with nothing searched it means the default.

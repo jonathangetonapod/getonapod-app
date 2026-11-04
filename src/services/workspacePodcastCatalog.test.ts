@@ -60,6 +60,16 @@ describe('workspacePodcastCatalog service', () => {
     })
   })
 
+  it('sends the research filter only when one is chosen', async () => {
+    invoke.mockResolvedValue({ data: response, error: null } as never)
+
+    await getWorkspacePodcastCatalog(workspaceId, { research: 'saved' })
+    expect(invoke.mock.calls.at(-1)?.[1]).toMatchObject({ body: { research: 'saved' } })
+
+    await getWorkspacePodcastCatalog(workspaceId, { research: 'all' })
+    expect(invoke.mock.calls.at(-1)?.[1]?.body).not.toHaveProperty('research')
+  })
+
   // A search typed past is cancelled, not left to finish.
   it('passes the abort signal through to the function call', async () => {
     invoke.mockResolvedValueOnce({ data: response, error: null } as never)

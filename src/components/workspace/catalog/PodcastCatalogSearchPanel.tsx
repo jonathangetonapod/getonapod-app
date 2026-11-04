@@ -11,6 +11,7 @@ import {
   categoryLabel,
   CONTACT_LABELS,
   GUESTS_LABELS,
+  RESEARCH_LABELS,
 } from '@/components/workspace/catalog/catalogFilterLabels'
 import { FilterControls, type ParamsUpdate } from '@/components/workspace/catalog/PodcastCatalogFilterControls'
 import { CLEAR_ALL_FILTERS, DEFAULT_CATALOG_PARAMS, type PodcastCatalogParams } from '@/hooks/usePodcastCatalogParams'
@@ -41,6 +42,9 @@ function activeChips(params: PodcastCatalogParams): ActiveChip[] {
   }
   if (params.guests !== 'all') {
     chips.push({ key: 'guests', label: `Guests: ${GUESTS_LABELS[params.guests]}`, clear: { guests: 'all' } })
+  }
+  if (params.research !== 'all') {
+    chips.push({ key: 'research', label: RESEARCH_LABELS[params.research], clear: { research: 'all' } })
   }
   if (params.language !== 'all') {
     chips.push({ key: 'language', label: `Language: ${languageName(params.language)}`, clear: { language: 'all' } })
