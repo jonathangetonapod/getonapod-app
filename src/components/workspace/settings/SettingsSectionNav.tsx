@@ -22,7 +22,9 @@ interface SettingsSectionNavProps {
 }
 
 const prefersReducedMotion = () => (
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  // Guarded like every other reduced-motion check: a stubbed or missing
+  // matchMedia must not stop the menu from moving to the section.
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
 )
 
 /**

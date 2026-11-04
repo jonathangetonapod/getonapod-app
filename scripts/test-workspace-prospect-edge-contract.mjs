@@ -111,7 +111,8 @@ for (const edge of [queryGeneration, compatibilityScoring]) {
 // A failed or unusable generation is an error the caller sees and is refunded,
 // never template filler: the old fallback shipped "and the" as a strategy.
 assert.doesNotMatch(queryGeneration, /function fallbackQueries|source: 'deterministic'/u)
-assert.match(queryGeneration, /providerException\('anthropic', error\)/u)
+// Errors name whichever provider the workspace chose (Claude or OpenAI).
+assert.match(queryGeneration, /providerException\(credentialProvider\(key\), error\)/u)
 assert.match(queryGeneration, /filterQueries\(/u)
 assert.match(queryGeneration, /status: 'profile_too_thin'/u)
 // The thin-profile refusal comes before the charge.
