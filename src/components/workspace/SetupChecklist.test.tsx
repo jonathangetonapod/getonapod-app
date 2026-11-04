@@ -82,7 +82,7 @@ function renderChecklist(canManage = true, props: Partial<React.ComponentProps<t
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <SetupChecklist workspaceId={workspaceId} baseHref={baseHref} canManage={canManage} {...props} />
+        <SetupChecklist workspaceId={workspaceId} baseHref={baseHref} canManage={canManage} startExpanded {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -93,6 +93,34 @@ describe('SetupChecklist', () => {
     vi.clearAllMocks()
     window.localStorage.clear()
     primeAllDone()
+  })
+
+  it('folds to one line once only one required step is left, and opens to every step', async () => {
+    vi.mocked(getWorkspaceMailboxes).mockResolvedValue({
+      connected: true,
+      provider_workspace_name: 'Acme Sending',
+      accounts: [{ ...linkedMailbox, campaigns: [] }],
+      last_synced_at: null,
+      analytics_errors: [],
+    })
+    renderChecklist(true, { startExpanded: false })
+
+    const line = await screen.findByTestId('setup-checklist')
+    expect(line).toHaveAttribute('data-compact', 'true')
+    expect(screen.getByText('Setup 4 of 5 done')).toBeInTheDocument()
+    expect(screen.getByText('Next: Connect a sending mailbox to a client')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue setup' })).toHaveAttribute('href', '/app/mailboxes')
+    expect(screen.queryByRole('list', { name: 'Required setup steps' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all steps' }))
+    expect(screen.getByText('4 of 5 required steps done')).toBeInTheDocument()
+  })
+
+  it('folds a finished setup to one line that can be dismissed', async () => {
+    renderChecklist(true, { startExpanded: false })
+    expect(await screen.findByText('Setup complete')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => expect(screen.queryByTestId('setup-checklist')).not.toBeInTheDocument())
   })
 
   it('reports setup complete once every required step is done, and offers to dismiss', async () => {

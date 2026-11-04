@@ -11,6 +11,12 @@ import { getWorkspaceCampaignOverview, getWorkspaceMailboxes } from '@/services/
 import { listWorkspaceOnboarding } from '@/services/workspaceOnboarding'
 import { getWorkspaceSubscriptionOverview, listWorkspaceStaff } from '@/services/workspaceStaff'
 
+function openClientMenu(name: string) {
+  const trigger = screen.getByRole('button', { name: `More actions for ${name}` })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+}
+
 // Keep the real checklist mounted beside the real client form. Mocking it out
 // hides stale setup data after a successful client mutation on this same page.
 vi.mock('@/components/workspace/WorkspaceLayout', () => ({
@@ -136,7 +142,8 @@ describe.each(['tenant', 'selected agency'] as const)('Client onboarding in %s m
   it('restores the first-client action immediately after removing the last client', async () => {
     const queryClient = renderPage(mode, [client])
     expect(await screen.findByText('Next: Set the email clients reply to')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: `Remove ${client.name}` }))
+    openClientMenu(client.name)
+    fireEvent.click(await screen.findByRole('menuitem', { name: `Remove ${client.name}` }))
     const dialog = screen.getByRole('dialog', { name: 'Remove client?' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove client' }))
 

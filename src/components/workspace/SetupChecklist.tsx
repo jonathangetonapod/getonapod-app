@@ -308,11 +308,16 @@ interface SetupChecklistProps {
   onAddClient?: () => void
   /** Platform review always shows the saved facts, ignoring local dismissals. */
   review?: boolean
+  /** Show every step even when only one is left (otherwise it folds to one line). */
+  startExpanded?: boolean
 }
 
-export const SetupChecklist = ({ workspaceId, baseHref, canManage, onAddClient, review = false }: SetupChecklistProps) => {
+export const SetupChecklist = ({ workspaceId, baseHref, canManage, onAddClient, review = false, startExpanded = false }: SetupChecklistProps) => {
   const queryClient = useQueryClient()
   const [dismissed, setDismissed] = useState(() => readDismissed(workspaceId))
+  // Nearly done, the card is one line so the client list is the first thing
+  // on screen (on a phone it used to sit several screens down).
+  const [expanded, setExpanded] = useState(startExpanded)
   useEffect(() => {
     setDismissed(readDismissed(workspaceId))
   }, [workspaceId])
@@ -335,6 +340,26 @@ export const SetupChecklist = ({ workspaceId, baseHref, canManage, onAddClient, 
   const dismiss = () => {
     writeDismissed(workspaceId)
     setDismissed(true)
+  }
+
+  const remaining = progress.requiredTotal - progress.requiredDone
+  if (!review && !expanded && remaining <= 1 && (progress.complete || (nextStep && !nextStep.unknown))) {
+    return (
+      <div data-testid="setup-checklist" data-compact="true" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card px-4 py-2.5 text-sm">
+        {progress.complete
+          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          : <ListChecks className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <span className="font-medium">{progress.complete ? 'Setup complete' : `Setup ${progress.requiredDone} of ${progress.requiredTotal} done`}</span>
+        {!progress.complete && nextStep && <span className="min-w-0 text-muted-foreground">Next: {nextStep.label}</span>}
+        <span className="ml-auto flex items-center gap-1">
+          {!progress.complete && nextStep && (nextStep.key === 'client' && onAddClient
+            ? <Button type="button" size="sm" className="h-8" onClick={onAddClient}>Add your first client</Button>
+            : <Button asChild size="sm" className="h-8"><Link to={nextStep.href}>Continue setup</Link></Button>)}
+          <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setExpanded(true)}>Show all steps</Button>
+          {progress.complete && <Button type="button" size="sm" variant="ghost" className="h-8" onClick={dismiss}>Dismiss</Button>}
+        </span>
+      </div>
+    )
   }
 
   const renderStep = (step: SetupStep) => (

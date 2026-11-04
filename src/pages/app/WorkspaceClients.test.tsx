@@ -13,6 +13,12 @@ import {
   type WorkspaceClient,
 } from '@/services/clients'
 
+function openClientMenu(name: string) {
+  const trigger = screen.getByRole('button', { name: `More actions for ${name}` })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+}
+
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 // The checklist has its own tests and its own service reads.
 vi.mock('@/components/workspace/SetupChecklist', () => ({ SetupChecklist: () => null }))
@@ -99,7 +105,7 @@ describe('WorkspaceClients tenant mode', () => {
     expect(screen.getByText('client@example.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Edit Tenant Client' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Remove Tenant Client' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'More actions for Tenant Client' })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Open Tenant Client' })).toHaveAttribute(
       'href',
       `/app/clients/${client.id}`,
@@ -134,7 +140,7 @@ describe('WorkspaceClients tenant mode', () => {
     )
     expect(screen.queryByRole('button', { name: /add client/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Edit Tenant Client' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Remove Tenant Client' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More actions for Tenant Client' })).not.toBeInTheDocument()
   })
 
   it('uses the same workspace client list as the Podcast Finder entry point', async () => {
@@ -214,11 +220,22 @@ describe('WorkspaceClients tenant mode', () => {
     })
   })
 
+  it('searches the client list and says when nothing matches', async () => {
+    renderPage()
+    await screen.findByText('Tenant Client')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search clients' }), { target: { value: 'nobody here' } })
+    expect(screen.getByText('No clients match. Try a different search or status.')).toBeInTheDocument()
+    expect(screen.getByText(/Showing 0 of 1 clients/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByText('Tenant Client')).toBeInTheDocument()
+  })
+
   it('deletes a client through the tenant service with the authenticated workspace ID', async () => {
     renderPage()
     await screen.findByText('Tenant Client')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Tenant Client' }))
+    openClientMenu('Tenant Client')
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove Tenant Client' }))
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByText(/permanently removes Tenant Client/i)).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove client' }))

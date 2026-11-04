@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowUpRight, Bot, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { ArrowUpRight, Bot, Loader2, Pencil, Plus, Search, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { SetupChecklist } from '@/components/workspace/SetupChecklist'
@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { RowMenu } from '@/components/workspace/RowMenu'
+import { CLIENT_SORT_LABELS, CLIENT_STATUS_FILTER_LABELS, clientListView, type ClientListSort, type ClientStatusFilter } from '@/lib/clientListView'
 import {
   createWorkspaceClient,
   deleteWorkspaceClient,
@@ -68,6 +70,9 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
   const [editing, setEditing] = useState<WorkspaceClient | null>(null)
   const [deleting, setDeleting] = useState<WorkspaceClient | null>(null)
   const [form, setForm] = useState<WorkspaceClientInput>(emptyClient)
+  const [clientSearch, setClientSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>('all')
+  const [clientSort, setClientSort] = useState<ClientListSort>('status')
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const selectedWorkspaceId = (platformWorkspaceId || '').toLowerCase()
   const validSelectedWorkspaceId = UUID_PATTERN.test(selectedWorkspaceId)
@@ -108,6 +113,8 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
   const clients = mode === 'research'
     ? workspaceClients.filter((client) => client.status === 'active')
     : workspaceClients
+  const visibleClients = clientListView(clients, { search: clientSearch, status: statusFilter, sort: clientSort })
+  const listNarrowed = Boolean(clientSearch.trim()) || statusFilter !== 'all'
   const clientsLoading = isPlatformWorkspace
     ? validSelectedWorkspaceId && platformQuery.isLoading
     : tenantClientsQuery.isLoading
@@ -336,11 +343,31 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                 ) : null}
               </div>
             ) : (
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    <Input type="search" value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Search name, contact, email or website" aria-label="Search clients" className="pl-9" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={statusFilter} onValueChange={(value: ClientStatusFilter) => setStatusFilter(value)}>
+                      <SelectTrigger className="w-full sm:w-40" aria-label="Filter by status"><SelectValue /></SelectTrigger>
+                      <SelectContent>{(Object.keys(CLIENT_STATUS_FILTER_LABELS) as ClientStatusFilter[]).map((value) => <SelectItem key={value} value={value}>{CLIENT_STATUS_FILTER_LABELS[value]}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={clientSort} onValueChange={(value: ClientListSort) => setClientSort(value)}>
+                      <SelectTrigger className="w-full sm:w-52" aria-label="Sort clients"><SelectValue /></SelectTrigger>
+                      <SelectContent>{(Object.keys(CLIENT_SORT_LABELS) as ClientListSort[]).map((value) => <SelectItem key={value} value={value}>{CLIENT_SORT_LABELS[value]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {listNarrowed && <p className="text-xs text-muted-foreground" role="status">Showing {visibleClients.length} of {clients.length} clients. <button type="button" className="font-medium underline underline-offset-4" onClick={() => { setClientSearch(''); setStatusFilter('all') }}>Clear</button></p>}
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Contact</TableHead><TableHead>Host brief</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                  {/* Contact and host brief step aside on a phone so status and actions stay on screen. */}
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="hidden md:table-cell">Contact</TableHead><TableHead className="hidden sm:table-cell">Host brief</TableHead><TableHead>Status</TableHead><TableHead className="text-right"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {clients.map((client) => {
+                    {visibleClients.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">No clients match. Try a different search or status.</TableCell></TableRow>}
+                    {visibleClients.map((client) => {
                       const clientDetailHref = `${clientBaseHref}/clients/${encodeURIComponent(client.id)}`
                       return (
                       // The name link is the row's one keyboard stop; the row
@@ -352,8 +379,8 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                         onClick={() => navigate(clientDetailHref)}
                       >
                         <TableCell><Link to={clientDetailHref} onClick={(event) => event.stopPropagation()} aria-label={`Open ${client.name}`} className="inline-flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">{client.name}<ArrowUpRight className="h-3.5 w-3.5" /></Link>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{client.website}</p>}</TableCell>
-                        <TableCell><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell"><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge
                             variant="outline"
                             className={client.ai_sdr_profile_ready
@@ -380,16 +407,12 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="text-destructive"
-                                onClick={() => managementEnabled && setDeleting(client)}
-                                aria-label={`Remove ${client.name}`}
+                              {/* Removing a client is a rare, final step: behind the menu, not beside edit on every row. */}
+                              <RowMenu
+                                label={`More actions for ${client.name}`}
                                 disabled={!managementEnabled}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                                items={[{ label: `Remove ${client.name}`, icon: <Trash2 className="h-4 w-4" />, destructive: true, onSelect: () => setDeleting(client) }]}
+                              />
                               </>
                             )}
                           </div>
@@ -399,6 +422,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                     })}
                   </TableBody>
                 </Table>
+              </div>
               </div>
             )}
           </CardContent>

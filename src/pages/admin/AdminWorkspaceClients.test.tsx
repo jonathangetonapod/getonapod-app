@@ -108,7 +108,7 @@ describe('AdminWorkspaceClients', () => {
     expect(screen.getByText('platform owner')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add client/i })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Edit Acme Client' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Remove Acme Client' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'More actions for Acme Client' })).toBeEnabled()
     expect(screen.getByRole('link', { name: 'Open Acme Client' })).toHaveAttribute(
       'href',
       `/app/workspaces/${workspaceId}/clients/${workspaceView().clients[0].id}`,
