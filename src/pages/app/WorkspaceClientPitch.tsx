@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, Radio } from 'lucide-react'
 import { toast } from 'sonner'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import { ClientCampaignPrep } from '@/components/workspace/ClientCampaignPrepDialog'
+import { PitchQueueNav } from '@/components/workspace/PitchQueueNav'
+import { buildPitchQueue } from '@/lib/pitchQueue'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
-import { MY_WORKSPACE_BASE_HREF, clientShortlistHref, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
+import { MY_WORKSPACE_BASE_HREF, clientPitchHref, clientShortlistHref, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import { getWorkspaceClientDetail } from '@/services/clients'
 import { getClientShortlist, updateClientShortlistPodcast, type ClientShortlistPodcast } from '@/services/clientShortlist'
 
@@ -92,6 +94,15 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
     // The finder reads the route only, and the route is part of what renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortlistQuery.data?.podcasts, requestedPodcastId])
+
+  const pitchQueue = useMemo(
+    () => buildPitchQueue(shortlistQuery.data?.podcasts || [], podcast?.id || ''),
+    [shortlistQuery.data?.podcasts, podcast?.id],
+  )
+  const pitchHrefFor = useCallback(
+    (shortlistPodcastId: string) => clientPitchHref(baseHref, canonicalClientId, shortlistPodcastId),
+    [baseHref, canonicalClientId],
+  )
 
   const effectiveWorkspace = detail?.workspace
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
@@ -185,7 +196,11 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
         <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
           <Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />{client.name}’s shortlist</Link>
         </Button>
+        <PitchQueueNav queue={pitchQueue} hrefFor={pitchHrefFor} />
         <ClientCampaignPrep
+          // A fresh flow per podcast: moving through the queue must not carry
+          // one show's step, email choice or draft into the next.
+          key={podcast.id}
           layout="page"
           workspaceId={workspaceId}
           clientId={canonicalClientId}

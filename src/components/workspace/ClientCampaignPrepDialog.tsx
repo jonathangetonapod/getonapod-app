@@ -263,6 +263,24 @@ function validEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase())
 }
 
+/**
+ * Podscan sometimes packs several addresses into one field
+ * ("host@show.com, someone@sponsor.com"). Split it into the distinct valid
+ * addresses so the operator can choose one.
+ */
+function podscanEmails(value: string | null | undefined): string[] {
+  const seen = new Set<string>()
+  return (value || '')
+    .split(/[\s,;]+/)
+    .map((part) => part.trim())
+    .filter((part) => {
+      const key = part.toLowerCase()
+      if (!validEmail(part) || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
 function compactNumber(value: number | null | undefined): string {
   if (!value) return '—'
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -726,7 +744,11 @@ export function ClientCampaignPrep({
   const chosenCampaign = sendableCampaigns.find((item) => item.id === activeCampaignId) ?? null
   const podcastUrl = safeExternalUrl(podcast?.podcast_url)
   const podcastImageUrl = safeExternalUrl(podcast?.podcast_image_url)
-  const publicPodcastEmail = podcast?.podcast_email?.trim() || ''
+  const publicPodcastEmails = useMemo(() => podscanEmails(podcast?.podcast_email), [podcast?.podcast_email])
+  // The chosen Podscan address: whichever one is the current contact, else the first.
+  const publicPodcastEmail = publicPodcastEmails.find((email) => email.toLowerCase() === contactEmail.trim().toLowerCase())
+    || publicPodcastEmails[0]
+    || ''
   const storedEmailUnlock = podcast?.email_unlock || null
   const previewEmailSearchRunning = previewEmailSearchPodcastId === podcast?.podcast_id
     && storedEmailUnlock?.status !== 'unlocked'
@@ -1180,7 +1202,7 @@ export function ClientCampaignPrep({
       setContactEmail(savedContactEmail || publicPodcastEmail)
       setEmailRoute(
         publicPodcastEmail
-        && (!savedContactEmail || savedContactEmail.toLowerCase() === publicPodcastEmail.toLowerCase())
+        && (!savedContactEmail || publicPodcastEmails.some((email) => email.toLowerCase() === savedContactEmail.toLowerCase()))
           ? 'podcast'
           : 'waterfall',
       )
@@ -1845,12 +1867,30 @@ export function ClientCampaignPrep({
                             <div className="mt-4 rounded-xl border bg-background px-3 py-2.5">
                               <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Free Podscan inbox</p>
                               <p className="mt-1 truncate text-sm font-medium">{publicPodcastEmail || 'No public email found'}</p>
+                              {publicPodcastEmails.length > 1 && <p className="mt-0.5 text-[11px] text-muted-foreground">Podscan lists {publicPodcastEmails.length} addresses. Choose one below.</p>}
                             </div>
                             <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-muted-foreground">
                               {emailRoute === 'podcast' && publicPodcastEmail ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <span className="h-4 w-4 rounded-full border" />}
                               {publicPodcastEmail ? (emailRoute === 'podcast' ? 'Selected' : 'Use this email') : 'Unavailable for this show'}
                             </div>
                           </button>
+                          {publicPodcastEmails.length > 1 && (
+                            <div className="md:order-last">
+                              <Label htmlFor="campaign-podscan-email" className="text-xs font-medium">Podscan inbox to use</Label>
+                              <Select
+                                value={publicPodcastEmail}
+                                onValueChange={(email) => {
+                                  setEmailRoute('podcast')
+                                  setContactEmail(email)
+                                }}
+                              >
+                                <SelectTrigger id="campaign-podscan-email" className="mt-1.5"><SelectValue placeholder="Choose an address" /></SelectTrigger>
+                                <SelectContent>
+                                  {publicPodcastEmails.map((email) => <SelectItem key={email} value={email}>{email}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
 
                           <button
                             type="button"
@@ -1878,7 +1918,7 @@ export function ClientCampaignPrep({
                           className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'manual' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
                           onClick={() => {
                             setEmailRoute('manual')
-                            if ([publicPodcastEmail, unlockedEmail].filter(Boolean).some((email) => contactEmail.trim().toLowerCase() === email.toLowerCase())) setContactEmail('')
+                            if ([...publicPodcastEmails, unlockedEmail].filter(Boolean).some((email) => contactEmail.trim().toLowerCase() === email.toLowerCase())) setContactEmail('')
                           }}
                         >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><PenLine className="h-4 w-4" /></span>
