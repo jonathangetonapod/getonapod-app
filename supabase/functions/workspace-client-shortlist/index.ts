@@ -1057,12 +1057,14 @@ serve(async (req) => {
         ((directContactResult.data || []) as unknown as DirectContactRow[])
           .map((contact) => [contact.podcast_id, contact]),
       )
-      // Addresses a send has proved dead, for every workspace. Only bounces are
-      // shown: an address another agency typed in is theirs to have found.
+      // Addresses this workspace's own sends have proved dead. Never another
+      // workspace's: each runs its own sending platform, so its reports are
+      // its own.
       const bouncedResult = shortlistPodcastIds.length > 0
         ? await authContext.admin
           .from('podcast_contact_emails')
           .select('podcast_id,normalized_email')
+          .eq('workspace_id', workspaceId)
           .in('podcast_id', shortlistPodcastIds)
           .eq('status', 'bounced')
           .limit(5_000)
@@ -2605,6 +2607,7 @@ serve(async (req) => {
         // An address an operator typed in, now confirmed by Blitz.
         await authContext.admin.from('podcast_contact_emails')
           .update({ status: 'verified', updated_at: new Date().toISOString() })
+          .eq('workspace_id', workspaceId)
           .eq('podcast_id', shortlistRow.podcast_id)
           .eq('normalized_email', String(record.email ?? email).trim().toLowerCase())
           .eq('status', 'unverified')
@@ -2654,6 +2657,9 @@ serve(async (req) => {
         authContext.admin
           .from('podcast_contact_emails')
           .select('normalized_email, status, mx_status')
+          // This workspace's records only: another agency's finds, checks and
+          // outcomes must not be readable through what this save returns.
+          .eq('workspace_id', workspaceId)
           .eq('podcast_id', row.podcast_id)
           .limit(500),
       ])
@@ -2688,23 +2694,23 @@ serve(async (req) => {
         .eq('id', shortlistPodcastId)
         .eq('client_id', clientId)
       if (saveError) throw new HttpError(500, 'RECIPIENTS_SAVE_FAILED', 'The recipients could not be saved')
-      // Addresses found by hand join the shared network as unverified. A row
-      // that exists already keeps what the network knew about it.
+      // An address found by hand is kept, unverified, in this workspace's
+      // records. A row that exists already keeps what was known about it.
       const known = new Set(networkRows.map((item) => item.normalized_email))
       const newManual = recipients.filter((item) => item.sources.includes('manual') && !known.has(item.email))
       if (newManual.length > 0) {
         const { error: networkWriteError } = await authContext.admin
           .from('podcast_contact_emails')
           .upsert(newManual.map((item) => ({
+            workspace_id: workspaceId,
             podcast_id: row.podcast_id,
             email: item.email,
             source: 'manual',
             status: item.status === 'verified' ? 'verified' : 'unverified',
             contact_role: item.contact_role ?? null,
             mx_status: item.mx ?? null,
-            first_seen_workspace_id: workspaceId,
             first_seen_by: authContext.user.id,
-          })), { onConflict: 'podcast_id,normalized_email', ignoreDuplicates: true })
+          })), { onConflict: 'workspace_id,podcast_id,normalized_email', ignoreDuplicates: true })
         if (networkWriteError) console.error('[workspace-client-shortlist] contact network write failed', networkWriteError.message)
       }
       await writeAudit(authContext.admin, {

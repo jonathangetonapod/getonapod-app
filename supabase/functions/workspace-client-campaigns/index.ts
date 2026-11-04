@@ -1842,13 +1842,16 @@ function outreachPitchVariables(
 }
 
 /**
- * Feeds what a send learned back into the shared contact network: a bounce
- * marks the address bounced for every workspace, and a reply proves an
- * unverified address reaches someone. Best effort — the network is advisory,
- * and a sync must not fail because it could not be told.
+ * Feeds what a send learned back into this workspace's contact records: a
+ * bounce marks the address bounced, and a reply proves an unverified address
+ * reaches someone. Scoped to the workspace that sent it — each workspace runs
+ * its own sending platform, so its report must never change what another
+ * workspace sees. Best effort: a sync must not fail because it could not be
+ * told.
  */
 async function recordContactOutcome(
   admin: AuthContext["admin"],
+  workspaceId: string,
   podcastId: string,
   email: string,
   outcome: "bounced" | "replied",
@@ -1860,11 +1863,13 @@ async function recordContactOutcome(
       // address the network never heard of is recorded as learned from a send.
       const { data: marked } = await admin.from("podcast_contact_emails")
         .update({ status: "bounced", updated_at: new Date().toISOString() })
+        .eq("workspace_id", workspaceId)
         .eq("podcast_id", podcastId)
         .eq("normalized_email", normalized)
         .select("id");
       if (!marked?.length) {
         await admin.from("podcast_contact_emails").insert({
+          workspace_id: workspaceId,
           podcast_id: podcastId,
           email: normalized,
           source: "outreach",
@@ -1874,6 +1879,7 @@ async function recordContactOutcome(
     } else {
       await admin.from("podcast_contact_emails")
         .update({ status: "verified", updated_at: new Date().toISOString() })
+        .eq("workspace_id", workspaceId)
         .eq("podcast_id", podcastId)
         .eq("normalized_email", normalized)
         .eq("status", "unverified");
@@ -2556,9 +2562,16 @@ async function syncProviderCampaign(
             "Campaign lead activity could not be saved",
           );
         }
-        if (target.contact_email && (lead.status === -1 || lead.email_reply_count > 0)) {
+        // Only an outcome for the address this pitch actually went to: a lead
+        // matched by id may carry a different email than the target holds.
+        if (
+          target.contact_email &&
+          lead.email?.trim().toLowerCase() === target.contact_email.trim().toLowerCase() &&
+          (lead.status === -1 || lead.email_reply_count > 0)
+        ) {
           await recordContactOutcome(
             context.admin,
+            campaign.workspace_id,
             target.podcast_id,
             target.contact_email,
             lead.status === -1 ? "bounced" : "replied",

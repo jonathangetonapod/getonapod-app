@@ -11,10 +11,14 @@
 --    row exists from Step 1 on; the campaign target is only created when the
 --    pitch is sent. NULL means "never chosen", and the app then falls back to
 --    the target's contact_email.
--- 2. podcast_contact_emails: the shared contact network's other addresses —
---    ones operators found themselves (unverified until a reply or Blitz proves
---    them) and ones a send proved bounced. podcast_direct_contacts stays the
---    one verified direct contact per podcast; this table never replaces it.
+-- 2. podcast_contact_emails: what ONE workspace has learned about a show's
+--    addresses — ones its operators typed in (unverified until a reply or
+--    Blitz proves them) and ones its sends proved bounced. Scoped per
+--    workspace on purpose: each workspace connects its own sending platform,
+--    so a reply or bounce is that tenant's report, and letting it mark an
+--    address verified or dead for everyone would let one tenant poison the
+--    others. podcast_direct_contacts stays the one platform-verified contact
+--    per podcast; this table never replaces it.
 
 ALTER TABLE public.client_dashboard_podcasts
   ADD COLUMN IF NOT EXISTS pitch_recipients JSONB;
@@ -34,6 +38,7 @@ COMMENT ON COLUMN public.client_dashboard_podcasts.pitch_recipients IS
 
 CREATE TABLE IF NOT EXISTS public.podcast_contact_emails (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
   -- The Podscan id the shortlist and campaign targets key podcasts by. Not a
   -- foreign key: a shortlisted show can predate its catalogue row.
   podcast_id TEXT NOT NULL CHECK (length(btrim(podcast_id)) BETWEEN 1 AND 200),
@@ -48,7 +53,6 @@ CREATE TABLE IF NOT EXISTS public.podcast_contact_emails (
   -- Result of the optional MX lookup when the address was added: 'none' means
   -- the domain publishes no mail server. Advisory only; nothing blocks on it.
   mx_status TEXT CHECK (mx_status IS NULL OR mx_status IN ('ok', 'none', 'unknown')),
-  first_seen_workspace_id UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
   first_seen_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -58,16 +62,14 @@ CREATE TABLE IF NOT EXISTS public.podcast_contact_emails (
   )
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS podcast_contact_emails_podcast_email_idx
-  ON public.podcast_contact_emails (podcast_id, normalized_email);
-CREATE INDEX IF NOT EXISTS podcast_contact_emails_normalized_email_idx
-  ON public.podcast_contact_emails (normalized_email);
+CREATE UNIQUE INDEX IF NOT EXISTS podcast_contact_emails_workspace_podcast_email_idx
+  ON public.podcast_contact_emails (workspace_id, podcast_id, normalized_email);
 
 COMMENT ON TABLE public.podcast_contact_emails IS
-  'Private, platform-wide addresses for a podcast beyond the Podscan inbox and the one verified direct contact: operator-found (unverified until proven) and bounced. Service role only, like podcast_direct_contacts.';
+  'One workspace''s knowledge of a podcast''s addresses beyond the Podscan inbox and the platform-verified direct contact: operator-found (unverified until proven) and bounced. Workspace-scoped so one tenant''s reports never change another''s view. Service role only; every read filters by workspace_id.';
 
--- Same posture as podcast_direct_contacts: platform-wide, so no tenant can
--- read it directly; edge functions decide what each workspace is shown.
+-- No tenant reads it directly: edge functions read it with the service role
+-- and always filter by the caller's workspace_id.
 ALTER TABLE public.podcast_contact_emails ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.podcast_contact_emails FORCE ROW LEVEL SECURITY;
 REVOKE ALL PRIVILEGES ON TABLE public.podcast_contact_emails FROM PUBLIC, anon, authenticated;

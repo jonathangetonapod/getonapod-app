@@ -39,7 +39,18 @@ assert.match(shortlist, /recipientsPromptBlock\(pitchRecipients\)/u)
 assert.match(recipients, /Never open with "Hi all"/u)
 assert.match(shortlist, /!recipientsAffectCopy\(pitchRecipients\)/u)
 
-// The shared network table is platform-wide and service-role only.
+// Contact records are per workspace: one tenant's outcomes, finds and MX
+// results never reach another, through reads or writes.
+assert.match(migration, /workspace_id UUID NOT NULL REFERENCES public\.workspaces\(id\) ON DELETE CASCADE/u)
+assert.match(migration, /\(workspace_id, podcast_id, normalized_email\)/u)
+for (const [name, source] of [['shortlist', shortlist], ['campaigns', campaigns]]) {
+  const uses = source.match(/\.from\(['"]podcast_contact_emails['"]\)[\s\S]{0,400}/gu) ?? []
+  assert.ok(uses.length > 0, `${name} uses podcast_contact_emails`)
+  for (const use of uses) assert.match(use, /workspace_id/u, `${name}: every podcast_contact_emails access is workspace-scoped`)
+}
+assert.match(campaigns, /lead\.email\?\.trim\(\)\.toLowerCase\(\) === target\.contact_email\.trim\(\)\.toLowerCase\(\)/u)
+
+// The table is service-role only.
 assert.match(migration, /ALTER TABLE public\.podcast_contact_emails FORCE ROW LEVEL SECURITY;/u)
 assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.podcast_contact_emails FROM PUBLIC, anon, authenticated;/u)
 assert.match(campaigns, /async function recordContactOutcome\(/u)
