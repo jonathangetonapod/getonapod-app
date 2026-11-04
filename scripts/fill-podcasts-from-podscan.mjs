@@ -249,6 +249,34 @@ const TOPIC_QUERIES = [
   '"team building" OR "company culture" OR "high performing teams" OR "leading teams"',
   '"personal development" OR productivity OR "high performance" OR mindset OR "career growth"',
 ]
+// Health and wellness: shows where practitioners, clinicians and health founders are booked as guests.
+const HEALTH_QUERIES = [
+  'longevity OR "healthy aging" OR healthspan OR "anti-aging" OR biohacking',
+  '"functional medicine" OR "integrative medicine" OR "root cause" OR "holistic health"',
+  'nutrition OR nutritionist OR dietitian OR "gut health" OR microbiome',
+  '"weight loss" OR "metabolic health" OR "blood sugar" OR diabetes OR GLP-1 OR insulin',
+  '"hormone health" OR hormones OR menopause OR perimenopause OR testosterone OR "men\'s health"',
+  '"women\'s health" OR fertility OR pregnancy OR postpartum OR "maternal health"',
+  '"mental health" OR anxiety OR depression OR therapist OR psychologist OR psychiatry',
+  'trauma OR PTSD OR "nervous system" OR "somatic" OR "emotional healing"',
+  'ADHD OR autism OR neurodivergent OR "brain health" OR dementia OR Alzheimer',
+  'sleep OR insomnia OR "sleep health" OR circadian',
+  '"chronic illness" OR "chronic pain" OR autoimmune OR "Lyme disease" OR "long COVID"',
+  'cancer OR oncology OR "cancer survivor" OR "heart health" OR cardiology',
+  'fitness OR "strength training" OR "personal trainer" OR exercise OR mobility',
+  '"physical therapy" OR chiropractic OR "sports medicine" OR "injury recovery"',
+  'addiction OR recovery OR sobriety OR "sober curious" OR "substance use"',
+  'mindfulness OR meditation OR breathwork OR yoga OR "stress management"',
+  '"wellness coach" OR "health coach" OR "wellness industry" OR "wellness business"',
+  '"public health" OR epidemiology OR "health policy" OR "health equity"',
+  'nurses OR nursing OR "nurse practitioner" OR "physician assistant" OR "medical students"',
+  '"doctor podcast" OR "physician entrepreneur" OR "physicians in business" OR "doctor entrepreneur"',
+  '"plant based" OR vegan OR keto OR carnivore OR "whole foods" OR "clean eating"',
+  '"skin health" OR dermatology OR "hair loss" OR "oral health" OR dentistry',
+  '"caregiving" OR caregivers OR "aging parents" OR "elder care"',
+  '"psychedelics" OR "psychedelic therapy" OR ketamine OR psilocybin',
+]
+const HEALTH_CATS = ['health', 'medicine', 'mental-health', 'mental', 'nutrition', 'fitness', 'wellness', 'alternative']
 const ALL_B2B_QUERIES = [...TOPIC_QUERIES, ...B2B_QUERIES, ...B2B_QUERIES_2, ...B2B_QUERIES_3, ...FINANCE_RE_QUERIES, ...VERTICAL_QUERIES, ...BIZ_QUERIES]
 const YEAR = { has_guests: 'true', min_last_episode_posted_at: daysAgo(365), max_last_episode_posted_at: daysAgo(180) }
 // B2B only: every request goes to finding business shows. Passes run in priority order.
@@ -257,6 +285,10 @@ const YEAR = { has_guests: 'true', min_last_episode_posted_at: daysAgo(365), max
 const ALL = [[1, null]]
 // B2B only: every request goes to finding business shows. Passes run in priority order.
 const PASSES = [
+  // Health runs first: the B2B passes were mostly exhausted by earlier fills.
+  { name: 'health', queries: HEALTH_QUERIES, bands: [...NICHE_BANDS, ...BANDS], params: RECENT },
+  { name: 'health-niche', cats: HEALTH_CATS, bands: NICHE_BANDS, params: RECENT },
+  { name: 'health-older', queries: HEALTH_QUERIES, bands: ALL, params: OLDER },
   { name: 'b2b', queries: B2B_QUERIES, bands: [...NICHE_BANDS, ...BANDS], params: RECENT },
   { name: 'b2b2', queries: B2B_QUERIES_2, bands: [...NICHE_BANDS, ...BANDS], params: RECENT },
   { name: 'b2b3a', queries: B2B_QUERIES_3, bands: ALL, params: RECENT },
