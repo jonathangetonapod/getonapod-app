@@ -956,9 +956,12 @@ assert.match(refreshAnalyticsAction[0], /workspace\.client_campaign\.analytics_r
 assert.match(refreshAnalyticsAction[0], /if \(!fresh\) \{\s*missing \+= 1;\s*return;\s*\}/u)
 
 assert.match(campaignService, /action: 'refresh-analytics'/u)
-assert.match(campaignsPage, /refreshWorkspaceCampaignAnalytics\(workspaceId\)/u)
+// The sync button lives on the shared connection card (Client Campaigns and
+// workspace settings both render it) since fbe5ae39.
+const connectionCard = readFileSync('src/components/workspace/OutreachConnectionCard.tsx', 'utf8')
+assert.match(connectionCard, /refreshWorkspaceCampaignAnalytics\(workspaceId\)/u)
 // The count that could not be refreshed is reported, not folded into success.
-assert.match(campaignsPage, /result\.missing > 0/u)
+assert.match(connectionCard, /result\.missing > 0/u)
 
 // Mailboxes: the sending day is the campaign's day, mailboxes carry the client
 // they send for, and connecting one writes the campaign that does the sending.
