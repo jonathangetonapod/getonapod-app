@@ -147,9 +147,11 @@ async function sb(method, pathname, body) {
   }
 }
 
-// Feed text arrives with tags and entities; the model reads it as plain text.
+// Feed text arrives with tags and entities; the model reads it as plain text. TypeSafe refuses
+// invalid Unicode, so control characters go and a cut that splits an emoji is mended.
 const plain = (s, n) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, '\'')
-  .replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim().slice(0, n)
+  .replace(/&quot;/g, '"').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, ' ').replace(/\s+/g, ' ').trim()
+  .slice(0, n).toWellFormed()
 const round = (n, d = 3) => (Number.isFinite(n) ? Math.round(n * 10 ** d) / 10 ** d : null)
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 
@@ -201,8 +203,9 @@ async function tag(show) {
   } catch (err) {
     stats.failed++
     log(`failed ${show.podscan_id}: ${err.message}`)
-    // A bad key or a refused request stops the run instead of failing every show.
-    if (/TypeSafe 40[0-3]/.test(err.message)) throw err
+    // A bad key or no credits stops the run instead of failing every show; a show TypeSafe
+    // refuses (400) is logged and left untagged.
+    if (/TypeSafe 40[1-3]/.test(err.message)) throw err
   }
 }
 
