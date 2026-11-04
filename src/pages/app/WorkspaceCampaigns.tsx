@@ -787,6 +787,11 @@ const WorkspaceCampaigns = ({
               </p>
             ) : syncMutation.isPending ? (
               <p className="text-muted-foreground">Syncing campaigns…</p>
+            ) : integration?.connected && campaignOverviewQuery.data?.provider_campaigns_error ? (
+              // last_verified_at is when the key was last checked, not when
+              // campaigns last loaded; next to a refresh error it read as a
+              // contradiction ("Last synced just now" over "could not be refreshed").
+              <p className="text-amber-800">Connected · campaigns not refreshed</p>
             ) : integration?.connected && lastSyncedLabel ? (
               <p className="text-muted-foreground">{lastSyncedLabel}</p>
             ) : null}

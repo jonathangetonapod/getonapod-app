@@ -71,6 +71,14 @@ describe('flat subscription billing portal', () => {
     expect(await screen.findByText('$0')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Start subscription' })).not.toBeInTheDocument()
   })
+  it('treats the house workspace as needing no subscription even after its trial date', async () => {
+    vi.mocked(useAuth).mockReturnValue({ canManageWorkspaceStaff: true, isPlatformAdmin: true, user: { id: 'u' }, workspace: { id: workspaceId, is_default: true }, membership: { role: 'owner' } } as never)
+    vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ ...fixture, trial_ends_at: '2000-01-01T00:00:00Z' })
+    renderPage()
+    expect(await screen.findByText('No subscription needed')).toBeInTheDocument()
+    expect(screen.queryByText(/Your trial has ended/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start subscription' })).not.toBeInTheDocument()
+  })
   it('shows cancellation timing and trial expiry explicitly', async () => {
     vi.mocked(getWorkspaceSubscriptionOverview).mockResolvedValue({ ...fixture, has_subscription: true, billing_status: 'active', cancel_at_period_end: true, current_period_end: '2099-02-01T00:00:00Z' })
     renderPage()

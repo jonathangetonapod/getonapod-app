@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import type { Client } from '@/services/clients'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
+import { markPortalPreview } from '@/components/portal/portalPreviewMarker'
 
 // Owner-side portal preview entry. The workspace app opens this route in a
 // new tab with a freshly minted (server-side, audited, 1-hour) portal session
@@ -30,6 +31,7 @@ const PreviewHandoff = () => {
         return
       }
       window.history.replaceState(null, '', '/portal/preview')
+      markPortalPreview(client.id, expiresAt)
       // Through the provider, so the portal shell already holds the session
       // when the dashboard mounts; writing storage directly raced the
       // provider's own restore and landed on the login form.

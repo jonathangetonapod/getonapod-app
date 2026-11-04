@@ -439,7 +439,10 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const dashboardAdminPreviewHref = dashboardHref
     ? `${dashboardHref}?preview=1`
     : null
-  const prospectDashboardHref = client.prospect_dashboard_slug
+  // A linked page that is inactive or unpublished opens as "Dashboard not
+  // found", so it is shown as linked but never offered as a link.
+  const prospectPageOffline = Boolean(client.prospect_dashboard_slug) && detail.prospect_page_live === false
+  const prospectDashboardHref = client.prospect_dashboard_slug && !prospectPageOffline
     ? `/prospect/${encodeURIComponent(client.prospect_dashboard_slug)}`
     : null
   const onboardingHref = `${baseHref}/onboarding?client=${encodeURIComponent(client.id)}${onboarding ? `&instance=${encodeURIComponent(onboarding.id)}` : ''}`
@@ -1047,9 +1050,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               <Card>
                 <CardHeader><CardTitle>Original prospect page</CardTitle><CardDescription>The pre-client prospect page remains separate from active delivery.</CardDescription></CardHeader>
                 <CardContent>
-                  <DetailRow label="Status" value={<Badge variant="outline" className={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>{prospectDashboardHref ? 'Linked' : 'Not linked'}</Badge>} />
+                  <DetailRow label="Status" value={prospectPageOffline
+                    ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900">Not live</Badge>
+                    : <Badge variant="outline" className={prospectDashboardHref ? 'border-sky-200 bg-sky-50 text-sky-800' : undefined}>{prospectDashboardHref ? 'Linked' : 'Not linked'}</Badge>} />
                   <DetailRow label="Page" value={client.prospect_dashboard_slug || 'None'} />
                   <div className="mt-5 space-y-3 rounded-xl border bg-muted/30 p-4">
+                    {prospectPageOffline && (
+                      <p className="text-sm text-muted-foreground">This page is deactivated or unpublished, so its link shows “Dashboard not found”. Publish it again from <Link className="font-medium underline underline-offset-4" to={`${baseHref}/prospects`}>Prospects</Link>, or link a different page.</p>
+                    )}
                     {prospectDashboardHref && (
                       <Button asChild variant="outline" className="w-full">
                         <a href={prospectDashboardHref} target="_blank" rel="noreferrer">Open prospect page<ExternalLink className="ml-2 h-3.5 w-3.5" /></a>
@@ -1058,14 +1066,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     {canManage ? (
                       <Button
                         type="button"
-                        variant={prospectDashboardHref ? 'ghost' : 'default'}
+                        variant={prospectDashboardHref || prospectPageOffline ? 'ghost' : 'default'}
                         className="w-full"
                         onClick={() => setProspectPickerOpen(true)}
                       >
                         <Search className="mr-2 h-3.5 w-3.5" />
-                        {prospectDashboardHref ? 'Change' : 'Link a prospect page'}
+                        {prospectDashboardHref || prospectPageOffline ? 'Change' : 'Link a prospect page'}
                       </Button>
-                    ) : !prospectDashboardHref && (
+                    ) : !prospectDashboardHref && !prospectPageOffline && (
                       <p className="text-sm text-muted-foreground">No prospect page linked.</p>
                     )}
                   </div>

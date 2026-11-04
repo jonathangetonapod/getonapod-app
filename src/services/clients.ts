@@ -256,6 +256,11 @@ export interface WorkspaceClientDetail {
    * or when the server could not resolve one; callers fall back to the app URL.
    */
   public_base_url?: string | null
+  /**
+   * Whether the linked prospect page opens for a reader: active and published.
+   * Null when no page is linked, the check failed, or an older function build.
+   */
+  prospect_page_live?: boolean | null
 }
 
 export interface WorkspaceClientInput {
@@ -514,6 +519,7 @@ export async function getWorkspaceClientDetail(
   return {
     ...detail,
     public_base_url: linkOrigin(detail.public_base_url),
+    prospect_page_live: typeof detail.prospect_page_live === 'boolean' ? detail.prospect_page_live : null,
     bookings: withDecodedPodcastNames(detail.bookings),
     client: {
       ...detail.client,

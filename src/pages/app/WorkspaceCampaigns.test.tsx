@@ -858,6 +858,17 @@ describe('WorkspaceCampaigns', () => {
     expect(await screen.findByRole('button', { name: 'Review 1 assignment' })).toBeEnabled()
   })
 
+  it('does not claim a fresh sync while the provider campaigns failed to load', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: { ...connectedIntegration, last_verified_at: new Date().toISOString() },
+      provider_campaigns_error: 'Instantly returned 503.',
+    })
+    renderCampaigns()
+
+    expect(await screen.findByText('Connected · campaigns not refreshed')).toBeInTheDocument()
+    expect(screen.queryByText(/Last synced/)).not.toBeInTheDocument()
+  })
   it('syncs the connection and the totals from one button, and says which step failed', async () => {
     mockedOverview.mockResolvedValue({
       ...campaignOverview,

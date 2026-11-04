@@ -499,6 +499,22 @@ describe('WorkspaceClientDetail', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://pods.agency.example/client/taylor-client-123'))
   })
 
+  it('does not offer a deactivated prospect page as a working link', async () => {
+    mockedDetail.mockResolvedValueOnce({ ...detail, client: { ...detail.client, prospect_dashboard_slug: 'prospect-old' }, prospect_page_live: false })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
+    expect(await screen.findByText('Not live')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Open prospect page/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/Dashboard not found/)).toBeInTheDocument()
+  })
+  it('opens a live prospect page', async () => {
+    mockedDetail.mockResolvedValueOnce({ ...detail, client: { ...detail.client, prospect_dashboard_slug: 'prospect-live' }, prospect_page_live: true })
+    renderPage()
+    await screen.findByRole('heading', { name: 'Taylor Client' })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Sharing' }), { button: 0 })
+    expect(await screen.findByRole('link', { name: /Open prospect page/ })).toHaveAttribute('href', '/prospect/prospect-live')
+  })
   it('shows the link in a dialog when the clipboard refuses it, so it is never lost', async () => {
     const writeText = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })

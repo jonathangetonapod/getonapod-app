@@ -988,7 +988,23 @@ serve(async (req) => {
           : ''
         return podcastId ? `id:${podcastId}` : podcastName ? `name:${podcastName}` : ''
       }).filter(Boolean))
+      // Whether the linked prospect page would actually open. A slug can stay
+      // on the client after its page is deactivated or unpublished, and the
+      // Sharing tab used to offer that dead link as if it were live.
+      let prospectPageLive: boolean | null = null
+      if (typeof client.prospect_dashboard_slug === 'string' && client.prospect_dashboard_slug) {
+        const { data: prospectPage, error: prospectPageError } = await admin
+          .from('prospect_dashboards')
+          .select('is_active,content_ready,published_at')
+          .eq('workspace_id', workspaceId)
+          .eq('slug', client.prospect_dashboard_slug)
+          .maybeSingle()
+        if (!prospectPageError) {
+          prospectPageLive = Boolean(prospectPage?.is_active && prospectPage.content_ready === true && prospectPage.published_at)
+        }
+      }
       return jsonResponse(req, METHODS, 200, {
+        prospect_page_live: prospectPageLive,
         workspace: {
           id: access.workspace.id,
           name: access.workspace.name,

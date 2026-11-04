@@ -17,6 +17,7 @@ import { Helmet } from 'react-helmet-async'
 import { cn } from '@/lib/utils'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { portalLoginPath, rememberPortalBrand } from '@/components/portal/portalBrandMemory'
+import { isPortalPreview } from '@/components/portal/portalPreviewMarker'
 
 interface PortalLayoutProps {
   children: React.ReactNode
@@ -164,6 +165,16 @@ export function PortalLayout({ children }: PortalLayoutProps) {
           </div>
         </div>
       </header>
+
+      {/* Team portal preview: a real client session, but read-only on the server. */}
+      {!isImpersonating && isPortalPreview(client?.id) && (
+        <Alert role="status" className="rounded-none border-x-0 border-t-0 bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700">
+          <AlertDescription className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-100">
+            <Eye className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+            Previewing as {client?.name}. Changes are turned off, so nothing you click here affects their portal.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Impersonation Banner */}
       {isImpersonating && (

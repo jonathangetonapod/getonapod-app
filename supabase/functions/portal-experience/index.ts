@@ -106,7 +106,7 @@ serve(async (req) => {
       const sessionTokenHash = await hashPortalSessionToken(sessionToken)
       const { data: session, error } = await admin
         .from('client_portal_sessions')
-        .select('client_id,clients(portal_access_enabled,workspace:workspaces!clients_workspace_id_fkey(status))')
+        .select('client_id,user_agent,clients(portal_access_enabled,workspace:workspaces!clients_workspace_id_fkey(status))')
         .eq('session_token', sessionTokenHash)
         .eq('client_id', clientId)
         .gt('expires_at', new Date().toISOString())
@@ -123,6 +123,16 @@ serve(async (req) => {
         || client.workspace?.status !== 'active'
       ) {
         throw new HttpError(401, 'INVALID_PORTAL_SESSION', 'Your portal session has ended. Sign in again to continue')
+      }
+      // A team member's portal preview (minted by manage-client-portal-password
+      // as 'workspace-preview:<actor>') is a real session, but it is for
+      // looking only: it must never change the client's settings or calendar.
+      const isPreviewSession = typeof session.user_agent === 'string'
+        && session.user_agent.startsWith('workspace-preview:')
+      const wantsChange = ['addon_request', 'calendar_event', 'delete_event_id', 'notifications_enabled']
+        .some((key) => body[key] !== undefined)
+      if (isPreviewSession && wantsChange) {
+        throw new HttpError(403, 'PORTAL_PREVIEW_READ_ONLY', 'This is a preview. Changes are turned off so the client’s portal stays as they left it')
       }
     } else {
       // No portal token means this is the explicit operator impersonation path.

@@ -342,6 +342,7 @@ describe('getWorkspaceClientDetail', () => {
     await expect(getWorkspaceClientDetail(workspaceId.toUpperCase(), clientId.toUpperCase())).resolves.toEqual({
       ...detail,
       public_base_url: null,
+      prospect_page_live: null,
       client: { ...detail.client, ai_sdr_profile_approved_fields: [] },
     })
     expect(invoke).toHaveBeenCalledWith('workspace-clients', {

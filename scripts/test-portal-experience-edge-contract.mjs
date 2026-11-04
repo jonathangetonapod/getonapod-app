@@ -103,4 +103,13 @@ assert.match(edge, /parsed\.protocol !== 'http:' && parsed\.protocol !== 'https:
 assert.match(edge, /episode_url: kind === 'release' \? httpUrlOrNull\(event\.episode_url, 'episode_url'\) : null/u)
 assert.match(edge, /podcast_url: httpUrlOrNull\(event\.podcast_url, 'podcast_url'\)/u)
 
+// A team member's portal preview is a real session, but read-only: every
+// change the function accepts is refused for it, before any write runs.
+const previewGuard = edge.slice(edge.indexOf('const isPreviewSession'), edge.indexOf("if (body.notifications_enabled !== undefined)"))
+assert.match(previewGuard, /session\.user_agent\.startsWith\('workspace-preview:'\)/u)
+for (const key of ['addon_request', 'calendar_event', 'delete_event_id', 'notifications_enabled']) {
+  assert.match(previewGuard, new RegExp(`'${key}'`, 'u'), `preview sessions must not be able to send ${key}`)
+}
+assert.match(previewGuard, /throw new HttpError\(403, 'PORTAL_PREVIEW_READ_ONLY'/u)
+
 console.log('Portal Experience Edge contract checks passed')

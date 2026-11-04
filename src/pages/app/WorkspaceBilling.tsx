@@ -88,13 +88,16 @@ export default function WorkspaceBilling() {
 
   if (!canManage) return <Navigate to="/app/clients" replace />
 
-  const complimentary = billing?.billing_status === 'comped'
+  // The house workspace never needs a subscription: the access check in the
+  // database exempts is_default, and the setup checklist says so too.
+  const houseWorkspace = workspace?.is_default === true
+  const complimentary = houseWorkspace || billing?.billing_status === 'comped'
   const hasSubscription = billing?.has_subscription === true
   // Do not substitute today's catalog price for an unavailable legacy price.
   const cents = complimentary ? 0 : hasSubscription ? billing?.subscription_price_cents : billing?.plan_base_price_cents
   const price = typeof cents === 'number' ? formatMonthlyCents(cents) : null
   const trialEnd = knownDate(billing?.trial_ends_at)
-  const trialExpired = billing?.billing_status === 'trialing' && Boolean(billing.trial_ends_at)
+  const trialExpired = !houseWorkspace && billing?.billing_status === 'trialing' && Boolean(billing.trial_ends_at)
     && Date.parse(billing.trial_ends_at!) <= Date.now()
   const status = subscriptionStatusView(billing?.billing_status ?? 'trialing')
   const periodEnd = knownDate(billing?.current_period_end)
@@ -136,7 +139,7 @@ export default function WorkspaceBilling() {
           {confirmationPending && <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950" role="status">
             {checkingUntil ? 'Checking your subscription with Stripe…' : 'Your subscription is not confirmed yet. Refresh to check again. If you received a receipt, contact support before starting another checkout.'}
           </div>}
-          {(trialExpired || ['past_due', 'suspended'].includes(billing.billing_status)) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
+          {!houseWorkspace && (trialExpired || ['past_due', 'suspended'].includes(billing.billing_status)) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
             {trialExpired ? 'Your trial has ended. Start your subscription to continue workspace operations.' : billing.billing_status === 'past_due' ? 'Your payment needs attention. Open payment settings to resolve it.' : 'Your subscription is inactive. Start a plan to resume workspace operations.'}
           </div>}
 
@@ -150,7 +153,7 @@ export default function WorkspaceBilling() {
                 <div className="space-y-5">
                   <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-xl font-semibold">{complimentary ? 'Complimentary workspace' : 'Workspace plan'}</h2>
-                    <Badge variant="outline" className={status.className}>{trialExpired ? 'Trial ended' : status.label}</Badge>
+                    {houseWorkspace ? <Badge variant="outline">No subscription needed</Badge> : <Badge variant="outline" className={status.className}>{trialExpired ? 'Trial ended' : status.label}</Badge>}
                     {billing.plan_key === 'founding_member' && hasSubscription && <Badge variant="secondary">Founding member price</Badge>}
                   </div>
                   <p className="max-w-xl text-sm leading-6 text-muted-foreground">Everything your team needs to find podcasts, build relationships and manage client placements.</p>
@@ -168,7 +171,7 @@ export default function WorkspaceBilling() {
                     {opening === 'plan' || opening === 'payment' && paymentNeedsAttention ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{planAction}<ArrowUpRight className="ml-2 h-4 w-4" />
                   </Button>}
                   <p className="text-xs leading-5 text-muted-foreground">
-                    {complimentary ? 'Workspace access is provided at no charge.' : billing.cancel_at_period_end ? `Ends ${periodEnd ?? 'at the end of your billing period'}. It will not renew.` : hasSubscription ? periodEnd ? `Next renewal: ${periodEnd}` : 'See Stripe for your next invoice and renewal date.' : trialEnd ? `Trial ${trialExpired ? 'ended' : 'ends'} ${trialEnd}.` : 'Complete checkout to activate your subscription.'}
+                    {houseWorkspace ? 'This is the house workspace. It never needs a subscription.' : complimentary ? 'Workspace access is provided at no charge.' : billing.cancel_at_period_end ? `Ends ${periodEnd ?? 'at the end of your billing period'}. It will not renew.` : hasSubscription ? periodEnd ? `Next renewal: ${periodEnd}` : 'See Stripe for your next invoice and renewal date.' : trialEnd ? `Trial ${trialExpired ? 'ended' : 'ends'} ${trialEnd}.` : 'Complete checkout to activate your subscription.'}
                   </p>
                 </div>
               </CardContent>
