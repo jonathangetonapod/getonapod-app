@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { EmailText } from './EmailText'
 import {
   CONTACT_ROLE_LABELS,
   isValidRecipientEmail,
@@ -88,12 +89,12 @@ export const ManualRecipientInput = ({ recipient, disabled, onChoose, onClear, o
           onBlur={() => commit(draft)}
         />
         <p id="campaign-manual-email-help" className={`mt-1.5 text-xs ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
-          {error || 'Press Enter to use this address. It replaces any address chosen above.'}
+          {error || 'Press Enter to use this address.'}
         </p>
       </div>
       {recipient && (
         <div aria-label="Email you added" className="flex flex-wrap items-center gap-2 rounded-lg border bg-background px-2.5 py-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{recipient.email}</span>
+          <span className="w-full min-w-0 text-sm font-medium [overflow-wrap:anywhere]"><EmailText email={recipient.email} /></span>
           {recipient.status === 'verified' ? (
             <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50">Verified</Badge>
           ) : recipient.status === 'bounced' ? (

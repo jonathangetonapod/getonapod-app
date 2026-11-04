@@ -289,7 +289,10 @@ describe('WorkspaceClientPitch', () => {
 
     expect(screen.getByRole('navigation', { name: 'Pitch workflow steps' })).toHaveClass('lg:grid-cols-1')
     expect(screen.getByLabelText('Pitch actions')).toHaveClass('sticky', 'bottom-0')
-    // Collapsed, on every step, instead of tripling the research step.
+    // Research configuration lives with Research, collapsed; choosing an
+    // address does not carry it.
+    expect(screen.queryByRole('button', { name: /^Research instructions/ })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
     expect(screen.getByRole('button', { name: /^Research instructions/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByLabelText('Prompt for Podcast research')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Taylor Client’s shortlist' })).toHaveAttribute('href', `/app/clients/${clientId}?tab=shortlist`)
@@ -299,13 +302,16 @@ describe('WorkspaceClientPitch', () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: true, openai: false } })
     await renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
     expect(screen.getByText('Nothing runs until you start the search.')).toBeInTheDocument()
     expect(screen.queryByText('1 credit on success')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· Your AI account')
+    expect(screen.getByText('Billed to your AI provider. No app credits.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Find verified email/ })).toBeEnabled()
 
-    // Including the search card never takes the free inbox away, so research
-    // stays unlocked without waiting for a search nobody has started.
+    // Choosing the verified card means sending to the host, so research waits
+    // for an address; back on the free inbox it is unlocked again.
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('radio', { name: 'Use free podcast inbox' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
     expect(screen.queryByText('2 credits per run')).not.toBeInTheDocument()
@@ -315,10 +321,11 @@ describe('WorkspaceClientPitch', () => {
   it('allows direct host search and research with only an OpenAI key', async () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: true } })
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
-    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeEnabled()
-    expect(screen.getByText(/Uses your selected AI key and platform-managed contact enrichment/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
+    expect(screen.getByRole('button', { name: /^Find verified email/ })).toBeEnabled()
+    expect(screen.getByText('Billed to your AI provider. No app credits.')).toBeInTheDocument()
     expect(screen.queryByText(/Connect your Claude or OpenAI key in Billing/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Use free podcast inbox' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
     expect(screen.getByRole('button', { name: /^Regenerate/ })).toBeEnabled()
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
@@ -326,8 +333,8 @@ describe('WorkspaceClientPitch', () => {
 
   it('requires a workspace AI key without offering app credits as a substitute', async () => {
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
-    expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeDisabled()
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
+    expect(screen.getByRole('button', { name: /^Find verified email/ })).toBeDisabled()
     expect(screen.getByText(/Connect your Claude or OpenAI key in Billing/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
     expect(vi.mocked(runClientShortlistEmailSearch)).not.toHaveBeenCalled()
@@ -343,7 +350,7 @@ describe('WorkspaceClientPitch', () => {
       } })],
     })
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
     expect(screen.getByRole('link', { name: 'https://www.linkedin.com/in/example-host' }))
       .toHaveAttribute('href', 'https://www.linkedin.com/in/example-host')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
@@ -453,7 +460,7 @@ describe('WorkspaceClientPitch', () => {
     expect(await screen.findByRole('link', { name: 'Open the relationship CRM' }))
       .toHaveAttribute('href', `/app/workspaces/${workspaceId}/relationships`)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
     // Billing is not workspace-scoped: a platform admin tops a tenant up from
     // the platform screen.
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
@@ -516,38 +523,37 @@ describe('WorkspaceClientPitch', () => {
     expect(podcastContext.getByText('Business')).toBeInTheDocument()
     expect(podcastContext.getByText(/This one looks great/)).toBeInTheDocument()
     expect(podcastContext.getByRole('link', { name: 'Open show' })).toHaveAttribute('href', 'https://example.com/founder-stories')
-    expect(screen.getByRole('heading', { name: 'Find the email' })).toBeInTheDocument()
-    expect(screen.getByText('Choose who receives this pitch')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Find the email/ })).toBeInTheDocument()
+    expect(screen.getByText('Choose who receives this pitch. Each pitch goes to one address.')).toBeInTheDocument()
     // The free inbox is chosen by default, so the simple case is no clicks.
-    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('Use the free show inbox, the verified host email, or an email you found. Each pitch goes to one address.')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-checked', 'true')
     // A single Podscan address needs no picker.
     expect(screen.queryByRole('radiogroup', { name: 'Podscan addresses' })).not.toBeInTheDocument()
     expect(screen.getByText('Free · Podscan')).toBeInTheDocument()
-    expect(screen.getByText('One shared contact network')).toBeInTheDocument()
-    expect(screen.getByText(/An existing verified contact can be reused/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(/a contact found once is reused free/i)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Use verified host email' })).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByRole('radio', { name: 'Use an email you found' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByText('Provider billed')).toBeInTheDocument()
     const sendingTo = within(screen.getByRole('region', { name: 'Sending to' }))
     expect(within(sendingTo.getByLabelText('Pitch recipient')).getByText('hello@founderstories.fm')).toBeInTheDocument()
     expect(screen.getByText('Sending to hello@founderstories.fm.', { selector: 'footer p' })).toBeInTheDocument()
 
     // Opening the verified card spends nothing; only its own button searches.
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
     expect(runClientShortlistEmailSearch).not.toHaveBeenCalled()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Find verified email/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
     expect(screen.getByText(/Finding the host’s LinkedIn profile/)).toBeInTheDocument()
     expect(sendingTo.getByText('Verified host email: searching…')).toBeInTheDocument()
-    // The chosen address stays while it runs.
-    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
+    // The verified card is the choice now; the inbox is one click back.
+    expect(screen.getByRole('radio', { name: 'Use verified host email' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
     // An address found by hand: one only, format checked, and it replaces the inbox.
-    fireEvent.click(screen.getByRole('button', { name: 'Use an email you found' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use an email you found' }))
     const manualEmail = screen.getByLabelText('Email address')
     fireEvent.change(manualEmail, { target: { value: 'not-an-email' } })
     fireEvent.keyDown(manualEmail, { key: 'Enter' })
@@ -560,8 +566,8 @@ describe('WorkspaceClientPitch', () => {
     const added = within(screen.getByLabelText('Email you added'))
     expect(added.getByText('Unverified')).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Role for host@founderstories.fm' })).toHaveTextContent('Host')
-    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('radio', { name: 'Use an email you found' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-checked', 'false')
     expect(within(sendingTo.getByLabelText('Pitch recipient')).getByText('host@founderstories.fm')).toBeInTheDocument()
     expect(sendingTo.queryByText('hello@founderstories.fm')).not.toBeInTheDocument()
     await waitFor(() => expect(saveClientShortlistRecipients).toHaveBeenLastCalledWith(
@@ -605,7 +611,7 @@ describe('WorkspaceClientPitch', () => {
     expect(sequencePreview.getByText(/Continue when you’re ready to edit and save/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Podcast context' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Find the email/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use free podcast email' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Try waterfall enrichment' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
@@ -624,7 +630,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByLabelText('Follow-up 2 reply')).toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 1 subject')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Follow-up 2 subject')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Find the email' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Find the email/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this page/i)).toBeInTheDocument()
@@ -790,6 +796,7 @@ describe('WorkspaceClientPitch', () => {
   it('preserves instruction text when saving fails, then saves it on retry', async () => {
     vi.mocked(setClientSdrPrompt).mockRejectedValueOnce(new Error('Save unavailable')).mockResolvedValueOnce(undefined)
     await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
     fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
     const editor = within(screen.getByRole('dialog', { name: 'Research instructions' }))
     expect(editor.getByText(/Required-field switches save immediately for every client/)).toBeInTheDocument()
@@ -807,6 +814,7 @@ describe('WorkspaceClientPitch', () => {
 
   it('keeps unsaved research instructions open until saved or discarded', async () => {
     await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
     fireEvent.click(screen.getByRole('button', { name: /^Research instructions/ }))
     const editor = screen.getByRole('dialog', { name: 'Research instructions' })
     const advanced = within(editor).getByText('Advanced settings · model and system instruction').closest('details')
@@ -1068,12 +1076,12 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     expect(await screen.findByText('Already shared across the Database. No new lookup needed.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio', { name: 'Use verified host email' })).toHaveAttribute('aria-checked', 'true')
     // The verified address outranks the free inbox as the default recipient.
     const sendingTo = within(screen.getByRole('region', { name: 'Sending to' }))
     expect(sendingTo.getByText('direct@founderstories.fm')).toBeInTheDocument()
     expect(sendingTo.getByText('Verified')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Find verified email/ })).not.toBeInTheDocument()
     expect(runClientShortlistEmailSearch).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
   })
@@ -1120,13 +1128,13 @@ describe('WorkspaceClientPitch', () => {
 
     expect(await screen.findByText('Direct email search in progress')).toBeInTheDocument()
     // The search panel is open, but nothing it found is chosen yet.
-    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('radio', { name: 'Use verified host email' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByText(/Finding the host’s LinkedIn profile/)).toBeInTheDocument()
     expect(screen.getByText(/Looking up the work email with Blitz/)).toBeInTheDocument()
     expect(screen.getByText(/Saving the verified email/)).toBeInTheDocument()
-    expect(screen.getByText('Verified host email: searching…')).toBeInTheDocument()
     // The free inbox carries the pitch meanwhile; the paid search is not waited for.
-    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByRole('region', { name: 'Sending to' })).getByText('hello@founderstories.fm')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
     expect(vi.mocked(runClientShortlistEmailSearch)).not.toHaveBeenCalled()
   })
@@ -1146,7 +1154,7 @@ describe('WorkspaceClientPitch', () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: true, openai: false } })
     await renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
     expect(screen.getByText('We could not verify a direct host email for this show.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Try search again/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
@@ -1704,7 +1712,7 @@ describe('WorkspaceClientPitch', () => {
     // Choosing replaces: one address per pitch.
     expect(sendingTo.getByText('jamie@founderstories.fm')).toBeInTheDocument()
     expect(sendingTo.queryByText('producer@elsewhere.com')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('radio', { name: 'Use an email you found' })).toHaveAttribute('aria-checked', 'false')
     await waitFor(() => expect(saveClientShortlistRecipients).toHaveBeenLastCalledWith(
       workspaceId, clientId, podcastRowId,
       [expect.objectContaining({ email: 'jamie@founderstories.fm', sources: ['podscan'], role: 'to' })],
@@ -1722,9 +1730,12 @@ describe('WorkspaceClientPitch', () => {
     let finishSearch: (value: never) => void = () => undefined
     vi.mocked(runClientShortlistEmailSearch).mockImplementation(() => new Promise((resolve) => { finishSearch = resolve as never }))
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
-    fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Find verified email/ }))
     expect(screen.getByText('Verified host email: searching…')).toBeInTheDocument()
+    // Back to the inbox while the search keeps running.
+    fireEvent.click(screen.getByRole('radio', { name: 'Use free podcast inbox' }))
+    expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
 
     vi.mocked(getClientShortlist).mockResolvedValue({
       client: { id: clientId, name: 'Taylor Client' },
@@ -1776,13 +1787,13 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     expect(await screen.findByText('No public email found')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Step 2: Research & pitch locked until an email is ready' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Archive podcast' })).toBeInTheDocument()
-    expect(screen.getByText('Choose one address above.')).toBeInTheDocument()
+    expect(screen.getByText('No address selected yet.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use an email you found' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Use an email you found' }))
     const manualEmail = screen.getByLabelText('Email address')
     fireEvent.change(manualEmail, { target: { value: 'producer@example.com' } })
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()

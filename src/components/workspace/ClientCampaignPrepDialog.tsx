@@ -16,10 +16,8 @@ import {
   Copy,
   ExternalLink,
   FileSearch,
-  Globe,
   Loader2,
   Lightbulb,
-  Mail,
   Mic2,
   Radio,
   RefreshCw,
@@ -1312,7 +1310,8 @@ export function ClientCampaignPrep({
     const current = recipientTo(recipientsRef.current)
     if (current?.email === found) return
     const switchToFound = () => updateRecipients(chooseRecipient(recipientContext, found, 'verified'))
-    if (!current) {
+    // Nothing chosen and not mid-way through typing one: the result is the choice.
+    if (!current && !manualOpen) {
       switchToFound()
       return
     }
@@ -1608,20 +1607,6 @@ export function ClientCampaignPrep({
     },
   })
 
-  // On the page the footer is sticky too; the Sending to panel sits on top of
-  // it rather than under it, so it needs the footer's live height.
-  const pageRef = useRef<HTMLDivElement | null>(null)
-  const footerRef = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    const footerNode = footerRef.current
-    const pageNode = pageRef.current
-    if (!page || !footerNode || !pageNode || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      pageNode.style.setProperty('--pitch-footer-height', `${footerNode.offsetHeight}px`)
-    })
-    observer.observe(footerNode)
-    return () => observer.disconnect()
-  })
   const [detailsCopied, setDetailsCopied] = useState(false)
   // Clipboard access is absent in some embedded browsers and in jsdom. A copy
   // button that throws on click would take the alert down with it, so a
@@ -1941,59 +1926,43 @@ export function ClientCampaignPrep({
   const stepContent = podcast ? (
     <>
               {activeStep === 'email' && (
-                <div className={page ? undefined : 'mx-auto max-w-4xl p-5 sm:p-8'}>
-                  <section className="overflow-hidden rounded-2xl border bg-background shadow-sm">
-                    <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
-                      <div className="flex gap-3">
-                        <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">At least one valid address is required before research. Research can start while a paid search is still running.</p></div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-6 p-5 sm:p-6">
-                      <div>
-                        <div className="mb-5 flex gap-3 rounded-xl border border-sky-200 bg-sky-50/70 p-4 text-sky-950">
-                          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
-                          <div><p className="text-sm font-semibold">One shared contact network</p><p className="mt-1 text-xs leading-5 text-sky-900/80">Free Podscan inboxes and verified direct contacts are shared across the Database. An existing verified contact can be reused without another provider lookup.</p></div>
-                        </div>
-                        <p className="text-sm font-semibold">Choose who receives this pitch</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Use the free show inbox, the verified host email, or an email you found. Each pitch goes to one address.</p>
-                        <TooltipProvider>
-                          <div className="mt-4">
-                            <PitchRecipientCards
-                              recipient={recipients[0] ?? null}
-                              context={recipientContext}
-                              onChange={updateRecipients}
-                              verified={{
-                                email: emailAlreadyUnlocked ? unlockedEmail : null,
-                                stale: contactIsStale,
-                                running: emailSearchRunning,
-                                noResult: emailSearchHasNoResult,
-                                message: storedEmailUnlock?.message ?? null,
-                                linkedinUrl: storedEmailUnlock?.linkedin_url ?? null,
-                                steps: visibleEmailUnlockSteps,
-                              }}
-                              verifiedOpen={verifiedOpen}
-                              onVerifiedOpenChange={setVerifiedOpen}
-                              manualOpen={manualOpen}
-                              onManualOpenChange={setManualOpen}
-                              disabled={!relationshipCanProceed}
-                              canSearch={relationshipCanProceed && byoAi}
-                              byoAi={byoAi}
-                              onStartSearch={beginEmailSearchPreview}
-                            />
-                          </div>
-                          <PitchSendingToPanel
-                            className={page ? 'sticky bottom-[var(--pitch-footer-height,0px)] z-[5] mt-5' : 'sticky bottom-0 z-[5] mt-5'}
-                            recipient={recipients[0] ?? null}
-                            verifiedPlaceholder={verifiedOpen && !recipients[0]?.sources.includes('verified')
-                              ? emailSearchRunning ? 'searching' : emailSearchHasNoResult ? 'not_found' : null
-                              : null}
-                            disabled={!relationshipCanProceed}
-                            onRemove={() => updateRecipients([])}
-                          />
-                        </TooltipProvider>
-                      </div>
+                <div className={page ? undefined : 'mx-auto max-w-5xl p-5 sm:p-8'}>
+                  <section aria-labelledby="campaign-email-heading" className="rounded-2xl border bg-background p-5 shadow-sm sm:p-6">
+                    <h3 id="campaign-email-heading" className="text-lg font-semibold"><span className="text-muted-foreground">Step 1 · </span>Find the email</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Choose who receives this pitch. Each pitch goes to one address.</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Podscan inboxes and verified contacts are shared across the Database, so a contact found once is reused free.</p>
+                    <div className="mt-5 space-y-6">
+                      <TooltipProvider>
+                        <PitchRecipientCards
+                          recipient={recipients[0] ?? null}
+                          context={recipientContext}
+                          onChange={updateRecipients}
+                          verified={{
+                            email: emailAlreadyUnlocked ? unlockedEmail : null,
+                            stale: contactIsStale,
+                            running: emailSearchRunning,
+                            noResult: emailSearchHasNoResult,
+                            message: storedEmailUnlock?.message ?? null,
+                            linkedinUrl: storedEmailUnlock?.linkedin_url ?? null,
+                            steps: visibleEmailUnlockSteps,
+                          }}
+                          verifiedOpen={verifiedOpen}
+                          onVerifiedOpenChange={setVerifiedOpen}
+                          manualOpen={manualOpen}
+                          onManualOpenChange={setManualOpen}
+                          disabled={!relationshipCanProceed}
+                          canSearch={relationshipCanProceed && byoAi}
+                          byoAi={byoAi}
+                          onStartSearch={beginEmailSearchPreview}
+                        />
+                        <PitchSendingToPanel
+                          recipient={recipients[0] ?? null}
+                          verifiedPlaceholder={verifiedOpen && !manualOpen && !recipients[0]
+                            ? emailSearchRunning ? 'searching' : emailSearchHasNoResult ? 'not_found' : null
+                            : null}
+                          disabled={!relationshipCanProceed}
+                        />
+                      </TooltipProvider>
                       {!emailReady && !publicPodcastEmail && !emailSearchRunning && (
                         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
                           <div><p className="text-sm font-semibold">No usable email?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Archive this podcast instead of moving an incomplete contact into research.</p></div>
@@ -2419,7 +2388,8 @@ export function ClientCampaignPrep({
   ) : null
 
   // Keep configuration out of the comparison flow, while preserving client scope.
-  const promptSettings = podcast && canCustomizePrompts ? (
+  // Research configuration belongs with Research, not with choosing an address.
+  const promptSettings = podcast && canCustomizePrompts && activeStep === 'research' ? (
     <Dialog open={showPromptSettings} onOpenChange={(open) => { if (open !== showPromptSettings) togglePromptSettings() }}>
       <div className="flex justify-end">
         <DialogTrigger asChild>
@@ -2792,7 +2762,6 @@ export function ClientCampaignPrep({
 
   const footer = podcast && !locked && !stagedResult && !campaignQuery.isLoading ? (
           <footer
-            ref={footerRef}
             aria-label="Pitch actions"
             className={page
               ? 'sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 pb-5 pt-4 backdrop-blur sm:-mx-6 sm:px-6 sm:pb-6'
@@ -2905,7 +2874,7 @@ export function ClientCampaignPrep({
 
   if (page) {
     return (
-      <div className="space-y-6" ref={pageRef}>
+      <div className="space-y-6">
         <header>{headerContent}</header>
         {body}
         {confirmDialogs}
