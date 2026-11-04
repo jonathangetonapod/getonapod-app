@@ -3,6 +3,7 @@ import {
   OUTREACH_STAGE_LABELS,
   PLACEMENT_STATUS_LABELS,
   outreachStageLabel,
+  placementOverdueDays,
   placementStatusLabel,
 } from '@/lib/placementStatus'
 
@@ -32,5 +33,18 @@ describe('placementStatus', () => {
     expect(placementStatusLabel('shadow_banned')).toBe('shadow banned')
     expect(outreachStageLabel('replied')).toBe('Host replied')
     expect(outreachStageLabel('on_hold')).toBe('on hold')
+  })
+})
+
+describe('placementOverdueDays', () => {
+  const base = { scheduled_date: null, recording_date: null, publish_date: null, episode_url: null }
+  it('counts days past the recording date until the placement is recorded', () => {
+    expect(placementOverdueDays({ ...base, status: 'in_progress', scheduled_date: '2026-08-13' }, '2026-11-04')).toBe(83)
+    expect(placementOverdueDays({ ...base, status: 'booked', recording_date: '2026-11-10' }, '2026-11-04')).toBe(0)
+    expect(placementOverdueDays({ ...base, status: 'cancelled', scheduled_date: '2026-08-13' }, '2026-11-04')).toBe(0)
+  })
+  it('counts days past go-live for a recorded episode with no link', () => {
+    expect(placementOverdueDays({ ...base, status: 'recorded', publish_date: '2026-08-04' }, '2026-11-04')).toBe(92)
+    expect(placementOverdueDays({ ...base, status: 'recorded', publish_date: '2026-08-04', episode_url: 'https://x.example/ep' }, '2026-11-04')).toBe(0)
   })
 })

@@ -33,6 +33,8 @@ export interface PipelineAction {
   verb: string
   /** Only a true blocker is drawn red. */
   blocking: boolean
+  /** Days past the date this step was due; set only when it is late. */
+  overdueDays?: number
   target: ActionTarget
 }
 
@@ -71,10 +73,28 @@ export function possessive(name: string): string {
  * card. Host brief and onboarding gaps live on the Setup chip. Listing them
  * again here was how the page came to say the same thing four times.
  */
+/** Whole days from a YYYY-MM-DD (or ISO) date to today; positive when it is past. */
+export function daysPast(value: string | null | undefined, today: string): number {
+  if (!value) return 0
+  const due = Date.parse(`${value.slice(0, 10)}T00:00:00.000Z`)
+  const now = Date.parse(`${today.slice(0, 10)}T00:00:00.000Z`)
+  if (Number.isNaN(due) || Number.isNaN(now)) return 0
+  return Math.max(0, Math.round((now - due) / DAY_MS))
+}
+
+const daysLate = (days: number) => `${plural(days, 'day', 'days')} overdue`
+
+/*
+ * A date that has passed is not today's work as it was first described. A
+ * recording three months gone is not "prep not sent", it is a booking nobody
+ * closed out. Late rows say how late, ask for the fact that settles them, and
+ * sort ahead of the rest of their kind.
+ */
 export function clientActions(
   client: ClientPodcastSystemClient,
   items: ClientPodcastSystemItem[],
   baseHref: string,
+  today: string,
 ): PipelineAction[] {
   if (client.status !== 'active') return []
   const open = items.filter((item) => !item.terminal)
@@ -95,30 +115,42 @@ export function clientActions(
   const flagged = new Set(issues.map((item) => item.id))
   for (const item of open) {
     if (flagged.has(item.id) || item.stage !== 'recorded') continue
+    const publishDate = item.booking?.publish_date
+    const late = daysPast(publishDate, today)
     actions.push({
       id: `${client.id}:recorded:${item.id}`,
       kind: 'recorded',
       client,
       title: item.podcast.name,
-      detail: item.booking?.publish_date
-        ? `Recorded. Add the episode link once it is live on ${formattedDate(item.booking.publish_date)}.`
-        : 'Recorded. Confirm when the episode goes live.',
-      verb: item.booking?.publish_date ? 'Add episode link' : 'Confirm publish date',
+      detail: !publishDate
+        ? 'Recorded. Confirm when the episode goes live.'
+        : late > 0
+          ? `${daysLate(late)}. Was due to go live ${formattedDate(publishDate)}. Add the link or update the date.`
+          : `Recorded. Add the episode link once it is live on ${formattedDate(publishDate)}.`,
+      verb: publishDate ? 'Add episode link' : 'Confirm publish date',
       blocking: false,
+      ...(late > 0 ? { overdueDays: late } : {}),
       target: { kind: 'item', itemId: item.id },
     })
   }
   for (const item of open) {
-    if (flagged.has(item.id) || item.stage !== 'booked' || item.booking?.prep_sent) continue
+    if (flagged.has(item.id) || item.stage !== 'booked') continue
     const recording = item.booking?.recording_date || item.booking?.scheduled_date
+    const late = daysPast(recording, today)
+    // Once the date has passed, prep no longer matters: whether or not it was
+    // sent, the booking needs closing out as recorded, rescheduled or cancelled.
+    if (late === 0 && item.booking?.prep_sent) continue
     actions.push({
       id: `${client.id}:booked:${item.id}`,
       kind: 'booked',
       client,
       title: item.podcast.name,
-      detail: recording ? `Booked for ${formattedDate(recording)}. Prep is not marked sent.` : 'Booked. Prep is not marked sent.',
-      verb: 'Prep the client',
+      detail: late > 0
+        ? `${daysLate(late)}. Recording was set for ${formattedDate(recording)}. Mark it recorded, or reschedule.`
+        : recording ? `Booked for ${formattedDate(recording)}. Prep is not marked sent.` : 'Booked. Prep is not marked sent.',
+      verb: late > 0 ? 'Update booking' : 'Prep the client',
       blocking: false,
+      ...(late > 0 ? { overdueDays: late } : {}),
       target: { kind: 'item', itemId: item.id },
     })
   }
@@ -170,7 +202,7 @@ export function buildClientRollup(
 ): ClientRollup {
   const items = allItems.filter((item) => item.client.id === client.id)
   const open = items.filter((item) => !item.terminal)
-  const actions = clientActions(client, items, baseHref)
+  const actions = clientActions(client, items, baseHref, today)
   return {
     client,
     items,
@@ -234,7 +266,9 @@ export function actionQueue(rollups: ClientRollup[]): PipelineAction[] {
     .flatMap((rollup) => rollup.actions)
     .sort((left, right) => (
       KIND_RANK[left.kind] - KIND_RANK[right.kind]
-      // Within a kind, the client left longest goes first.
+      // Within a kind, the latest overdue row first, then the rest.
+      || (right.overdueDays ?? 0) - (left.overdueDays ?? 0)
+      // Then the client left longest goes first.
       || (lastActivity.get(left.client.id) || '').localeCompare(lastActivity.get(right.client.id) || '')
       || left.client.name.localeCompare(right.client.name)
       || left.title.localeCompare(right.title)

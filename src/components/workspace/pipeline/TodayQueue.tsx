@@ -92,7 +92,10 @@ export const TodayQueue = ({
             </div>
             <ActionButton action={action} baseHref={baseHref} onOpenItem={onOpenItem} className="sm:order-last sm:w-44" />
             <div className="col-span-2 min-w-0 text-sm sm:flex-1">
-              <p className="truncate font-medium">{action.title}</p>
+              <p className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{action.title}</span>
+                {action.overdueDays ? <span className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Overdue</span> : null}
+              </p>
               <p className="truncate text-xs text-muted-foreground">{action.detail}</p>
             </div>
           </li>

@@ -58,6 +58,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
 import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
 import { useAuth } from '@/contexts/AuthContext'
+import { placementOverdueDays } from '@/lib/placementStatus'
+import { formatLocalDateKey } from '@/lib/localDate'
 import {
   getClientFunnel,
   getClientNextStep,
@@ -441,6 +443,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     : null
   // A linked page that is inactive or unpublished opens as "Dashboard not
   // found", so it is shown as linked but never offered as a link.
+  const todayKey = formatLocalDateKey(new Date())
   const prospectPageOffline = Boolean(client.prospect_dashboard_slug) && detail.prospect_page_live === false
   const prospectDashboardHref = client.prospect_dashboard_slug && !prospectPageOffline
     ? `/prospect/${encodeURIComponent(client.prospect_dashboard_slug)}`
@@ -947,12 +950,13 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                         const podcastUrl = booking.podcast_url ? safeExternalUrl(booking.podcast_url) : null
                         const episodeUrl = booking.episode_url ? safeExternalUrl(booking.episode_url) : null
                         const opportunity = opportunityForBooking(booking)
+                        const overdueDays = placementOverdueDays(booking, todayKey)
                         return (
                           <TableRow key={booking.id}>
                             <TableCell><div className="font-medium">{podcastUrl ? <a href={podcastUrl} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">{booking.podcast_name}</a> : booking.podcast_name}</div>{booking.notes && <p className="mt-1 max-w-md truncate text-xs text-muted-foreground">{booking.notes}</p>}</TableCell>
                             <TableCell>{booking.host_name || '—'}</TableCell>
                             <TableCell>{formatDate(scheduledDate(booking))}</TableCell>
-                            <TableCell><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge></TableCell>
+                            <TableCell><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={bookingStatusStyles[booking.status]}>{labelForStatus(booking.status)}</Badge>{overdueDays > 0 && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900" title={`${overdueDays} ${overdueDays === 1 ? 'day' : 'days'} past its date. Update the status or the date.`}>Overdue</Badge>}</div></TableCell>
                             <TableCell>{episodeUrl ? <a href={episodeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Listen<ExternalLink className="h-3.5 w-3.5" /></a> : '—'}</TableCell>
                             <TableCell className="whitespace-nowrap text-right">
                               {opportunity && <Button variant="ghost" size="sm" onClick={() => setOpportunityItem(opportunity)}>Details<span className="sr-only"> for {booking.podcast_name}</span></Button>}

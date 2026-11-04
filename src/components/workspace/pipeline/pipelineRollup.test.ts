@@ -140,3 +140,40 @@ describe('setupItems', () => {
     expect(setupItems(client, false, false).find((item) => item.key === 'onboarding')?.done).toBeNull()
   })
 })
+
+describe('overdue placements', () => {
+  const dallas = client('Dallas')
+  const booking = (fields: Partial<NonNullable<ClientPodcastSystemItem['booking']>>) => fields as ClientPodcastSystemItem['booking']
+
+  it('turns a recording date long past into an overdue close-out, prepped or not', () => {
+    const rollup = rollupFor(dallas, [
+      item('Dallas', 'aug', { stage: 'booked', booking: booking({ prep_sent: false, recording_date: '2026-08-13' }) }),
+      item('Dallas', 'aug-prepped', { stage: 'booked', booking: booking({ prep_sent: true, recording_date: '2026-08-20' }) }),
+      item('Dallas', 'soon', { stage: 'booked', booking: booking({ prep_sent: false, recording_date: '2026-10-30' }) }),
+    ])
+    const booked = rollup.actions.filter((action) => action.kind === 'booked')
+    expect(booked.map((action) => [action.title, action.overdueDays ?? 0, action.verb])).toEqual([
+      ['Show aug', 71, 'Update booking'],
+      ['Show aug-prepped', 64, 'Update booking'],
+      ['Show soon', 0, 'Prep the client'],
+    ])
+    expect(booked[0].detail).toBe('71 days overdue. Recording was set for Aug 13, 2026. Mark it recorded, or reschedule.')
+  })
+
+  it('flags an episode past its go-live date without a link', () => {
+    const rollup = rollupFor(dallas, [
+      item('Dallas', 'live', { stage: 'recorded', booking: booking({ publish_date: '2026-08-04' }) }),
+    ])
+    expect(rollup.actions[0]).toMatchObject({ overdueDays: 80, verb: 'Add episode link' })
+    expect(rollup.actions[0].detail).toMatch(/^80 days overdue\. Was due to go live Aug 4, 2026\./)
+  })
+
+  it('puts the latest overdue row first within its kind', () => {
+    const queue = actionQueue([rollupFor(dallas, [
+      item('Dallas', 'soon', { stage: 'booked', booking: booking({ prep_sent: false, recording_date: '2026-10-30' }) }),
+      item('Dallas', 'aug', { stage: 'booked', booking: booking({ prep_sent: false, recording_date: '2026-08-13' }) }),
+    ])])
+    expect(queue.map((action) => action.title)).toEqual(['Show aug', 'Show soon'])
+  })
+})
+
