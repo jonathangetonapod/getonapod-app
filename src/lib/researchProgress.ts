@@ -56,3 +56,52 @@ export function isResearchRunStale(
   if (Number.isNaN(writtenAt)) return false
   return nowMs - writtenAt > RESEARCH_UI_STALE_AFTER_MS
 }
+
+/** Client columns a research stage can be blocked on, and that the operator can fill in place. */
+export type ClientResearchField = 'bio' | 'linkedin_url' | 'website'
+
+/** Prompt-variable ids (from the server's field registry) mapped to the client column behind each. */
+const CLIENT_RESEARCH_FIELDS: Record<string, ClientResearchField> = {
+  client_bio: 'bio',
+  client_linkedin_url: 'linkedin_url',
+  client_website: 'website',
+}
+
+export const CLIENT_RESEARCH_FIELD_LABELS: Record<ClientResearchField, string> = {
+  bio: 'Client bio and positioning',
+  linkedin_url: 'Client LinkedIn',
+  website: 'Client website',
+}
+
+export interface BlockedResearchRecord {
+  status?: string | null
+  missing_fields?: unknown
+}
+
+/**
+ * The client fields a blocked run is waiting on. Empty when the run is not
+ * blocked, or is blocked only on fields that are not client profile columns.
+ */
+export function blockedClientFields(progress: BlockedResearchRecord | null | undefined): ClientResearchField[] {
+  if (progress?.status !== 'blocked' || !Array.isArray(progress.missing_fields)) return []
+  const fields = progress.missing_fields
+    .map((id) => (typeof id === 'string' ? CLIENT_RESEARCH_FIELDS[id] : undefined))
+    .filter((field): field is ClientResearchField => Boolean(field))
+  return (['bio', 'linkedin_url', 'website'] as const).filter((field) => fields.includes(field))
+}
+
+const CLIENT_RESEARCH_FIELD_NAMES: Record<ClientResearchField, string> = {
+  bio: 'bio',
+  linkedin_url: 'LinkedIn URL',
+  website: 'website',
+}
+
+/** "bio", "bio and website", "bio, LinkedIn URL and website" — for use mid-sentence. */
+export function describeClientFields(fields: readonly ClientResearchField[]): string {
+  const names = fields.map((field) => CLIENT_RESEARCH_FIELD_NAMES[field])
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+/** Shared by the batch panel's pre-start check and the client info form, so a save refreshes both. */
+export const clientResearchInfoQueryKey = (workspaceId: string, clientId: string) =>
+  ['client-research-info', workspaceId, clientId] as const

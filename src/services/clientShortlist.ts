@@ -6,7 +6,7 @@ import type { HostRelationshipManualStage } from '@/services/hostRelationships'
 export type ClientShortlistVisibility = 'visible' | 'archived'
 export type ClientShortlistFeedbackStatus = 'approved' | 'rejected' | null
 export type ClientShortlistResearchStageId = 'podcast_profile' | 'host_profile' | 'recent_episodes' | 'guest_patterns' | 'guest_fit' | 'pitch_angles'
-export type ClientShortlistResearchStatus = 'queued' | 'running' | 'completed' | 'failed'
+export type ClientShortlistResearchStatus = 'queued' | 'running' | 'completed' | 'failed' | 'blocked'
 export type ClientShortlistEmailUnlockStageId = 'identify_contact' | 'find_email' | 'verify_email'
 export type ClientShortlistEmailUnlockStatus = 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
 
@@ -17,6 +17,9 @@ export interface ClientShortlistResearchProgress {
   message?: string | null
   started_at?: string | null
   updated_at?: string | null
+  /** Set when status is 'blocked': the stage that stopped, and the field ids it lacked. */
+  blocked_stage?: string | null
+  missing_fields?: string[] | null
 }
 
 export interface ClientShortlistEmailUnlock {

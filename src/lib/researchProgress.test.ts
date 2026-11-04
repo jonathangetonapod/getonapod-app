@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  blockedClientFields,
+  describeClientFields,
   isResearchRunStale,
   RESEARCH_LOCK_STALE_AFTER_MS,
   RESEARCH_UI_STALE_AFTER_MS,
@@ -65,5 +67,20 @@ describe('isResearchRunStale', () => {
   // That is the opposite of stale and must never read as elapsed time.
   it('treats a timestamp from the future as fresh', () => {
     expect(isResearchRunStale({ status: 'running', updated_at: agoMs(-60_000) }, NOW)).toBe(false)
+  })
+})
+
+describe('blockedClientFields', () => {
+  it('maps the missing prompt fields of a blocked run to client columns, in form order', () => {
+    expect(blockedClientFields({ status: 'blocked', missing_fields: ['client_website', 'episode_transcript', 'client_bio'] }))
+      .toEqual(['bio', 'website'])
+  })
+  it('is empty for a run that is not blocked', () => {
+    expect(blockedClientFields({ status: 'failed', missing_fields: ['client_bio'] })).toEqual([])
+    expect(blockedClientFields(null)).toEqual([])
+  })
+  it('names fields for a sentence', () => {
+    expect(describeClientFields(['bio'])).toBe('bio')
+    expect(describeClientFields(['bio', 'linkedin_url', 'website'])).toBe('bio, LinkedIn URL and website')
   })
 })

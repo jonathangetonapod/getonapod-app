@@ -4,9 +4,17 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { ShortlistResearchBatch } from './ShortlistResearchBatch'
 const invoke = vi.hoisted(()=>vi.fn())
 vi.mock('@/lib/supabase',()=>({supabase:{functions:{invoke}}}))
-vi.mock('sonner',()=>({toast:{error:vi.fn()}}))
+vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn()}}))
+const clients = vi.hoisted(()=>({getWorkspaceClientDetail:vi.fn(),updateWorkspaceClient:vi.fn(),updateWorkspaceClientProfile:vi.fn()}))
+vi.mock('@/services/clients',()=>clients)
+const clientRecord = (overrides:Record<string,unknown> = {})=>({can_manage:true,client:{id:'client',workspace_id:'workspace',name:'Taylor',email:'t@example.com',contact_person:'',linkedin_url:'',website:'',status:'active',notes:'keep me',bio:'',updated_at:'2026-11-04T00:00:00.000Z',...overrides}})
 function mount(client = new QueryClient({defaultOptions:{queries:{retry:false}}})){return render(<QueryClientProvider client={client}><ShortlistResearchBatch workspaceId="workspace" clientId="client" selectedIds={['row-one','row-two']}/></QueryClientProvider>)}
-beforeEach(()=>{invoke.mockReset();invoke.mockResolvedValue({data:{jobs:[]},error:null})})
+beforeEach(()=>{
+ invoke.mockReset();invoke.mockResolvedValue({data:{jobs:[]},error:null})
+ clients.getWorkspaceClientDetail.mockReset().mockResolvedValue(clientRecord({bio:'Founder',linkedin_url:'https://linkedin.com/in/t',website:'https://t.com'}))
+ clients.updateWorkspaceClient.mockReset().mockResolvedValue({})
+ clients.updateWorkspaceClientProfile.mockReset().mockResolvedValue({})
+})
 it('only queues the selected shortlist row ids after reviewing the batch',async()=>{
  mount()
  fireEvent.click(screen.getByRole('button',{name:'Run research on 2 selected'}))
@@ -54,4 +62,43 @@ it('shows saved research while a show waits between stages',async()=>{
  expect(await screen.findByText('2/6 research steps saved · Waiting for host identification')).toBeInTheDocument()
  expect(screen.getByRole('progressbar',{name:'Batch progress'})).toHaveAttribute('value',String(2/9))
  expect(screen.getByRole('progressbar',{name:'Research progress for Show in progress'})).toHaveAttribute('value','2')
+})
+
+const blockedJob=(id:string,name:string)=>({id,batch_id:'batch',podcast_name:name,status:'failed',phase:'research',
+ message:'This podcast is missing Client bio and positioning (client_bio) and Client website (client_website), which the podcast_research stage is set to require. Nothing was generated and no credit was spent.',
+ research_progress:{status:'blocked',completed_stages:[],current_stage:null,missing_fields:['client_bio','client_website']}})
+
+it('groups podcasts blocked on client info into one fix that saves the fields and retries them all',async()=>{
+ clients.getWorkspaceClientDetail.mockResolvedValue(clientRecord())
+ invoke.mockResolvedValue({data:{jobs:[blockedJob('one','One'),blockedJob('two','Two')]},error:null})
+ mount()
+ expect(await screen.findByText('2 podcasts are waiting on client info')).toBeInTheDocument()
+ expect(screen.getAllByText(/waiting on the client’s bio and website/)).toHaveLength(2)
+ expect(screen.queryByText(/client_bio/)).not.toBeInTheDocument()
+ const save=await screen.findByRole('button',{name:'Save and retry 2 podcasts'})
+ expect(save).toBeDisabled()
+ fireEvent.change(screen.getByLabelText('Client bio and positioning'),{target:{value:'Operator and author'}})
+ fireEvent.change(screen.getByLabelText('Client website'),{target:{value:'https://taylor.example'}})
+ expect(screen.queryByLabelText('Client LinkedIn')).not.toBeInTheDocument()
+ fireEvent.click(save)
+ await waitFor(()=>expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-retry',workspace_id:'workspace',client_id:'client',job_id:'two'}}))
+ expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-retry',workspace_id:'workspace',client_id:'client',job_id:'one'}})
+ expect(clients.updateWorkspaceClientProfile).toHaveBeenCalledWith('workspace','client','Operator and author','2026-11-04T00:00:00.000Z')
+ // The core update keeps every other field as the server last had it.
+ expect(clients.updateWorkspaceClient).toHaveBeenCalledWith('workspace','client',expect.objectContaining({website:'https://taylor.example',notes:'keep me',name:'Taylor'}))
+})
+
+it('retries every failed job at once',async()=>{
+ invoke.mockResolvedValue({data:{jobs:[{id:'one',batch_id:'batch',podcast_name:'One',status:'failed',phase:'research',message:'Timeout'},{id:'two',batch_id:'batch',podcast_name:'Two',status:'failed',phase:'research',message:'Timeout'}]},error:null})
+ mount()
+ fireEvent.click(await screen.findByRole('button',{name:'Retry all 2'}))
+ await waitFor(()=>expect(invoke.mock.calls.filter(call=>call[1].body.action==='research-batch-retry')).toHaveLength(2))
+})
+
+it('warns before a batch starts when the client has no bio, LinkedIn or website',async()=>{
+ clients.getWorkspaceClientDetail.mockResolvedValue(clientRecord({website:'https://t.com'}))
+ mount()
+ fireEvent.click(screen.getByRole('button',{name:'Run research on 2 selected'}))
+ expect(await screen.findByText('This client has no bio and LinkedIn URL yet.')).toBeInTheDocument()
+ expect(screen.getByRole('button',{name:'Start batch'})).toBeEnabled()
 })

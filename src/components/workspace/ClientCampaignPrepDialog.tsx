@@ -95,7 +95,8 @@ import { PromptVariableTextarea } from './PromptVariableTextarea'
 import { PromptFieldPreview } from './PromptFieldPreview'
 import { PROMPT_VARIABLES } from '@/lib/promptVariables'
 import { unavailableVariableIds } from '@/lib/promptVariableMenu'
-import { isResearchRunStale } from '@/lib/researchProgress'
+import { blockedClientFields, describeClientFields, isResearchRunStale } from '@/lib/researchProgress'
+import { ClientResearchInfoForm } from '@/components/workspace/ClientResearchInfoForm'
 import {
   RESEARCH_PROMPT_DEFAULTS,
   RESEARCH_PROMPT_DEFAULTS_BY_ID,
@@ -822,6 +823,10 @@ export function ClientCampaignPrep({
     && researchProgress?.status === 'completed'
   const researchFailed = !researchRegenerating
     && (researchProgress?.status === 'failed' || researchStale)
+  // Stopped before a stage because a field that stage requires is empty. No
+  // credit is spent; filling the field in and running again picks the run up.
+  const researchBlocked = !researchRegenerating && researchProgress?.status === 'blocked'
+  const researchBlockedFields = researchBlocked ? blockedClientFields(researchProgress) : []
   const selectedPitchMeta = podcast?.id ? aiPitches[pitchKey(podcast.id, selectedAngleIndex)] : undefined
   // Style checks rerun on the copy actually in the editor, so an operator's
   // own edits are held to the same standard as the generated draft.
@@ -850,6 +855,8 @@ export function ClientCampaignPrep({
     ? `${activeResearchStep.title} · ${completedResearchStepCount} of ${researchProgressSteps.length} prompts complete`
     : researchComplete
     ? 'Research complete'
+    : researchBlocked
+      ? researchBlockedFields.length > 0 ? 'Research needs client info' : 'Research needs more information'
     : researchStale
       ? `Research stopped · ${completedResearchStepCount} of ${researchProgressSteps.length} steps complete`
     : researchFailed
@@ -863,6 +870,10 @@ export function ClientCampaignPrep({
     ? `Running your saved workspace prompts against live podcast data. ${activeResearchStep.detail}.`
     : researchComplete
     ? 'Saved to this podcast. Choose a direction below, then review the emails.'
+    : researchBlocked
+      ? researchBlockedFields.length > 0
+        ? `${clientName}’s profile is missing ${describeClientFields(researchBlockedFields)}, which your research prompts require. Fill them in below and research continues. Nothing was charged.`
+        : researchProgress?.message || 'A field this research stage requires is empty. Nothing was charged.'
     : researchStale
       ? `This run stopped before it finished${failedResearchStep ? ` at ${failedResearchStep.title.toLowerCase()}` : ''} and is no longer going. Everything completed before that is saved — run research again to pick it up.`
     : researchFailed
@@ -1866,9 +1877,9 @@ export function ClientCampaignPrep({
                               <p className="mt-1 truncate text-sm font-medium">{publicPodcastEmail || 'No public email found'}</p>
                               {publicPodcastEmails.length > 1 && <p className="mt-0.5 text-[11px] text-muted-foreground">Podscan lists {publicPodcastEmails.length} addresses. Choose one below.</p>}
                             </div>
-                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-muted-foreground">
+                            <div className={`mt-auto flex items-center gap-2 pt-4 text-xs font-medium ${emailRoute === 'podcast' && publicPodcastEmail ? 'text-primary' : 'text-muted-foreground'}`}>
                               {emailRoute === 'podcast' && publicPodcastEmail ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <span className="h-4 w-4 rounded-full border" />}
-                              {publicPodcastEmail ? (emailRoute === 'podcast' ? 'Selected' : 'Use this email') : 'Unavailable for this show'}
+                              {publicPodcastEmail ? (emailRoute === 'podcast' ? 'Research will use this inbox' : 'Use this email') : 'Unavailable for this show'}
                             </div>
                           </button>
                           {publicPodcastEmails.length > 1 && (
@@ -1892,23 +1903,72 @@ export function ClientCampaignPrep({
                           )}
                           </div>
 
-                          <button
-                            type="button"
-                            aria-label="Try waterfall enrichment"
-                            aria-pressed={emailRoute === 'waterfall'}
-                            className={`relative flex min-h-64 flex-col rounded-2xl border p-5 text-left transition-all ${emailRoute === 'waterfall' ? 'border-violet-500 bg-violet-50/50 shadow-sm ring-1 ring-violet-200' : 'bg-background hover:border-violet-300 hover:bg-violet-50/20'}`}
-                            onClick={() => {
-                              setEmailRoute('waterfall')
-                              setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">Provider billed</Badge></div>
-                            <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
-                            <p className="mt-2 text-xs leading-5 text-muted-foreground">Your selected AI provider searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
-                            <p className="mt-3 text-xs leading-5 text-violet-800">Uses your selected Claude or OpenAI key. Your AI provider bills usage to your account.</p>
-                            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-violet-800"><span>Find LinkedIn profile</span><span>→</span><span>Get verified work email</span></div>
-                            <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800">{emailRoute === 'waterfall' ? <CheckCircle2 className="h-4 w-4" /> : <span className="h-4 w-4 rounded-full border" />}{emailAlreadyUnlocked ? 'Use shared contact' : emailRoute === 'waterfall' ? 'Selected' : 'Use AI contact search'}</div>
-                          </button>
+                          <div className={`flex min-h-64 flex-col rounded-2xl border transition-all ${emailRoute === 'waterfall' ? 'border-violet-500 bg-violet-50/50 shadow-sm ring-1 ring-violet-200' : 'bg-background hover:border-violet-300 hover:bg-violet-50/20'}`}>
+                            <button
+                              type="button"
+                              aria-label="Try waterfall enrichment"
+                              aria-pressed={emailRoute === 'waterfall'}
+                              className="flex flex-1 flex-col rounded-2xl p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                              onClick={() => {
+                                setEmailRoute('waterfall')
+                                setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">Provider billed</Badge></div>
+                              <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
+                              <p className="mt-2 text-xs leading-5 text-muted-foreground">Your selected AI provider searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
+                              <p className="mt-3 text-xs leading-5 text-violet-800">Uses your selected Claude or OpenAI key. Your AI provider bills usage to your account.</p>
+                              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-violet-800"><span>Find LinkedIn profile</span><span>→</span><span>Get verified work email</span></div>
+                              {emailRoute !== 'waterfall' && (
+                                <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800"><span className="h-4 w-4 rounded-full border" />{emailAlreadyUnlocked ? 'Use shared contact' : 'Use AI contact search'}</div>
+                              )}
+                            </button>
+
+                            {emailRoute === 'waterfall' && (
+                              <div aria-label="Waterfall enrichment plan" className="border-t border-violet-200 px-5 pb-5 pt-4">
+                                {emailAlreadyUnlocked ? (
+                                  <div className={`rounded-xl border p-3 ${contactIsStale ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                                    <p className={`flex items-center gap-2 text-sm font-semibold ${contactIsStale ? 'text-amber-950' : 'text-emerald-950'}`}>{contactIsStale ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}Shared verified contact</p>
+                                    <p className="mt-2 break-all rounded-lg border bg-background px-3 py-2 font-mono text-sm">{unlockedEmail}</p>
+                                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p>
+                                    <p className="mt-1 text-xs font-medium text-foreground">Research will use this address.</p>
+                                  </div>
+                                ) : emailSearchRunning ? (
+                                  <div role="status">
+                                    <p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin text-violet-700" />Direct email search in progress</p>
+                                    <ol className="mt-3 space-y-2">
+                                      {visibleEmailUnlockSteps.map((step) => (
+                                        <li key={step.id} className={`flex items-center gap-2 text-xs ${step.status === 'queued' ? 'text-muted-foreground' : 'font-medium'}`}>
+                                          {step.status === 'complete'
+                                            ? <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-600" />
+                                            : step.status === 'active'
+                                              ? <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-violet-700" />
+                                              : <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full border" />}
+                                          {step.title}
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                ) : emailSearchHasNoResult ? (
+                                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                    <p className="flex items-center gap-2 text-sm font-semibold text-amber-950"><AlertTriangle className="h-4 w-4 shrink-0" />No verified work email found</p>
+                                    <p className="mt-1 text-xs leading-5 text-amber-900/80">{storedEmailUnlock?.message || 'Try again, use the free inbox, or enter an email manually.'}</p>
+                                  </div>
+                                ) : (
+                                  <div><p className="text-sm font-semibold">Your AI account + contact enrichment</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Start the search below. When a verified work email is found it appears here and research uses it.</p></div>
+                                )}
+                                {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && (
+                                  <p className="mt-3 text-xs text-muted-foreground">LinkedIn profile: <a className="break-all text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a></p>
+                                )}
+                                {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
+                                  <div className="mt-4 space-y-2">
+                                    <Button type="button" className="w-full bg-violet-700 hover:bg-violet-800" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-4 w-4" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your AI account</span></Button>
+                                    <p className="text-xs text-muted-foreground">{byoAi ? 'Uses your selected AI key and platform-managed contact enrichment. AI provider charges apply.' : 'Connect your Claude or OpenAI key in Billing to start.'}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <button
@@ -1946,22 +2006,6 @@ export function ClientCampaignPrep({
                         )}
                       </div>
 
-                      {emailRoute === 'waterfall' && (
-                        <div aria-label="Waterfall enrichment plan" className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
-                          {emailAlreadyUnlocked ? (
-                            <div><p className="text-sm font-semibold">Shared verified contact</p><p className="mt-1 text-xs text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p></div>
-                          ) : emailSearchRunning ? (
-                            <div role="status"><p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" />Direct email search in progress</p><div className="mt-3 space-y-2">{visibleEmailUnlockSteps.map((step) => <p key={step.id} className="text-xs">{step.status === 'complete' ? '✓ ' : step.status === 'active' ? '→ ' : ''}{step.title}</p>)}</div></div>
-                          ) : (
-                            <div><p className="text-sm font-semibold">Your AI account + contact enrichment</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{emailSearchHasNoResult ? storedEmailUnlock?.message || 'No verified work email found. Try again or enter an email manually.' : 'Your selected AI provider finds the host’s LinkedIn profile using live web search. Blitz returns a verified work email when available.'}</p></div>
-                          )}
-                          {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && <a className="mt-3 block break-all text-sm text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a>}
-                          {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
-                            <div className="mt-4 space-y-2"><Button type="button" size="sm" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-3.5 w-3.5" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your AI account</span></Button><p className="text-xs text-muted-foreground">{byoAi ? 'Uses your selected AI key and platform-managed contact enrichment. AI provider charges apply.' : 'Connect your Claude or OpenAI key in Billing to start.'}</p></div>
-                          )}
-                        </div>
-                      )}
-
                       {!emailReady && !publicPodcastEmail && !emailSearchRunning && (
                         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
                           <div><p className="text-sm font-semibold">No usable email?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Archive this podcast instead of moving an incomplete contact into research.</p></div>
@@ -1996,22 +2040,23 @@ export function ClientCampaignPrep({
                         onRefresh={canManageCampaigns && podcast?.podcast_id ? () => refreshEpisodesMutation.mutate() : undefined}
                         refreshing={refreshEpisodesMutation.isPending}
                       />
-                      <div className={`mt-5 overflow-hidden rounded-xl border ${researchComplete ? 'border-emerald-200 bg-emerald-50/70' : researchFailed ? 'border-destructive/25 bg-destructive/5' : 'border-sky-200 bg-sky-50/70'}`}>
+                      <div className={`mt-5 overflow-hidden rounded-xl border ${researchComplete ? 'border-emerald-200 bg-emerald-50/70' : researchBlocked ? 'border-amber-200 bg-amber-50/70' : researchFailed ? 'border-destructive/25 bg-destructive/5' : 'border-sky-200 bg-sky-50/70'}`}>
                         <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex gap-3">
                             {researchComplete && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />}
                             {researchWorking && <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-700" />}
                             {researchFailed && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />}
+                            {researchBlocked && <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />}
                             <div aria-live="polite">
-                              <p className={`text-sm font-semibold ${researchComplete ? 'text-emerald-950' : researchFailed ? 'text-destructive' : 'text-sky-950'}`}>{researchStatusTitle}</p>
-                              <p className={`mt-1 text-xs leading-5 ${researchComplete ? 'text-emerald-900/75' : researchFailed ? 'text-destructive/80' : 'text-sky-900/75'}`}>{researchStatusDetail}</p>
+                              <p className={`text-sm font-semibold ${researchComplete ? 'text-emerald-950' : researchBlocked ? 'text-amber-950' : researchFailed ? 'text-destructive' : 'text-sky-950'}`}>{researchStatusTitle}</p>
+                              <p className={`mt-1 text-xs leading-5 ${researchComplete ? 'text-emerald-900/75' : researchBlocked ? 'text-amber-900/80' : researchFailed ? 'text-destructive/80' : 'text-sky-900/75'}`}>{researchStatusDetail}</p>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                            <p className={`hidden text-xs font-medium lg:block ${researchComplete ? 'text-emerald-800' : researchFailed ? 'text-destructive' : 'text-sky-800'}`}>
+                            <p className={`hidden text-xs font-medium lg:block ${researchComplete ? 'text-emerald-800' : researchBlocked ? 'text-amber-800' : researchFailed ? 'text-destructive' : 'text-sky-800'}`}>
                               {researchComplete
                                 ? podcast.ai_analyzed_at ? `Last researched ${formatPodcastDate(podcast.ai_analyzed_at)}` : 'Saved to your workspace'
-                                : researchFailed ? 'Completed work saved' : researchRegenerating ? 'Running prompts in order' : 'Working in the background'}
+                                : researchBlocked ? 'Waiting on client info' : researchFailed ? 'Completed work saved' : researchRegenerating ? 'Running prompts in order' : 'Working in the background'}
                             </p>
                             {canManageCampaigns && (
                               <Button
@@ -2028,7 +2073,7 @@ export function ClientCampaignPrep({
                                   ? 'Regenerating'
                                   : researchWorking
                                     ? 'Research running'
-                                    : researchProgress ? 'Regenerate' : 'Run research'}
+                                    : researchProgress && !researchBlocked ? 'Regenerate' : 'Run research'}
                                 {!researchRegenerating && !researchWorking && (
                                   <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('research_run', { byo: byoAi })}</span>
                                 )}
@@ -2050,6 +2095,18 @@ export function ClientCampaignPrep({
                             )}
                           </div>
                         </div>
+
+                        {researchBlockedFields.length > 0 && (
+                          <div aria-label="Missing client info" className="border-t border-amber-200 bg-background/80 p-4">
+                            <ClientResearchInfoForm
+                              workspaceId={workspaceId}
+                              clientId={clientId}
+                              fields={researchBlockedFields}
+                              saveLabel={canManageCampaigns ? 'Save and run research' : 'Save client info'}
+                              onSaved={canManageCampaigns ? beginResearchRegeneration : undefined}
+                            />
+                          </div>
+                        )}
 
                         {researchStepsExpanded && (
                           <div id="campaign-research-progress-steps" className="border-t bg-background/80">

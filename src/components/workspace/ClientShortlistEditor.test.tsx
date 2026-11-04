@@ -696,6 +696,24 @@ describe('ClientShortlistEditor', () => {
     expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Research complete')
   })
 
+  it('says a run stopped on missing client info needs client info, not that it is running', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        research_progress: {
+          status: 'blocked',
+          current_stage: null,
+          completed_stages: [],
+          started_at: '2026-11-04T12:00:00.000Z',
+          updated_at: '2026-11-04T12:00:01.000Z',
+          missing_fields: ['client_bio'],
+        },
+      })],
+    })
+    renderEditor()
+    expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Needs client info')
+  })
+
   it('still offers to write when nothing has been sent', async () => {
     renderEditor()
 

@@ -644,6 +644,7 @@ export function ClientShortlistEditor({
                     {podcast.research_progress && (
                       <Badge variant="outline" aria-label={`Research status for ${podcast.podcast_name}`}>
                         {isResearchRunStale(podcast.research_progress) ? 'Research needs attention'
+                          : podcast.research_progress.status === 'blocked' ? 'Needs client info'
                           : podcast.research_progress.status === 'completed' ? 'Research complete'
                             : podcast.research_progress.status === 'failed' ? 'Research failed'
                               : podcast.research_progress.status === 'queued' ? 'Research queued' : 'Research running'}

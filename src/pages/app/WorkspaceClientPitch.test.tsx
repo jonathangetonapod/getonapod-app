@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceClientPitch from '@/pages/app/WorkspaceClientPitch'
 import { useAuth } from '@/contexts/AuthContext'
 import { PROMPT_VARIABLES } from '@/lib/promptVariables'
-import { getWorkspaceClientDetail, getWorkspaceClients, type WorkspaceClientDetail as WorkspaceClientDetailData } from '@/services/clients'
+import { getWorkspaceClientDetail, getWorkspaceClients, updateWorkspaceClient, type WorkspaceClientDetail as WorkspaceClientDetailData } from '@/services/clients'
 import {
   ensureClientShortlistEpisodes,
   generateClientShortlistPitch,
@@ -35,6 +35,8 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
   getWorkspaceClientDetail: vi.fn(),
   getWorkspaceClients: vi.fn(),
+  updateWorkspaceClient: vi.fn(),
+  updateWorkspaceClientProfile: vi.fn(),
 }))
 vi.mock('@/services/clientShortlist', () => ({
   ensureClientShortlistEpisodes: vi.fn(),
@@ -1043,7 +1045,8 @@ describe('WorkspaceClientPitch', () => {
     expect(await screen.findByText('Shared verified contact')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('This contact is already available across the Database.')).toBeInTheDocument()
-    expect(screen.queryByText('direct@founderstories.fm')).not.toBeInTheDocument()
+    // The address the search found is shown, so it is clear what research will use.
+    expect(screen.getByText('direct@founderstories.fm')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
   })
@@ -1561,6 +1564,46 @@ describe('WorkspaceClientPitch', () => {
     await waitFor(() => expect(screen.getByText('Research complete')).toBeInTheDocument(), { timeout: 4_000 })
     expect(screen.getByRole('button', { name: 'Continue with this draft' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Go to step 3: Finalize pitch' })).toBeEnabled()
+  })
+
+  // A stage whose required client fields are empty stops before any model call
+  // and writes 'blocked'. The page used to read that as "Research queued … will
+  // begin as soon as the workspace is ready", with nothing to do but wait.
+  it('says research is waiting on client info, and fills it in and runs research from the page', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        research_progress: {
+          status: 'blocked',
+          current_stage: null,
+          completed_stages: [],
+          started_at: '2026-11-04T12:00:00.000Z',
+          updated_at: '2026-11-04T12:00:01.000Z',
+          message: 'This podcast is missing Client LinkedIn (client_linkedin_url) and Client website (client_website), which the podcast_research stage is set to require. Nothing was generated and no credit was spent.',
+          missing_fields: ['client_linkedin_url', 'client_website'],
+        },
+      })],
+    })
+    vi.mocked(updateWorkspaceClient).mockResolvedValue({} as never)
+    vi.mocked(runClientShortlistResearch).mockImplementation(() => new Promise(() => {}))
+    await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+
+    expect(screen.getByText('Research needs client info')).toBeInTheDocument()
+    expect(screen.getByText(/profile is missing LinkedIn URL and website, which your research prompts require/)).toBeInTheDocument()
+    expect(screen.queryByText(/Research queued/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Client bio and positioning')).not.toBeInTheDocument()
+
+    fireEvent.change(await screen.findByLabelText('Client LinkedIn'), { target: { value: 'https://www.linkedin.com/in/taylor' } })
+    fireEvent.change(screen.getByLabelText('Client website'), { target: { value: 'https://taylor.example' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and run research' }))
+
+    await waitFor(() => expect(vi.mocked(runClientShortlistResearch)).toHaveBeenCalled())
+    expect(vi.mocked(updateWorkspaceClient)).toHaveBeenCalledWith(workspaceId, clientId, expect.objectContaining({
+      linkedin_url: 'https://www.linkedin.com/in/taylor',
+      website: 'https://taylor.example',
+      name: 'Taylor Client',
+    }))
   })
 
   // A run that dies mid-flight — an edge function timeout, or a redeploy killing
