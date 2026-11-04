@@ -261,7 +261,6 @@ often the work may be *considered*, not how often it happens.
 | --- | --- | --- |
 | `client-autopilot-tick` | every 10 min | Discovery for clients with autopilot enabled |
 | `inbox-enroll-tick` | every 15 min | Classify replies and stage AI reply packages for review |
-| `inbox-nudge-tick` | every 30 min | Stage follow-up nudges |
 | `campaign-sync-tick` | every 30 min | Refresh campaign analytics from the provider |
 | `workspace-domain-tick` | every 10 min | Re-check custom domains, including ones already serving |
 | `workspace-credit-refill` | retired | Unscheduled; credit sales are disabled |
@@ -568,7 +567,7 @@ Provider credentials belong in Supabase secret storage or the authorized operato
 - `CUSTOM_DOMAIN_PROVIDER` — `cloudflare` or `railway`, for *new* tenant domains only
 - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_SAAS_FALLBACK_ORIGIN`, `CLOUDFLARE_SAAS_WORKER` — custom hostname issuance and the worker route each one needs. Scope the token to SSL and Certificates plus Workers Routes on the one zone; nothing here needs account-wide access
 - `RAILWAY_API_TOKEN`, `RAILWAY_PROJECT_ID`, `RAILWAY_SERVICE_ID`, `RAILWAY_ENVIRONMENT_ID` — legacy custom domains
-- Scheduled-job secrets, one per tick: `AUTOPILOT_TICK_SECRET`, `ENROLL_TICK_SECRET`, `NUDGE_TICK_SECRET`, `CAMPAIGN_SYNC_SECRET`, `DOMAIN_TICK_SECRET`, `REFILL_TICK_SECRET`. Each also needs a matching `vault.decrypted_secrets` entry holding the URL and the secret, or the job fires and does nothing
+- Scheduled-job secrets, one per tick: `AUTOPILOT_TICK_SECRET`, `ENROLL_TICK_SECRET`, `CAMPAIGN_SYNC_SECRET`, `DOMAIN_TICK_SECRET`, `REFILL_TICK_SECRET`. Each also needs a matching `vault.decrypted_secrets` entry holding the URL and the secret, or the job fires and does nothing
 
 Each workspace owner's Instantly V2 API key is entered in Client Campaigns and encrypted before database storage. It is tenant data, not a shared deployment secret, and must never be copied into a `VITE_*` variable.
 

@@ -20,8 +20,10 @@ const CONFIG_PATH = path.join(REPOSITORY_ROOT, 'supabase', 'config.toml')
 const FUNCTIONS_ROOT = path.join(REPOSITORY_ROOT, 'supabase', 'functions')
 
 const EXPECTED_COUNTS = Object.freeze({
-  changedFunctions: 124,
-  deployedFunctions: 122,
+  // 123 and 121 after inbox-nudge-tick was deleted outright: its cron was
+  // already unscheduled and its sending switched off (2026-11-04).
+  changedFunctions: 123,
+  deployedFunctions: 121,
   excludedFunctions: 2,
   // 45 after the legacy Email Bison inbox, matching experiments, and other
   // admin-era functions with no caller in the app, the other functions, the
@@ -90,7 +92,8 @@ const EXPECTED_COUNTS = Object.freeze({
   // 226: emailBison.test.ts and reachInbox.test.ts (2026-11-01).
   // 227 with manage-platform-team: invite and remove platform admins
   // (2026-11-03).
-  edgeTypeScriptFiles: 227,
+  // 226 after inbox-nudge-tick/index.ts was deleted (2026-11-04).
+  edgeTypeScriptFiles: 226,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
@@ -188,7 +191,6 @@ const EXPECTED_PUBLIC_NON_JWT_FUNCTIONS = Object.freeze([
   // a shared secret, so no user JWT — and it is the most destructive thing on
   // this list, so the secret is the whole gate: WORKSPACE_PURGE_SECRET.
   'workspace-purge-tick',
-  'inbox-nudge-tick',
   'stripe-credit-webhook',
   // Stripe signs the request body; there is no user session on a webhook. Both
   // of these verify that signature before reading anything out of the payload.

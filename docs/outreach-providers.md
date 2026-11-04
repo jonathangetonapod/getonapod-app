@@ -146,7 +146,7 @@ Status translation (Bison → app):
 1. Apply the migration (`20261101000100_outreach_providers.sql`) first: the
    new function code selects `provider` and `provider_base_url`.
 2. Deploy `workspace-client-campaigns`, `workspace-host-relationships`,
-   `workspace-deletion`, `inbox-enroll-tick` and `inbox-nudge-tick` together.
+   `workspace-deletion` and `inbox-enroll-tick` together.
 3. **Rollback:** code from before this change cannot read `provider`. Before
    rolling the functions back, disconnect any Email Bison or ReachInbox
    connection, or the old code would send those keys to Instantly (and reject
@@ -162,5 +162,5 @@ connected.
 - Email Bison webhooks for push-based reply/status updates (the API supports
   them; this would replace polling for Bison workspaces).
 - Renaming `instantly_*` tables and columns.
-- The retired AI SDR ticks (`inbox-enroll-tick`, `inbox-nudge-tick`) stay
-  Instantly-only; both are disabled.
+- The retired AI SDR enroll tick (`inbox-enroll-tick`) stays Instantly-only
+  and disabled. `inbox-nudge-tick` was deleted on 2026-11-04.

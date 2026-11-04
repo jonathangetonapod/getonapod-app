@@ -18,7 +18,6 @@ const sequenceMigration = readFileSync(
   'utf8',
 )
 const config = readFileSync('supabase/config.toml', 'utf8')
-const nudgeTick = readFileSync('supabase/functions/inbox-nudge-tick/index.ts', 'utf8')
 const enrollTick = readFileSync('supabase/functions/inbox-enroll-tick/index.ts', 'utf8')
 const sdrShared = readFileSync('supabase/functions/_shared/inboxSdr.ts', 'utf8')
 const prepDialog = readFileSync('src/components/workspace/ClientCampaignPrepDialog.tsx', 'utf8')
@@ -601,39 +600,11 @@ for (const [promptId, prompt] of Object.entries(canonicalPrompts.prompts)) {
 
 process.stdout.write('Workspace Client Campaign Edge contract checks passed\n')
 
-// Automated sending is switched off platform-wide (2026-07-26): the nudge
-// tick must bail out right after auth, before it can reach a thread or the
-// provider. Removing this gate is an explicit product decision, not cleanup.
-assert.match(nudgeTick, /const NUDGE_SENDING_DISABLED: boolean = true/u)
-assert.match(nudgeTick, /if \(NUDGE_SENDING_DISABLED\) \{\s*\n\s*return json\(200, \{ sent: 0, host_replies: 0, skipped: 0, sending_disabled: true \}\)/u)
-assert.ok(
-  nudgeTick.indexOf('NUDGE_SENDING_DISABLED) {') < nudgeTick.indexOf('createAdminClient()'),
-  'the sending-disabled gate must precede any database or provider access',
-)
+// inbox-nudge-tick, the automatic follow-up to quiet hosts, was deleted
+// (2026-11-04). Nothing may bring it back by accident.
+assert.ok(!existsSync('supabase/functions/inbox-nudge-tick'), 'inbox-nudge-tick is deleted')
+assert.doesNotMatch(config, /\[functions\.inbox-nudge-tick\]/u)
 
-// Nudge tick safety gates: shared-secret auth, never send on an inbound or
-// missing latest message, per-tick caps, and a concurrency-safe step claim.
-assert.match(nudgeTick, /Deno\.env\.get\('NUDGE_TICK_SECRET'\)/u)
-assert.match(nudgeTick, /x-nudge-secret/u)
-assert.match(nudgeTick, /const MAX_SENDS_PER_TICK = 15/u)
-assert.match(nudgeTick, /const MAX_SENDS_PER_WORKSPACE = 5/u)
-assert.match(nudgeTick, /latestHuman\.ue_type === 2[\s\S]*?status: 'needs_reply'/u)
-assert.match(nudgeTick, /\.eq\('nudges_sent', raw\.nudges_sent\)/u)
-assert.match(config, /\[functions\.inbox-nudge-tick\]\nverify_jwt = false/u)
-
-// Nudge tick claim-before-send: the step is consumed under a guard that
-// re-checks status and pause, sends only on a confirmed claim, refunds only
-// definite pre-dispatch rejections, and keeps ambiguous outcomes consumed.
-assert.match(nudgeTick, /const \{ data: claimed \}[\s\S]*?\.eq\('nudges_sent', raw\.nudges_sent\)[\s\S]*?\.eq\('status', 'replied'\)[\s\S]*?\.eq\('nudges_paused', false\)/u)
-assert.ok(
-  nudgeTick.indexOf("const { data: claimed }") < nudgeTick.indexOf("'/emails/reply'"),
-  'the nudge step must be claimed before the provider send',
-)
-assert.match(nudgeTick, /delivery_unknown[\s\S]*?stays consumed/u)
-assert.match(nudgeTick, /latestHuman\.ue_type !== 1 && latestHuman\.ue_type !== 3/u)
-assert.match(nudgeTick, /is_auto_reply !== 1/u)
-assert.match(nudgeTick, /MAX_FAILURES_BEFORE_PAUSE/u)
-assert.match(nudgeTick, /withinSendWindow/u)
 // Auto-enrollment: opt-in per client, deterministic pre-filter before any
 // model call, claim before billing, and review-only output.
 assert.match(enrollTick, /Deno\.env\.get\('ENROLL_TICK_SECRET'\)/u)
@@ -928,8 +899,6 @@ assert.match(edge, /if \(scopeCampaignId\) query\.set\("campaign_id", scopeCampa
 // that could disagree with it in either direction.
 assert.match(sdrShared, /export function withinSendWindow\(timezone: string, window\?: CampaignSendWindow \| null\)/u)
 assert.match(sdrShared, /if \(to <= from\) return true/u)
-assert.match(nudgeTick, /\.select\('timezone, provider_schedule'\)/u)
-assert.match(nudgeTick, /withinSendWindow\(\s*timezoneByClient\.get\(raw\.client_id\)!,\s*windowByClient\.get\(raw\.client_id\) \?\? null,/u)
 
 // The reading pane read received mail only, so an operator answered having
 // never seen what was pitched. The full thread is available on request, and
@@ -1762,7 +1731,6 @@ assert.match(sdrShared, /chargeEntryId: charge\.replayed \? null : charge\.entry
 // Raw Instantly calls (inbox actions) refuse any other provider's key.
 assert.match(edge, /function integrationApiKey[\s\S]*?connectionKind\(connection\) !== "instantly"[\s\S]*?unsupportedFeature/u)
 assert.match(enrollTick, /\.eq\('provider', 'instantly'\)/u)
-assert.match(nudgeTick, /\(connection\.provider \?\? 'instantly'\) === 'instantly'/u)
 // The scheduled sync gives each connection its own budget and runs them side
 // by side, so one slow tenant-chosen host cannot starve the rest.
 assert.match(edge, /const CRON_CONNECTION_BUDGET_MS = 40_000;/u)
