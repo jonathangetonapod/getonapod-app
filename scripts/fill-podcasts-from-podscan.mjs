@@ -2,6 +2,8 @@
 // Usage: node scripts/fill-podcasts-from-podscan.mjs <env-dir> [--dry]
 // <env-dir> holds supabase.env (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) and podscan.env (PODSCAN_TOKEN);
 // keep it outside the repo. Resumable: progress lives in <env-dir>/state.json, log in <env-dir>/fill.log.
+// New shows arrive untagged: afterwards run scripts/tag-podcasts-with-jev.mjs <env-dir> (it only takes
+// untagged shows) so they get Jev's B2B fit, guests, format, listeners and junk tags.
 import fs from 'node:fs'
 import path from 'node:path'
 

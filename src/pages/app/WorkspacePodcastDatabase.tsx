@@ -94,7 +94,14 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
 
   const queryClient = useQueryClient()
   const { params, update } = usePodcastCatalogParams()
-  const { search, category, contact, activity, audience, guests, research, language, region, sort, page, pageSize } = params
+  const { search, contact, activity, audience, guests, research, language, region, sort, page, pageSize, b2bFit, junk } = params
+  // The lists as the catalogue takes them: category choices are codes joined by
+  // "|" (any of them matches), excluded words are comma-separated.
+  const category = params.categories.join('|')
+  const excludeCategory = params.excludeCategories.join('|')
+  const excludeTerms = params.excludeTerms.join(',')
+  const listeners = params.listeners.join('|')
+  const formats = params.formats.join('|')
   const resultsRef = useRef<HTMLDivElement>(null)
   const [selectedPodcasts, setSelectedPodcasts] = useState<Map<string, WorkspacePodcastCatalogItem>>(new Map())
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -113,6 +120,12 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       workspaceId,
       search,
       category,
+      excludeCategory,
+      excludeTerms,
+      b2bFit,
+      listeners,
+      formats,
+      junk,
       contact,
       activity,
       audience,
@@ -129,7 +142,13 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     // replace the results of a newer search.
     queryFn: ({ signal }) => getWorkspacePodcastCatalog(workspaceId, {
       search,
-      category: category === 'all' ? undefined : category,
+      category: category || undefined,
+      excludeCategory: excludeCategory || undefined,
+      excludeTerms: excludeTerms || undefined,
+      b2bFit,
+      listeners: listeners || undefined,
+      formats: formats || undefined,
+      junk,
       contact,
       activity,
       audience,
@@ -170,6 +189,12 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
         workspaceId,
         search,
         category,
+        excludeCategory,
+        excludeTerms,
+        b2bFit,
+        listeners,
+        formats,
+        junk,
         contact,
         activity,
         audience,
@@ -183,7 +208,13 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
       ],
       queryFn: ({ signal }) => getWorkspacePodcastCatalog(workspaceId, {
         search,
-        category: category === 'all' ? undefined : category,
+        category: category || undefined,
+      excludeCategory: excludeCategory || undefined,
+      excludeTerms: excludeTerms || undefined,
+      b2bFit,
+      listeners: listeners || undefined,
+      formats: formats || undefined,
+      junk,
         contact,
         activity,
         audience,
@@ -199,7 +230,7 @@ const WorkspacePodcastDatabase = ({ platformWorkspaceId }: WorkspacePodcastDatab
     })
   }, [
     queryClient, validWorkspaceId, catalogQuery.isFetching, page, totalPages,
-    user?.id, workspaceId, search, category, contact, activity, audience, guests, research, language, region, sort, pageSize,
+    user?.id, workspaceId, search, category, excludeCategory, excludeTerms, b2bFit, listeners, formats, junk, contact, activity, audience, guests, research, language, region, sort, pageSize,
   ])
 
   // A failed load is shown to the person and reported, not only shown.

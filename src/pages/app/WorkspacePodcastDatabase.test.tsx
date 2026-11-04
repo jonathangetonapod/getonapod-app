@@ -236,7 +236,8 @@ describe('WorkspacePodcastDatabase', () => {
     await screen.findByText('The Founder Show')
     expect(mockedCatalog).toHaveBeenCalledWith(workspaceId, expect.objectContaining({
       search: 'founders',
-      category: 'Business',
+      // An older address with one category, as the catalogue spelled it.
+      category: 'business',
       contact: 'all',
       activity: 'last_30_days',
       sort: 'recent',
@@ -708,7 +709,7 @@ describe('WorkspacePodcastDatabase', () => {
 
     fireEvent.click(screen.getByRole('combobox', { name: 'Any category' }))
     const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
-    expect(options).toEqual(['Any category', 'Business', 'Mental Health', 'Society & Culture', 'Sports'])
+    expect(options).toEqual(['Business', 'Mental Health', 'Society & Culture', 'Sports'])
     expect(screen.getByText('Business & professional')).toBeInTheDocument()
     expect(screen.getByText('Other topics')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('option', { name: 'Society & Culture' }))
@@ -718,6 +719,66 @@ describe('WorkspacePodcastDatabase', () => {
       expect.anything(),
     ))
     expect(screen.getByText('Category: Society & Culture')).toBeInTheDocument()
+  })
+
+  // Several categories match any of them; each is one chip that comes off alone.
+  it('filters by several categories at once', async () => {
+    mockedCatalog.mockResolvedValue({ ...catalogResponse, categories: ['business', 'marketing', 'sports'] } as never)
+    renderPage()
+    await screen.findByText('The Founder Show')
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any category' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Business' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Marketing' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ category: 'business|marketing' }),
+      expect.anything(),
+    ))
+    expect(screen.getByRole('combobox', { name: 'Categories: Business, Marketing' })).toHaveTextContent('Business +1')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Category: Business' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ category: 'marketing' }),
+      expect.anything(),
+    ))
+  })
+
+  // Jev's tags: B2B fit, listeners and format reach the catalogue; each is a chip.
+  it('filters by B2B fit, listeners and format', async () => {
+    renderPage('/app/podcast-database?fit=strong&format=interview')
+    await screen.findByText('The Founder Show')
+    fireEvent.click(screen.getByRole('combobox', { name: 'Any listeners' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Founders & business owners' }))
+    fireEvent.click(screen.getByRole('option', { name: 'Marketers' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      expect.objectContaining({ b2bFit: 'strong', listeners: 'founders|marketers', formats: 'interview', junk: 'hide' }),
+      expect.anything(),
+    ))
+    expect(screen.getByRole('button', { name: 'Remove Strong B2B fit' })).toBeInTheDocument()
+    expect(screen.getByText('Format: Interview')).toBeInTheDocument()
+    expect(screen.getByText('Listeners: Marketers')).toBeInTheDocument()
+  })
+
+  // Excluded words (Enter or a comma adds one) and categories reach the catalogue.
+  it('leaves out shows by word and by category', async () => {
+    mockedCatalog.mockResolvedValue({ ...catalogResponse, categories: ['business', 'religion', 'spirituality'] } as never)
+    renderPage('/app/podcast-database?category=business,religion|spirituality')
+    await screen.findByText('The Founder Show')
+    fireEvent.click(screen.getByRole('button', { name: 'Exclude nothing' }))
+    const input = await screen.findByLabelText('Leave out shows that mention')
+    fireEvent.change(input, { target: { value: 'Crypto, ' } })
+    fireEvent.change(input, { target: { value: 'true   crime' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('option', { name: 'Religion & Spirituality' }))
+    await waitFor(() => expect(mockedCatalog).toHaveBeenLastCalledWith(
+      workspaceId,
+      // Excluding a category also takes it out of the included ones.
+      expect.objectContaining({ category: 'business', excludeCategory: 'religion|spirituality', excludeTerms: 'crypto,true crime' }),
+      expect.anything(),
+    ))
+    expect(screen.getByText('Without “crypto”')).toBeInTheDocument()
+    expect(screen.getByText('Not: Religion & Spirituality')).toBeInTheDocument()
   })
 
   // The catalog function rejects a search longer than 120 characters.

@@ -35,6 +35,11 @@ const GUEST_FILTERS = new Set(['all', 'yes', 'no'])
 // Research data saved: Podscan episodes (and usually a transcript) already
 // fetched and stored on the show, so researching it reuses them.
 const RESEARCH_FILTERS = new Set(['all', 'saved', 'not_saved'])
+// Jev's tags (20261104000300): B2B fit floor, audiences, formats, and whether junk is listed.
+const B2B_FIT_FILTERS = new Set(['all', 'some', 'good', 'strong'])
+const JUNK_FILTERS = new Set(['hide', 'show'])
+const AUDIENCE_KEYS = new Set(['founders', 'executives', 'marketers', 'sales', 'investors', 'technical', 'healthcare', 'consumers'])
+const FORMAT_KEYS = new Set(['interview', 'panel', 'solo', 'cohosts', 'news', 'narrative', 'brand', 'other'])
 const SORT_OPTIONS = new Set(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
 // Language and region codes as the catalogue stores them ("en", "us").
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
@@ -48,6 +53,15 @@ const CATALOG_EMBEDDING_LIMITS = {
   perWorkspace: { limit: 300, windowSeconds: 60 * 60 },
   perUser: { limit: 60, windowSeconds: 10 * 60 },
 } as const
+
+/** A "|"-joined list of known keys, or null. */
+function optionalKeyList(value: unknown, field: string, keys: Set<string>): string | null {
+  const text = optionalString(value, field, 200)
+  if (!text) return null
+  const parts = text.split('|')
+  if (parts.some((part) => !keys.has(part))) throw new HttpError(400, 'INVALID_FIELD', `${field} is invalid`)
+  return [...new Set(parts)].join('|')
+}
 
 function optionalChoice(
   value: unknown,
@@ -90,7 +104,8 @@ serve(async (req) => {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'Only POST is allowed')
 
-    const body = await parseJsonObject(req, 4_096)
+    // Room for a long category list and its exclusions (up to 2,000 characters each).
+    const body = await parseJsonObject(req, 8_192)
     requireOnlyKeys(body, [
       'action',
       'workspace_id',
@@ -101,6 +116,12 @@ serve(async (req) => {
       'audience',
       'guests',
       'research',
+      'exclude_category',
+      'exclude_terms',
+      'b2b_fit',
+      'audiences',
+      'formats',
+      'junk',
       'language',
       'region',
       'sort',
@@ -113,12 +134,24 @@ serve(async (req) => {
 
     const workspaceId = requireUuid(body.workspace_id, 'workspace_id')
     const search = optionalString(body.search, 'search', 120)
-    const category = optionalString(body.category, 'category', 200)
+    // Category choices joined by "|"; a show tagged with any of them matches.
+    const category = optionalString(body.category, 'category', 2_000)
+    // Left out: shows tagged with any of these categories ("|"), and shows that
+    // mention any of these comma-separated words or phrases.
+    const excludeCategory = optionalString(body.exclude_category, 'exclude_category', 2_000)
+    const excludeTerms = optionalString(body.exclude_terms, 'exclude_terms', 300)
+    if (excludeTerms && excludeTerms.split(',').length > 20) {
+      throw new HttpError(400, 'INVALID_FIELD', 'exclude_terms is invalid')
+    }
     const contact = optionalChoice(body.contact, 'contact', CONTACT_FILTERS, 'all')
     const activity = optionalChoice(body.activity, 'activity', ACTIVITY_FILTERS, 'active')
     const audience = optionalChoice(body.audience, 'audience', AUDIENCE_FILTERS, 'all')
     const guests = optionalChoice(body.guests, 'guests', GUEST_FILTERS, 'all')
     const research = optionalChoice(body.research, 'research', RESEARCH_FILTERS, 'all')
+    const b2bFit = optionalChoice(body.b2b_fit, 'b2b_fit', B2B_FIT_FILTERS, 'all')
+    const audiences = optionalKeyList(body.audiences, 'audiences', AUDIENCE_KEYS)
+    const formats = optionalKeyList(body.formats, 'formats', FORMAT_KEYS)
+    const junk = optionalChoice(body.junk, 'junk', JUNK_FILTERS, 'hide')
     const language = optionalLocaleCode(body.language, 'language')
     const region = optionalLocaleCode(body.region, 'region')
     const sort = optionalChoice(body.sort, 'sort', SORT_OPTIONS, 'best_fit')
@@ -191,6 +224,14 @@ serve(async (req) => {
       // Sent only when set, so the default list never depends on the
       // migration that added the parameter (20261104000100).
       ...(research !== 'all' ? { p_research: research } : {}),
+      // The same for the exclusions (20261104000200).
+      ...(excludeCategory ? { p_exclude_category: excludeCategory } : {}),
+      ...(excludeTerms ? { p_exclude_terms: excludeTerms } : {}),
+      // And for Jev's tags (20261104000400); junk is hidden unless asked for.
+      ...(b2bFit !== 'all' ? { p_b2b_fit: b2bFit } : {}),
+      ...(audiences ? { p_audiences: audiences } : {}),
+      ...(formats ? { p_formats: formats } : {}),
+      ...(junk !== 'hide' ? { p_junk: junk } : {}),
       p_language: language,
       p_region: region,
       p_query_embedding: queryEmbedding,

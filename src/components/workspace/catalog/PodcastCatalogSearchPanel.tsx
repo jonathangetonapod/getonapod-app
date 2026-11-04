@@ -8,6 +8,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import {
   ACTIVITY_LABELS,
   AUDIENCE_LABELS,
+  B2B_FIT_LABELS,
+  FORMAT_LABELS,
+  JUNK_LABELS,
+  LISTENER_LABELS,
   categoryLabel,
   CONTACT_LABELS,
   GUESTS_LABELS,
@@ -28,9 +32,28 @@ function activeChips(params: PodcastCatalogParams): ActiveChip[] {
   if (params.search) {
     chips.push({ key: 'search', label: `Search: “${params.search}”`, clear: { search: '' } })
   }
-  if (params.category !== 'all') {
-    chips.push({ key: 'category', label: `Category: ${categoryLabel(params.category)}`, clear: { category: 'all' } })
+  // One chip per category and per exclusion, so each comes off on its own.
+  params.categories.forEach((value) => {
+    chips.push({ key: `category:${value}`, label: `Category: ${categoryLabel(value)}`, clear: { categories: params.categories.filter((current) => current !== value) } })
+  })
+  params.excludeCategories.forEach((value) => {
+    chips.push({ key: `not_category:${value}`, label: `Not: ${categoryLabel(value)}`, clear: { excludeCategories: params.excludeCategories.filter((current) => current !== value) } })
+  })
+  if (params.b2bFit !== 'all') {
+    chips.push({ key: 'fit', label: B2B_FIT_LABELS[params.b2bFit], clear: { b2bFit: 'all' } })
   }
+  params.listeners.forEach((key) => {
+    chips.push({ key: `listeners:${key}`, label: `Listeners: ${LISTENER_LABELS[key]}`, clear: { listeners: params.listeners.filter((current) => current !== key) } })
+  })
+  params.formats.forEach((key) => {
+    chips.push({ key: `format:${key}`, label: `Format: ${FORMAT_LABELS[key]}`, clear: { formats: params.formats.filter((current) => current !== key) } })
+  })
+  if (params.junk !== 'hide') {
+    chips.push({ key: 'junk', label: JUNK_LABELS[params.junk], clear: { junk: 'hide' } })
+  }
+  params.excludeTerms.forEach((term) => {
+    chips.push({ key: `exclude:${term}`, label: `Without “${term}”`, clear: { excludeTerms: params.excludeTerms.filter((current) => current !== term) } })
+  })
   if (params.contact !== 'all') {
     chips.push({ key: 'contact', label: `Email: ${CONTACT_LABELS[params.contact]}`, clear: { contact: 'all' } })
   }

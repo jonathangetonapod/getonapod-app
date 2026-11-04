@@ -14,6 +14,8 @@ const embeddingCacheMigration = readFileSync('supabase/migrations/20261029001000
 const verifiedContactMigration = readFileSync('supabase/migrations/20261030000200_podcast_contact_email_verified.sql', 'utf8')
 const hiddenRowsMigration = readFileSync('supabase/migrations/20261030000700_podcast_hidden_rows.sql', 'utf8')
 const professionalFitMigration = readFileSync('supabase/migrations/20261030000800_podcast_best_fit_professional.sql', 'utf8')
+const jevFilterMigration = readFileSync('supabase/migrations/20261104000400_podcast_catalog_jev_filters.sql', 'utf8')
+const excludeMigration = readFileSync('supabase/migrations/20261104000200_podcast_catalog_exclude_filters.sql', 'utf8')
 const config = readFileSync('supabase/config.toml', 'utf8')
 const service = readFileSync('src/services/workspacePodcastCatalog.ts', 'utf8')
 const clientEditor = readFileSync('src/components/workspace/ClientShortlistEditor.tsx', 'utf8')
@@ -210,5 +212,32 @@ assert.match(edge, /if \(wantsEmbedding && !queryEmbedding\) \{[\s\S]{0,300}cons
 assert.doesNotMatch(edge, /Promise\.all\(\[[^\]]*resolveAiKey/u)
 assert.match(edge, /if \(wantsEmbedding && !queryEmbedding\) \{/u)
 assert.match(edge, /rememberSearchEmbedding\(context\.admin, search as string, searchEmbedding\.embedding\)/u)
+
+// Several categories and exclusions: the edge accepts bounded exclusion keys and
+// sends them only when set; the page function leaves out excluded categories
+// (an untagged show is kept) and shows matching an excluded word, via the index.
+assert.match(edge, /'exclude_category',\s+'exclude_terms',/u)
+assert.match(edge, /optionalString\(body\.exclude_category, 'exclude_category', 2_000\)/u)
+assert.match(edge, /optionalString\(body\.exclude_terms, 'exclude_terms', 300\)/u)
+assert.match(edge, /\.\.\.\(excludeCategory \? \{ p_exclude_category: excludeCategory \} : \{\}\)/u)
+assert.match(edge, /\.\.\.\(excludeTerms \? \{ p_exclude_terms: excludeTerms \} : \{\}\)/u)
+assert.match(excludeMigration, /p_exclude_category TEXT DEFAULT NULL,\s+p_exclude_terms TEXT DEFAULT NULL/u)
+assert.match(excludeMigration, /NOT COALESCE\(category_keys && exclude_category_filter, FALSE\)/u)
+assert.match(excludeMigration, /podcast\.search_document @@ exclude_query/u)
+assert.match(excludeMigration, /AND NOT words_excluded/u)
+assert.match(excludeMigration, /COALESCE\(normalized_exclude_terms, '~'\)/u)
+assert.match(excludeMigration, /GRANT EXECUTE ON FUNCTION public\.workspace_podcast_catalog_page_v3\([^)]*TEXT, TEXT, TEXT, TEXT\s*\) TO service_role/u)
+
+// Jev's tags: validated keys sent only when set; tagged shows use Jev for guests
+// and Best fit; junk at 0.8+ is hidden by default; B2B fit, audience and format
+// filters read the tag columns.
+assert.match(edge, /'b2b_fit',\s+'audiences',\s+'formats',\s+'junk',/u)
+assert.match(edge, /optionalKeyList\(body\.audiences, 'audiences', AUDIENCE_KEYS\)/u)
+assert.match(edge, /\.\.\.\(b2bFit !== 'all' \? \{ p_b2b_fit: b2bFit \} : \{\}\)/u)
+assert.match(edge, /\.\.\.\(junk !== 'hide' \? \{ p_junk: junk \} : \{\}\)/u)
+assert.match(jevFilterMigration, /WHEN podcast\.jev_takes_guests IS NOT NULL THEN podcast\.jev_takes_guests >= 0\.5\s+ELSE podcast\.podcast_has_guests/u)
+assert.match(jevFilterMigration, /normalized_junk = 'show' OR jev_junk IS NULL OR jev_junk < 0\.8/u)
+assert.match(jevFilterMigration, /audience_filter IS NULL OR jev_audiences && audience_filter/u)
+assert.match(jevFilterMigration, /WHEN jev_b2b_fit >= 3\.5 THEN 3/u)
 
 console.log('workspace podcast catalog Edge contract passed')

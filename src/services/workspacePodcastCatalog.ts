@@ -10,6 +10,10 @@ export type WorkspacePodcastCatalogAudienceFilter = 'all' | 'under_10k' | '10k_5
 export type WorkspacePodcastCatalogGuestsFilter = 'all' | 'yes' | 'no'
 /** Whether Podscan research data (recent episodes, usually a transcript) is saved on the show. */
 export type WorkspacePodcastCatalogResearchFilter = 'all' | 'saved' | 'not_saved'
+// Jev's tags: the lowest B2B fit a show must have, and whether junk feeds are listed.
+export type WorkspacePodcastCatalogB2bFitFilter = 'all' | 'some' | 'good' | 'strong'
+export type WorkspacePodcastCatalogJunkFilter = 'hide' | 'show'
+export type { WorkspacePodcastFormat, WorkspacePodcastListener } from '@/lib/podcastTags'
 export type WorkspacePodcastCatalogSort = 'best_fit' | 'relevance' | 'audience' | 'name' | 'recent' | 'community' | 'rating' | 'reach'
 
 export interface WorkspacePodcastCatalogCategory {
@@ -79,7 +83,18 @@ export interface WorkspacePodcastCatalogPage {
 
 export interface WorkspacePodcastCatalogParams {
   search?: string
+  /** Category codes joined by "|"; a show tagged with any of them matches. */
   category?: string
+  /** Category codes joined by "|" to leave out. */
+  excludeCategory?: string
+  /** Comma-separated words or phrases; a show that mentions any of them is left out. */
+  excludeTerms?: string
+  b2bFit?: WorkspacePodcastCatalogB2bFitFilter
+  /** Listener types joined by "|"; a show Jev tagged with any of them matches. */
+  listeners?: string
+  /** Formats joined by "|". */
+  formats?: string
+  junk?: WorkspacePodcastCatalogJunkFilter
   contact?: WorkspacePodcastCatalogContactFilter
   activity?: WorkspacePodcastCatalogActivityFilter
   audience?: WorkspacePodcastCatalogAudienceFilter
@@ -146,6 +161,12 @@ export async function getWorkspacePodcastCatalog(
       guests: params.guests || 'all',
       // Only when set: a function build from before the filter refuses the key.
       ...(params.research && params.research !== 'all' ? { research: params.research } : {}),
+      ...(params.excludeCategory ? { exclude_category: params.excludeCategory } : {}),
+      ...(params.excludeTerms ? { exclude_terms: params.excludeTerms } : {}),
+      ...(params.b2bFit && params.b2bFit !== 'all' ? { b2b_fit: params.b2bFit } : {}),
+      ...(params.listeners ? { audiences: params.listeners } : {}),
+      ...(params.formats ? { formats: params.formats } : {}),
+      ...(params.junk === 'show' ? { junk: 'show' } : {}),
       language: params.language || undefined,
       region: params.region || undefined,
       sort: params.sort || 'best_fit',

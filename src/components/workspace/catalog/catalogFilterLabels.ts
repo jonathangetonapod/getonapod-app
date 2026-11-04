@@ -2,6 +2,10 @@ import { categoryFilterLabel } from '@/lib/podcastCategories'
 import type {
   WorkspacePodcastCatalogActivityFilter,
   WorkspacePodcastCatalogAudienceFilter,
+  WorkspacePodcastCatalogB2bFitFilter,
+  WorkspacePodcastCatalogJunkFilter,
+  WorkspacePodcastFormat,
+  WorkspacePodcastListener,
   WorkspacePodcastCatalogContactFilter,
   WorkspacePodcastCatalogGuestsFilter,
   WorkspacePodcastCatalogResearchFilter,
@@ -71,7 +75,8 @@ export const AUDIENCE_OPTIONS: WorkspacePodcastCatalogAudienceFilter[] = [
   '1m_plus',
 ]
 
-// Podscan's guest detection; it misses some interview shows, so "Not flagged" is not "never".
+// Jev's judgment once a show is tagged, Podscan's guest detection until then; neither is
+// certain, so "Not flagged" is not "never".
 export const GUESTS_LABELS: Record<WorkspacePodcastCatalogGuestsFilter, string> = {
   all: 'Any guest format',
   yes: 'Takes guests',
@@ -83,6 +88,49 @@ export const RESEARCH_LABELS: Record<WorkspacePodcastCatalogResearchFilter, stri
   all: 'Any research status',
   saved: 'Research data saved',
   not_saved: 'No research data yet',
+}
+
+// Jev's B2B fit, 0 to 4: how well a founder, executive or expert fits as a guest.
+export const B2B_FIT_LABELS: Record<WorkspacePodcastCatalogB2bFitFilter, string> = {
+  all: 'Any B2B fit',
+  some: 'Some B2B fit or better',
+  good: 'Good B2B fit or better',
+  strong: 'Strong B2B fit',
+}
+
+// Who a show is made for, as Jev reads its name, description and categories.
+export const LISTENER_LABELS: Record<WorkspacePodcastListener, string> = {
+  founders: 'Founders & business owners',
+  executives: 'Executives',
+  marketers: 'Marketers',
+  sales: 'Sales & revenue',
+  investors: 'Investors',
+  technical: 'Engineers & IT',
+  healthcare: 'Healthcare',
+  consumers: 'General public',
+}
+
+export const FORMAT_LABELS: Record<WorkspacePodcastFormat, string> = {
+  interview: 'Interview',
+  panel: 'Panel',
+  solo: 'Solo host',
+  cohosts: 'Co-hosts',
+  news: 'News & updates',
+  narrative: 'Narrative',
+  brand: 'Company podcast',
+  other: 'Other format',
+}
+
+// Spam, piracy, content farms and audiobook or radio re-uploads, as Jev judges them.
+export const JUNK_LABELS: Record<WorkspacePodcastCatalogJunkFilter, string> = {
+  hide: 'Hide junk feeds',
+  show: 'Include junk feeds',
+}
+
+/** "Founders", "Founders +2": a list of tag choices on a closed control. */
+export function tagListLabel<T extends string>(values: T[], labels: Record<T, string>): string {
+  if (values.length === 0) return ''
+  return values.length === 1 ? labels[values[0]] : `${labels[values[0]]} +${values.length - 1}`
 }
 
 export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
@@ -98,11 +146,18 @@ export const SORT_LABELS: Record<WorkspacePodcastCatalogSort, string> = {
 
 /** What a sort favours, where its name alone does not say. */
 export const SORT_HINTS: Partial<Record<WorkspacePodcastCatalogSort, string>> = {
-  best_fit: 'Has an email, 10K to 250K audience, recent episodes',
+  best_fit: 'Takes guests, B2B fit, has an email, 10K to 250K audience, recent episodes',
   relevance: 'Closest match to the search first',
 }
 
 /** A category filter value by its proper name ("health|fitness" reads "Health & Fitness"). */
 export function categoryLabel(value: string): string {
   return categoryFilterLabel(value)
+}
+
+/** "Business", "Business +2": what a list of category choices reads as on a closed control. */
+export function categoryListLabel(values: string[]): string {
+  if (values.length === 0) return ''
+  const first = categoryLabel(values[0])
+  return values.length === 1 ? first : `${first} +${values.length - 1}`
 }

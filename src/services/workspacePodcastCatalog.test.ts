@@ -70,6 +70,34 @@ describe('workspacePodcastCatalog service', () => {
     expect(invoke.mock.calls.at(-1)?.[1]?.body).not.toHaveProperty('research')
   })
 
+  // Exclusions go only when set, so the default list never depends on the newer function.
+  it('sends exclusions only when some are set', async () => {
+    invoke.mockResolvedValue({ data: response, error: null } as never)
+
+    await getWorkspacePodcastCatalog(workspaceId, { category: 'business|marketing', excludeCategory: 'religion|spirituality', excludeTerms: 'crypto,true crime' })
+    expect(invoke.mock.calls.at(-1)?.[1]).toMatchObject({
+      body: { category: 'business|marketing', exclude_category: 'religion|spirituality', exclude_terms: 'crypto,true crime' },
+    })
+
+    await getWorkspacePodcastCatalog(workspaceId, {})
+    expect(invoke.mock.calls.at(-1)?.[1]?.body).not.toHaveProperty('exclude_category')
+    expect(invoke.mock.calls.at(-1)?.[1]?.body).not.toHaveProperty('exclude_terms')
+  })
+
+  // Jev's tag filters go only when set; junk is hidden unless asked for.
+  it('sends tag filters only when set', async () => {
+    invoke.mockResolvedValue({ data: response, error: null } as never)
+
+    await getWorkspacePodcastCatalog(workspaceId, { b2bFit: 'good', listeners: 'founders|marketers', formats: 'interview', junk: 'show' })
+    expect(invoke.mock.calls.at(-1)?.[1]).toMatchObject({
+      body: { b2b_fit: 'good', audiences: 'founders|marketers', formats: 'interview', junk: 'show' },
+    })
+
+    await getWorkspacePodcastCatalog(workspaceId, { b2bFit: 'all', junk: 'hide' })
+    const body = invoke.mock.calls.at(-1)?.[1]?.body
+    for (const key of ['b2b_fit', 'audiences', 'formats', 'junk']) expect(body).not.toHaveProperty(key)
+  })
+
   // A search typed past is cancelled, not left to finish.
   it('passes the abort signal through to the function call', async () => {
     invoke.mockResolvedValueOnce({ data: response, error: null } as never)

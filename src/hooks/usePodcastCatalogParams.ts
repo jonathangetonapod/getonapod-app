@@ -3,17 +3,34 @@ import { useSearchParams } from 'react-router-dom'
 import type {
   WorkspacePodcastCatalogActivityFilter,
   WorkspacePodcastCatalogAudienceFilter,
+  WorkspacePodcastCatalogB2bFitFilter,
+  WorkspacePodcastCatalogJunkFilter,
+  WorkspacePodcastFormat,
+  WorkspacePodcastListener,
   WorkspacePodcastCatalogContactFilter,
   WorkspacePodcastCatalogGuestsFilter,
   WorkspacePodcastCatalogResearchFilter,
   WorkspacePodcastCatalogSort,
 } from '@/services/workspacePodcastCatalog'
+import { PODCAST_FORMAT_KEYS, PODCAST_LISTENER_KEYS } from '@/lib/podcastTags'
 
 export const CATALOG_PAGE_SIZES = [24, 48] as const
 
 export interface PodcastCatalogParams {
   search: string
-  category: string
+  /** Category choices ("business", "health|fitness"); a show in any of them matches. Empty is any category. */
+  categories: string[]
+  /** Category choices to leave out. */
+  excludeCategories: string[]
+  /** Words or phrases ("crypto", "true crime"); a show that mentions any of them is left out. */
+  excludeTerms: string[]
+  /** Jev's B2B fit floor: some, good or strong. */
+  b2bFit: WorkspacePodcastCatalogB2bFitFilter
+  /** Who listens, as Jev tagged it; a show with any of them matches. */
+  listeners: WorkspacePodcastListener[]
+  formats: WorkspacePodcastFormat[]
+  /** Junk feeds (spam, content farms, audiobook re-uploads) are hidden unless shown. */
+  junk: WorkspacePodcastCatalogJunkFilter
   contact: WorkspacePodcastCatalogContactFilter
   activity: WorkspacePodcastCatalogActivityFilter
   audience: WorkspacePodcastCatalogAudienceFilter
@@ -36,7 +53,13 @@ export interface PodcastCatalogParams {
  */
 export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
   search: '',
-  category: 'all',
+  categories: [],
+  excludeCategories: [],
+  excludeTerms: [],
+  b2bFit: 'all',
+  listeners: [],
+  formats: [],
+  junk: 'hide',
   contact: 'all',
   activity: 'active',
   audience: 'all',
@@ -52,7 +75,13 @@ export const DEFAULT_CATALOG_PARAMS: PodcastCatalogParams = {
 /** Everything that narrows the catalogue, cleared at once. Sort and page size are not filters. */
 export const CLEAR_ALL_FILTERS: Partial<PodcastCatalogParams> = {
   search: '',
-  category: 'all',
+  categories: [],
+  excludeCategories: [],
+  excludeTerms: [],
+  b2bFit: 'all',
+  listeners: [],
+  formats: [],
+  junk: 'hide',
   contact: 'all',
   activity: DEFAULT_CATALOG_PARAMS.activity,
   audience: 'all',
@@ -68,13 +97,28 @@ const ACTIVITIES = new Set<string>(['active', 'last_30_days', 'last_90_days', 'l
 const AUDIENCES = new Set<string>(['all', 'under_10k', '10k_50k', '50k_250k', '250k_1m', '1m_plus', '250k_plus'])
 const GUESTS = new Set<string>(['all', 'yes', 'no'])
 const RESEARCH = new Set<string>(['all', 'saved', 'not_saved'])
+const B2B_FITS = new Set<string>(['all', 'some', 'good', 'strong'])
+const JUNK = new Set<string>(['hide', 'show'])
+const LISTENERS = new Set<string>(PODCAST_LISTENER_KEYS)
+const FORMATS = new Set<string>(PODCAST_FORMAT_KEYS)
 const SORTS = new Set<string>(['best_fit', 'relevance', 'audience', 'name', 'recent', 'community', 'rating', 'reach'])
 const LOCALE_CODE = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/u
+// What the catalogue accepts: 2,000 characters of category codes per list,
+// and up to 20 excluded words or phrases in 300 characters.
+export const MAX_CATEGORY_CHOICES = 40
+export const MAX_EXCLUDE_TERMS = 20
+export const MAX_EXCLUDE_TERM_LENGTH = 60
 
 // Address names are short and stable; the client parameter belongs to the header.
 const KEYS: Record<keyof PodcastCatalogParams, string> = {
   search: 'q',
-  category: 'category',
+  categories: 'category',
+  excludeCategories: 'not_category',
+  excludeTerms: 'exclude',
+  b2bFit: 'fit',
+  listeners: 'listeners',
+  formats: 'format',
+  junk: 'junk',
   contact: 'email',
   activity: 'activity',
   audience: 'audience',
@@ -97,6 +141,30 @@ function defaultSort(search: string): WorkspacePodcastCatalogSort {
   return search ? 'relevance' : DEFAULT_CATALOG_PARAMS.sort
 }
 
+/*
+ * A list in the address is comma-separated: category choices are codes joined
+ * by "|" and never hold a comma, and an excluded term is split on commas when
+ * typed. An older address with one category ("health|fitness") is a list of one.
+ */
+function readList(value: string | null, max: number, maxLength: number): string[] {
+  const seen = new Set<string>()
+  for (const part of (value || '').split(',')) {
+    const item = part.trim().toLowerCase().replace(/\s+/gu, ' ').slice(0, maxLength)
+    if (item && item !== 'all') seen.add(item)
+    if (seen.size >= max) break
+  }
+  return [...seen]
+}
+
+/** Excluded words as typed: comma-separated, trimmed, lower case, no repeats. */
+export function parseExcludeTerms(value: string): string[] {
+  return readList(value, MAX_EXCLUDE_TERMS, MAX_EXCLUDE_TERM_LENGTH)
+}
+
+function serialize(value: PodcastCatalogParams[keyof PodcastCatalogParams]): string {
+  return Array.isArray(value) ? value.join(',') : String(value)
+}
+
 function choice<T extends string>(value: string | null, allowed: Set<string>, fallback: T): T {
   return value !== null && allowed.has(value) ? value as T : fallback
 }
@@ -108,7 +176,13 @@ export function readCatalogParams(params: URLSearchParams): PodcastCatalogParams
   const sort = choice(params.get(KEYS.sort), SORTS, defaultSort(search))
   return {
     search,
-    category: (params.get(KEYS.category) || '').slice(0, 200) || 'all',
+    categories: readList(params.get(KEYS.categories), MAX_CATEGORY_CHOICES, 200),
+    excludeCategories: readList(params.get(KEYS.excludeCategories), MAX_CATEGORY_CHOICES, 200),
+    excludeTerms: readList(params.get(KEYS.excludeTerms), MAX_EXCLUDE_TERMS, MAX_EXCLUDE_TERM_LENGTH),
+    b2bFit: choice(params.get(KEYS.b2bFit), B2B_FITS, DEFAULT_CATALOG_PARAMS.b2bFit),
+    listeners: readList(params.get(KEYS.listeners), LISTENERS.size, 20).filter((key) => LISTENERS.has(key)) as WorkspacePodcastListener[],
+    formats: readList(params.get(KEYS.formats), FORMATS.size, 20).filter((key) => FORMATS.has(key)) as WorkspacePodcastFormat[],
+    junk: choice(params.get(KEYS.junk), JUNK, DEFAULT_CATALOG_PARAMS.junk),
     contact: choice(params.get(KEYS.contact), CONTACTS, DEFAULT_CATALOG_PARAMS.contact),
     activity: choice(params.get(KEYS.activity), ACTIVITIES, DEFAULT_CATALOG_PARAMS.activity),
     audience: choice(params.get(KEYS.audience), AUDIENCES, DEFAULT_CATALOG_PARAMS.audience),
@@ -156,10 +230,10 @@ export function usePodcastCatalogParams() {
       const merged = withSearchSort(before, { ...before, ...patch }, patch)
       if (!('page' in patch)) merged.page = 1
       ;(Object.keys(KEYS) as Array<keyof PodcastCatalogParams>).forEach((field) => {
-        const value = merged[field]
-        const fallback = field === 'sort' ? defaultSort(merged.search) : DEFAULT_CATALOG_PARAMS[field]
+        const value = serialize(merged[field])
+        const fallback = field === 'sort' ? defaultSort(merged.search) : serialize(DEFAULT_CATALOG_PARAMS[field])
         if (value === fallback || value === '') next.delete(KEYS[field])
-        else next.set(KEYS[field], String(value))
+        else next.set(KEYS[field], value)
       })
       return next
     }, { replace: options.replace })
