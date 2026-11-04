@@ -332,8 +332,13 @@ const NewIntakeDialog = ({
         {/* Each pane scrolls itself on wide screens. The preview is inert so
             tabbing from the last field reaches the footer, not 28 preview
             inputs. */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-          <div className="min-w-0 space-y-6 px-6 py-5 lg:w-[480px] lg:shrink-0 lg:overflow-y-auto">
+        {/* Both scroll panes are `relative` so the sr-only file input is
+            positioned inside its pane. Otherwise it anchors to the dialog,
+            lands below the fold, and focusing it after the file picker closes
+            scrolls the overflow-hidden dialog itself, stranding the header
+            off-screen with a blank area below. */}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+          <div className="relative min-w-0 space-y-6 px-6 py-5 lg:w-[480px] lg:shrink-0 lg:overflow-y-auto">
             <section className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="start-client">Client</Label>
@@ -445,7 +450,7 @@ const NewIntakeDialog = ({
 
           <aside
             aria-label="Preview"
-            className={`min-w-0 flex-1 border-t bg-muted/20 px-6 py-5 lg:block lg:overflow-y-auto lg:border-l lg:border-t-0 ${previewOpen ? 'block' : 'hidden'}`}
+            className={`relative min-w-0 flex-1 border-t bg-muted/20 px-6 py-5 lg:block lg:overflow-y-auto lg:border-l lg:border-t-0 ${previewOpen ? 'block' : 'hidden'}`}
           >
             <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
             {/* inert keeps every preview input out of the tab order. */}

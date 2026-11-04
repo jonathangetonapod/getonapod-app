@@ -321,7 +321,9 @@ function ProspectProfileDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden" onSubmit={(event) => { event.preventDefault(); onSubmit() }}>
-          <div className="min-h-0 overflow-y-auto overscroll-contain px-6">
+          {/* `relative` keeps the sr-only photo input inside this scroller, so
+              focusing it after the file picker cannot scroll the dialog. */}
+          <div className="relative min-h-0 overflow-y-auto overscroll-contain px-6">
             <div className="space-y-6 pb-6">
               <section className="space-y-4">
                 <div>
