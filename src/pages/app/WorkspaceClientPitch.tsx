@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Loader2, Radio } from 'lucide-react'
@@ -46,6 +46,10 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
   const { user, workspace } = useAuth()
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [archiving, setArchiving] = useState(false)
+  // Unsaved pitch or prompt edits in the flow below, and the queue move
+  // waiting on the operator's say-so to discard them.
+  const [flowDirty, setFlowDirty] = useState(false)
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
   const isPlatformWorkspace = platformWorkspaceId !== undefined
   const workspaceId = (isPlatformWorkspace ? platformWorkspaceId : workspace?.id || '').toLowerCase()
   const canonicalClientId = clientId.toLowerCase()
@@ -103,6 +107,20 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
     (shortlistPodcastId: string) => clientPitchHref(baseHref, canonicalClientId, shortlistPodcastId),
     [baseHref, canonicalClientId],
   )
+  const requestPitch = useCallback((shortlistPodcastId: string) => {
+    const href = pitchHrefFor(shortlistPodcastId)
+    if (flowDirty) setPendingHref(href)
+    else navigate(href)
+  }, [flowDirty, navigate, pitchHrefFor])
+
+  // A new podcast starts at the top, and nothing open for the last one (the
+  // archive confirmation especially) may carry over to act on this one.
+  const currentPodcastId = podcast?.id
+  useEffect(() => {
+    setArchiveOpen(false)
+    setPendingHref(null)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 })
+  }, [currentPodcastId])
 
   const effectiveWorkspace = detail?.workspace
   const platformWorkspace: PlatformWorkspaceConfig | undefined = isPlatformWorkspace
@@ -126,7 +144,11 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
       await queryClient.invalidateQueries({ queryKey: shortlistQueryKey })
       toast.success(`${podcast.podcast_name} archived. Its history will still be used for dedupe.`)
       setArchiveOpen(false)
-      navigate(shortlistHref)
+      // Keep the operator moving through the queue rather than dropping them
+      // back on the shortlist.
+      const following = pitchQueue.next ?? pitchQueue.previous
+      if (following) navigate(pitchHrefFor(following.id))
+      else navigate(shortlistHref)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The podcast could not be archived.')
     } finally {
@@ -194,13 +216,21 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
       <div className="mx-auto max-w-6xl space-y-4">
         <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-          <Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />{client.name}’s shortlist</Link>
+          <Link
+            to={shortlistHref}
+            onClick={(event) => {
+              if (!flowDirty) return
+              event.preventDefault()
+              setPendingHref(shortlistHref)
+            }}
+          ><ArrowLeft className="mr-2 h-4 w-4" />{client.name}’s shortlist</Link>
         </Button>
-        <PitchQueueNav queue={pitchQueue} hrefFor={pitchHrefFor} />
+        <PitchQueueNav queue={pitchQueue} onNavigate={requestPitch} />
         <ClientCampaignPrep
           // A fresh flow per podcast: moving through the queue must not carry
           // one show's step, email choice or draft into the next.
           key={podcast.id}
+          onDirtyChange={setFlowDirty}
           layout="page"
           workspaceId={workspaceId}
           clientId={canonicalClientId}
@@ -219,6 +249,21 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
           onArchive={() => setArchiveOpen(true)}
         />
       </div>
+
+      <AlertDialog open={pendingHref !== null} onOpenChange={(open) => !open && setPendingHref(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Leave without saving?</AlertDialogTitle><AlertDialogDescription>This pitch has unsaved edits. Leaving now drops them and keeps the last saved version.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingHref) navigate(pendingHref) }}
+            >
+              Leave without saving
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={archiveOpen} onOpenChange={(open) => !archiving && setArchiveOpen(open)}>
         <AlertDialogContent>

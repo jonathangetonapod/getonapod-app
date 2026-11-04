@@ -102,6 +102,7 @@ import {
 } from '@/lib/researchPromptDefaults'
 import { isTargetInActiveOutreach } from '@/lib/campaignTargetState'
 import { researchPromptPhases } from '@/lib/researchPromptStages'
+import { podscanEmails } from '@/lib/podscanEmails'
 
 
 export interface ClientCampaignPrepProps {
@@ -146,6 +147,11 @@ export interface ClientCampaignPrepProps {
   onPrepared?: () => void
   /** Cancel and Done in the dialog layout. */
   onDismiss?: () => void
+  /**
+   * Told whether the pitch or prompt has unsaved edits, so a page that offers
+   * other ways out (the pitch queue) can ask before discarding them.
+   */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
 interface ClientCampaignPrepDialogProps extends Omit<
@@ -263,24 +269,6 @@ function validEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim().toLowerCase())
 }
 
-/**
- * Podscan sometimes packs several addresses into one field
- * ("host@show.com, someone@sponsor.com"). Split it into the distinct valid
- * addresses so the operator can choose one.
- */
-function podscanEmails(value: string | null | undefined): string[] {
-  const seen = new Set<string>()
-  return (value || '')
-    .split(/[\s,;]+/)
-    .map((part) => part.trim())
-    .filter((part) => {
-      const key = part.toLowerCase()
-      if (!validEmail(part) || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-}
-
 function compactNumber(value: number | null | undefined): string {
   if (!value) return '—'
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
@@ -330,6 +318,7 @@ export function ClientCampaignPrep({
   onArchive,
   onPrepared,
   onDismiss,
+  onDirtyChange,
 }: ClientCampaignPrepProps) {
   const page = layout === 'page'
   const leaveWindowVerb = page ? 'leave this page' : 'close this window'
@@ -1395,6 +1384,11 @@ export function ClientCampaignPrep({
   const activeSequenceEmailStep = sequenceEmailSteps.find((step) => step.id === activeSequenceEmail) || sequenceEmailSteps[0]
   const draftHasUnsavedEdits = (Object.keys(draft) as Array<keyof PodcastCampaignSequenceDraft>)
     .some((field) => draft[field] !== savedDraft[field])
+  const hasUnsavedEdits = draftHasUnsavedEdits || promptDirty
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedEdits)
+  }, [hasUnsavedEdits, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
   // "Save edits" used to copy draft into savedDraft and say it was saved,
   // while nothing left the browser; reopening the dialog lost every edit.
   const savePitchMutation = useMutation({
@@ -1847,12 +1841,13 @@ export function ClientCampaignPrep({
                         <p className="text-sm font-semibold">Choose an email path</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Podscan supplies the free show inbox; the robust route identifies and verifies a direct host contact.</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <div className="flex flex-col gap-3">
                           <button
                             type="button"
                             aria-label="Use free podcast email"
                             aria-pressed={emailRoute === 'podcast'}
                             disabled={!publicPodcastEmail}
-                            className={`relative flex min-h-64 flex-col rounded-2xl border p-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${emailRoute === 'podcast' ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
+                            className={`relative flex min-h-64 flex-1 flex-col rounded-2xl border p-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${emailRoute === 'podcast' ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
                             onClick={() => {
                               setEmailRoute('podcast')
                               setContactEmail(publicPodcastEmail)
@@ -1875,10 +1870,12 @@ export function ClientCampaignPrep({
                             </div>
                           </button>
                           {publicPodcastEmails.length > 1 && (
-                            <div className="md:order-last">
+                            <div>
                               <Label htmlFor="campaign-podscan-email" className="text-xs font-medium">Podscan inbox to use</Label>
                               <Select
-                                value={publicPodcastEmail}
+                                // Off the free route the placeholder shows, so
+                                // picking the first address still selects it.
+                                value={emailRoute === 'podcast' ? publicPodcastEmail : ''}
                                 onValueChange={(email) => {
                                   setEmailRoute('podcast')
                                   setContactEmail(email)
@@ -1891,6 +1888,7 @@ export function ClientCampaignPrep({
                               </Select>
                             </div>
                           )}
+                          </div>
 
                           <button
                             type="button"
