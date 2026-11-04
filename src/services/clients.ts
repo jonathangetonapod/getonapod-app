@@ -1,3 +1,4 @@
+import { normalizeClientWebsite } from '@/lib/clientWebsite'
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { withDecodedPodcastName, withDecodedPodcastNames } from '@/lib/feedText'
@@ -329,7 +330,7 @@ const cleanWorkspaceClientInput = (input: WorkspaceClientInput) => ({
   email: input.email?.trim() || null,
   contact_person: input.contact_person?.trim() || null,
   linkedin_url: input.linkedin_url?.trim() || null,
-  website: input.website?.trim() || null,
+  website: normalizeClientWebsite(input.website),
   status: input.status,
   notes: input.notes?.trim() || null,
 })

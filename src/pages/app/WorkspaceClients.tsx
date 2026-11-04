@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { RowMenu } from '@/components/workspace/RowMenu'
+import { displayClientWebsite } from '@/lib/clientWebsite'
 import { CLIENT_SORT_LABELS, CLIENT_STATUS_FILTER_LABELS, clientListView, type ClientListSort, type ClientStatusFilter } from '@/lib/clientListView'
 import {
   createWorkspaceClient,
@@ -378,7 +379,7 @@ const WorkspaceClients = ({ platformWorkspaceId, mode = 'manage' }: WorkspaceCli
                         className="group cursor-pointer focus-within:bg-muted/50"
                         onClick={() => navigate(clientDetailHref)}
                       >
-                        <TableCell><Link to={clientDetailHref} onClick={(event) => event.stopPropagation()} aria-label={`Open ${client.name}`} className="inline-flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">{client.name}<ArrowUpRight className="h-3.5 w-3.5" /></Link>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{client.website}</p>}</TableCell>
+                        <TableCell><Link to={clientDetailHref} onClick={(event) => event.stopPropagation()} aria-label={`Open ${client.name}`} className="inline-flex items-center gap-1.5 font-medium group-hover:text-primary group-hover:underline">{client.name}<ArrowUpRight className="h-3.5 w-3.5" /></Link>{client.website && <p className="max-w-xs truncate text-xs text-muted-foreground">{displayClientWebsite(client.website)}</p>}</TableCell>
                         <TableCell className="hidden md:table-cell"><p>{client.contact_person || '—'}</p><p className="text-xs text-muted-foreground">{client.email || 'No email'}</p></TableCell>
                         <TableCell className="hidden sm:table-cell">
                           {(() => {

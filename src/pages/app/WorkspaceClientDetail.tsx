@@ -69,7 +69,7 @@ import {
   type SetupItemTarget,
 } from '@/lib/clientNextStep'
 import { creditCostSuffix } from '@/lib/creditCosts'
-import { safeExternalUrl } from '@/lib/externalUrl'
+import { repairableExternalUrl, safeExternalUrl } from '@/lib/externalUrl'
 import { workspaceLogoUrl } from '@/lib/workspaceLogo'
 import { MY_WORKSPACE_BASE_HREF, selectedWorkspaceBaseHref } from '@/lib/workspaceRoutes'
 import {
@@ -431,7 +431,8 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const funnelSteps = getClientFunnel(detail)
   const dashboard = detail.dashboard
   const mediaKitUrl = client.media_kit_url ? safeExternalUrl(client.media_kit_url) : null
-  const websiteUrl = client.website ? safeExternalUrl(client.website) : null
+  // repairable: a website saved as a bare domain ("missioninbox.com") still links.
+  const websiteUrl = client.website ? repairableExternalUrl(client.website) : null
   const linkedInUrl = client.linkedin_url ? safeExternalUrl(client.linkedin_url) : null
   const calendarUrl = client.calendar_link ? safeExternalUrl(client.calendar_link) : null
   const dashboardPreviewHref = client.dashboard_slug
