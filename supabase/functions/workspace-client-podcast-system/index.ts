@@ -445,6 +445,21 @@ function profileText(value: unknown, field: string): string | null {
   return typeof text === 'string' && text.trim() ? text.trim() : null
 }
 
+const DESCRIPTION_PREVIEW_CHARS = 280
+
+/*
+ * Feed descriptions run to thousands of characters and the pipeline never
+ * shows them (it uses the cleaned analysis), yet they were most of a
+ * multi-megabyte response. Only a preview goes out; full text stays in the
+ * catalogue for the pages that read it.
+ */
+function descriptionPreview(value: string | null | undefined): string | null {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) return null
+  if (text.length <= DESCRIPTION_PREVIEW_CHARS) return text
+  return `${text.slice(0, DESCRIPTION_PREVIEW_CHARS).replace(/\s+\S*$/u, '')}…`
+}
+
 function pitchAngles(value: AnalysisRow['ai_pitch_angles'] | ShortlistRow['ai_pitch_angles']): Array<{ title: string; description: string }> {
   if (!Array.isArray(value)) return []
   return value.flatMap((angle) => {
@@ -907,7 +922,7 @@ serve(async (req) => {
           id: podcast?.id || null,
           podscan_id: row.podcast_id,
           name: podcast?.podcast_name || row.podcast_name,
-          description: podcast?.podcast_description ?? row.podcast_description,
+          description: descriptionPreview(podcast?.podcast_description ?? row.podcast_description),
           image_url: podcast?.podcast_image_url ?? row.podcast_image_url,
           url: podcast?.podcast_url ?? row.podcast_url,
           publisher_name: podcast?.publisher_name ?? row.publisher_name,
@@ -1002,7 +1017,7 @@ serve(async (req) => {
             id: podcast?.id || null,
             podscan_id: podcast?.podscan_id || booking.podcast_id || `booking:${booking.id}`,
             name: podcast?.podcast_name || booking.podcast_name,
-            description: podcast?.podcast_description || null,
+            description: descriptionPreview(podcast?.podcast_description || null),
             image_url: podcast?.podcast_image_url || null,
             url: podcast?.podcast_url || booking.podcast_url,
             publisher_name: podcast?.publisher_name || null,

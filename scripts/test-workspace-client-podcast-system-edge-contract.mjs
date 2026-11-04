@@ -62,6 +62,12 @@ assert.match(edge, /if \(onlyClientId\) query = query\.eq\('client_id', onlyClie
 assert.match(edge, /if \(onlyClientId\) threadQuery = threadQuery\.eq\('client_id', onlyClientId\)/u)
 assert.match(service, /\.\.\.\(canonicalClientId \? \{ client_id: canonicalClientId \} : \{\}\)/u)
 
+// Feed descriptions are previews here: they were most of a multi-megabyte
+// response the pipeline never displays.
+assert.match(edge, /const DESCRIPTION_PREVIEW_CHARS = 280/u)
+assert.match(edge, /description: descriptionPreview\(podcast\?\.podcast_description \?\? row\.podcast_description\)/u)
+assert.doesNotMatch(edge, /description: podcast\?\.podcast_description/u)
+
 console.log('workspace pipeline Edge contract passed')
 
 assert.match(edge, /from\('workspace_inbox_thread_state'\)[\s\S]{0,220}\.eq\('workspace_id', workspaceId\)/u)
