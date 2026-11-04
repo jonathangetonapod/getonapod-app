@@ -11,6 +11,7 @@ import {
   reorderClientShortlistFeatured,
   runClientShortlistEmailSearch,
   runClientShortlistResearch,
+  saveClientShortlistRecipients,
   scoreClientShortlistFit,
   searchClientPodcastCatalog,
   setClientShortlistFeedbackBulk,
@@ -354,6 +355,39 @@ describe('clientShortlist service', () => {
     expect((invoke.mock.calls[0][1] as { body: { podcasts: unknown[] } }).body.podcasts).toHaveLength(50)
     expect((invoke.mock.calls[1][1] as { body: { podcasts: unknown[] } }).body.podcasts).toHaveLength(1)
     expect(result).toMatchObject({ added: 50, skipped: 1 })
+  })
+})
+
+describe('saveClientShortlistRecipients', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends only the fields the server may judge, and returns what it stored', async () => {
+    const stored = [{ email: 'jane@show.fm', source: 'verified', sources: ['verified'], status: 'verified', role: 'to', contact_role: 'host' }]
+    invoke.mockResolvedValueOnce({ data: { recipients: stored }, error: null } as never)
+
+    const result = await saveClientShortlistRecipients(workspaceId, clientId, '33333333-3333-4333-8333-333333333333', [
+      // A status and an MX result the browser holds are not sent: the server derives both.
+      { email: 'jane@show.fm', source: 'verified', sources: ['verified'], status: 'verified', role: 'to', contact_role: 'host', mx: 'ok' },
+    ])
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist', {
+      body: {
+        action: 'recipients-save',
+        workspace_id: workspaceId,
+        client_id: clientId,
+        shortlist_podcast_id: '33333333-3333-4333-8333-333333333333',
+        recipients: [
+          { email: 'jane@show.fm', source: 'verified', sources: ['verified'], role: 'to', contact_role: 'host' },
+        ],
+      },
+    })
+    expect(result).toEqual(stored)
+  })
+
+  it('refuses a response without a list rather than wiping the screen', async () => {
+    invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
+    await expect(saveClientShortlistRecipients(workspaceId, clientId, '33333333-3333-4333-8333-333333333333', []))
+      .rejects.toThrow('The recipients response was invalid.')
   })
 })
 

@@ -1841,6 +1841,48 @@ function outreachPitchVariables(
   };
 }
 
+/**
+ * Feeds what a send learned back into the shared contact network: a bounce
+ * marks the address bounced for every workspace, and a reply proves an
+ * unverified address reaches someone. Best effort — the network is advisory,
+ * and a sync must not fail because it could not be told.
+ */
+async function recordContactOutcome(
+  admin: AuthContext["admin"],
+  podcastId: string,
+  email: string,
+  outcome: "bounced" | "replied",
+): Promise<void> {
+  const normalized = email.trim().toLowerCase();
+  try {
+    if (outcome === "bounced") {
+      // An existing row keeps the source it was first seen with; only an
+      // address the network never heard of is recorded as learned from a send.
+      const { data: marked } = await admin.from("podcast_contact_emails")
+        .update({ status: "bounced", updated_at: new Date().toISOString() })
+        .eq("podcast_id", podcastId)
+        .eq("normalized_email", normalized)
+        .select("id");
+      if (!marked?.length) {
+        await admin.from("podcast_contact_emails").insert({
+          podcast_id: podcastId,
+          email: normalized,
+          source: "outreach",
+          status: "bounced",
+        });
+      }
+    } else {
+      await admin.from("podcast_contact_emails")
+        .update({ status: "verified", updated_at: new Date().toISOString() })
+        .eq("podcast_id", podcastId)
+        .eq("normalized_email", normalized)
+        .eq("status", "unverified");
+    }
+  } catch (error) {
+    console.error("[workspace-client-campaigns] contact network update failed", error);
+  }
+}
+
 /** Contact details shared by both lead-creating paths. */
 function hostNameParts(hostName: string | null) {
   const parts = hostName?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -2512,6 +2554,14 @@ async function syncProviderCampaign(
             500,
             "CAMPAIGN_SYNC_FAILED",
             "Campaign lead activity could not be saved",
+          );
+        }
+        if (target.contact_email && (lead.status === -1 || lead.email_reply_count > 0)) {
+          await recordContactOutcome(
+            context.admin,
+            target.podcast_id,
+            target.contact_email,
+            lead.status === -1 ? "bounced" : "replied",
           );
         }
       }),

@@ -93,7 +93,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // 227 with manage-platform-team: invite and remove platform admins
   // (2026-11-03).
   // 226 after inbox-nudge-tick/index.ts was deleted (2026-11-04).
-  edgeTypeScriptFiles: 226,
+  // 228: _shared/pitchRecipients.ts and its Deno test, for multi-recipient
+  // pitches (2026-11-04).
+  edgeTypeScriptFiles: 228,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

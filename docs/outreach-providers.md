@@ -102,6 +102,27 @@ ReachInbox gaps, and what the app does instead:
 - The blocklist table name for addresses (`emails`) is inferred from the docs'
   `:table` placeholder and needs confirming against a live account.
 
+## One address per pitch (2026-11-04)
+
+Every pitch goes to exactly one address, on every platform. Step 1 of the
+pitch workspace draws on three sources — the free Podscan inbox, the verified
+host email and an address the operator found — and the operator picks one.
+There is no CC.
+
+Why, from each platform's API (read 2026-11-04):
+
+| Provider | CC on a campaign lead | Where CC does exist |
+|---|---|---|
+| Instantly | No | Campaign-wide `cc_list` (same fixed addresses on every lead); `cc_address_email_list` on `POST /api/v2/emails/reply`, which only answers an existing email |
+| Email Bison | No | `cc_emails` on `POST /api/replies/new` (one-off new thread, outside campaigns) and on replies |
+| ReachInbox | Yes (`ccEnabled` + `ccVariables` per sequence step, up to 5) | — |
+
+CC on the opening email is only possible on ReachInbox; on the others it would
+mean sending outside the campaign or a second email. Rather than behave
+differently per platform, the product sends one address everywhere. If that
+changes, Email Bison's compose endpoint plus `reply_all` replies could carry CC
+for a whole sequence, but the app would have to run the sequence itself.
+
 Status translation (Bison → app):
 
 | Bison campaign status | App code |

@@ -1,3 +1,4 @@
+import type { PitchRecipient } from '@/lib/pitchRecipients'
 import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { decodeFeedText } from '@/lib/feedText'
@@ -159,6 +160,14 @@ export interface ClientShortlistPodcast extends ClientShortlistPodcastInput {
   feedback_updated_at: string | null
   prior_outreach_at?: string | null
   agency_relationship?: ClientShortlistAgencyRelationship | null
+  /**
+   * Who the pitch goes to, chosen in Step 1: one To, the rest CC'd. Null on a
+   * pitch from before recipients existed — its campaign target's single
+   * contact_email is then the To.
+   */
+  pitch_recipients?: PitchRecipient[] | null
+  /** Addresses for this show that a send proved dead, across the platform. */
+  bounced_emails?: string[]
   /** 1-10 fit against the client's bio, guest brief and intake. Operator-only. */
   fit_score?: number | null
   fit_reasoning?: string | null
@@ -529,6 +538,34 @@ export async function runClientShortlistResearch(
   // Out of attempts with the backend still asking for more. Whatever finished
   // is saved, so this reads as an unfinished run rather than a failed one.
   throw new Error('The research run did not finish. Everything completed so far is saved — run it again to continue.')
+}
+
+/**
+ * Saves Step 1's recipients for one pitch. The server re-derives each
+ * address's source and status (a typed address cannot claim to be verified),
+ * runs the MX check on addresses found by hand, and returns the list as stored.
+ */
+export async function saveClientShortlistRecipients(
+  workspaceId: string,
+  clientId: string,
+  shortlistPodcastId: string,
+  recipients: PitchRecipient[],
+): Promise<PitchRecipient[]> {
+  const data = await invokeClientShortlist<{ recipients?: PitchRecipient[] }>({
+    action: 'recipients-save',
+    workspace_id: workspaceId,
+    client_id: clientId,
+    shortlist_podcast_id: shortlistPodcastId,
+    recipients: recipients.map((recipient) => ({
+      email: recipient.email,
+      source: recipient.source,
+      sources: recipient.sources,
+      role: recipient.role,
+      ...(recipient.contact_role ? { contact_role: recipient.contact_role } : {}),
+    })),
+  })
+  if (!Array.isArray(data?.recipients)) throw new Error('The recipients response was invalid.')
+  return data.recipients
 }
 
 export async function runClientShortlistEmailSearch(

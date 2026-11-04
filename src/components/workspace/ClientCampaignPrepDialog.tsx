@@ -105,6 +105,17 @@ import {
 import { isTargetInActiveOutreach } from '@/lib/campaignTargetState'
 import { researchPromptPhases } from '@/lib/researchPromptStages'
 import { podscanEmails } from '@/lib/podscanEmails'
+import {
+  applyBounces,
+  chooseRecipient,
+  recipientTo,
+  sameRecipients,
+  seedRecipients,
+  type PitchRecipient,
+} from '@/lib/pitchRecipients'
+import { saveClientShortlistRecipients, type ClientShortlistResponse } from '@/services/clientShortlist'
+import { PitchRecipientCards } from './PitchRecipientCards'
+import { PitchSendingToPanel } from './PitchSendingToPanel'
 
 
 export interface ClientCampaignPrepProps {
@@ -180,7 +191,6 @@ interface PrepareResult {
   contactEmail: string
   campaignName: string
 }
-type EmailRoute = 'podcast' | 'waterfall' | 'manual'
 type SequenceEmailStep = 'opening' | 'follow_up_one' | 'follow_up_two'
 type ResearchProgressStatus = 'complete' | 'active' | 'queued' | 'failed'
 type EmailUnlockVisualStatus = 'available' | 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
@@ -347,7 +357,16 @@ export function ClientCampaignPrep({
   >(null)
   const [confirmSendOpen, setConfirmSendOpen] = useState(false)
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
-  const [emailRoute, setEmailRoute] = useState<EmailRoute>('podcast')
+  // Step 1: the one address the pitch goes to, on every platform, chosen
+  // from any of the three sources. Held as a list of at most one — the shape
+  // the server stores.
+  const [recipients, setRecipients] = useState<PitchRecipient[]>([])
+  const recipientsRef = useRef(recipients)
+  recipientsRef.current = recipients
+  // The verified and manual cards can be open with nothing chosen from them
+  // yet: a search not started, or an address not entered.
+  const [verifiedOpen, setVerifiedOpen] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
   const [previewEmailSearchPodcastId, setPreviewEmailSearchPodcastId] = useState<string | null>(null)
   const [acknowledgedRelationshipPodcastId, setAcknowledgedRelationshipPodcastId] = useState<string | null>(null)
   const relationshipAcknowledged = acknowledgedRelationshipPodcastId === podcast?.podcast_id
@@ -493,13 +512,15 @@ export function ClientCampaignPrep({
     if (existing) return existing
 
     const generation = pitchGenerationRef.current
-    const request = generateClientShortlistPitch(
+    // The writer greets whoever Step 1 saved as the To, so a save still in
+    // flight is waited out rather than raced.
+    const request = recipientSaveChainRef.current.catch(() => undefined).then(() => generateClientShortlistPitch(
       workspaceId,
       clientId,
       podcast.id,
       angleIndex,
       relationshipAcknowledged,
-    ).then((pitch) => {
+    )).then((pitch) => {
       if (!pitch?.subject || !pitch?.body) {
         throw new Error('The pitch could not be written from research.')
       }
@@ -658,7 +679,6 @@ export function ClientCampaignPrep({
   const [previewingSavedSequence, setPreviewingSavedSequence] = useState(false)
   const [activeSequenceEmail, setActiveSequenceEmail] = useState<SequenceEmailStep>('opening')
   const [hostName, setHostName] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
   const [draft, setDraft] = useState<PodcastCampaignSequenceDraft>(emptyDraft)
   const [savedDraft, setSavedDraft] = useState<PodcastCampaignSequenceDraft>(emptyDraft)
 
@@ -737,9 +757,7 @@ export function ClientCampaignPrep({
   const podcastImageUrl = safeExternalUrl(podcast?.podcast_image_url)
   const publicPodcastEmails = useMemo(() => podscanEmails(podcast?.podcast_email), [podcast?.podcast_email])
   // The chosen Podscan address: whichever one is the current contact, else the first.
-  const publicPodcastEmail = publicPodcastEmails.find((email) => email.toLowerCase() === contactEmail.trim().toLowerCase())
-    || publicPodcastEmails[0]
-    || ''
+  const publicPodcastEmail = publicPodcastEmails[0] || ''
   const storedEmailUnlock = podcast?.email_unlock || null
   const previewEmailSearchRunning = previewEmailSearchPodcastId === podcast?.podcast_id
     && storedEmailUnlock?.status !== 'unlocked'
@@ -751,6 +769,13 @@ export function ClientCampaignPrep({
     : ''
   const emailSearchRunning = emailUnlockStatus === 'queued' || emailUnlockStatus === 'running'
   const emailAlreadyUnlocked = emailUnlockStatus === 'unlocked' && validEmail(unlockedEmail)
+  // What Step 1 knows about this show's addresses, so an address picked from
+  // one card still carries every badge it has earned elsewhere.
+  const recipientContext = {
+    podscanEmails: publicPodcastEmails,
+    verifiedEmail: emailAlreadyUnlocked ? unlockedEmail : null,
+    bounced: podcast?.bounced_emails ?? null,
+  }
   // The server decides what "out of date" means; the dialog only says so. A
   // stale address still fills the field — withholding a contact the workspace
   // already owns helps nobody — but it must not read as freshly verified.
@@ -1160,7 +1185,9 @@ export function ClientCampaignPrep({
     if (!active) {
       seededForRef.current = null
       setActiveStep('email')
-      setEmailRoute('podcast')
+      setRecipients([])
+      setVerifiedOpen(false)
+      setManualOpen(false)
       setShowPodcastDetails(false)
       setShowResearchSteps(false)
       setInspectedStageId(null)
@@ -1168,7 +1195,6 @@ export function ClientCampaignPrep({
       setSelectedAngleIndex(0)
       setActiveSequenceEmail('opening')
       setHostName('')
-      setContactEmail('')
       setDraft(emptyDraft())
       setSavedDraft(emptyDraft())
     }
@@ -1192,23 +1218,22 @@ export function ClientCampaignPrep({
     if (seededForRef.current === podcast.id) return
     seededForRef.current = podcast.id
     const initial = buildPodcastCampaignSequenceDraft({ podcast, clientName, clientBio })
-    const savedContactEmail = target?.contact_email?.trim() || ''
     setHostName(storedEmailUnlock?.host_name || target?.host_name || podcast.publisher_name || '')
-    if (emailAlreadyUnlocked) {
-      setContactEmail(unlockedEmail)
-      setEmailRoute('waterfall')
-    } else if (emailSearchRunning) {
-      setContactEmail('')
-      setEmailRoute('waterfall')
-    } else {
-      setContactEmail(savedContactEmail || publicPodcastEmail)
-      setEmailRoute(
-        publicPodcastEmail
-        && (!savedContactEmail || publicPodcastEmails.some((email) => email.toLowerCase() === savedContactEmail.toLowerCase()))
-          ? 'podcast'
-          : 'waterfall',
-      )
-    }
+    // A saved list wins; an older pitch's single address becomes the To.
+    const seeded = seedRecipients({
+      saved: podcast.pitch_recipients,
+      legacyContactEmail: target?.contact_email,
+      podscanEmails: publicPodcastEmails,
+      verifiedEmail: emailAlreadyUnlocked ? unlockedEmail : null,
+      bounced: podcast.bounced_emails,
+    })
+    setRecipients(seeded)
+    recipientsRef.current = seeded
+    lastSavedRecipientsRef.current = Array.isArray(podcast.pitch_recipients) ? seeded : null
+    setVerifiedOpen(seeded.some((recipient) => recipient.sources.includes('verified')) || emailSearchRunning)
+    setManualOpen(seeded.some((recipient) => recipient.sources.includes('manual')))
+    // Only a result that arrives AFTER this point is news.
+    seenUnlockedEmailRef.current = emailAlreadyUnlocked ? unlockedEmail.toLowerCase() : null
     const nextDraft = {
       researchNotes: target?.research_notes || initial.researchNotes,
       subject: target?.pitch_subject || initial.subject,
@@ -1226,13 +1251,77 @@ export function ClientCampaignPrep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignQuery.isLoading, active, podcast?.id])
 
-  // A search finishing is the one later change worth adopting: the direct
-  // address it found replaces whatever placeholder the field held meanwhile.
+  /**
+   * Saves the list for this pitch, one save at a time and in order, and puts
+   * what the server stored into the shortlist cache — so a refresh, or Next
+   * and Previous through the pitch queue, open on the same recipients.
+   */
+  const lastSavedRecipientsRef = useRef<PitchRecipient[] | null>(null)
+  const recipientSaveChainRef = useRef<Promise<unknown>>(Promise.resolve())
+  const recipientVersionRef = useRef(0)
+  const persistRecipients = (next: PitchRecipient[]): Promise<unknown> => {
+    if (!podcast) return Promise.resolve()
+    if (lastSavedRecipientsRef.current && sameRecipients(lastSavedRecipientsRef.current, next)) {
+      return recipientSaveChainRef.current
+    }
+    const podcastRowId = podcast.id
+    const bounced = podcast.bounced_emails
+    const version = ++recipientVersionRef.current
+    const run = recipientSaveChainRef.current
+      .catch(() => undefined)
+      .then(() => saveClientShortlistRecipients(workspaceId, clientId, podcastRowId, next))
+      .then((stored) => {
+        queryClient.setQueryData<ClientShortlistResponse>(shortlistQueryKey, (current) => (current ? {
+          ...current,
+          podcasts: current.podcasts.map((item) => (item.id === podcastRowId ? { ...item, pitch_recipients: stored } : item)),
+        } : current))
+        // The server's word on sources, statuses and the MX check — unless the
+        // operator has changed the list again since this save left.
+        if (version === recipientVersionRef.current && seededForRef.current === podcastRowId) {
+          const adopted = applyBounces(stored, bounced)
+          lastSavedRecipientsRef.current = adopted
+          setRecipients(adopted)
+        }
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'The recipients could not be saved.')
+      })
+    recipientSaveChainRef.current = run
+    return run
+  }
+  const updateRecipients = (proposed: PitchRecipient[]) => {
+    // However an address got here, a known bounce stays a bounce and never
+    // the To.
+    const next = applyBounces(proposed, podcast?.bounced_emails)
+    setRecipients(next)
+    recipientsRef.current = next
+    void persistRecipients(next)
+  }
+
+  // A search finishing never takes the choice away from an address the
+  // operator already picked: it is offered instead. With nothing chosen yet,
+  // it becomes the recipient.
+  const seenUnlockedEmailRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!active || !emailAlreadyUnlocked || !unlockedEmail) return
-    setContactEmail(unlockedEmail)
-    setEmailRoute('waterfall')
-  }, [active, emailAlreadyUnlocked, unlockedEmail])
+    if (!active || !emailAlreadyUnlocked || !unlockedEmail || !podcast) return
+    if (seededForRef.current !== podcast.id) return
+    const found = unlockedEmail.toLowerCase()
+    if (seenUnlockedEmailRef.current === found) return
+    seenUnlockedEmailRef.current = found
+    if (!verifiedOpen) return
+    const current = recipientTo(recipientsRef.current)
+    if (current?.email === found) return
+    const switchToFound = () => updateRecipients(chooseRecipient(recipientContext, found, 'verified'))
+    if (!current) {
+      switchToFound()
+      return
+    }
+    toast.success('Verified host email found. Use it instead?', {
+      description: found,
+      action: { label: 'Use it', onClick: switchToFound },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, emailAlreadyUnlocked, unlockedEmail, podcast?.id, verifiedOpen])
 
   const updateDraft = (field: keyof PodcastCampaignSequenceDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -1249,8 +1338,7 @@ export function ClientCampaignPrep({
       toast.info('Connect your Claude or OpenAI API key in workspace settings first.')
       return
     }
-    setEmailRoute('waterfall')
-    setContactEmail('')
+    setVerifiedOpen(true)
     setPreviewEmailSearchPodcastId(podcast.podcast_id)
     emailSearchMutation.mutate(podcast.id)
   }
@@ -1363,7 +1451,8 @@ export function ClientCampaignPrep({
   const hasSavedSequence = previewingSavedSequence
   const selectedSequenceReady = researchComplete && !selectedSequenceLoading
     && (Boolean(selectedPitchMeta) || hasSavedSequence || pitchAngles.length === 0)
-  const normalizedEmail = contactEmail.trim().toLowerCase()
+  const toRecipient = recipientTo(recipients)
+  const normalizedEmail = toRecipient?.email ?? ''
 
   // Sending to Client Campaign creates the Instantly lead in the campaign
   // itself. A paused campaign holds it; a live one starts the sequence on its
@@ -1456,6 +1545,8 @@ export function ClientCampaignPrep({
         followUpTwoBody: draft.followUpTwoBody,
         pitchChainVersion: aiPitches[pitchKey(podcast.id, selectedAngleIndex)]?.chainVersion ?? null,
         instantlyCampaignId: activeCampaignId,
+        // One email: the To above, these copied. A platform that cannot copy
+        // drops them server-side, and the operator was warned before sending.
       }).then((result) => ({
         ...result,
         sent_to_campaign_name: chosenCampaign?.name || campaign?.name || 'the client campaign',
@@ -1517,6 +1608,20 @@ export function ClientCampaignPrep({
     },
   })
 
+  // On the page the footer is sticky too; the Sending to panel sits on top of
+  // it rather than under it, so it needs the footer's live height.
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  const footerRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const footerNode = footerRef.current
+    const pageNode = pageRef.current
+    if (!page || !footerNode || !pageNode || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      pageNode.style.setProperty('--pitch-footer-height', `${footerNode.offsetHeight}px`)
+    })
+    observer.observe(footerNode)
+    return () => observer.disconnect()
+  })
   const [detailsCopied, setDetailsCopied] = useState(false)
   // Clipboard access is absent in some embedded browsers and in jsdom. A copy
   // button that throws on click would take the alert down with it, so a
@@ -1841,7 +1946,7 @@ export function ClientCampaignPrep({
                     <div className="border-b bg-gradient-to-br from-primary/10 via-primary/5 to-background p-5 sm:p-6">
                       <div className="flex gap-3">
                         <div className="rounded-xl bg-primary/10 p-2.5 text-primary"><Mail className="h-5 w-5" /></div>
-                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A valid email is required before research. Use the free Podscan inbox, find the host through LinkedIn, or enter an address you already have.</p></div>
+                        <div><Badge variant="secondary">Step 1</Badge><h3 className="mt-2 text-xl font-semibold">Find the email</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">At least one valid address is required before research. Research can start while a paid search is still running.</p></div>
                       </div>
                     </div>
 
@@ -1851,161 +1956,44 @@ export function ClientCampaignPrep({
                           <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
                           <div><p className="text-sm font-semibold">One shared contact network</p><p className="mt-1 text-xs leading-5 text-sky-900/80">Free Podscan inboxes and verified direct contacts are shared across the Database. An existing verified contact can be reused without another provider lookup.</p></div>
                         </div>
-                        <p className="text-sm font-semibold">Choose an email path</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose the route you want. Podscan supplies the free show inbox; the robust route identifies and verifies a direct host contact.</p>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <div className="flex flex-col gap-3">
-                          <button
-                            type="button"
-                            aria-label="Use free podcast email"
-                            aria-pressed={emailRoute === 'podcast'}
-                            disabled={!publicPodcastEmail}
-                            className={`relative flex min-h-64 flex-1 flex-col rounded-2xl border p-5 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60 ${emailRoute === 'podcast' ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'bg-background hover:border-primary/40 hover:bg-muted/20'}`}
-                            onClick={() => {
-                              setEmailRoute('podcast')
-                              setContactEmail(publicPodcastEmail)
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700"><Mail className="h-5 w-5" /></div>
-                              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Free · Podscan</Badge>
-                            </div>
-                            <h4 className="mt-4 font-semibold">Use the free podcast inbox</h4>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">Use the address supplied with the podcast by Podscan. It is always free and shared globally, but may route to a general show inbox.</p>
-                            <div className="mt-4 rounded-xl border bg-background px-3 py-2.5">
-                              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Free Podscan inbox</p>
-                              <p className="mt-1 truncate text-sm font-medium">{publicPodcastEmail || 'No public email found'}</p>
-                              {publicPodcastEmails.length > 1 && <p className="mt-0.5 text-[11px] text-muted-foreground">Podscan lists {publicPodcastEmails.length} addresses. Choose one below.</p>}
-                            </div>
-                            <div className={`mt-auto flex items-center gap-2 pt-4 text-xs font-medium ${emailRoute === 'podcast' && publicPodcastEmail ? 'text-primary' : 'text-muted-foreground'}`}>
-                              {emailRoute === 'podcast' && publicPodcastEmail ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <span className="h-4 w-4 rounded-full border" />}
-                              {publicPodcastEmail ? (emailRoute === 'podcast' ? 'Research will use this inbox' : 'Use this email') : 'Unavailable for this show'}
-                            </div>
-                          </button>
-                          {publicPodcastEmails.length > 1 && (
-                            <div>
-                              <Label htmlFor="campaign-podscan-email" className="text-xs font-medium">Podscan inbox to use</Label>
-                              <Select
-                                // Off the free route the placeholder shows, so
-                                // picking the first address still selects it.
-                                value={emailRoute === 'podcast' ? publicPodcastEmail : ''}
-                                onValueChange={(email) => {
-                                  setEmailRoute('podcast')
-                                  setContactEmail(email)
-                                }}
-                              >
-                                <SelectTrigger id="campaign-podscan-email" className="mt-1.5"><SelectValue placeholder="Choose an address" /></SelectTrigger>
-                                <SelectContent>
-                                  {publicPodcastEmails.map((email) => <SelectItem key={email} value={email}>{email}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                          </div>
-
-                          <div className={`flex min-h-64 flex-col rounded-2xl border transition-all ${emailRoute === 'waterfall' ? 'border-violet-500 bg-violet-50/50 shadow-sm ring-1 ring-violet-200' : 'bg-background hover:border-violet-300 hover:bg-violet-50/20'}`}>
-                            <button
-                              type="button"
-                              aria-label="Try waterfall enrichment"
-                              aria-pressed={emailRoute === 'waterfall'}
-                              className="flex flex-1 flex-col rounded-2xl p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
-                              onClick={() => {
-                                setEmailRoute('waterfall')
-                                setContactEmail(emailAlreadyUnlocked ? unlockedEmail : '')
+                        <p className="text-sm font-semibold">Choose who receives this pitch</p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">Use the free show inbox, the verified host email, or an email you found. Each pitch goes to one address.</p>
+                        <TooltipProvider>
+                          <div className="mt-4">
+                            <PitchRecipientCards
+                              recipient={recipients[0] ?? null}
+                              context={recipientContext}
+                              onChange={updateRecipients}
+                              verified={{
+                                email: emailAlreadyUnlocked ? unlockedEmail : null,
+                                stale: contactIsStale,
+                                running: emailSearchRunning,
+                                noResult: emailSearchHasNoResult,
+                                message: storedEmailUnlock?.message ?? null,
+                                linkedinUrl: storedEmailUnlock?.linkedin_url ?? null,
+                                steps: visibleEmailUnlockSteps,
                               }}
-                            >
-                              <div className="flex items-center justify-between gap-3"><Search className="h-5 w-5 text-violet-700" /><Badge variant="secondary">Provider billed</Badge></div>
-                              <h4 className="mt-4 font-semibold">Find the host’s work email</h4>
-                              <p className="mt-2 text-xs leading-5 text-muted-foreground">Your selected AI provider searches for the host’s personal LinkedIn profile, then Blitz looks up their verified work email.</p>
-                              <p className="mt-3 text-xs leading-5 text-violet-800">Uses your selected Claude or OpenAI key. Your AI provider bills usage to your account.</p>
-                              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-violet-800"><span>Find LinkedIn profile</span><span>→</span><span>Get verified work email</span></div>
-                              {emailRoute !== 'waterfall' && (
-                                <div className="mt-auto flex items-center gap-2 pt-4 text-xs font-medium text-violet-800"><span className="h-4 w-4 rounded-full border" />{emailAlreadyUnlocked ? 'Use shared contact' : 'Use AI contact search'}</div>
-                              )}
-                            </button>
-
-                            {emailRoute === 'waterfall' && (
-                              <div aria-label="Waterfall enrichment plan" className="border-t border-violet-200 px-5 pb-5 pt-4">
-                                {emailAlreadyUnlocked ? (
-                                  <div className={`rounded-xl border p-3 ${contactIsStale ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
-                                    <p className={`flex items-center gap-2 text-sm font-semibold ${contactIsStale ? 'text-amber-950' : 'text-emerald-950'}`}>{contactIsStale ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <CheckCircle2 className="h-4 w-4 shrink-0" />}Shared verified contact</p>
-                                    <p className="mt-2 break-all rounded-lg border bg-background px-3 py-2 font-mono text-sm">{unlockedEmail}</p>
-                                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{contactIsStale ? 'This contact needs a fresh lookup before outreach.' : 'This contact is already available across the Database.'}</p>
-                                    <p className="mt-1 text-xs font-medium text-foreground">Research will use this address.</p>
-                                  </div>
-                                ) : emailSearchRunning ? (
-                                  <div role="status">
-                                    <p className="flex items-center gap-2 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin text-violet-700" />Direct email search in progress</p>
-                                    <ol className="mt-3 space-y-2">
-                                      {visibleEmailUnlockSteps.map((step) => (
-                                        <li key={step.id} className={`flex items-center gap-2 text-xs ${step.status === 'queued' ? 'text-muted-foreground' : 'font-medium'}`}>
-                                          {step.status === 'complete'
-                                            ? <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0 text-emerald-600" />
-                                            : step.status === 'active'
-                                              ? <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-violet-700" />
-                                              : <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full border" />}
-                                          {step.title}
-                                        </li>
-                                      ))}
-                                    </ol>
-                                  </div>
-                                ) : emailSearchHasNoResult ? (
-                                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                                    <p className="flex items-center gap-2 text-sm font-semibold text-amber-950"><AlertTriangle className="h-4 w-4 shrink-0" />No verified work email found</p>
-                                    <p className="mt-1 text-xs leading-5 text-amber-900/80">{storedEmailUnlock?.message || 'Try again, use the free inbox, or enter an email manually.'}</p>
-                                  </div>
-                                ) : (
-                                  <div><p className="text-sm font-semibold">Your AI account + contact enrichment</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Start the search below. When a verified work email is found it appears here and research uses it.</p></div>
-                                )}
-                                {storedEmailUnlock?.linkedin_url && safeExternalUrl(storedEmailUnlock.linkedin_url) && (
-                                  <p className="mt-3 text-xs text-muted-foreground">LinkedIn profile: <a className="break-all text-primary underline" href={safeExternalUrl(storedEmailUnlock.linkedin_url)!} target="_blank" rel="noreferrer">{storedEmailUnlock.linkedin_url}</a></p>
-                                )}
-                                {(!emailAlreadyUnlocked || contactIsStale) && !emailSearchRunning && (
-                                  <div className="mt-4 space-y-2">
-                                    <Button type="button" className="w-full bg-violet-700 hover:bg-violet-800" disabled={!relationshipCanProceed || !byoAi} onClick={beginEmailSearchPreview}><Search className="mr-2 h-4 w-4" />{emailSearchHasNoResult || contactIsStale ? 'Try search again' : 'Start direct email search'}<span className="ml-1.5 font-normal opacity-70">· Your AI account</span></Button>
-                                    <p className="text-xs text-muted-foreground">{byoAi ? 'Uses your selected AI key and platform-managed contact enrichment. AI provider charges apply.' : 'Connect your Claude or OpenAI key in Billing to start.'}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          aria-label="Enter email manually"
-                          aria-pressed={emailRoute === 'manual'}
-                          className={`mt-4 flex w-full flex-col gap-3 rounded-xl border p-4 text-left transition-all sm:flex-row sm:items-center ${emailRoute === 'manual' ? 'border-slate-500 bg-slate-50 shadow-sm ring-1 ring-slate-200' : 'bg-background hover:border-slate-300 hover:bg-muted/20'}`}
-                          onClick={() => {
-                            setEmailRoute('manual')
-                            if ([...publicPodcastEmails, unlockedEmail].filter(Boolean).some((email) => contactEmail.trim().toLowerCase() === email.toLowerCase())) setContactEmail('')
-                          }}
-                        >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><PenLine className="h-4 w-4" /></span>
-                          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">Enter an email manually</span><span className="mt-0.5 block text-xs leading-5 text-muted-foreground">Use a host or producer email you found yourself. No provider lookup is needed.</span></span>
-                          <span className="flex shrink-0 items-center gap-2"><Badge variant="outline">Included</Badge>{emailRoute === 'manual' && <CheckCircle2 className="h-4 w-4 text-slate-700" />}</span>
-                        </button>
-
-                        {emailRoute === 'manual' && (
-                          <div className="mt-4 rounded-xl border bg-slate-50/70 p-4">
-                            <Label htmlFor="campaign-manual-email">Email address</Label>
-                            <Input
-                              id="campaign-manual-email"
-                              type="email"
-                              value={contactEmail}
-                              onChange={(event) => setContactEmail(event.target.value)}
-                              maxLength={254}
-                              placeholder="host@podcast.com"
-                              aria-invalid={Boolean(normalizedEmail) && !emailReady}
-                              aria-describedby="campaign-manual-email-help"
-                              required
-                              className="mt-2 bg-background"
+                              verifiedOpen={verifiedOpen}
+                              onVerifiedOpenChange={setVerifiedOpen}
+                              manualOpen={manualOpen}
+                              onManualOpenChange={setManualOpen}
+                              disabled={!relationshipCanProceed}
+                              canSearch={relationshipCanProceed && byoAi}
+                              byoAi={byoAi}
+                              onStartSearch={beginEmailSearchPreview}
                             />
-                            <p id="campaign-manual-email-help" className={`mt-2 text-xs ${emailReady ? 'text-emerald-700' : normalizedEmail ? 'text-destructive' : 'text-muted-foreground'}`}>{emailReady ? 'Email ready. You can continue to Research.' : normalizedEmail ? 'Enter a valid email address.' : 'A valid email is required to unlock Research.'}</p>
                           </div>
-                        )}
+                          <PitchSendingToPanel
+                            className={page ? 'sticky bottom-[var(--pitch-footer-height,0px)] z-[5] mt-5' : 'sticky bottom-0 z-[5] mt-5'}
+                            recipient={recipients[0] ?? null}
+                            verifiedPlaceholder={verifiedOpen && !recipients[0]?.sources.includes('verified')
+                              ? emailSearchRunning ? 'searching' : emailSearchHasNoResult ? 'not_found' : null
+                              : null}
+                            disabled={!relationshipCanProceed}
+                            onRemove={() => updateRecipients([])}
+                          />
+                        </TooltipProvider>
                       </div>
-
                       {!emailReady && !publicPodcastEmail && !emailSearchRunning && (
                         <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
                           <div><p className="text-sm font-semibold">No usable email?</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Archive this podcast instead of moving an incomplete contact into research.</p></div>
@@ -2336,7 +2324,13 @@ export function ClientCampaignPrep({
                     </div>
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div><Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p></div>
+                    <div>
+                      <Badge variant="secondary">Step 3</Badge><h3 className="mt-2 text-xl font-semibold">Finalize the selected pitch</h3><p className="mt-1 text-sm text-muted-foreground">Edit the chosen opening pitch and two follow-ups, then save the finished sequence for outreach.</p>
+                      <dl aria-label="Pitch recipient on the draft" className="mt-3 space-y-1 rounded-xl border bg-muted/20 px-3 py-2.5 text-sm">
+                        <div className="flex gap-2"><dt className="w-8 shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">To</dt><dd className="min-w-0 truncate font-medium">{normalizedEmail || 'No recipient yet'}</dd></div>
+                        <div><button type="button" className="text-xs font-medium text-primary underline-offset-2 hover:underline" onClick={() => setActiveStep('email')}>Edit recipient</button></div>
+                      </dl>
+                    </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline" className={draftHasUnsavedEdits ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}>{draftHasUnsavedEdits ? 'Unsaved edits' : 'All edits saved'}</Badge>
                       <Button type="button" variant="outline" disabled={!draftHasUnsavedEdits || savePitchMutation.isPending} onClick={saveDraftEdits}>{savePitchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save edits</Button>
@@ -2724,6 +2718,7 @@ export function ClientCampaignPrep({
               </DialogDescription>
             </DialogHeader>
             <dl className="mt-4 space-y-2 rounded-xl border bg-muted/30 p-4 text-xs">
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">To</dt><dd className="truncate font-medium">{normalizedEmail}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Podcast</dt><dd className="truncate font-medium">{podcast?.podcast_name}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sending as</dt><dd className="truncate font-medium">{clientName}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Sequence</dt><dd className="font-medium">Opening, then day 6 and day 13</dd></div>
@@ -2797,6 +2792,7 @@ export function ClientCampaignPrep({
 
   const footer = podcast && !locked && !stagedResult && !campaignQuery.isLoading ? (
           <footer
+            ref={footerRef}
             aria-label="Pitch actions"
             className={page
               ? 'sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 pb-5 pt-4 backdrop-blur sm:-mx-6 sm:px-6 sm:pb-6'
@@ -2810,12 +2806,10 @@ export function ClientCampaignPrep({
                     ? 'This host is marked do not contact. Pitch preparation is disabled.'
                     : 'Review and confirm the relationship warning before continuing. No credit-bearing work has started.'
                   : emailReady
-                  ? 'Email ready. Research is unlocked.'
+                  ? `Sending to ${normalizedEmail}.${emailSearchRunning ? ' The verified search keeps running; you can switch to its result when it finishes.' : ''}`
                   : emailSearchRunning
-                    ? publicPodcastEmail
-                      ? `The global direct-email search is still running. You can ${leaveWindowVerb} or choose the free Podscan inbox while it continues.`
-                      : `The global direct-email search is still running. You can safely ${leaveWindowVerb} and return later.`
-                    : 'A valid email is required before you can continue to Research.')}
+                    ? `The direct-email search is still running. You can ${leaveWindowVerb} and return, or choose another address and continue.`
+                    : 'Choose one email address to continue to Research.')}
                 {activeStep === 'research' && (researchWorking
                   ? researchRegenerating
                     ? 'Regeneration is running every saved workspace prompt in order, then writing the sequence. Closing this panel is fine; the run needs this tab to stay open, and every finished stage is saved if it stops.'
@@ -2895,7 +2889,13 @@ export function ClientCampaignPrep({
                   </Button>
                 )}
                 {activeStep !== 'email' && <Button type="button" variant="outline" onClick={() => setActiveStep(activeStep === 'pitch' ? 'research' : 'email')}><ArrowLeft className="mr-2 h-4 w-4" />{page ? 'Previous step' : 'Back'}</Button>}
-                {activeStep === 'email' && <Button type="button" disabled={!emailReady || !relationshipCanProceed} onClick={() => setActiveStep('research')}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
+                {activeStep === 'email' && <Button type="button" disabled={!emailReady || !relationshipCanProceed} onClick={() => {
+                  // The pitch writer reads the saved list, so it is stored
+                  // before research can write to it — including an opened
+                  // default that nobody changed.
+                  void persistRecipients(recipientsRef.current)
+                  setActiveStep('research')
+                }}>Continue to research<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'research' && <Button type="button" className="col-span-2 row-start-1" disabled={!selectedSequenceReady || !relationshipCanProceed} onClick={() => { setActiveSequenceEmail('opening'); setActiveStep('pitch') }}>Continue with {pitchAngles.length > 0 ? `Option ${selectedAngleIndex + 1}` : 'this draft'}<ArrowRight className="ml-2 h-4 w-4" /></Button>}
                 {activeStep === 'pitch' && <Button type="button" variant={submitWillSend ? 'destructive' : 'default'} disabled={submitDisabled} onClick={() => (submitWillSend ? setConfirmSendOpen(true) : prepareMutation.mutate())}>{prepareMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}{submitWillSend ? 'Send to Client Campaign (goes live)' : alreadyStaged ? 'Update in Client Campaign' : 'Send to Client Campaign'}</Button>}
               </div>
@@ -2905,7 +2905,7 @@ export function ClientCampaignPrep({
 
   if (page) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" ref={pageRef}>
         <header>{headerContent}</header>
         {body}
         {confirmDialogs}

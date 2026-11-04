@@ -111,7 +111,10 @@ assert.match(
 // Existing stale contacts remain labeled and refreshes disclose provider billing.
 assert.match(clientShortlist, /stale: !Number\.isFinite\(Date\.parse\(directContact\.last_verified_at\)\)/u)
 assert.match(prepDialog, /const contactIsStale = emailAlreadyUnlocked && storedEmailUnlock\?\.stale === true/u)
-assert.match(prepDialog, /contactIsStale \? 'This contact needs a fresh lookup before outreach\.'/u)
-assert.match(prepDialog, /Uses your selected AI key and platform-managed contact enrichment\. AI provider charges apply\./u)
+// The verified card moved into its own component; the dialog hands it the flag.
+const recipientCards = readFileSync('src/components/workspace/PitchRecipientCards.tsx', 'utf8')
+assert.match(prepDialog, /stale: contactIsStale,/u)
+assert.match(recipientCards, /verified\.stale \? 'This contact needs a fresh lookup before outreach\.'/u)
+assert.match(recipientCards, /Uses your selected AI key and platform-managed contact enrichment\. AI provider charges apply\./u)
 
 process.stdout.write('Global podcast catalog contract checks passed.\n')

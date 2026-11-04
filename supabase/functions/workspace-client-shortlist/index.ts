@@ -118,6 +118,17 @@ class RequirementBlock extends Error {
   }
 }
 import { notifyShortlistReady } from '../_shared/clientNotify.ts'
+import {
+  checkMx,
+  type MxStatus,
+  normalizeRecipients,
+  type PitchRecipient,
+  podscanEmailList,
+  RecipientInputError,
+  recipientsAffectCopy,
+  recipientsPromptBlock,
+  type RecipientStatus,
+} from '../_shared/pitchRecipients.ts'
 
 // Built as plain strings: an inline template literal makes supabase-js infer a
 // literal select type and its parser cannot read a runtime-joined column list.
@@ -163,6 +174,7 @@ const SHORTLIST_FIELDS = [
   'fit_source',
   'fit_scored_at',
   'fit_profile_hash',
+  'pitch_recipients',
   'created_at',
   'updated_at',
 ].join(',')
@@ -1045,6 +1057,20 @@ serve(async (req) => {
         ((directContactResult.data || []) as unknown as DirectContactRow[])
           .map((contact) => [contact.podcast_id, contact]),
       )
+      // Addresses a send has proved dead, for every workspace. Only bounces are
+      // shown: an address another agency typed in is theirs to have found.
+      const bouncedResult = shortlistPodcastIds.length > 0
+        ? await authContext.admin
+          .from('podcast_contact_emails')
+          .select('podcast_id,normalized_email')
+          .in('podcast_id', shortlistPodcastIds)
+          .eq('status', 'bounced')
+          .limit(5_000)
+        : { data: [], error: null }
+      const bouncedByPodcast = new Map<string, string[]>()
+      for (const row of (bouncedResult.error ? [] : bouncedResult.data ?? []) as Array<{ podcast_id: string; normalized_email: string }>) {
+        bouncedByPodcast.set(row.podcast_id, [...(bouncedByPodcast.get(row.podcast_id) ?? []), row.normalized_email])
+      }
       // What this workspace already means to each host, so the operator sees
       // a warm or off-limits show before spending research on it.
       const relationships = await readPodcastRelationships(
@@ -1101,6 +1127,7 @@ serve(async (req) => {
           feedback_updated_at: feedback?.updated_at || null,
           prior_outreach_at: priorOutreachByPodcast.get(podcast.podcast_id) || null,
           agency_relationship: relationships.get(podcast.podcast_id as string) ?? null,
+          bounced_emails: bouncedByPodcast.get(podcast.podcast_id as string) ?? [],
         }
       })
       // What a fit score must have been made against to be current.
@@ -2575,6 +2602,13 @@ serve(async (req) => {
         })
         if (recordError) throw new HttpError(503, 'EMAIL_SEARCH_SAVE_FAILED', 'The verified contact could not be saved. Try again.')
         const record = recorded as { email?: string; host_name?: string | null; provider_reference?: string | null; verified_at?: string }
+        // An address an operator typed in, now confirmed by Blitz.
+        await authContext.admin.from('podcast_contact_emails')
+          .update({ status: 'verified', updated_at: new Date().toISOString() })
+          .eq('podcast_id', shortlistRow.podcast_id)
+          .eq('normalized_email', String(record.email ?? email).trim().toLowerCase())
+          .eq('status', 'unverified')
+          .then(() => undefined, () => undefined)
         const result = unlocked(record.email ?? email, record.host_name ?? null, linkedinProfileUrl(record.provider_reference) ?? profile, record.verified_at ?? new Date().toISOString())
         await saveProgress(result)
         return jsonResponse(req, METHODS, 200, { email_unlock: result })
@@ -2590,6 +2624,103 @@ serve(async (req) => {
           referenceKind: 'shortlist_podcast', referenceId: shortlistPodcastId,
         })
       }
+    }
+
+    if (action === 'recipients-save') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'shortlist_podcast_id', 'recipients'])
+      const shortlistPodcastId = requireUuid(body.shortlist_podcast_id, 'shortlist_podcast_id')
+      const { data: row, error: rowError } = await authContext.admin
+        .from('client_dashboard_podcasts')
+        .select('id, podcast_id')
+        .eq('id', shortlistPodcastId)
+        .eq('client_id', clientId)
+        .maybeSingle()
+      if (rowError) throw new HttpError(500, 'SHORTLIST_LOOKUP_FAILED', 'The podcast could not be loaded')
+      if (!row) throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Shortlist podcast not found for this client')
+      const { data: catalog } = await authContext.admin
+        .from('podcasts')
+        .select('id, podscan_email')
+        .eq('podscan_id', row.podcast_id)
+        .maybeSingle()
+      const [{ data: direct }, { data: network, error: networkError }] = await Promise.all([
+        catalog?.id
+          ? authContext.admin
+            .from('podcast_direct_contacts')
+            .select('email')
+            .eq('podcast_id', catalog.id)
+            .eq('verification_status', 'verified')
+            .maybeSingle()
+          : Promise.resolve({ data: null }),
+        authContext.admin
+          .from('podcast_contact_emails')
+          .select('normalized_email, status, mx_status')
+          .eq('podcast_id', row.podcast_id)
+          .limit(500),
+      ])
+      if (networkError) throw new HttpError(503, 'CONTACT_NETWORK_UNAVAILABLE', 'The contact network could not be read. Try again.')
+      const networkRows = (network ?? []) as Array<{ normalized_email: string; status: RecipientStatus; mx_status: MxStatus | null }>
+      const facts = {
+        podscanEmails: podscanEmailList(catalog?.podscan_email ?? null),
+        verifiedEmail: typeof direct?.email === 'string' ? direct.email.trim().toLowerCase() : null,
+        networkStatus: new Map(networkRows.map((item) => [item.normalized_email, item.status])),
+        mx: new Map<string, MxStatus>(
+          networkRows.filter((item) => item.mx_status).map((item) => [item.normalized_email, item.mx_status as MxStatus]),
+        ),
+      }
+      let recipients: PitchRecipient[]
+      try {
+        recipients = normalizeRecipients(body.recipients, facts)
+      } catch (error) {
+        if (error instanceof RecipientInputError) throw new HttpError(400, 'INVALID_RECIPIENTS', error.message)
+        throw error
+      }
+      // Only an address typed by hand is checked: Podscan's and the verified
+      // contact's provenance already says more than an MX record would.
+      const unchecked = recipients.filter((item) => item.sources.includes('manual') && !facts.mx.has(item.email))
+      if (unchecked.length > 0) {
+        const results = await Promise.all(unchecked.map(async (item) => [item.email, await checkMx(item.email)] as const))
+        for (const [email, mx] of results) facts.mx.set(email, mx)
+        recipients = normalizeRecipients(recipients, facts)
+      }
+      const { error: saveError } = await authContext.admin
+        .from('client_dashboard_podcasts')
+        .update({ pitch_recipients: recipients })
+        .eq('id', shortlistPodcastId)
+        .eq('client_id', clientId)
+      if (saveError) throw new HttpError(500, 'RECIPIENTS_SAVE_FAILED', 'The recipients could not be saved')
+      // Addresses found by hand join the shared network as unverified. A row
+      // that exists already keeps what the network knew about it.
+      const known = new Set(networkRows.map((item) => item.normalized_email))
+      const newManual = recipients.filter((item) => item.sources.includes('manual') && !known.has(item.email))
+      if (newManual.length > 0) {
+        const { error: networkWriteError } = await authContext.admin
+          .from('podcast_contact_emails')
+          .upsert(newManual.map((item) => ({
+            podcast_id: row.podcast_id,
+            email: item.email,
+            source: 'manual',
+            status: item.status === 'verified' ? 'verified' : 'unverified',
+            contact_role: item.contact_role ?? null,
+            mx_status: item.mx ?? null,
+            first_seen_workspace_id: workspaceId,
+            first_seen_by: authContext.user.id,
+          })), { onConflict: 'podcast_id,normalized_email', ignoreDuplicates: true })
+        if (networkWriteError) console.error('[workspace-client-shortlist] contact network write failed', networkWriteError.message)
+      }
+      await writeAudit(authContext.admin, {
+        workspaceId,
+        actorUserId: authContext.user.id,
+        action: 'workspace.client_shortlist.recipients_saved',
+        entityType: 'client_dashboard_podcast',
+        entityId: shortlistPodcastId,
+        metadata: {
+          client_id: clientId,
+          podcast_id: row.podcast_id,
+          to_source: recipients[0]?.source ?? null,
+          to_status: recipients[0]?.status ?? null,
+        },
+      })
+      return jsonResponse(req, METHODS, 200, { recipients })
     }
 
     if (action === 'autopilot-get') {
@@ -2667,7 +2798,7 @@ serve(async (req) => {
       const [{ data: shortlistRow }, { data: clientProfile }, { data: target }] = await Promise.all([
         authContext.admin
           .from('client_dashboard_podcasts')
-          .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, ai_clean_description, ai_fit_reasons, ai_pitch_angles, research_document')
+          .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, ai_clean_description, ai_fit_reasons, ai_pitch_angles, research_document, pitch_recipients')
           .eq('id', shortlistPodcastId)
           .eq('client_id', clientId)
           .maybeSingle(),
@@ -2691,7 +2822,15 @@ serve(async (req) => {
         shortlistRow.podcast_id,
         body.relationship_acknowledged === true,
       )
-      if (!batchJob && angleIndex === 0) {
+      // The one address chosen at Step 1. Absent on pitches from before it was
+      // saved, and then the email is written exactly as it was: to the host.
+      const pitchRecipients = Array.isArray(shortlistRow.pitch_recipients)
+        ? shortlistRow.pitch_recipients as PitchRecipient[]
+        : null
+      const pitchTo = pitchRecipients?.[0] ?? null
+      // A background batch wrote its pitch before anyone chose a recipient, so
+      // it is reused only when the recipient would not change the opening.
+      if (!batchJob && angleIndex === 0 && !recipientsAffectCopy(pitchRecipients)) {
         const {data:saved} = await authContext.admin.from('client_research_jobs').select('pitch,research_run_started_at')
           .eq('workspace_id',workspaceId).eq('client_id',clientId).eq('shortlist_podcast_id',shortlistPodcastId).eq('status','completed').order('created_at',{ascending:false}).limit(1).maybeSingle()
         const {data:current} = await authContext.admin.from('client_dashboard_podcasts').select('research_progress').eq('id',shortlistPodcastId).single()
@@ -2844,7 +2983,7 @@ serve(async (req) => {
               ?? (typeof pitchCatalogRow?.publisher_name === 'string' ? pitchCatalogRow.publisher_name : null),
           ),
         }),
-        verified_email: target?.contact_email ?? null,
+        verified_email: target?.contact_email ?? pitchTo?.email ?? null,
         // Podscan's analysis of the episode this pitch will reference.
         ...buildEpisodeVariables(storedEpisodes),
         episode_title: formatPromptValue(
@@ -2922,6 +3061,9 @@ serve(async (req) => {
           : 'No transcript or episode content is available for this show. Do NOT invent an episode reference or a quote. Open instead from a specific, checkable detail about the show in the research — its focus, format, or audience — and never write the words "Not available" into any output field. Honesty beats fake familiarity.',
         `<transcript_excerpt>\n${present(variables.episode_transcript)}\n</transcript_excerpt>`,
         '</podcast>',
+        // Who the email is addressed to, with the greeting rules. Empty for a
+        // pitch with no recipient saved.
+        recipientsPromptBlock(pitchRecipients),
         `<research_report>\n${present(variables.research_report)}\n</research_report>`,
         `<topic_research>\n${present(topicResearch)}\n</topic_research>`,
         '</context>',

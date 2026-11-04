@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceClientPitch from '@/pages/app/WorkspaceClientPitch'
 import { useAuth } from '@/contexts/AuthContext'
@@ -14,6 +15,7 @@ import {
   getPromptPreview,
   runClientShortlistEmailSearch,
   runClientShortlistResearch,
+  saveClientShortlistRecipients,
   updateClientShortlistPodcast,
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
@@ -47,6 +49,7 @@ vi.mock('@/services/clientShortlist', () => ({
   refreshClientShortlistEpisodes: vi.fn(),
   runClientShortlistEmailSearch: vi.fn(),
   runClientShortlistResearch: vi.fn(),
+  saveClientShortlistRecipients: vi.fn(),
   updateClientShortlistPodcast: vi.fn(),
 }))
 vi.mock('@/services/workspaceCampaigns', () => ({
@@ -228,6 +231,8 @@ describe('WorkspaceClientPitch', () => {
       ],
     })
     vi.mocked(saveWorkspaceCampaignPitch).mockResolvedValue({} as never)
+    // The server stores what it is sent; the tests that care assert the payload.
+    vi.mocked(saveClientShortlistRecipients).mockImplementation(async (_w, _c, _p, recipients) => recipients)
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
     // Connected with no extra links: the client's own campaign is the only
     // send target, so no picker renders unless a test adds one.
@@ -294,13 +299,13 @@ describe('WorkspaceClientPitch', () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: true, openai: false } })
     await renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
-    expect(screen.getByText('Your AI account + contact enrichment')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    expect(screen.getByText('Nothing runs until you start the search.')).toBeInTheDocument()
     expect(screen.queryByText('1 credit on success')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Start direct email search/ })).toHaveTextContent('· Your AI account')
 
-    // Back on the free inbox, so research is unlocked.
-    fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
+    // Including the search card never takes the free inbox away, so research
+    // stays unlocked without waiting for a search nobody has started.
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
     expect(screen.queryByText('2 credits per run')).not.toBeInTheDocument()
@@ -310,11 +315,10 @@ describe('WorkspaceClientPitch', () => {
   it('allows direct host search and research with only an OpenAI key', async () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: true } })
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
     expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeEnabled()
     expect(screen.getByText(/Uses your selected AI key and platform-managed contact enrichment/)).toBeInTheDocument()
     expect(screen.queryByText(/Connect your Claude or OpenAI key in Billing/)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to research' }))
     expect(screen.getByRole('button', { name: /^Regenerate/ })).toBeEnabled()
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
@@ -322,7 +326,7 @@ describe('WorkspaceClientPitch', () => {
 
   it('requires a workspace AI key without offering app credits as a substitute', async () => {
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
     expect(screen.getByRole('button', { name: /^Start direct email search/ })).toBeDisabled()
     expect(screen.getByText(/Connect your Claude or OpenAI key in Billing/)).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
@@ -339,7 +343,7 @@ describe('WorkspaceClientPitch', () => {
       } })],
     })
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
     expect(screen.getByRole('link', { name: 'https://www.linkedin.com/in/example-host' }))
       .toHaveAttribute('href', 'https://www.linkedin.com/in/example-host')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
@@ -449,7 +453,7 @@ describe('WorkspaceClientPitch', () => {
     expect(await screen.findByRole('link', { name: 'Open the relationship CRM' }))
       .toHaveAttribute('href', `/app/workspaces/${workspaceId}/relationships`)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
     // Billing is not workspace-scoped: a platform admin tops a tenant up from
     // the platform screen.
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
@@ -513,47 +517,63 @@ describe('WorkspaceClientPitch', () => {
     expect(podcastContext.getByText(/This one looks great/)).toBeInTheDocument()
     expect(podcastContext.getByRole('link', { name: 'Open show' })).toHaveAttribute('href', 'https://example.com/founder-stories')
     expect(screen.getByRole('heading', { name: 'Find the email' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use free podcast email' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('hello@founderstories.fm')).toBeInTheDocument()
+    expect(screen.getByText('Choose who receives this pitch')).toBeInTheDocument()
+    // The free inbox is chosen by default, so the simple case is no clicks.
+    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Use the free show inbox, the verified host email, or an email you found. Each pitch goes to one address.')).toBeInTheDocument()
+    // A single Podscan address needs no picker.
+    expect(screen.queryByRole('radiogroup', { name: 'Podscan addresses' })).not.toBeInTheDocument()
     expect(screen.getByText('Free · Podscan')).toBeInTheDocument()
     expect(screen.getByText('One shared contact network')).toBeInTheDocument()
     expect(screen.getByText(/An existing verified contact can be reused/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Enter email manually' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('Provider billed')).toBeInTheDocument()
-    expect(screen.getByText(/Your selected AI provider searches for the host’s personal LinkedIn profile/)).toBeInTheDocument()
+    const sendingTo = within(screen.getByRole('region', { name: 'Sending to' }))
+    expect(within(sendingTo.getByLabelText('Pitch recipient')).getByText('hello@founderstories.fm')).toBeInTheDocument()
+    expect(screen.getByText('Sending to hello@founderstories.fm.', { selector: 'footer p' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
-    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByLabelText('Waterfall enrichment plan')).toBeInTheDocument()
-    expect(screen.getByText('Find LinkedIn profile')).toBeInTheDocument()
+    // Opening the verified card spends nothing; only its own button searches.
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    expect(runClientShortlistEmailSearch).not.toHaveBeenCalled()
     expect(screen.queryByRole('link', { name: 'Buy credits in Billing' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
     expect(screen.getByText(/Finding the host’s LinkedIn profile/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
-    expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Host or producer')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Email address')).not.toBeInTheDocument()
+    expect(sendingTo.getByText('Verified host email: searching…')).toBeInTheDocument()
+    // The chosen address stays while it runs.
+    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Finalize the selected pitch' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Opening email')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enter email manually' }))
-    expect(screen.getByRole('button', { name: 'Enter email manually' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.queryByLabelText('Waterfall enrichment plan')).not.toBeInTheDocument()
+    // An address found by hand: one only, format checked, and it replaces the inbox.
+    fireEvent.click(screen.getByRole('button', { name: 'Use an email you found' }))
     const manualEmail = screen.getByLabelText('Email address')
+    fireEvent.change(manualEmail, { target: { value: 'not-an-email' } })
+    fireEvent.keyDown(manualEmail, { key: 'Enter' })
+    expect(screen.getByText('not-an-email is not a valid email address.')).toBeInTheDocument()
+    fireEvent.change(manualEmail, { target: { value: 'host@founderstories.fm, producer@founderstories.fm' } })
+    fireEvent.keyDown(manualEmail, { key: 'Enter' })
+    expect(screen.getByText('A pitch goes to one email address. Enter just one.')).toBeInTheDocument()
+    fireEvent.change(manualEmail, { target: { value: 'host@founderstories.fm' } })
+    fireEvent.keyDown(manualEmail, { key: 'Enter' })
+    const added = within(screen.getByLabelText('Email you added'))
+    expect(added.getByText('Unverified')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Role for host@founderstories.fm' })).toHaveTextContent('Host')
+    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(sendingTo.getByLabelText('Pitch recipient')).getByText('host@founderstories.fm')).toBeInTheDocument()
+    expect(sendingTo.queryByText('hello@founderstories.fm')).not.toBeInTheDocument()
+    await waitFor(() => expect(saveClientShortlistRecipients).toHaveBeenLastCalledWith(
+      workspaceId, clientId, podcastRowId,
+      [expect.objectContaining({ email: 'host@founderstories.fm', role: 'to', sources: ['manual'], contact_role: 'host' })],
+    ))
+
     const continueButton = screen.getByRole('button', { name: 'Continue to research' })
     // Pinned to the bottom of the page, so the primary action never scrolls
     // out of reach on a long step.
     expect(screen.getByLabelText('Pitch actions')).toHaveClass('sticky', 'bottom-0')
-    expect(continueButton).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Step 2: Research & pitch locked until an email is ready' })).toBeDisabled()
-    fireEvent.change(manualEmail, { target: { value: 'not-an-email' } })
-    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument()
-    expect(continueButton).toBeDisabled()
-    fireEvent.change(manualEmail, { target: { value: 'host@founderstories.fm' } })
+    // Any one valid address is enough, even with the paid search still running.
     expect(continueButton).toBeEnabled()
     fireEvent.click(continueButton)
 
@@ -608,6 +628,11 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByRole('heading', { name: 'Choose your pitch' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Research notes')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing sends from this page/i)).toBeInTheDocument()
+
+    // The draft shows the one address it goes to, with a way back to change it.
+    const finalRecipient = within(screen.getByLabelText('Pitch recipient on the draft'))
+    expect(finalRecipient.getByText('host@founderstories.fm')).toBeInTheDocument()
+    expect(finalRecipient.getByRole('button', { name: 'Edit recipient' })).toBeInTheDocument()
 
     const saveButton = screen.getByRole('button', { name: 'Send to Client Campaign' })
     await waitFor(() => expect(saveButton).toBeEnabled())
@@ -1042,12 +1067,14 @@ describe('WorkspaceClientPitch', () => {
     })
     await renderPage()
 
-    expect(await screen.findByText('Shared verified contact')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('This contact is already available across the Database.')).toBeInTheDocument()
-    // The address the search found is shown, so it is clear what research will use.
-    expect(screen.getByText('direct@founderstories.fm')).toBeInTheDocument()
+    expect(await screen.findByText('Already shared across the Database. No new lookup needed.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'true')
+    // The verified address outranks the free inbox as the default recipient.
+    const sendingTo = within(screen.getByRole('region', { name: 'Sending to' }))
+    expect(sendingTo.getByText('direct@founderstories.fm')).toBeInTheDocument()
+    expect(sendingTo.getByText('Verified')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Start direct email search/ })).not.toBeInTheDocument()
+    expect(runClientShortlistEmailSearch).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
   })
 
@@ -1076,7 +1103,7 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.queryByText('Direct email ready')).not.toBeInTheDocument()
   })
 
-  it('restores an in-progress email search and lets the owner use the free inbox instead', async () => {
+  it('restores an in-progress email search without holding research behind it', async () => {
     vi.mocked(getClientShortlist).mockResolvedValueOnce({
       client: { id: clientId, name: 'Taylor Client' },
       podcasts: [podcast({
@@ -1092,13 +1119,14 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     expect(await screen.findByText('Direct email search in progress')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    // The search panel is open, but nothing it found is chosen yet.
+    expect(screen.getByRole('button', { name: 'Use verified host email' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText(/Finding the host’s LinkedIn profile/)).toBeInTheDocument()
     expect(screen.getByText(/Looking up the work email with Blitz/)).toBeInTheDocument()
     expect(screen.getByText(/Saving the verified email/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use free podcast email' }))
+    expect(screen.getByText('Verified host email: searching…')).toBeInTheDocument()
+    // The free inbox carries the pitch meanwhile; the paid search is not waited for.
+    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
     expect(vi.mocked(runClientShortlistEmailSearch)).not.toHaveBeenCalled()
   })
@@ -1118,7 +1146,7 @@ describe('WorkspaceClientPitch', () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: true, openai: false } })
     await renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Try waterfall enrichment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
     expect(screen.getByText('We could not verify a direct host email for this show.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Try search again/ }))
     expect(screen.getByText('Direct email search in progress')).toBeInTheDocument()
@@ -1636,6 +1664,110 @@ describe('WorkspaceClientPitch', () => {
     expect(researchProgress.getAllByText('Done')).toHaveLength(4)
   })
 
+  it('loads an older pitch whose single contact_email becomes the recipient', async () => {
+    vi.mocked(getWorkspaceCampaign).mockResolvedValue({
+      integration: {} as never,
+      can_manage_campaigns: true,
+      campaign: { id: 'campaign-one', name: 'Taylor Client Podcast Outreach', instantly_campaign_id: '77777777-7777-4777-8777-777777777777' } as never,
+      targets: [{ shortlist_podcast_id: podcastRowId, contact_email: 'old@founderstories.fm', host_name: 'Jamie' } as never],
+    })
+    await renderPage()
+    const sendingTo = within(await screen.findByRole('region', { name: 'Sending to' }))
+    expect(sendingTo.getByText('old@founderstories.fm')).toBeInTheDocument()
+    expect(sendingTo.getByText('Manual')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
+    // Nothing is rewritten just by opening it.
+    expect(saveClientShortlistRecipients).not.toHaveBeenCalled()
+  })
+
+  it('reopens on the saved recipient and lets one Podscan address be chosen from several', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        podcast_email: 'hello@founderstories.fm, booking@founderstories.fm, jamie@founderstories.fm',
+        pitch_recipients: [
+          { email: 'producer@elsewhere.com', source: 'manual', sources: ['manual'], status: 'unverified', role: 'to', contact_role: 'producer', mx: 'none' },
+        ],
+        bounced_emails: ['booking@founderstories.fm'],
+      })],
+    })
+    await renderPage()
+    const sendingTo = within(await screen.findByRole('region', { name: 'Sending to' }))
+    expect(sendingTo.getByText('producer@elsewhere.com')).toBeInTheDocument()
+    expect(sendingTo.getByText('Producer')).toBeInTheDocument()
+    // The manual card reopens on its saved address and role.
+    expect(screen.getByRole('combobox', { name: 'Role for producer@elsewhere.com' })).toHaveTextContent('Producer')
+    expect(screen.getByText('Podscan lists 3 addresses. Choose one.')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /^Select all/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'jamie@founderstories.fm' }))
+    // Choosing replaces: one address per pitch.
+    expect(sendingTo.getByText('jamie@founderstories.fm')).toBeInTheDocument()
+    expect(sendingTo.queryByText('producer@elsewhere.com')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use an email you found' })).toHaveAttribute('aria-pressed', 'false')
+    await waitFor(() => expect(saveClientShortlistRecipients).toHaveBeenLastCalledWith(
+      workspaceId, clientId, podcastRowId,
+      [expect.objectContaining({ email: 'jamie@founderstories.fm', sources: ['podscan'], role: 'to' })],
+    ))
+
+    // A bounced inbox can be seen but not sent to.
+    fireEvent.click(screen.getByRole('radio', { name: 'booking@founderstories.fm' }))
+    expect(sendingTo.getByText('Bounced')).toBeInTheDocument()
+    expect(sendingTo.getByText('This address bounced on an earlier send. Choose another one.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
+  })
+
+  it('offers a verified email that arrives after an address was chosen, without replacing it', async () => {
+    mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: true, openai: false } })
+    let finishSearch: (value: never) => void = () => undefined
+    vi.mocked(runClientShortlistEmailSearch).mockImplementation(() => new Promise((resolve) => { finishSearch = resolve as never }))
+    await renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Use verified host email' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Start direct email search/ }))
+    expect(screen.getByText('Verified host email: searching…')).toBeInTheDocument()
+
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        email_unlock: { status: 'unlocked', current_stage: null, completed_stages: ['identify_contact', 'find_email', 'verify_email'], email: 'jamie@founderstories.fm', host_name: 'Jamie Host' },
+      })],
+    })
+    await act(async () => { finishSearch({ status: 'unlocked', email: 'jamie@founderstories.fm' } as never) })
+
+    // The refetch that carries the result lands after the search settles.
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Verified host email found. Use it instead?', expect.objectContaining({
+      description: 'jamie@founderstories.fm',
+      action: expect.objectContaining({ label: 'Use it' }),
+    })), { timeout: 5_000 })
+    const sendingTo = within(screen.getByRole('region', { name: 'Sending to' }))
+    // The free inbox the operator had stays chosen until they say otherwise.
+    expect(sendingTo.getByText('hello@founderstories.fm')).toBeInTheDocument()
+    expect(sendingTo.queryByText('jamie@founderstories.fm')).not.toBeInTheDocument()
+  })
+
+  it('sends one email to the one chosen address', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [podcast({
+        pitch_recipients: [
+          { email: 'jamie@founderstories.fm', source: 'manual', sources: ['manual'], status: 'unverified', role: 'to', contact_role: 'host' },
+        ],
+      })],
+    })
+    await renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to research' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue with this draft' }))
+    expect(within(screen.getByLabelText('Pitch recipient on the draft')).getByText('jamie@founderstories.fm')).toBeInTheDocument()
+
+    const send = screen.getByRole('button', { name: 'Send to Client Campaign' })
+    await waitFor(() => expect(send).toBeEnabled())
+    fireEvent.click(send)
+    await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalledWith(expect.objectContaining({
+      contactEmail: 'jamie@founderstories.fm',
+    })))
+    expect(vi.mocked(prepareWorkspaceCampaignPodcast).mock.calls[0][0]).not.toHaveProperty('ccEmails')
+  })
+
   it('requires a valid manually entered email when no public podcast email is available', async () => {
     vi.mocked(getClientShortlist).mockResolvedValueOnce({
       client: { id: clientId, name: 'Taylor Client' },
@@ -1644,14 +1776,17 @@ describe('WorkspaceClientPitch', () => {
     await renderPage()
 
     expect(await screen.findByText('No public email found')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use free podcast email' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Try waterfall enrichment' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Use free podcast inbox' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Step 2: Research & pitch locked until an email is ready' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Archive podcast' })).toBeInTheDocument()
+    expect(screen.getByText('Choose one address above.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enter email manually' }))
-    fireEvent.change(screen.getByLabelText('Email address'), { target: { value: 'producer@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Use an email you found' }))
+    const manualEmail = screen.getByLabelText('Email address')
+    fireEvent.change(manualEmail, { target: { value: 'producer@example.com' } })
+    expect(screen.getByRole('button', { name: 'Continue to research' })).toBeDisabled()
+    fireEvent.keyDown(manualEmail, { key: 'Enter' })
     expect(screen.getByRole('button', { name: 'Continue to research' })).toBeEnabled()
     expect(screen.queryByText('Contact record')).not.toBeInTheDocument()
   })
