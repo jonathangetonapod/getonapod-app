@@ -442,6 +442,24 @@ assert.match(defaultClientMigration, /'public\.workspace_client_operation\(text,
 assert.match(defaultClientMigration, /REVOKE ALL ON FUNCTION public\.workspace_client_operation_v2\([\s\S]*?FROM PUBLIC, anon, authenticated;[\s\S]*?TO service_role;/u)
 assert.match(clientsEdge, /message\.includes\('owner or administrator access'\)[\s\S]*?WORKSPACE_ACCESS_REQUIRED/u)
 
+// The default workspace also edits its clients' source profile and host
+// brief (20261105000100). Both RPCs authorized through the staff gate, which
+// refuses the default workspace with 'private workspace not found', surfaced
+// as 404 CLIENT_NOT_FOUND. Each is rewritten from its live definition to call
+// the settings gate instead, which admits the default workspace and hands
+// tenant workspaces to the very staff-gate call being replaced. The rewrite
+// fails unless it finds exactly one such call per function.
+const defaultBriefMigration = readFileSync('supabase/migrations/20261105000100_default_workspace_client_brief_parity.sql', 'utf8')
+assert.match(defaultBriefMigration, /'public\.update_workspace_client_profile_v1\(uuid,uuid,text,timestamptz,uuid,bigint\)'::REGPROCEDURE/u)
+assert.match(defaultBriefMigration, /'public\.update_workspace_client_ai_sdr_profile_v2\(uuid,uuid,jsonb,text\[\],timestamptz,uuid,bigint\)'::REGPROCEDURE/u)
+assert.match(defaultBriefMigration, /staff_gate_call CONSTANT TEXT :=\s*'public\\\.workspace_staff_actor_role_v1\\\(\\s\*p_workspace_id,\\s\*p_actor_user_id,\\s\*p_token_issued_at,\\s\*true\\s\*\\\)'/u)
+assert.match(defaultBriefMigration, /settings_gate_call CONSTANT TEXT :=\s*'public\.workspace_settings_actor_role_v1\(p_workspace_id, p_actor_user_id, p_token_issued_at\)'/u)
+assert.match(defaultBriefMigration, /IF staff_gate_count <> 1 THEN[\s\S]*?EXECUTE regexp_replace\(function_definition, staff_gate_call, settings_gate_call\);/u)
+// The settings gate must keep handing tenant workspaces to the staff gate
+// with platform management allowed, or the rewrite would loosen tenants.
+const defaultSettingsMigration = readFileSync('supabase/migrations/20260728002100_default_workspace_settings.sql', 'utf8')
+assert.match(defaultSettingsMigration, /IF NOT workspace_is_default THEN\s*RETURN public\.workspace_staff_actor_role_v1\(\s*p_workspace_id,\s*p_actor_user_id,\s*p_token_issued_at,\s*true\s*\);/u)
+
 // Booking edits only write the journey links when the request names them, so
 // a form that never shows them cannot erase them.
 assert.match(clientsEdge, /hasOwnProperty\.call\(input, 'shortlist_podcast_id'\)/u)
