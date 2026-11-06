@@ -128,7 +128,7 @@ const WhatToExpect = () => {
             <a className="dfy-btn dfy-btn-primary" href={CALL_URL} target="_blank" rel="noopener noreferrer">
               Book a 30-minute call
             </a>
-            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $1,000 a month</a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $750 a month</a>
           </div>
 
           <p className="dfy-cta-note">
@@ -193,7 +193,7 @@ const WhatToExpect = () => {
             <a className="dfy-btn dfy-btn-ghost" href={CALL_URL} target="_blank" rel="noopener noreferrer">
               Book a 30-minute call
             </a>
-            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $1,000 a month</a>
+            <a className="dfy-btn dfy-btn-ghost" href="/#pricing">See pricing: $750 a month</a>
           </div>
           <p className="dfy-book-note">30 minutes, no commitment.</p>
         </div>

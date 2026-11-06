@@ -48,7 +48,7 @@ describe('Landing', () => {
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
     expect(screen.queryByRole('link', { name: /15-minute/iu })).not.toBeInTheDocument()
-    expect(screen.getByText('$1,000')).toBeInTheDocument()
+    expect(screen.getByText('$750')).toBeInTheDocument()
   })
 
   // The clips offer gets one line above the nav, and its link is a route, not a call.
@@ -62,7 +62,7 @@ describe('Landing', () => {
   // The terms, under the hero, in the same words the pricing section uses.
   it('states the terms under the hero, before the reader scrolls', () => {
     renderPage()
-    const facts = screen.getByText('$1,000 a month').parentElement
+    const facts = screen.getByText('$750 a month').parentElement
     expect(facts).toHaveTextContent('3-month minimum')
     expect(facts).toHaveTextContent('about 15 minutes a week of your time')
     expect(facts).toHaveTextContent('you approve every show')

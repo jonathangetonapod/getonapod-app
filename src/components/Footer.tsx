@@ -14,7 +14,7 @@ const Footer = () => {
         <div>
           <span className="dfy-brand"><Brand /></span>
           <p className="dfy-footer-tagline">
-            Get On A Pod books tech founders and SaaS owners on the podcasts their buyers already listen to. $1,000 a month, 3-month minimum, then month to month.
+            Get On A Pod books tech founders and SaaS owners on the podcasts their buyers already listen to. $750 a month, 3-month minimum, then month to month.
           </p>
         </div>
 

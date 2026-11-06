@@ -28,7 +28,7 @@ export const FOUNDER = {
 }
 
 /** One plan. Stated so people can self-qualify; nothing is sold on-page. */
-export const MONTHLY_PRICE = 1000
+export const MONTHLY_PRICE = 750
 export const MONTHLY_PRICE_TEXT = `$${MONTHLY_PRICE.toLocaleString('en-US')}`
 
 /** One plan's terms, as the pricing section below states them. */
