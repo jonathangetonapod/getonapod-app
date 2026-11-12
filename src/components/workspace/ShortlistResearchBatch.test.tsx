@@ -64,6 +64,12 @@ it('shows saved research while a show waits between stages',async()=>{
  expect(screen.getByRole('progressbar',{name:'Research progress for Show in progress'})).toHaveAttribute('value','2')
 })
 
+it('says research is done when all six steps are saved but the pitch has not started',async()=>{
+ invoke.mockResolvedValue({data:{jobs:[{id:'one',batch_id:'batch',podcast_name:'Show done',status:'queued',phase:'research',research_progress:{completed_stages:['podcast_profile','recent_episodes','host_profile','guest_patterns','guest_fit','pitch_angles'],current_stage:null}}]},error:null})
+ mount()
+ expect(await screen.findByText('Research steps done · Waiting to start the pitch')).toBeInTheDocument()
+})
+
 const blockedJob=(id:string,name:string)=>({id,batch_id:'batch',podcast_name:name,status:'failed',phase:'research',
  message:'This podcast is missing Client bio and positioning (client_bio) and Client website (client_website), which the podcast_research stage is set to require. Nothing was generated and no credit was spent.',
  research_progress:{status:'blocked',completed_stages:[],current_stage:null,missing_fields:['client_bio','client_website']}})

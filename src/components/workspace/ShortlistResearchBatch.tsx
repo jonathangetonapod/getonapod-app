@@ -37,6 +37,7 @@ function jobStatus(job:Job) {
  }
  const saved=savedResearchSteps(job)
  if (!saved && !running) return 'Waiting to start'
+ if (saved===6) return `Research steps done · ${running?'Wrapping up research':'Waiting to start the pitch'}`
  const stage=STAGE_LABELS[job.research_progress?.current_stage ?? ''] ?? 'research'
  return `${saved}/6 research steps saved · ${running?'Working on':'Waiting for'} ${stage}`
 }
