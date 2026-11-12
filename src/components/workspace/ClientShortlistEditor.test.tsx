@@ -83,6 +83,13 @@ function podcast(overrides: Partial<ClientShortlistPodcast> = {}): ClientShortli
   }
 }
 
+async function openAddMenu() {
+  const trigger = screen.getByRole('button', { name: /Add podcasts/ })
+  trigger.focus()
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
+  return screen.findByRole('menu')
+}
+
 function renderEditor(
   viewerRole: 'owner' | 'admin' | 'member' | 'platform_admin' = 'owner',
   // Defaulted to what a tenant's own people get, so the workspace base every
@@ -170,10 +177,13 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByText('Archived Show')).not.toBeInTheDocument()
     expect(screen.queryByText(/google sheet/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Hidden\b/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Browse database' })).toHaveAttribute(
+    await openAddMenu()
+    expect(screen.getByRole('menuitem', { name: 'Browse database' })).toHaveAttribute(
       'href',
       `/app/podcast-database?client=${clientId}`,
     )
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape', code: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'View details for Founder Stories' }))
     expect(screen.getByRole('heading', { name: 'Founder Stories' })).toBeInTheDocument()
@@ -280,7 +290,7 @@ describe('ClientShortlistEditor', () => {
 
     expect(await screen.findByText('Not posting')).toBeInTheDocument()
     expect(screen.getByText('Company feed')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Inactive or company feed 2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive 2' }))
     await waitFor(() => expect(screen.queryByText('Active Show')).not.toBeInTheDocument())
     expect(screen.getByText('Quiet Show')).toBeInTheDocument()
     expect(screen.getAllByText('Infosys').length).toBeGreaterThan(0)
@@ -328,7 +338,7 @@ describe('ClientShortlistEditor', () => {
     })
     renderEditor()
 
-    expect(await screen.findByRole('heading', { name: 'All podcasts' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'View details for Founder Stories' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Featured recommendations' })).not.toBeInTheDocument()
     const actions = screen.getByRole('button', { name: 'Actions for Founder Stories' })
     actions.focus()
@@ -361,8 +371,9 @@ describe('ClientShortlistEditor', () => {
     renderEditor()
 
     expect((await screen.findAllByLabelText('Founder Stories was previously contacted')).length).toBeGreaterThan(0)
-    const writePitch = screen.getByRole('link', { name: 'Write Re-pitch for Founder Stories' })
-    expect(writePitch).toHaveTextContent('Write Re-pitch')
+    const writePitch = screen.getByRole('link', { name: 'Re-pitch for Founder Stories' })
+    // Short visible label in the table; the accessible name keeps the full action.
+    expect(writePitch).toHaveTextContent('Re-pitch')
     // The relationship warning itself lives on the pitch page.
     expect(writePitch).toHaveAttribute('href', `/app/clients/${clientId}/podcasts/${podcastRowId}/pitch`)
 
@@ -489,7 +500,8 @@ describe('ClientShortlistEditor', () => {
     renderEditor()
     await screen.findByRole('heading', { name: 'Shortlist' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Quick add' }))
+    await openAddMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Quick add' }))
     fireEvent.change(screen.getByPlaceholderText('Search by podcast or publisher…'), { target: { value: 'new show' } })
     expect(await screen.findByText('The New Show')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select The New Show' }))
@@ -528,7 +540,8 @@ describe('ClientShortlistEditor', () => {
     renderEditor()
     await screen.findByRole('heading', { name: 'Shortlist' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Quick add' }))
+    await openAddMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Quick add' }))
     const search = screen.getByLabelText('Search the podcast catalog')
     fireEvent.change(search, { target: { value: 'first' } })
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select The First Show' }))
@@ -688,12 +701,15 @@ describe('ClientShortlistEditor', () => {
     renderEditor()
     expect(await screen.findByText(/Pitch statuses could not be loaded/)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Filter by pitch status' })).toBeDisabled()
-    expect(screen.queryByText('Pending — no saved pitch', { selector: 'span' })).not.toBeInTheDocument()
+    expect(screen.queryByText('No pitch yet', { selector: 'p' })).not.toBeInTheDocument()
   })
 
-  it('shows the saved research status for a show', async () => {
+  it('keeps a completed research status out of the row and shows it in the details', async () => {
     renderEditor()
-    expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Research complete')
+    await screen.findByRole('button', { name: 'View details for Founder Stories' })
+    expect(screen.queryByLabelText('Research status for Founder Stories')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View details for Founder Stories' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Research status: Research complete')
   })
 
   it('says a run stopped on missing client info needs client info, not that it is running', async () => {
@@ -711,7 +727,7 @@ describe('ClientShortlistEditor', () => {
       })],
     })
     renderEditor()
-    expect(await screen.findByLabelText('Research status for Founder Stories')).toHaveTextContent('Needs client info')
+    expect(await screen.findByText('Needs client info')).toBeInTheDocument()
   })
 
   it('still offers to write when nothing has been sent', async () => {
@@ -721,5 +737,32 @@ describe('ClientShortlistEditor', () => {
       'href',
       `/app/clients/${clientId}/podcasts/${podcastRowId}/pitch`,
     )
+  })
+
+  it('filters by contact email with counts, and select-all takes every no-email show in the view', async () => {
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [
+        podcast({ id: 'row-a', podcast_id: 'pod-a', podcast_name: 'Has Feed Email', podcast_email: 'feed@a.fm' }),
+        podcast({ id: 'row-b', podcast_id: 'pod-b', podcast_name: 'No Email One', podcast_email: null }),
+        podcast({ id: 'row-c', podcast_id: 'pod-c', podcast_name: 'No Email Two', podcast_email: null, feedback_status: 'rejected' }),
+      ],
+    })
+    renderEditor()
+    await screen.findByRole('button', { name: 'View details for Has Feed Email' })
+    expect(screen.getByLabelText('Contact email for Has Feed Email: feed@a.fm')).toBeInTheDocument()
+    expect(screen.getAllByText('— no contact email')).toHaveLength(2)
+    const emailFilter = screen.getByRole('combobox', { name: 'Filter by contact email' })
+    expect(screen.getByRole('option', { name: 'Has email (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'No email (2)' })).toBeInTheDocument()
+    fireEvent.change(emailFilter, { target: { value: 'none' } })
+    expect(screen.queryByRole('button', { name: 'View details for Has Feed Email' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 2 podcasts in this view' }))
+    expect(screen.getByText('2 shows selected')).toBeInTheDocument()
+    // Combines with the decision chips, and the counts follow them.
+    fireEvent.click(screen.getByRole('button', { name: 'Passed 1' }))
+    expect(screen.getByRole('button', { name: 'View details for No Email Two' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'View details for No Email One' })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'No email (1)' })).toBeInTheDocument()
   })
 })

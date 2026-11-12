@@ -1,27 +1,20 @@
-import { isCorporateFeed, isRecentlyActive } from '@/lib/showQuality'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Archive,
-  CheckCircle2,
+  ChevronDown,
   Database,
   Eye,
   ExternalLink,
-  FileText,
   Library,
   ListPlus,
   Loader2,
   MailCheck,
-  MoreHorizontal,
-  PenLine,
+  Plus,
   Radio,
-  RotateCcw,
   Search,
   Star,
-  ThumbsDown,
-  ThumbsUp,
-  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -42,22 +35,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { isTargetInActiveOutreach, pitchActionLabel } from '@/lib/campaignTargetState'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { isResearchRunStale } from '@/lib/researchProgress'
+import { matchesEmailFilter, shortlistContactEmail, type EmailFilter } from '@/lib/shortlistEmail'
+import { PITCH_LABELS, hasWrittenPitch, pitchStatus, type PitchFilter } from '@/lib/shortlistPitchStatus'
 import { MY_WORKSPACE_BASE_HREF, clientPitchHref } from '@/lib/workspaceRoutes'
-import { getWorkspaceCampaign, type WorkspaceCampaignTarget } from '@/services/workspaceCampaigns'
+import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
-import { FitDetails, FitScoreBadge, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
+import { FitDetails, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
 import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
+import { FeedbackBadge, PodcastArtwork, ShortlistTable } from '@/components/workspace/ShortlistTable'
+import { compactNumber, qualityFlags, researchStatusLabel } from '@/lib/shortlistRow'
 import {
   addClientShortlistPodcasts,
   getClientShortlist,
@@ -65,46 +60,18 @@ import {
   updateClientShortlistPodcast,
   type ClientShortlistCatalogPodcast,
   type ClientShortlistPodcast,
-  type ClientShortlistVisibility,
 } from '@/services/clientShortlist'
 
 type ListFilter = 'all' | 'not_reviewed' | 'approved' | 'rejected' | 'weak_fit' | 'low_quality' | 'archived'
 const LIST_FILTERS: ListFilter[] = ['all', 'not_reviewed', 'approved', 'rejected', 'weak_fit', 'low_quality', 'archived']
 
-/*
- * Visible shows a client should not have to wade through: no episode in the
- * Finder's 90-day window, or a company's own feed rather than a hosted show.
- * Flagged, never hidden automatically; the operator decides.
- */
-const qualityFlags = (podcast: { podcast_name: string; publisher_name?: string | null; last_posted_at?: string | null }) => ({
-  notPosting: isRecentlyActive(podcast.last_posted_at) === false,
-  companyFeed: isCorporateFeed(podcast),
-})
+/** Not posting in 90 days, or a company's own feed: see qualityFlags. */
 const isLowQuality = (podcast: Parameters<typeof qualityFlags>[0]) => {
   const flags = qualityFlags(podcast)
   return flags.notPosting || flags.companyFeed
 }
 type FitFilter = 'any' | 'at_least' | 'below' | 'unscored'
 type ListSort = 'list_order' | 'fit_desc' | 'audience_desc' | 'audience_asc' | 'rating_desc' | 'rating_asc' | 'recent_desc' | 'name_asc'
-
-type PitchStatus = 'staged' | 'pending' | 'draft' | 'ready' | 'launching' | 'in_outreach' | 'replied' | 'completed' | 'failed'
-type PitchFilter = 'all' | 'written' | PitchStatus
-const PITCH_LABELS: Record<PitchFilter, string> = {
-  all: 'All pitch statuses', written: 'Written — saved pitch', pending: 'Pending — no saved pitch',
-  staged: 'Queued in campaign', draft: 'Draft in progress', ready: 'Ready for outreach', launching: 'Launching',
-  in_outreach: 'In outreach', replied: 'Replied', completed: 'Completed', failed: 'Needs attention',
-}
-function hasWrittenPitch(target?: WorkspaceCampaignTarget): boolean {
-  return Boolean(target?.pitch_subject?.trim() && target?.pitch_body?.trim())
-}
-function pitchStatus(target?: WorkspaceCampaignTarget): PitchStatus {
-  if (target?.status === 'failed') return 'failed'
-  if (target?.status === 'replied' || target?.status === 'completed' || target?.status === 'launching') return target.status
-  if (target?.lead_staged_at && !target.launched_at && target.status !== 'in_outreach' && target.lead_staged_campaign_status !== 1) return 'staged'
-  if (isTargetInActiveOutreach(target)) return 'in_outreach'
-  if (target?.status === 'ready') return 'ready'
-  return target?.pitch_subject?.trim() || target?.pitch_body?.trim() ? 'draft' : 'pending'
-}
 
 interface ClientShortlistEditorProps {
   workspaceId: string
@@ -134,6 +101,7 @@ interface ClientShortlistEditorProps {
 }
 
 const PAGE_SIZE = 10
+const SELECT_CLASS = 'h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50'
 
 /** A threshold that is not a number yet (mid-typing) filters nothing out. */
 function matchesFitFilter(podcast: ClientShortlistPodcast, fitFilter: FitFilter, threshold: number): boolean {
@@ -161,11 +129,6 @@ function compareOptionalNumbers(
   return direction === 'asc' ? leftValue - rightValue : rightValue - leftValue
 }
 
-function compactNumber(value: number | null | undefined): string {
-  if (!value) return '—'
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-}
-
 function resultLabel(count: number): string {
   return `${count.toLocaleString()} podcast${count === 1 ? '' : 's'}`
 }
@@ -175,40 +138,6 @@ function formattedDate(value: string | null | undefined): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'an earlier campaign'
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function feedbackBadge(podcast: ClientShortlistPodcast) {
-  if (podcast.feedback_status === 'approved') {
-    return <Badge className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-50"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>
-  }
-  if (podcast.feedback_status === 'rejected') {
-    return <Badge className="border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-50"><ThumbsDown className="mr-1 h-3 w-3" />Passed</Badge>
-  }
-  return <Badge variant="outline" className="text-muted-foreground">To review</Badge>
-}
-
-function visibilityBadge(visibility: ClientShortlistVisibility) {
-  if (visibility === 'archived') {
-    return <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-700"><Archive className="mr-1 h-3 w-3" />Archived</Badge>
-  }
-  return <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><Eye className="mr-1 h-3 w-3" />Visible</Badge>
-}
-
-function PodcastArtwork({ podcast }: { podcast: Pick<ClientShortlistPodcast, 'podcast_image_url' | 'podcast_name'> }) {
-  const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [podcast.podcast_image_url])
-  if (!podcast.podcast_image_url || failed) {
-    return <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted"><Radio className="h-5 w-5 text-muted-foreground" /></div>
-  }
-  return (
-    <img
-      src={podcast.podcast_image_url}
-      alt=""
-      className="h-12 w-12 shrink-0 rounded-xl object-cover"
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
-  )
 }
 
 function PodcastExternalLink({ url, name }: { url: string | null; name: string }) {
@@ -237,6 +166,7 @@ export function ClientShortlistEditor({
   const [searchQuery, setSearchQuery] = useState('')
   const [fitFilter, setFitFilter] = useState<FitFilter>('any')
   const [fitThreshold, setFitThreshold] = useState('7')
+  const [emailFilter, setEmailFilter] = useState<EmailFilter>('any')
   const [page, setPage] = useState(1)
   const [addOpen, setAddOpen] = useState(false)
   const [catalogQuery, setCatalogQuery] = useState('')
@@ -299,8 +229,8 @@ export function ClientShortlistEditor({
     return () => window.clearTimeout(timeout)
   }, [catalogQuery])
 
-  useEffect(() => setPage(1), [filter, searchQuery, sort, fitFilter, fitThreshold, pitchFilter])
-  useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold, pitchFilter])
+  useEffect(() => setPage(1), [filter, searchQuery, sort, fitFilter, fitThreshold, pitchFilter, emailFilter])
+  useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold, pitchFilter, emailFilter])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
   const featured = useMemo(() => podcasts
@@ -315,10 +245,11 @@ export function ClientShortlistEditor({
     weakFit: podcasts.filter(isWeakFit).length,
     lowQuality: podcasts.filter((podcast) => podcast.visibility === 'visible' && isLowQuality(podcast)).length,
   }), [podcasts])
-  const filtered = useMemo(() => {
+  // Every filter but email, so the email counts describe what the other filters leave.
+  const beforeEmail = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     const threshold = Number.parseFloat(fitThreshold)
-    const matching = podcasts.filter((podcast) => {
+    return podcasts.filter((podcast) => {
       if (query && !`${podcast.podcast_name} ${podcast.publisher_name || ''}`.toLowerCase().includes(query)) return false
       if (pitchFilter !== 'all') {
         if (!pitchDataAvailable) return false
@@ -335,6 +266,13 @@ export function ClientShortlistEditor({
       if (filter === 'low_quality') return isLowQuality(podcast)
       return podcast.feedback_status === null
     })
+  }, [filter, fitFilter, fitThreshold, podcasts, searchQuery, pitchFilter, pitchDataAvailable, targetsByPodcast])
+  const emailCounts = useMemo(() => {
+    const has = beforeEmail.filter((podcast) => shortlistContactEmail(podcast) !== null).length
+    return { has, none: beforeEmail.length - has }
+  }, [beforeEmail])
+  const filtered = useMemo(() => {
+    const matching = beforeEmail.filter((podcast) => matchesEmailFilter(podcast, emailFilter))
     if (sort === 'list_order') return matching
     return [...matching].sort((left, right) => {
       if (sort === 'fit_desc') return compareOptionalNumbers(left.fit_score, right.fit_score, 'desc')
@@ -353,7 +291,7 @@ export function ClientShortlistEditor({
       }
       return left.podcast_name.localeCompare(right.podcast_name, undefined, { sensitivity: 'base' })
     })
-  }, [filter, fitFilter, fitThreshold, podcasts, searchQuery, sort, pitchFilter, pitchDataAvailable, targetsByPodcast])
+  }, [beforeEmail, emailFilter, sort])
   // A campaign refresh can move a selected podcast out of the active filter.
   useEffect(() => {
     const visibleIds = new Set(filtered.map((podcast) => podcast.podcast_id))
@@ -365,6 +303,11 @@ export function ClientShortlistEditor({
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   useEffect(() => setPage((current) => Math.min(current, totalPages)), [totalPages])
   const visiblePage = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // A new page starts at the top of the list, not wherever the pager left the viewport.
+  const goToPage = (next: number) => {
+    setPage(next)
+    document.getElementById('client-podcast-list')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }
   const allSelected = filtered.length > 0 && filtered.every((podcast) => selectedIds.has(podcast.podcast_id))
   const toggleSelected = (podcastId: string, checked: boolean) => setSelectedIds((current) => {
     const next = new Set(current)
@@ -485,17 +428,25 @@ export function ClientShortlistEditor({
   }
 
   return (
-    <section id="client-podcast-list" aria-labelledby="client-podcast-list-heading" className="scroll-mt-6 space-y-5">
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/20">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <CardTitle id="client-podcast-list-heading" className="flex items-center gap-2 text-xl"><Library className="h-5 w-5 text-primary" />Shortlist</CardTitle>
-              <CardDescription className="mt-2 max-w-2xl">Control exactly what {clientName} sees. Archived shows stay in campaign history and weekly dedupe.</CardDescription>
+    <section id="client-podcast-list" aria-labelledby="client-podcast-list-heading" className="scroll-mt-6">
+      <Card>
+        <CardHeader className="space-y-4 border-b bg-muted/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle id="client-podcast-list-heading" className="flex items-center gap-2 text-xl"><Library className="h-5 w-5 text-primary" />Shortlist</CardTitle>
+                <Badge variant="outline" className="border-amber-200 bg-amber-50 text-xs font-medium text-amber-900"><Star className="mr-1 h-3 w-3 fill-current" />Featured {featured.length}<span className="font-normal">&nbsp;/ 6</span></Badge>
+              </div>
+              <CardDescription className="mt-1 max-w-2xl">Control exactly what {clientName} sees. Archived shows stay in campaign history and weekly dedupe.</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline"><Link to={databaseHref}><Database className="mr-2 h-4 w-4" />Browse database</Link></Button>
-              <Button onClick={() => setAddOpen(true)} variant="outline"><ListPlus className="mr-2 h-4 w-4" />Quick add</Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild><Button variant="outline"><Plus className="mr-2 h-4 w-4" />Add podcasts<ChevronDown className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild><Link to={databaseHref}><Database className="mr-2 h-4 w-4" />Browse database</Link></DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAddOpen(true)}><ListPlus className="mr-2 h-4 w-4" />Quick add</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <ShortlistFitRunner
                 workspaceId={workspaceId}
                 clientId={clientId}
@@ -506,103 +457,73 @@ export function ClientShortlistEditor({
               />
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-4 sm:p-6">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Visible to client</p><p className="mt-2 text-2xl font-bold">{counts.active}</p></div>
-            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Featured</p><p className="mt-2 text-2xl font-bold">{featured.length}<span className="text-sm font-normal text-muted-foreground"> / 6</span></p></div>
-            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Client decisions</p><p className="mt-2 text-2xl font-bold">{counts.approved + counts.rejected}</p></div>
-            <div className="rounded-xl border bg-background p-4"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Archived</p><p className="mt-2 text-2xl font-bold">{counts.archived}</p></div>
-          </div>
-        </CardContent>
-      </Card>
 
-
-      <Card>
-        <CardHeader className="space-y-4">
-          <div><CardTitle>All podcasts</CardTitle><CardDescription>Search, filter, feature, hide, archive, or restore shows from one place.</CardDescription></div>
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto">
-              <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" aria-label="Search podcasts or publishers" className="pl-9" /></div>
-              <select
-                aria-label="Sort podcasts"
-                value={sort}
-                onChange={(event) => setSort(event.target.value as ListSort)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-56"
-              >
-                <option value="list_order">Client list order</option>
-                <option value="fit_desc">Fit: best first</option>
-                <option value="audience_desc">Audience: largest first</option>
-                <option value="audience_asc">Audience: smallest first</option>
-                <option value="rating_desc">Rating: highest first</option>
-                <option value="rating_asc">Rating: lowest first</option>
-                <option value="recent_desc">Recently published</option>
-                <option value="name_asc">Name: A–Z</option>
-              </select>
-              <div className="flex gap-2">
-                <select
-                  aria-label="Filter by fit score"
-                  value={fitFilter}
-                  onChange={(event) => setFitFilter(event.target.value as FitFilter)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 sm:w-36"
-                >
-                  <option value="any">Any fit</option>
-                  <option value="at_least">Fit at least</option>
-                  <option value="below">Fit below</option>
-                  <option value="unscored">Not scored</option>
-                </select>
-                {(fitFilter === 'at_least' || fitFilter === 'below') && (
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={1}
-                    max={10}
-                    step={0.5}
-                    value={fitThreshold}
-                    onChange={(event) => setFitThreshold(event.target.value)}
-                    aria-label="Fit score threshold"
-                    className="w-20"
-                  />
+          {/* The counts are the filter: one row instead of two blocks of stat cards. */}
+          <span id="shortlist-inactive-hint" className="sr-only">Shows with no episode in 90 days, or a company’s own feed.</span>
+          <div role="group" aria-label="Filter by client decision" className="flex flex-wrap gap-1.5">
+            {([
+              ['all', 'All', counts.active],
+              ['not_reviewed', 'To review', counts.notReviewed],
+              ['approved', 'Approved', counts.approved],
+              ['rejected', 'Passed', counts.rejected],
+              ['weak_fit', 'Weak fit', counts.weakFit],
+              ['low_quality', 'Inactive', counts.lowQuality],
+              ['archived', 'Archived', counts.archived],
+            ] as Array<[ListFilter, string, number]>).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                title={value === 'low_quality' ? 'No episode in 90 days, or a company’s own feed' : undefined}
+                aria-describedby={value === 'low_quality' ? 'shortlist-inactive-hint' : undefined}
+                onClick={() => setFilter(value)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  filter === value ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-muted',
                 )}
-              </div>
+              >
+                {label} <span className={cn('tabular-nums font-semibold', filter !== value && 'text-foreground')}>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
+            <div className="relative sm:col-span-2 lg:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search podcasts or publishers…" aria-label="Search podcasts or publishers" className="pl-9" /></div>
+            <select aria-label="Sort podcasts" value={sort} onChange={(event) => setSort(event.target.value as ListSort)} className={SELECT_CLASS}>
+              <option value="list_order">Client list order</option>
+              <option value="fit_desc">Fit: best first</option>
+              <option value="audience_desc">Audience: largest first</option>
+              <option value="audience_asc">Audience: smallest first</option>
+              <option value="rating_desc">Rating: highest first</option>
+              <option value="rating_asc">Rating: lowest first</option>
+              <option value="recent_desc">Recently published</option>
+              <option value="name_asc">Name: A–Z</option>
+            </select>
+            <div className="flex gap-2">
+              <select aria-label="Filter by fit score" value={fitFilter} onChange={(event) => setFitFilter(event.target.value as FitFilter)} className={cn(SELECT_CLASS, 'flex-1')}>
+                <option value="any">Any fit</option>
+                <option value="at_least">Fit at least</option>
+                <option value="below">Fit below</option>
+                <option value="unscored">Not scored</option>
+              </select>
+              {(fitFilter === 'at_least' || fitFilter === 'below') && (
+                <Input type="number" inputMode="decimal" min={1} max={10} step={0.5} value={fitThreshold} onChange={(event) => setFitThreshold(event.target.value)} aria-label="Fit score threshold" className="w-20" />
+              )}
             </div>
-            <select
-              aria-label="Filter by pitch status"
-              value={pitchFilter}
-              disabled={!pitchDataAvailable}
-              onChange={(event) => setPitchFilter(event.target.value as PitchFilter)}
-              className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
+            <select aria-label="Filter by pitch status" value={pitchFilter} disabled={!pitchDataAvailable} onChange={(event) => setPitchFilter(event.target.value as PitchFilter)} className={SELECT_CLASS}>
               {Object.entries(PITCH_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <div className="flex flex-wrap gap-2">
-              {([
-                ['all', `All ${counts.active}`],
-                ['not_reviewed', `To review ${counts.notReviewed}`],
-                ['approved', `Approved ${counts.approved}`],
-                ['rejected', `Passed ${counts.rejected}`],
-                ['weak_fit', `Weak fit ${counts.weakFit}`],
-                ['low_quality', `Inactive or company feed ${counts.lowQuality}`],
-                ['archived', `Archived ${counts.archived}`],
-              ] as Array<[ListFilter, string]>).map(([value, label]) => (
-                <Button key={value} type="button" size="sm" variant={filter === value ? 'default' : 'outline'} onClick={() => setFilter(value)}>{label}</Button>
-              ))}
-            </div>
+            <select aria-label="Filter by contact email" value={emailFilter} onChange={(event) => setEmailFilter(event.target.value as EmailFilter)} className={SELECT_CLASS}>
+              <option value="any">Any email</option>
+              <option value="has">Has email ({emailCounts.has})</option>
+              <option value="none">No email ({emailCounts.none})</option>
+            </select>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {campaignTargetsQuery.isError && <p role="status" className="text-sm text-muted-foreground">{pitchDataAvailable ? 'Pitch statuses could not be refreshed. Showing last loaded statuses.' : 'Pitch statuses could not be loaded.'} <button type="button" className="underline" onClick={() => void campaignTargetsQuery.refetch()}>Retry</button></p>}
-          {filtered.length > 0 && (
-            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-              <Checkbox
-                checked={allSelected}
-                onCheckedChange={(checked) => setSelectedIds(checked ? new Set(filtered.map((podcast) => podcast.podcast_id)) : new Set())}
-                aria-label={`Select all ${resultLabel(filtered.length)} in this view`}
-              />
-              Select all {resultLabel(filtered.length)} in this view
-            </label>
-          )}
+
+        <CardContent className="space-y-3 p-3 sm:p-4">
           <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} />
+          {campaignTargetsQuery.isError && <p role="status" className="text-sm text-muted-foreground">{pitchDataAvailable ? 'Pitch statuses could not be refreshed. Showing last loaded statuses.' : 'Pitch statuses could not be loaded.'} <button type="button" className="underline" onClick={() => void campaignTargetsQuery.refetch()}>Retry</button></p>}
           <ShortlistBulkBar
             workspaceId={workspaceId}
             clientId={clientId}
@@ -610,97 +531,39 @@ export function ClientShortlistEditor({
             onClear={() => setSelectedIds(new Set())}
             onSaved={refresh}
           />
+          {filtered.length > 0 && (
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelectedIds(checked ? new Set(filtered.map((podcast) => podcast.podcast_id)) : new Set())} aria-label={`Select all ${resultLabel(filtered.length)} in this view`} />
+              Select all {resultLabel(filtered.length)} in this view
+            </label>
+          )}
           {visiblePage.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center"><Search className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2 font-medium">No podcasts match this view</p><p className="text-sm text-muted-foreground">Try a different filter or add podcasts from the catalog.</p></div>
           ) : (
-            <div className="divide-y rounded-xl border">
-              {visiblePage.map((podcast) => {
-                const target = targetsByPodcast.get(podcast.id)
-                const hasDraft = Boolean(target?.pitch_subject?.trim() || target?.pitch_body?.trim())
-                const pitchLabel = !isTargetInActiveOutreach(target) && hasDraft ? 'Continue Draft' : pitchActionLabel({
-                  inActiveOutreach: isTargetInActiveOutreach(target),
-                  previouslyContacted: Boolean(podcast.prior_outreach_at),
-                })
-                return (
-                <div key={podcast.podcast_id} className="flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center">
-                  <Checkbox
-                    className="self-start lg:self-center"
-                    checked={selectedIds.has(podcast.podcast_id)}
-                    onCheckedChange={(checked) => toggleSelected(podcast.podcast_id, checked === true)}
-                    aria-label={`Select ${podcast.podcast_name}`}
-                  />
-                  <button type="button" className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={() => openPodcastDetails(podcast)} aria-label={`View details for ${podcast.podcast_name}`}>
-                    <PodcastArtwork podcast={podcast} />
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{podcast.podcast_name}</p>{podcast.is_featured && <Badge aria-label={`${podcast.podcast_name} is featured`} className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{podcast.prior_outreach_at && <Badge aria-label={`${podcast.podcast_name} was previously contacted`} variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}{qualityFlags(podcast).notPosting && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900" title="No episode in the last 90 days">Not posting</Badge>}{qualityFlags(podcast).companyFeed && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-900" title="Looks like a company's own feed, not a hosted show that books guests">Company feed</Badge>}</div><p className="truncate text-sm text-muted-foreground">{podcast.publisher_name || 'Publisher unavailable'}</p>{podcast.feedback_notes && <p className="mt-1 line-clamp-1 text-xs italic text-muted-foreground">Client note: “{podcast.feedback_notes}”</p>}</div>
-                  </button>
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5 lg:w-[600px] lg:items-center">
-                    <div><p className="text-xs text-muted-foreground">Fit</p><FitScoreBadge podcast={podcast} profile={shortlistQuery.data?.fit_profile ?? null} /></div>
-                    <div><p className="text-xs text-muted-foreground">Audience</p><p className="font-medium">{compactNumber(podcast.audience_size)}</p></div>
-                    <div><p className="text-xs text-muted-foreground">Rating</p><p className="font-medium">{podcast.itunes_rating ? Number(podcast.itunes_rating).toFixed(1) : '—'}</p></div>
-                    <div>{feedbackBadge(podcast)}</div>
-                    <div>{visibilityBadge(podcast.visibility)}</div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2 lg:shrink-0">
-                    {podcast.research_progress && (
-                      <Badge variant="outline" aria-label={`Research status for ${podcast.podcast_name}`}>
-                        {isResearchRunStale(podcast.research_progress) ? 'Research needs attention'
-                          : podcast.research_progress.status === 'blocked' ? 'Needs client info'
-                          : podcast.research_progress.status === 'completed' ? 'Research complete'
-                            : podcast.research_progress.status === 'failed' ? 'Research failed'
-                              : podcast.research_progress.status === 'queued' ? 'Research queued' : 'Research running'}
-                      </Badge>
-                    )}
-                    <Badge variant="outline">{pitchDataAvailable ? (pitchStatus(target) === 'draft' && hasWrittenPitch(target) ? 'Written draft' : PITCH_LABELS[pitchStatus(target)]) : campaignTargetsQuery.isError ? 'Pitch status unavailable' : 'Loading pitch status…'}</Badge>
-                    {podcast.visibility === 'visible' && podcast.feedback_status === 'approved' && (
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className={pitchLabel === 'Write Re-pitch' ? 'border-amber-300 bg-amber-50 text-amber-950 hover:bg-amber-100 hover:text-amber-950' : undefined}
-                      >
-                        {/* A page, not a modal: it can be opened in a new tab,
-                            left while research runs, and returned to. */}
-                        <Link
-                          to={clientPitchHref(workspaceBaseHref, clientId, podcast.id)}
-                          aria-label={`${pitchLabel} for ${podcast.podcast_name}`}
-                        >
-                          {pitchLabel === 'View Pitch'
-                            ? <Eye className="mr-2 h-4 w-4 text-sky-600" />
-                            : <PenLine className={`mr-2 h-4 w-4 ${pitchLabel === 'Write Re-pitch' ? 'text-amber-700' : 'text-primary'}`} />}
-                          {pitchLabel}
-                        </Link>
-                      </Button>
-                    )}
-                    <PodcastExternalLink url={podcast.podcast_url} name={podcast.podcast_name} />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="outline" size="icon" disabled={pendingPodcastId === podcast.podcast_id}><span className="sr-only">Actions for {podcast.podcast_name}</span>{pendingPodcastId === podcast.podcast_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}</Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem onClick={() => openPodcastDetails(podcast)}><FileText className="mr-2 h-4 w-4" />View details &amp; notes</DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {podcast.feedback_status !== 'approved' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'approved' }, `${podcast.podcast_name} marked approved.`)}><ThumbsUp className="mr-2 h-4 w-4 text-emerald-600" />Mark approved</DropdownMenuItem>}
-                        {podcast.feedback_status !== 'rejected' && <DropdownMenuItem onClick={() => void updatePodcast(podcast, { feedback_status: 'rejected' }, `${podcast.podcast_name} marked passed.`)}><ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />Mark passed</DropdownMenuItem>}
-                        <DropdownMenuSeparator />
-                        {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => void toggleFeatured(podcast)}><Star className="mr-2 h-4 w-4" />{podcast.is_featured ? 'Remove from featured' : 'Add to featured'}</DropdownMenuItem>}
-                        {podcast.visibility === 'archived' ? (
-                          <DropdownMenuItem onClick={() => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}><RotateCcw className="mr-2 h-4 w-4" />Restore to list</DropdownMenuItem>
-                        ) : (
-                          <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setArchiveTarget(podcast)}><Trash2 className="mr-2 h-4 w-4" />Archive podcast</DropdownMenuItem></>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-                )
-              })}
-            </div>
+            <ShortlistTable
+              podcasts={visiblePage}
+              selectedIds={selectedIds}
+              onToggle={toggleSelected}
+              fitProfile={shortlistQuery.data?.fit_profile ?? null}
+              targetsByPodcast={targetsByPodcast}
+              pitchDataAvailable={pitchDataAvailable}
+              pitchError={campaignTargetsQuery.isError}
+              pendingPodcastId={pendingPodcastId}
+              workspaceBaseHref={workspaceBaseHref}
+              clientId={clientId}
+              onOpenDetails={openPodcastDetails}
+              onDecision={(podcast, status) => void updatePodcast(podcast, { feedback_status: status }, `${podcast.podcast_name} marked ${status === 'approved' ? 'approved' : 'passed'}.`)}
+              onToggleFeatured={(podcast) => void toggleFeatured(podcast)}
+              onRestore={(podcast) => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}
+              onArchive={setArchiveTarget}
+            />
           )}
           <div className="flex flex-col gap-3 pt-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <p>Showing {visiblePage.length} of {resultLabel(filtered.length)}</p>
-            {totalPages > 1 && <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</Button><span>Page {page} of {totalPages}</span><Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></div>}
+            {totalPages > 1 && <div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={page === 1} onClick={() => goToPage(page - 1)}>Previous</Button><span>Page {page} of {totalPages}</span><Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => goToPage(page + 1)}>Next</Button></div>}
           </div>
         </CardContent>
       </Card>
-
       <Sheet open={Boolean(detailPodcast)} onOpenChange={(open) => !open && setDetailPodcast(null)}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
           {detailPodcast && (
@@ -711,7 +574,7 @@ export function ClientShortlistEditor({
                   <div className="min-w-0"><SheetTitle>{detailPodcast.podcast_name}</SheetTitle><SheetDescription>{detailPodcast.publisher_name || 'Publisher unavailable'}</SheetDescription></div>
                 </div>
               </SheetHeader>
-              <div className="flex flex-wrap gap-2">{feedbackBadge(detailPodcast)}{visibilityBadge(detailPodcast.visibility)}{detailPodcast.is_featured && <Badge className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{detailPodcast.prior_outreach_at && <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}</div>
+              <div className="flex flex-wrap gap-2"><FeedbackBadge podcast={detailPodcast} />{detailPodcast.visibility === 'archived' ? <Badge variant="outline" className="border-slate-200 bg-slate-100 text-slate-700"><Archive className="mr-1 h-3 w-3" />Archived · hidden from client</Badge> : <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><Eye className="mr-1 h-3 w-3" />Visible to client</Badge>}{researchStatusLabel(detailPodcast.research_progress) && <Badge variant="outline"><span className="sr-only">Research status: </span>{researchStatusLabel(detailPodcast.research_progress)}</Badge>}{shortlistContactEmail(detailPodcast) && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800"><MailCheck className="mr-1 h-3 w-3" />{shortlistContactEmail(detailPodcast)}</Badge>}{detailPodcast.is_featured && <Badge className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50"><Star className="mr-1 h-3 w-3 fill-current" />Featured</Badge>}{detailPodcast.prior_outreach_at && <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-800"><MailCheck className="mr-1 h-3 w-3" />Previously contacted</Badge>}</div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Audience</p><p className="mt-1 font-semibold">{compactNumber(detailPodcast.audience_size)}</p></div>
                 <div className="rounded-xl border p-3"><p className="text-xs text-muted-foreground">Rating</p><p className="mt-1 font-semibold">{detailPodcast.itunes_rating ? Number(detailPodcast.itunes_rating).toFixed(1) : '—'}</p></div>

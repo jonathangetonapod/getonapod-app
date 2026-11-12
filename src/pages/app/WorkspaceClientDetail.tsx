@@ -883,25 +883,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {canManage && <Button asChild variant="outline"><a href="#client-podcast-list"><LayoutDashboard className="mr-2 h-4 w-4" />View &amp; edit podcasts</a></Button>}
                     <Button type="button" onClick={() => selectClientDetailTab('sharing')}><LinkIcon className="mr-2 h-4 w-4" />Share with client</Button>
                   </div>
                 </div>
               </div>
             </Card>
-
-            <section aria-labelledby="review-progress-heading">
-              <div className="mb-3">
-                <h3 id="review-progress-heading" className="text-xl font-semibold">Shortlist decisions</h3>
-                <p className="text-sm text-muted-foreground">Client feedback from the current shortlist, summarized here.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard icon={Mic2} label="Shortlisted" value={dashboard.podcast_count} iconClassName="bg-slate-100 text-slate-700" />
-                <MetricCard icon={ThumbsUp} label="Positive" value={dashboard.approved_count} iconClassName="bg-emerald-50 text-emerald-600" />
-                <MetricCard icon={ThumbsDown} label="Negative" value={dashboard.rejected_count} iconClassName="bg-rose-50 text-rose-600" />
-                <MetricCard icon={Clock3} label="To review" value={dashboard.to_review_count} iconClassName="bg-amber-50 text-amber-600" />
-              </div>
-            </section>
 
             {canManage && (
               <ClientShortlistEditor
