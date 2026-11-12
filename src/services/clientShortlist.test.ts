@@ -14,6 +14,8 @@ import {
   saveClientShortlistRecipients,
   scoreClientShortlistFit,
   searchClientPodcastCatalog,
+  archiveClientShortlistPodcasts,
+  deleteClientShortlistPodcasts,
   setClientShortlistFeedbackBulk,
   updateClientShortlistPodcast,
 } from '@/services/clientShortlist'
@@ -64,6 +66,22 @@ describe('clientShortlist service', () => {
     await expect(setClientShortlistFeedbackBulk(workspaceId, clientId, ['a', 'b'], 'rejected')).resolves.toEqual({ updated: 2 })
     expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist', {
       body: { action: 'bulk-feedback', workspace_id: workspaceId, client_id: clientId, podcast_ids: ['a', 'b'], feedback_status: 'rejected' },
+    })
+  })
+
+  it('archives or permanently deletes many shows, and reports the ones a delete kept', async () => {
+    invoke
+      .mockResolvedValueOnce({ data: { archived: 2 }, error: null } as never)
+      .mockResolvedValueOnce({ data: { deleted: 1, kept: [{ podcast_id: 'b', podcast_name: 'B', reason: 'in_campaign' }] }, error: null } as never)
+    await expect(archiveClientShortlistPodcasts(workspaceId, clientId, ['a', 'b'])).resolves.toEqual({ archived: 2 })
+    expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist', {
+      body: { action: 'bulk-archive', workspace_id: workspaceId, client_id: clientId, podcast_ids: ['a', 'b'] },
+    })
+    await expect(deleteClientShortlistPodcasts(workspaceId, clientId, ['a', 'b'])).resolves.toEqual({
+      deleted: 1, kept: [{ podcast_id: 'b', podcast_name: 'B', reason: 'in_campaign' }],
+    })
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-shortlist', {
+      body: { action: 'bulk-delete', workspace_id: workspaceId, client_id: clientId, podcast_ids: ['a', 'b'] },
     })
   })
 

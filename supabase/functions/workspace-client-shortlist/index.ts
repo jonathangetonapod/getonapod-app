@@ -1567,6 +1567,113 @@ serve(async (req) => {
       return jsonResponse(req, METHODS, 200, { updated: rows.length, feedback_status: feedbackStatus })
     }
 
+    if (action === 'bulk-archive') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'podcast_ids'])
+      const podcastIds = podcastIdList(body.podcast_ids, BULK_FEEDBACK_MAX)
+      if (podcastIds.length === 0) throw new HttpError(400, 'INVALID_FIELD', 'podcast_ids cannot be empty')
+      const archivedAt = new Date().toISOString()
+      // Same effect as archiving one show: hidden from the client, unfeatured, kept for dedupe.
+      const { data, error } = await authContext.admin
+        .from('client_dashboard_podcasts')
+        .update({ visibility: 'archived', archived_at: archivedAt, archived_by: authContext.user.id, is_featured: false, featured_order: null, updated_at: archivedAt })
+        .eq('client_id', clientId)
+        .eq('visibility', 'visible')
+        .in('podcast_id', podcastIds)
+        .select('podcast_id')
+      if (error) throw new HttpError(500, 'SHORTLIST_UPDATE_FAILED', 'The podcasts could not be archived')
+      await writeAudit(authContext.admin, {
+        workspaceId,
+        actorUserId: authContext.user.id,
+        action: 'workspace.client.shortlist.bulk_archive',
+        entityType: 'client',
+        entityId: clientId,
+        metadata: { podcast_ids: (data || []).map((row) => row.podcast_id) },
+      })
+      return jsonResponse(req, METHODS, 200, { archived: (data || []).length })
+    }
+
+    if (action === 'bulk-delete') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'podcast_ids'])
+      const podcastIds = podcastIdList(body.podcast_ids, BULK_FEEDBACK_MAX)
+      if (podcastIds.length === 0) throw new HttpError(400, 'INVALID_FIELD', 'podcast_ids cannot be empty')
+      const { data: rows, error: rowsError } = await authContext.admin
+        .from('client_dashboard_podcasts')
+        .select('id,podcast_id,podcast_name,research_progress')
+        .eq('client_id', clientId)
+        .in('podcast_id', podcastIds)
+      if (rowsError) throw new HttpError(500, 'SHORTLIST_DELETE_FAILED', 'The podcasts could not be checked')
+      if ((rows || []).length !== podcastIds.length) {
+        throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Some of these podcasts are not on this client list')
+      }
+      const rowIds = rows!.map((row) => row.id as string)
+      /*
+       * Deleting a row cascades to its campaign target and research history.
+       * A show that reached a sending platform or a host keeps its row, so the
+       * outreach record and dedupe survive; only never-sent shows are removed.
+       */
+      const [targetsResult, sentResult, jobsResult] = await Promise.all([
+        authContext.admin
+          .from('workspace_client_campaign_targets')
+          .select('shortlist_podcast_id,status,instantly_lead_id,lead_staged_at,launched_at')
+          .eq('client_id', clientId)
+          .in('shortlist_podcast_id', rowIds),
+        authContext.admin
+          .from('podcast_outreach_actions')
+          .select('podcast_id')
+          .eq('client_id', clientId)
+          .eq('action', 'sent')
+          .in('podcast_id', podcastIds),
+        authContext.admin
+          .from('client_research_jobs')
+          .select('shortlist_podcast_id')
+          .in('shortlist_podcast_id', rowIds)
+          .in('status', ['queued', 'running']),
+      ])
+      if (targetsResult.error || sentResult.error || jobsResult.error) {
+        throw new HttpError(500, 'SHORTLIST_DELETE_FAILED', 'The podcasts could not be checked')
+      }
+      const outreachRows = new Set((targetsResult.data || [])
+        .filter((target) => !['draft', 'ready'].includes(target.status) || target.instantly_lead_id || target.lead_staged_at || target.launched_at)
+        .map((target) => target.shortlist_podcast_id))
+      const contacted = new Set((sentResult.data || []).map((action) => action.podcast_id))
+      const researching = new Set((jobsResult.data || []).map((job) => job.shortlist_podcast_id))
+      const kept: Array<{ podcast_id: string; podcast_name: string; reason: string }> = []
+      const deletable: typeof rows = []
+      for (const row of rows!) {
+        const progress = row.research_progress as { status?: string; updated_at?: string } | null
+        const researchLocked = researching.has(row.id)
+          || (['queued', 'running'].includes(progress?.status ?? '') && Date.now() - Date.parse(progress?.updated_at ?? '') < RESEARCH_STALE_LOCK_MS)
+        const reason = outreachRows.has(row.id) ? 'in_campaign'
+          : contacted.has(row.podcast_id) ? 'contacted'
+            : researchLocked ? 'research_running' : null
+        if (reason) kept.push({ podcast_id: row.podcast_id, podcast_name: row.podcast_name, reason })
+        else deletable.push(row)
+      }
+      if (deletable.length > 0) {
+        const { error: deleteError } = await authContext.admin
+          .from('client_dashboard_podcasts')
+          .delete()
+          .eq('client_id', clientId)
+          .in('id', deletable.map((row) => row.id))
+        if (deleteError) throw new HttpError(500, 'SHORTLIST_DELETE_FAILED', 'The podcasts could not be deleted')
+        // The client's decision goes too, so a show added again starts unreviewed.
+        await authContext.admin
+          .from('client_podcast_feedback')
+          .delete()
+          .eq('client_id', clientId)
+          .in('podcast_id', deletable.map((row) => row.podcast_id))
+        await writeAudit(authContext.admin, {
+          workspaceId,
+          actorUserId: authContext.user.id,
+          action: 'workspace.client.shortlist.bulk_delete',
+          entityType: 'client',
+          entityId: clientId,
+          metadata: { deleted: deletable.map((row) => ({ podcast_id: row.podcast_id, podcast_name: row.podcast_name })), kept },
+        })
+      }
+      return jsonResponse(req, METHODS, 200, { deleted: deletable.length, kept })
+    }
+
     if (action === 'reorder-featured') {
       requireOnlyKeys(body, ['action', 'workspace_id', 'client_id', 'podcast_ids'])
       const podcastIds = podcastIdList(body.podcast_ids)

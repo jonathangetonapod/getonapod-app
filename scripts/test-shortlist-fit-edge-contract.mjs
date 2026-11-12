@@ -55,6 +55,18 @@ assert.match(shortlist, /if \(rows\.length !== podcastIds\.length\) \{\s*\n\s*th
 assert.match(shortlist, /notes: notesByPodcast\.get\(row\.podcast_id\) \|\| null/u)
 assert.match(shortlist, /action: 'workspace\.client\.shortlist\.bulk_feedback'/u)
 
+// Bulk archive and permanent delete: capped and client-scoped like bulk
+// feedback. Delete keeps any show that reached a sending platform or a host,
+// or is mid-research, because removing the row cascades to its campaign target.
+assert.match(shortlist, /action === 'bulk-archive'/u)
+assert.match(shortlist, /\.update\(\{ visibility: 'archived', archived_at: archivedAt, archived_by: authContext\.user\.id, is_featured: false, featured_order: null/u)
+assert.match(shortlist, /action: 'workspace\.client\.shortlist\.bulk_archive'/u)
+assert.match(shortlist, /action === 'bulk-delete'/u)
+assert.match(shortlist, /!\['draft', 'ready'\]\.includes\(target\.status\) \|\| target\.instantly_lead_id \|\| target\.lead_staged_at \|\| target\.launched_at/u)
+assert.match(shortlist, /\.eq\('action', 'sent'\)\s*\n\s*\.in\('podcast_id', podcastIds\)/u)
+assert.match(shortlist, /\.from\('client_dashboard_podcasts'\)\s*\n\s*\.delete\(\)\s*\n\s*\.eq\('client_id', clientId\)\s*\n\s*\.in\('id', deletable\.map/u)
+assert.match(shortlist, /action: 'workspace\.client\.shortlist\.bulk_delete'/u)
+
 assert.match(migration, /CHECK \(fit_score IS NULL OR \(fit_score >= 1 AND fit_score <= 10\)\)/u)
 assert.match(migration, /CHECK \(fit_source IS NULL OR fit_source IN \('ai', 'estimate'\)\)/u)
 

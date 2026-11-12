@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  CheckCircle2, ExternalLink, Eye, EyeOff, FileText, Loader2, Mail, MailCheck, MoreHorizontal,
+  Archive, CheckCircle2, ExternalLink, Eye, EyeOff, FileText, Loader2, Mail, MailCheck, MoreHorizontal,
   PenLine, Radio, RotateCcw, Star, ThumbsDown, ThumbsUp, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -100,6 +100,7 @@ interface ShortlistTableProps {
   onToggleFeatured: (podcast: ClientShortlistPodcast) => void
   onRestore: (podcast: ClientShortlistPodcast) => void
   onArchive: (podcast: ClientShortlistPodcast) => void
+  onDelete: (podcast: ClientShortlistPodcast) => void
 }
 
 export const ShortlistTable = (props: ShortlistTableProps) => {
@@ -126,7 +127,7 @@ export const ShortlistTable = (props: ShortlistTableProps) => {
 
 const ShortlistRow = ({
   podcast, selectedIds, onToggle, fitProfile, targetsByPodcast, pitchDataAvailable, pitchError, pendingPodcastId,
-  workspaceBaseHref, clientId, onOpenDetails, onDecision, onToggleFeatured, onRestore, onArchive,
+  workspaceBaseHref, clientId, onOpenDetails, onDecision, onToggleFeatured, onRestore, onArchive, onDelete,
 }: ShortlistTableProps & { podcast: ClientShortlistPodcast }) => {
   const target = targetsByPodcast.get(podcast.id)
   const inOutreach = isTargetInActiveOutreach(target)
@@ -213,8 +214,9 @@ const ShortlistRow = ({
             {podcast.visibility === 'archived' ? (
               <DropdownMenuItem onClick={() => onRestore(podcast)}><RotateCcw className="mr-2 h-4 w-4" />Restore to list</DropdownMenuItem>
             ) : (
-              <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onArchive(podcast)}><Trash2 className="mr-2 h-4 w-4" />Archive podcast</DropdownMenuItem></>
+              <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => onArchive(podcast)}><Archive className="mr-2 h-4 w-4" />Archive podcast</DropdownMenuItem></>
             )}
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(podcast)}><Trash2 className="mr-2 h-4 w-4" />Delete permanently</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -3,8 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientShortlistEditor } from '@/components/workspace/ClientShortlistEditor'
+import { toast } from 'sonner'
 import {
   addClientShortlistPodcasts,
+  archiveClientShortlistPodcasts,
+  deleteClientShortlistPodcasts,
   getClientShortlist,
   scoreClientShortlistFit,
   searchClientPodcastCatalog,
@@ -20,6 +23,8 @@ vi.mock('@/services/clientShortlist', () => ({
   FIT_SCORE_BATCH_SIZE: 20,
   BULK_FEEDBACK_BATCH_SIZE: 200,
   setClientShortlistFeedbackBulk: vi.fn(),
+  archiveClientShortlistPodcasts: vi.fn(),
+  deleteClientShortlistPodcasts: vi.fn(),
   addClientShortlistPodcasts: vi.fn(),
   getClientShortlist: vi.fn(),
   scoreClientShortlistFit: vi.fn(),
@@ -265,6 +270,48 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 1 podcast in this view' }))
     fireEvent.click(screen.getByRole('button', { name: 'Mark passed' }))
     await waitFor(() => expect(setClientShortlistFeedbackBulk).toHaveBeenLastCalledWith(workspaceId, clientId, ['podcast-two'], 'rejected'))
+  })
+
+  it('archives every selected show at once', async () => {
+    vi.mocked(archiveClientShortlistPodcasts).mockResolvedValue({ archived: 2 })
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 2 podcasts in this view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }))
+    await waitFor(() => expect(archiveClientShortlistPodcasts).toHaveBeenCalledWith(workspaceId, clientId, expect.arrayContaining(['podcast-two'])))
+    await waitFor(() => expect(screen.queryByText('2 shows selected')).not.toBeInTheDocument())
+  })
+
+  it('deletes selected shows only after a typed confirmation, and says which were kept', async () => {
+    vi.mocked(deleteClientShortlistPodcasts).mockResolvedValue({
+      deleted: 1,
+      kept: [{ podcast_id: 'podcast-two', podcast_name: 'Operator Weekly', reason: 'contacted' }],
+    })
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 2 podcasts in this view' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const confirm = await screen.findByRole('button', { name: 'Delete permanently' })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Type delete to confirm'), { target: { value: 'delete' } })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(deleteClientShortlistPodcasts).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(deleteClientShortlistPodcasts).mock.calls[0][2]).toHaveLength(2)
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith(expect.stringContaining('Operator Weekly (already contacted)'), expect.anything()))
+    expect(toast.success).toHaveBeenCalledWith('Deleted 1 show from the shortlist.')
+  })
+
+  it('deletes one show from its row menu', async () => {
+    vi.mocked(deleteClientShortlistPodcasts).mockResolvedValue({ deleted: 1, kept: [] })
+    renderEditor()
+    const actions = await screen.findByRole('button', { name: 'Actions for Operator Weekly' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete permanently' }))
+    expect(await screen.findByRole('heading', { name: 'Permanently delete Operator Weekly?' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Type delete to confirm'), { target: { value: 'DELETE' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }))
+    await waitFor(() => expect(deleteClientShortlistPodcasts).toHaveBeenCalledWith(workspaceId, clientId, ['podcast-two']))
   })
 
   it('clears the selection when the view changes', async () => {

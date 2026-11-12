@@ -467,6 +467,47 @@ export async function setClientShortlistFeedbackBulk(
   return { updated: Number(data?.updated) || 0 }
 }
 
+/** Hides shows from the client and keeps them for dedupe, as a single archive does. */
+export async function archiveClientShortlistPodcasts(
+  workspaceId: string,
+  clientId: string,
+  podcastIds: string[],
+): Promise<{ archived: number }> {
+  const data = await invokeClientShortlist<{ archived: number }>({
+    action: 'bulk-archive',
+    workspace_id: workspaceId,
+    client_id: clientId,
+    podcast_ids: podcastIds,
+  })
+  return { archived: Number(data?.archived) || 0 }
+}
+
+export type ShortlistDeleteKeptReason = 'in_campaign' | 'contacted' | 'research_running'
+
+export interface ShortlistDeleteKept {
+  podcast_id: string
+  podcast_name: string
+  reason: ShortlistDeleteKeptReason
+}
+
+/**
+ * Removes shows for good, with their research and drafts. Shows that reached
+ * a sending platform or a host, or are mid-research, are kept and listed.
+ */
+export async function deleteClientShortlistPodcasts(
+  workspaceId: string,
+  clientId: string,
+  podcastIds: string[],
+): Promise<{ deleted: number; kept: ShortlistDeleteKept[] }> {
+  const data = await invokeClientShortlist<{ deleted: number; kept: ShortlistDeleteKept[] }>({
+    action: 'bulk-delete',
+    workspace_id: workspaceId,
+    client_id: clientId,
+    podcast_ids: podcastIds,
+  })
+  return { deleted: Number(data?.deleted) || 0, kept: Array.isArray(data?.kept) ? data.kept : [] }
+}
+
 export async function reorderClientShortlistFeatured(
   workspaceId: string,
   clientId: string,

@@ -51,6 +51,7 @@ import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
 import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
+import { ShortlistDeleteDialog } from '@/components/workspace/ShortlistDeleteDialog'
 import { FeedbackBadge, PodcastArtwork, ShortlistTable } from '@/components/workspace/ShortlistTable'
 import { compactNumber, qualityFlags, researchStatusLabel } from '@/lib/shortlistRow'
 import {
@@ -178,6 +179,7 @@ export function ClientShortlistEditor({
   const [pendingPodcastId, setPendingPodcastId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<ClientShortlistPodcast | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ClientShortlistPodcast | null>(null)
   const [detailPodcast, setDetailPodcast] = useState<ClientShortlistPodcast | null>(null)
   const [operatorNotes, setOperatorNotes] = useState('')
   const [isSavingNotes, setIsSavingNotes] = useState(false)
@@ -556,6 +558,7 @@ export function ClientShortlistEditor({
               onToggleFeatured={(podcast) => void toggleFeatured(podcast)}
               onRestore={(podcast) => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}
               onArchive={setArchiveTarget}
+              onDelete={setDeleteTarget}
             />
           )}
           <div className="flex flex-col gap-3 pt-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
@@ -627,6 +630,16 @@ export function ClientShortlistEditor({
           </div>
         </SheetContent>
       </Sheet>
+
+      <ShortlistDeleteDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        workspaceId={workspaceId}
+        clientId={clientId}
+        podcastIds={deleteTarget ? [deleteTarget.podcast_id] : []}
+        podcastName={deleteTarget?.podcast_name}
+        onDeleted={refresh}
+      />
 
       <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(open) => !open && setArchiveTarget(null)}>
         <AlertDialogContent>
