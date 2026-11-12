@@ -7,6 +7,7 @@ import {
   resolveBisonTimezone,
 } from "./emailBison.ts";
 import {
+  InstantlyProvider,
   instantlyProviderCampaign,
   provisionedCampaignConfiguration,
   sequenceRendersOurPitch,
@@ -610,4 +611,24 @@ Deno.test("provider error text never carries the API key", async () => {
     }
     throw new Error("did not reject");
   });
+});
+
+Deno.test("Instantly deletes a campaign with one bodiless DELETE, and an already-gone one is a 404", async () => {
+  const id = "0b9b1f2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b";
+  await withFetch(
+    (call) => call.url.pathname === `/api/v2/campaigns/${id}` ? { body: { id, name: "x", status: 1 } } : { status: 404, body: {} },
+    async (calls) => {
+      const provider = new InstantlyProvider("k".repeat(30));
+      assertEquals(await provider.deleteCampaign(id), "deleted", "outcome");
+      assertEquals(calls.map((call) => `${call.method} ${call.url.pathname}`), [`DELETE /api/v2/campaigns/${id}`], "one call");
+      assertEquals(calls[0].body, null, "no body");
+      let status = 0;
+      try {
+        await provider.deleteCampaign("1c9b1f2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b");
+      } catch (error) {
+        status = error instanceof OutreachProviderError ? error.status : -1;
+      }
+      assertEquals(status, 404, "already gone surfaces as 404, which the delete action treats as done");
+    },
+  );
 });

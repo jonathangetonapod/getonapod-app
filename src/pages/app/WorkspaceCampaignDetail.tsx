@@ -1578,6 +1578,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         } : null}
         providerKind={integrationProvider(integration)}
         providerLabel={providerName}
+        canRemoveLocally={Boolean(integration?.can_manage)}
         onClose={() => setConfirmDeleteOpen(false)}
         onDeleted={() => {
           // Dropped, not refetched: coming back to this client within the

@@ -1667,7 +1667,8 @@ async function ensureProviderCampaign(
     })
     .eq("id", campaign.id)
     .eq("workspace_id", campaign.workspace_id)
-    .eq("provider_sync_state", "creating")
+    // "syncing" is a delete's claim, left behind only by a killed invocation.
+    .in("provider_sync_state", ["creating", "syncing"])
     .lt("provider_sync_started_at", staleBefore)
     .is("instantly_campaign_id", null);
   if (staleClaimError) {
@@ -1985,6 +1986,71 @@ async function findAdoptableProviderCampaign(
   return candidates.find((candidate) => !linked.has(candidate.id)) ?? null;
 }
 
+/** A delete claim younger than this is live; older ones are dead and reaped. */
+const DELETE_CLAIM_TTL_MS = 5 * 60_000;
+
+/**
+ * Refuses to put a lead on the platform for a campaign that is being deleted.
+ *
+ * The delete action claims the row (provider_sync_state "syncing") before it
+ * touches the platform. Read fresh here, immediately before the platform write,
+ * because the row the caller loaded may predate the claim. A lead added after
+ * this check is caught afterwards: the caller's target write then finds the
+ * row gone, and removeLeadForDeletedCampaign takes the lead back off.
+ */
+async function assertCampaignNotBeingDeleted(admin: AuthContext["admin"], campaign: CampaignRow): Promise<void> {
+  const { data, error } = await admin
+    .from("workspace_client_campaigns")
+    .select("provider_sync_state, provider_sync_started_at")
+    .eq("id", campaign.id)
+    .eq("workspace_id", campaign.workspace_id)
+    .maybeSingle();
+  if (error) {
+    throw new HttpError(500, "CAMPAIGN_LOOKUP_FAILED", "The client campaign could not be loaded");
+  }
+  if (!data) {
+    throw new HttpError(404, "CAMPAIGN_NOT_FOUND", "This client's campaign was deleted");
+  }
+  const row = data as { provider_sync_state: string; provider_sync_started_at: string | null };
+  const fresh = row.provider_sync_started_at !== null &&
+    Date.parse(row.provider_sync_started_at) > Date.now() - DELETE_CLAIM_TTL_MS;
+  if (row.provider_sync_state === "syncing" && fresh) {
+    throw new HttpError(
+      409,
+      "CAMPAIGN_SYNC_IN_PROGRESS",
+      "This campaign is being deleted, so nothing can be added to it",
+    );
+  }
+}
+
+/**
+ * A lead was added for a target whose campaign was deleted meanwhile, so the
+ * target's write found nothing. Take the lead back off the platform: nothing
+ * here would ever track or stop it. Best effort; the caller reports either way.
+ */
+async function removeLeadForDeletedCampaign(
+  admin: AuthContext["admin"],
+  workspaceId: string,
+  targetId: string,
+  connection: ConnectionRow | null,
+  providerCampaignId: string,
+  leadId: string,
+): Promise<boolean> {
+  const { data: stillThere } = await admin
+    .from("workspace_client_campaign_targets")
+    .select("id")
+    .eq("id", targetId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (stillThere) return false;
+  try {
+    await (await integrationProvider(connection)).removeLead(providerCampaignId, leadId);
+  } catch (_error) {
+    // Already gone is fine; anything else is recorded by the caller's error.
+  }
+  return true;
+}
+
 async function stageCampaignLead(
   context: AuthContext,
   // Nullable on purpose: integrationApiKey turns a missing or disconnected
@@ -2060,6 +2126,7 @@ async function stageCampaignLead(
     );
   }
 
+  await assertCampaignNotBeingDeleted(context.admin, campaign);
   const outreach = await integrationProvider(connection);
   // A chosen campaign is read, never created: the caller has already checked it
   // is a provisioned link for this client, and creating one here would silently
@@ -2327,6 +2394,7 @@ async function launchTarget(
       );
     }
 
+    await assertCampaignNotBeingDeleted(context.admin, campaign);
     const outreach = await integrationProvider(connection);
     const accounts = await refreshProviderAccounts(
       context.admin,
@@ -2450,7 +2518,9 @@ async function launchTarget(
           updated_by: context.user.id,
         })
         .eq("id", campaign.id)
-        .eq("workspace_id", campaign.workspace_id),
+        .eq("workspace_id", campaign.workspace_id)
+        // Never clears a delete's claim on the row.
+        .neq("provider_sync_state", "syncing"),
     ]);
     if (targetUpdate.error || campaignUpdate.error) {
       throw new HttpError(
@@ -2599,7 +2669,9 @@ async function syncProviderCampaign(
       updated_by: context.user.id,
     })
     .eq("id", campaign.id)
-    .eq("workspace_id", campaign.workspace_id);
+    .eq("workspace_id", campaign.workspace_id)
+    // Never clears a delete's claim on the row.
+    .neq("provider_sync_state", "syncing");
   if (error) {
     throw new HttpError(
       500,
@@ -2704,6 +2776,15 @@ serve(async (req) => {
             .then(() => undefined, () => undefined);
         }
       };
+      // A delete claim is released by the delete itself, pass or fail; one left
+      // behind means the invocation was killed. Freed here so the campaign is
+      // synced, deletable and switchable again rather than skipped forever.
+      await admin
+        .from("workspace_client_campaigns")
+        .update({ provider_sync_state: "error", provider_sync_started_at: null })
+        .eq("provider_sync_state", "syncing")
+        .lt("provider_sync_started_at", new Date(Date.now() - DELETE_CLAIM_TTL_MS).toISOString())
+        .then(() => undefined, () => undefined);
       await Promise.allSettled(
         ((connections ?? []) as unknown as ConnectionRow[]).map(syncConnection),
       );
@@ -5590,8 +5671,26 @@ serve(async (req) => {
         .eq("id", target.id)
         .eq("workspace_id", workspaceId)
         .select(TARGET_COLUMNS)
-        .single();
+        .maybeSingle();
       if (error || !data) {
+        // The campaign was deleted while the lead was being added: undo it.
+        if (
+          staged && !error &&
+          await removeLeadForDeletedCampaign(
+            context.admin,
+            workspaceId,
+            target.id,
+            await readConnection(context.admin, workspaceId),
+            staged.providerCampaignId,
+            staged.leadId,
+          )
+        ) {
+          throw new HttpError(
+            409,
+            "CAMPAIGN_NOT_FOUND",
+            "This client's campaign was deleted while the pitch was being sent, so it was taken back off the sending platform",
+          );
+        }
         throw new HttpError(
           500,
           "CAMPAIGN_PREPARATION_SAVE_FAILED",
@@ -6567,6 +6666,9 @@ serve(async (req) => {
         throw new HttpError(400, "INVALID_FIELD", "local_only must be a boolean");
       }
       const localOnly = body.local_only === true;
+      // Leaving a possibly live campaign on the platform with nothing here
+      // pointing at it is the owner's call, like the credential it stands in for.
+      if (localOnly) requireIntegrationOwner(access);
       const campaign = await readCampaign(context.admin, workspaceId, clientId);
       if (!campaign) {
         throw new HttpError(404, "CAMPAIGN_NOT_FOUND", "This client has no campaign to delete");
@@ -6576,7 +6678,7 @@ serve(async (req) => {
       // from idle or error) and write a platform id onto a row about to go.
       // A setup claim older than five minutes is dead; the create path's own
       // reaper uses the same bound.
-      const staleBefore = new Date(Date.now() - 5 * 60_000).toISOString();
+      const staleBefore = new Date(Date.now() - DELETE_CLAIM_TTL_MS).toISOString();
       const busy = (campaign.provider_sync_state === "creating" || campaign.provider_sync_state === "syncing") &&
         (!campaign.provider_sync_started_at || campaign.provider_sync_started_at >= staleBefore);
       if (busy) {
@@ -6628,16 +6730,16 @@ serve(async (req) => {
 
       try {
         // Read after the claim: a pitch staged before it is in this list.
-        const targets = await readTargets(context.admin, workspaceId, campaign.id);
+        let targets = await readTargets(context.admin, workspaceId, campaign.id);
         const strayLeads = targets.filter((target) =>
           target.instantly_lead_id &&
           target.instantly_campaign_id &&
           target.instantly_campaign_id !== campaign.instantly_campaign_id
         );
         // A setup that died between creating on the platform and writing the
-        // id here left a campaign named with this row's marker.
-        const recoverOrphan = !campaign.instantly_campaign_id &&
-          (campaign.provider_sync_state === "creating" || campaign.provider_sync_state === "syncing");
+        // id here left a campaign named with this row's marker. "error" too:
+        // the create path's own failure handler and reaper both land there.
+        const recoverOrphan = !campaign.instantly_campaign_id && campaign.provider_sync_state !== "idle";
         // "deleted", "paused" (a platform with no delete), "missing" (already
         // gone there), "skipped" (local_only) or null when there was nothing
         // on the platform to remove.
@@ -6660,19 +6762,42 @@ serve(async (req) => {
           const ignoreMissing = (error: unknown) => {
             if (!(error instanceof OutreachProviderError && error.status === 404)) throw error;
           };
-          for (const target of strayLeads) {
-            await outreach
-              .removeLead(target.instantly_campaign_id, target.instantly_lead_id as string)
-              .catch(ignoreMissing);
-          }
+          const removedLeads = new Set<string>();
+          const removeStrayLeads = async (rows: TargetRow[]) => {
+            for (const target of rows) {
+              const key = `${target.instantly_campaign_id}:${target.instantly_lead_id}`;
+              if (removedLeads.has(key)) continue;
+              await outreach
+                .removeLead(target.instantly_campaign_id, target.instantly_lead_id as string)
+                .catch(ignoreMissing);
+              removedLeads.add(key);
+            }
+          };
+          await removeStrayLeads(strayLeads);
           const platformIds = campaign.instantly_campaign_id ? [campaign.instantly_campaign_id] : [];
           if (recoverOrphan) {
-            const marker = `GOAP-${campaign.id}`;
-            platformIds.push(
-              ...(await outreach.searchCampaigns(marker, 10))
-                .filter((candidate) => candidate.name.includes(marker))
-                .map((candidate) => candidate.id),
-            );
+            // Exactly the name the create path writes, and never a campaign
+            // something else in this workspace already maps to.
+            const suffix = ` · GOAP-${campaign.id}`;
+            const candidates = (await outreach.searchCampaigns(`GOAP-${campaign.id}`, 10))
+              .filter((candidate) => candidate.name.endsWith(suffix))
+              .map((candidate) => candidate.id);
+            if (candidates.length) {
+              const [mappedRows, linkedRows] = await Promise.all([
+                context.admin.from("workspace_client_campaigns").select("instantly_campaign_id")
+                  .eq("workspace_id", workspaceId).in("instantly_campaign_id", candidates),
+                context.admin.from("client_instantly_campaign_links").select("instantly_campaign_id")
+                  .eq("workspace_id", workspaceId).in("instantly_campaign_id", candidates),
+              ]);
+              if (mappedRows.error || linkedRows.error) {
+                throw new HttpError(500, "CAMPAIGN_DELETE_FAILED", "The campaign could not be deleted. Try again.");
+              }
+              const taken = new Set(
+                [...(mappedRows.data ?? []), ...(linkedRows.data ?? [])]
+                  .map((row) => String((row as { instantly_campaign_id: unknown }).instantly_campaign_id)),
+              );
+              platformIds.push(...candidates.filter((id) => !taken.has(id)));
+            }
           }
           for (const platformId of platformIds) {
             const outcome = await outreach.deleteCampaign(platformId).catch((error) => {
@@ -6682,6 +6807,17 @@ serve(async (req) => {
             // The mapped campaign's outcome is the one reported.
             if (platformId === campaign.instantly_campaign_id || !providerOutcome) providerOutcome = outcome;
           }
+          // Second sweep: a pitch staged into a linked campaign while the
+          // calls above ran. Staging refuses once the claim is visible, but a
+          // stage already past that check can still land its lead id here.
+          targets = await readTargets(context.admin, workspaceId, campaign.id);
+          const lateStray = targets.filter((target) =>
+            target.instantly_lead_id &&
+            target.instantly_campaign_id &&
+            target.instantly_campaign_id !== campaign.instantly_campaign_id
+          );
+          await removeStrayLeads(lateStray);
+          strayLeads.push(...lateStray.filter((late) => !strayLeads.some((early) => early.id === late.id)));
         }
 
         const fail = (): never => {

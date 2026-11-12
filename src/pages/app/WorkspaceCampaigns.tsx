@@ -1007,6 +1007,7 @@ const WorkspaceCampaigns = ({
         target={deleteTarget}
         providerKind={integrationProvider(integration)}
         providerLabel={providerName}
+        canRemoveLocally={Boolean(integration?.can_manage)}
         onClose={() => setDeleteTarget(null)}
       />
 

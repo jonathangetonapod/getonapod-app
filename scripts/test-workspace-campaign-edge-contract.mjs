@@ -390,7 +390,7 @@ assert.match(
   'only a live mapping may refuse a remap',
 )
 assert.match(edge, /provider_sync_state: "creating"[\s\S]*?\.in\("provider_sync_state", \["idle", "error"\]\)/u)
-assert.match(edge, /provider_sync_state", "creating"[\s\S]*?\.lt\("provider_sync_started_at", staleBefore\)/u)
+assert.match(edge, /provider_sync_state", \["creating", "syncing"\]\)[\s\S]*?\.lt\("provider_sync_started_at", staleBefore\)/u)
 assert.doesNotMatch(edge, /subsequence|workspace[_ -]group/iu)
 assert.match(adapter, /goapFollowUpOneSubject/u)
 assert.match(adapter, /goapFollowUpOneBody/u)
@@ -1754,9 +1754,8 @@ console.log('Workspace Client Campaign inbox write-safety checks passed')
   assert.match(del, /requireOnlyKeys\(body, \["action", "workspace_id", "client_id", "local_only"\]\)[\s\S]*?requireCampaignManager\(access\)/u)
   // A live setup refuses; a dead one (past the reaper's five minutes) does not
   // strand the campaign, and its marker-named platform campaign is recovered.
-  assert.match(del, /5 \* 60_000[\s\S]*?provider_sync_started_at >= staleBefore[\s\S]*?CAMPAIGN_SYNC_IN_PROGRESS/u)
-  assert.match(del, /searchCampaigns\(marker, 10\)[\s\S]*?candidate\.name\.includes\(marker\)/u)
-  // The row is claimed before any platform call, and handed back on failure.
+  assert.match(del, /Date\.now\(\) - DELETE_CLAIM_TTL_MS[\s\S]*?provider_sync_started_at >= staleBefore[\s\S]*?CAMPAIGN_SYNC_IN_PROGRESS/u)
+    // The row is claimed before any platform call, and handed back on failure.
   assert.match(del, /provider_sync_state: "syncing", provider_sync_started_at: deleteClaimedAt[\s\S]*?\.eq\("provider_sync_state", campaign\.provider_sync_state\)[\s\S]*?outreach\.deleteCampaign/u)
   assert.match(del, /catch \(error\) \{\s*await releaseClaim\(\);\s*throw error;/u)
   // local_only never touches the platform.
@@ -1776,3 +1775,39 @@ console.log('Workspace Client Campaign delete checks passed')
   const fix = readFileSync('supabase/migrations/20261112000100_bookings_campaign_target_fk_set_null_column.sql', 'utf8')
   assert.match(fix, /ON DELETE SET NULL \(campaign_target_id\);/u, 'a deleted target nulls only the booking link')
 }
+
+// Second review round: the delete's claim is honoured by every path that puts
+// a lead on the platform, and a dead claim does not linger.
+{
+  const del = edge.slice(edge.indexOf('if (action === "delete")'), edge.indexOf('if (action === "pause" || action === "resume")'))
+  const fn = (name) => edge.slice(edge.indexOf(`async function ${name}(`), edge.indexOf('\n}\n', edge.indexOf(`async function ${name}(`)))
+  // Staging and launch re-read the row right before the platform write.
+  assert.match(fn('stageCampaignLead'), /await assertCampaignNotBeingDeleted\(context\.admin, campaign\);\s*const outreach = await integrationProvider\(connection\);/u)
+  assert.match(fn('launchTarget'), /await assertCampaignNotBeingDeleted\(context\.admin, campaign\);\s*const outreach = await integrationProvider\(connection\);/u)
+  assert.match(fn('assertCampaignNotBeingDeleted'), /provider_sync_state === "syncing" && fresh[\s\S]*?CAMPAIGN_SYNC_IN_PROGRESS/u)
+  // A lead added for a target whose campaign vanished meanwhile is taken back.
+  assert.match(edge, /if \(action === "prepare-podcast"\)[\s\S]*?\.maybeSingle\(\);\s*if \(error \|\| !data\) \{[\s\S]*?removeLeadForDeletedCampaign\([\s\S]*?staged\.providerCampaignId,\s*staged\.leadId/u)
+  // Launch's mapping write and the provider sync never clear a delete claim.
+  assert.match(fn('launchTarget'), /provider_sync_state: "idle"[\s\S]*?\.neq\("provider_sync_state", "syncing"\)/u)
+  assert.match(fn('syncProviderCampaign'), /provider_sync_state: "idle"[\s\S]*?\.neq\("provider_sync_state", "syncing"\);/u)
+  // Dead claims are reaped by cron and by the create path.
+  assert.match(edge, /\.eq\("provider_sync_state", "syncing"\)\s*\.lt\("provider_sync_started_at", new Date\(Date\.now\(\) - DELETE_CLAIM_TTL_MS\)/u)
+  assert.match(fn('ensureProviderCampaign'), /\.in\("provider_sync_state", \["creating", "syncing"\]\)\s*\.lt\("provider_sync_started_at", staleBefore\)/u)
+  // A claim with no timestamp is busy; only an old one is stale.
+  assert.match(del, /\(!campaign\.provider_sync_started_at \|\| campaign\.provider_sync_started_at >= staleBefore\)/u)
+  // Release restores exactly, guarded on this delete's own claim.
+  assert.match(del, /busyBefore\s*\?\s*\{ provider_sync_state: "error", provider_sync_started_at: null \}\s*:\s*\{ provider_sync_state: campaign\.provider_sync_state, provider_sync_started_at: campaign\.provider_sync_started_at \}[\s\S]*?\.eq\("provider_sync_started_at", deleteClaimedAt\)/u)
+  assert.match(del, /if \(!claimed\) \{[\s\S]*?CAMPAIGN_SYNC_IN_PROGRESS/u)
+  // Removing only here is the owner's call.
+  assert.match(del, /if \(localOnly\) requireIntegrationOwner\(access\);/u)
+  // A leftover setup campaign: exact name, never one another row maps.
+  assert.match(del, /candidate\.name\.endsWith\(suffix\)[\s\S]*?workspace_client_campaigns[\s\S]*?client_instantly_campaign_links[\s\S]*?!taken\.has\(id\)/u)
+  assert.match(del, /recoverOrphan = !campaign\.instantly_campaign_id && campaign\.provider_sync_state !== "idle"/u)
+  // A second sweep after the platform deletes, and bookings unlinked in
+  // workspace- and client-scoped batches.
+  assert.match(del, /outreach\.deleteCampaign\(platformId\)[\s\S]*?targets = await readTargets[\s\S]*?removeStrayLeads\(lateStray\)/u)
+  assert.match(del, /index \+= 200[\s\S]*?\.from\("bookings"\)[\s\S]*?\.eq\("workspace_id", workspaceId\)\s*\.eq\("client_id", clientId\)\s*\.in\("campaign_target_id", targetIds\.slice\(index, index \+ 200\)\)/u)
+  assert.match(del, /local_only: localOnly/u, 'the audit says when the platform was left alone')
+}
+console.log('Workspace Client Campaign delete race checks passed')
+

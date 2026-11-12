@@ -12,12 +12,14 @@ import {
   refreshWorkspaceInstantly,
   saveWorkspaceCampaign,
   type WorkspaceCampaignOverview,
+  deleteWorkspaceCampaign,
 } from '@/services/workspaceCampaigns'
 
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
 vi.mock('@/services/workspaceCampaigns', () => ({
   connectWorkspaceInstantly: vi.fn(),
+  deleteWorkspaceCampaign: vi.fn(),
   disconnectWorkspaceInstantly: vi.fn(),
   getWorkspaceCampaignOverview: vi.fn(),
   refreshWorkspaceCampaignAnalytics: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
 const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
 const mockedOverview = vi.mocked(getWorkspaceCampaignOverview)
+const mockedDeleteCampaign = vi.mocked(deleteWorkspaceCampaign)
 const mockedSaveCampaign = vi.mocked(saveWorkspaceCampaign)
 const mockedConnectInstantly = vi.mocked(connectWorkspaceInstantly)
 const mockedRefreshInstantly = vi.mocked(refreshWorkspaceInstantly)
@@ -222,6 +225,40 @@ describe('WorkspaceCampaigns', () => {
     expect(screen.getByText('22% of 9 contacted replied')).toBeInTheDocument()
     expect(screen.queryByText('Ready to launch')).not.toBeInTheDocument()
     expect(screen.queryByText(/Feb 16–22|podcasts in view|Current wave/i)).not.toBeInTheDocument()
+  })
+
+  it('deletes a campaign from its row menu, after typing to confirm', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      campaigns: [persistedCampaign],
+    })
+    mockedDeleteCampaign.mockResolvedValue('deleted')
+    renderCampaigns()
+
+    const menu = await screen.findByRole('button', { name: `More actions for ${client.name} campaign` })
+    fireEvent.keyDown(menu, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete campaign' }))
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText(`Delete ${persistedCampaign.name}?`)).toBeInTheDocument()
+    expect(within(dialog).getByText(/deleted in Instantly/)).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText(/to confirm/), { target: { value: 'delete' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete campaign' }))
+    await waitFor(() => expect(mockedDeleteCampaign).toHaveBeenCalledWith(workspaceId, clientId, { localOnly: false }))
+  })
+
+  it('offers no delete to a role that cannot manage campaigns', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      can_manage_campaigns: false,
+      integration: connectedIntegration,
+      campaigns: [persistedCampaign],
+    })
+    renderCampaigns()
+
+    await screen.findByRole('table')
+    expect(screen.queryByRole('button', { name: `More actions for ${client.name} campaign` })).not.toBeInTheDocument()
   })
 
   /*

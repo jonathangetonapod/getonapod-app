@@ -7,6 +7,7 @@ import WorkspaceCampaignDetail from '@/pages/app/WorkspaceCampaignDetail'
 import { getClientShortlist, type ClientShortlistPodcast } from '@/services/clientShortlist'
 import { getWorkspaceClientDetail, type WorkspaceClientDetail } from '@/services/clients'
 import {
+  deleteWorkspaceCampaign,
   getWorkspaceCampaign,
   getWorkspaceCampaignSendingStatus,
   getWorkspaceTargetLeadStatus,
@@ -21,6 +22,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clientShortlist', () => ({ getClientShortlist: vi.fn() }))
 vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
 vi.mock('@/services/workspaceCampaigns', () => ({
+  deleteWorkspaceCampaign: vi.fn(),
   getWorkspaceCampaign: vi.fn(),
   getWorkspaceCampaignSendingStatus: vi.fn(),
   getWorkspaceTargetLeadStatus: vi.fn(),
@@ -38,6 +40,7 @@ const mockedShortlist = vi.mocked(getClientShortlist)
 const mockedDetail = vi.mocked(getWorkspaceClientDetail)
 const mockedCampaign = vi.mocked(getWorkspaceCampaign)
 const mockedRunning = vi.mocked(setWorkspaceCampaignRunning)
+const mockedDeleteCampaign = vi.mocked(deleteWorkspaceCampaign)
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const clientId = '22222222-2222-4222-8222-222222222222'
 
@@ -98,7 +101,10 @@ function renderPage(platformWorkspaceId?: string, query = '') {
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[`${base}/client-campaigns/${clientId}${query}`]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes><Route path={`${base}/client-campaigns/:clientId`} element={<WorkspaceCampaignDetail platformWorkspaceId={platformWorkspaceId} />} /></Routes>
+        <Routes>
+          <Route path={`${base}/client-campaigns/:clientId`} element={<WorkspaceCampaignDetail platformWorkspaceId={platformWorkspaceId} />} />
+          <Route path={`${base}/client-campaigns`} element={<p>Campaigns list</p>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -144,6 +150,21 @@ describe('WorkspaceCampaignDetail', () => {
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     expect(screen.getByRole('button', { name: 'More campaign actions' })).toBeInTheDocument()
+  })
+
+  it('deletes the campaign from the header menu and returns to the list', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    mockedDeleteCampaign.mockResolvedValue('deleted')
+    renderPage()
+
+    fireEvent.keyDown(await screen.findByRole('button', { name: 'More campaign actions' }), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete campaign' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.change(within(dialog).getByLabelText(/to confirm/), { target: { value: 'delete' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete campaign' }))
+
+    await waitFor(() => expect(mockedDeleteCampaign).toHaveBeenCalledWith(workspaceId, clientId, { localOnly: false }))
+    expect(await screen.findByText('Campaigns list')).toBeInTheDocument()
   })
 
   it('falls back to podcasts when the tab in the address is not real', async () => {

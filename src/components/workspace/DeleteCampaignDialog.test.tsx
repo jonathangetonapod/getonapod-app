@@ -24,7 +24,7 @@ const renderDialog = (props: Partial<Parameters<typeof DeleteCampaignDialog>[0]>
   const onDeleted = vi.fn()
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
-      <DeleteCampaignDialog workspaceId="ws-1" target={target} providerKind="instantly" providerLabel="Instantly" onClose={onClose} onDeleted={onDeleted} {...props} />
+      <DeleteCampaignDialog workspaceId="ws-1" target={target} providerKind="instantly" providerLabel="Instantly" canRemoveLocally onClose={onClose} onDeleted={onDeleted} {...props} />
     </QueryClientProvider>,
   )
   return { onClose, onDeleted }
@@ -59,6 +59,44 @@ describe('DeleteCampaignDialog', () => {
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('skipped'))
     expect(mockedDelete).toHaveBeenLastCalledWith('ws-1', 'client-1', { localOnly: true })
     expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/untouched in Instantly/))
+  })
+
+  // A lapsed plan or a key without the permission is the old account being
+  // gone as much as a missing key is.
+  it.each(['CAMPAIGN_PLATFORM_UNREACHABLE', 'INSTANTLY_PLAN_REQUIRED', 'INSTANTLY_SCOPE_REQUIRED', 'EMAILBISON_KEY_REJECTED'])(
+    'offers the local-only removal after %s',
+    async (code) => {
+      mockedDelete.mockRejectedValueOnce(coded(code))
+      renderDialog()
+      fireEvent.change(screen.getByLabelText(/to confirm/), { target: { value: 'delete' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Delete campaign' }))
+      expect(await screen.findByRole('button', { name: 'Remove from this app only' })).toBeInTheDocument()
+    },
+  )
+
+  it('does not offer a local-only removal for an ordinary failure', async () => {
+    mockedDelete.mockRejectedValueOnce(coded('CAMPAIGN_DELETE_FAILED'))
+    renderDialog()
+    fireEvent.change(screen.getByLabelText(/to confirm/), { target: { value: 'delete' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete campaign' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Remove from this app only' })).not.toBeInTheDocument()
+  })
+
+  it('leaves the local-only removal to the owner', async () => {
+    mockedDelete.mockRejectedValueOnce(coded('CAMPAIGN_PLATFORM_UNREACHABLE'))
+    renderDialog({ canRemoveLocally: false })
+    fireEvent.change(screen.getByLabelText(/to confirm/), { target: { value: 'delete' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete campaign' }))
+    expect(await screen.findByText(/The workspace owner can also remove it from this app only/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove from this app only' })).not.toBeInTheDocument()
+  })
+
+  it('says nothing about the platform for a draft that never reached it', () => {
+    renderDialog({ target: { ...target, onPlatform: false, pitchCount: 0 } })
+    expect(screen.queryByText(/deleted in Instantly/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/linked campaigns/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/removed from this app\. Bookings/)).not.toBeInTheDocument()
   })
 
   it('treats a campaign that is already gone as done and refreshes', async () => {

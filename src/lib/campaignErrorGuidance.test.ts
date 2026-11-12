@@ -103,6 +103,15 @@ describe('campaignErrorGuidance', () => {
     expect(guidance?.explanation).not.toMatch(/right key/i)
   })
 
+  it('explains every refusal the campaign delete can return', () => {
+    expect(campaignErrorGuidance('CAMPAIGN_NOT_FOUND')?.remedy.kind).toBe('none')
+    expect(campaignErrorGuidance('CAMPAIGN_SYNC_IN_PROGRESS')?.remedy.kind).toBe('retry')
+    // Retrying is safe because a platform campaign already removed reads as done.
+    expect(campaignErrorGuidance('CAMPAIGN_DELETE_FAILED')?.explanation).toMatch(/again is safe/i)
+    expect(campaignErrorGuidance('CAMPAIGN_PLATFORM_UNREACHABLE')?.explanation).toMatch(/this app only/i)
+    expect(campaignErrorGuidance('INSTANTLY_SCOPE_REQUIRED')?.explanation).toMatch(/delete/i)
+  })
+
   it('offers a retry for the provider faults that pass on their own', () => {
     for (const code of ['INSTANTLY_RATE_LIMITED', 'INSTANTLY_REQUEST_FAILED', 'INSTANTLY_RESPONSE_INVALID']) {
       expect(campaignErrorGuidance(code)?.remedy.kind, code).toBe('retry')

@@ -33,6 +33,8 @@ interface DeleteCampaignDialogProps {
   target: DeleteCampaignTarget | null
   providerKind: OutreachProviderKind
   providerLabel: string
+  /** The workspace owner (or a platform admin): the only role the server lets remove a campaign here alone. */
+  canRemoveLocally: boolean
   onClose: () => void
   /** Also called when the campaign turns out to be gone already. */
   onDeleted?: (outcome: CampaignDeleteOutcome) => void
@@ -40,12 +42,18 @@ interface DeleteCampaignDialogProps {
 
 const CONFIRM_WORD = 'delete'
 
-/** Refusals that mean the platform cannot be reached at all, so only a local removal is possible. */
+/**
+ * Refusals that mean the platform account cannot act for us at all, so only a
+ * local removal is possible: no key, a rejected key, a lapsed plan, or a key
+ * without the permission. The old account being gone is the common case.
+ */
 const isUnreachable = (code: string | null): boolean => Boolean(code) && (
   code === 'CAMPAIGN_PLATFORM_UNREACHABLE' ||
   code === 'INSTANTLY_NOT_CONNECTED' ||
   code === 'INSTANTLY_CREDENTIAL_INVALID' ||
-  code.endsWith('_KEY_REJECTED')
+  code.endsWith('_KEY_REJECTED') ||
+  code.endsWith('_PLAN_REQUIRED') ||
+  code.endsWith('_SCOPE_REQUIRED')
 )
 
 const successMessage = (outcome: CampaignDeleteOutcome, providerLabel: string): string => {
@@ -73,6 +81,7 @@ export const DeleteCampaignDialog = ({
   target,
   providerKind,
   providerLabel,
+  canRemoveLocally,
   onClose,
   onDeleted,
 }: DeleteCampaignDialogProps) => {
@@ -153,9 +162,12 @@ export const DeleteCampaignDialog = ({
         </ul>
         {unreachable && (
           <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            {providerLabel} can't be reached with the saved key, so nothing was deleted there. Reconnect it to delete the
-            campaign in both places, or remove it from this app only. If it is still live in {providerLabel}, it keeps
-            sending until you pause or delete it there.
+            {providerLabel} won't act on the saved key, so nothing was deleted there. Reconnect it to delete the
+            campaign in both places
+            {canRemoveLocally
+              ? ', or remove it from this app only.'
+              : '. The workspace owner can also remove it from this app only.'}{' '}
+            If it is still live in {providerLabel}, it keeps sending until you pause or delete it there.
           </p>
         )}
         <div className="space-y-2">
@@ -173,7 +185,7 @@ export const DeleteCampaignDialog = ({
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={mutation.isPending}>Cancel</AlertDialogCancel>
-          {unreachable && (
+          {unreachable && canRemoveLocally && (
             <Button variant="outline" disabled={!confirmed || mutation.isPending || !target} onClick={() => run(true)}>
               Remove from this app only
             </Button>
