@@ -321,3 +321,18 @@ Deno.test("a lead staged into a draft campaign is not locked by the campaign's o
   assertEquals(reachInboxLeadStatus(staged), 1, "still editable");
   assertEquals(reachInboxLeadStatus({ ...staged, status: "IN_PROCESS", sequenceStopped: 2 }), 3, "any stop code ends it");
 });
+
+Deno.test("ReachInbox has no campaign delete, so deleting pauses and never clears leads", async () => {
+  await withFetch((call) => {
+    if (call.url.pathname === "/api/v1/campaigns/all") {
+      return { body: { data: call.url.searchParams.get("offset") === "0" ? [{ id: 8, name: "Client", status: "paused" }] : [] } };
+    }
+    return { body: { status: 200 } };
+  }, async (calls) => {
+    const provider = new ReachInboxProvider(KEY);
+    assertEquals(await provider.deleteCampaign("8"), "paused", "outcome");
+    assert(calls.some((call) => call.url.pathname.endsWith("/campaigns/pause")), "paused");
+    assert(!calls.some((call) => call.url.pathname.includes("/leads/delete")), "no lead wipe");
+    assert(!calls.some((call) => call.method === "DELETE"), "no delete");
+  });
+});

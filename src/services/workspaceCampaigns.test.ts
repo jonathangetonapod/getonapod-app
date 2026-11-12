@@ -5,6 +5,7 @@ import {
   addWorkspaceCampaignPodcasts,
   connectWorkspaceInstantly,
   createClientInstantlyCampaign,
+  deleteWorkspaceCampaign,
   getClientInstantlyCampaignLinks,
   setClientInstantlyCampaignLinks,
   getWorkspaceCampaignOverview,
@@ -483,5 +484,25 @@ describe('client instantly campaign links', () => {
 
     expect(invoke.mock.calls[0][1].body).toMatchObject({ timezone: 'Australia/Melbourne', daily_limit: 50 })
   })
-})
 
+  it('deletes a client campaign and reports what the platform did', async () => {
+    invoke.mockResolvedValueOnce({ data: { deleted: true, campaign_id: 'c1', provider_outcome: 'paused' }, error: null } as never)
+    await expect(deleteWorkspaceCampaign(workspaceId, clientId)).resolves.toBe('paused')
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'delete', workspace_id: workspaceId, client_id: clientId },
+    })
+  })
+
+  it('asks for a local-only removal only when told to', async () => {
+    invoke.mockResolvedValueOnce({ data: { deleted: true, provider_outcome: 'skipped' }, error: null } as never)
+    await expect(deleteWorkspaceCampaign(workspaceId, clientId, { localOnly: true })).resolves.toBe('skipped')
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'delete', workspace_id: workspaceId, client_id: clientId, local_only: true },
+    })
+  })
+
+  it('never reports a delete the server did not confirm', async () => {
+    invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
+    await expect(deleteWorkspaceCampaign(workspaceId, clientId)).rejects.toThrow('could not be deleted')
+  })
+})

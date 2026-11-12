@@ -135,6 +135,17 @@ describe('WorkspaceCampaignDetail', () => {
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Podcasts' })).toHaveAttribute('aria-selected', 'true'))
   })
 
+  it('links to the campaign on the sending platform, in a new tab', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: activeCampaign })
+    renderPage()
+
+    const link = await screen.findByRole('link', { name: /Open in Instantly/ })
+    expect(link).toHaveAttribute('href', 'https://app.instantly.ai/app/campaign/instantly-one/analytics')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByRole('button', { name: 'More campaign actions' })).toBeInTheDocument()
+  })
+
   it('falls back to podcasts when the tab in the address is not real', async () => {
     renderPage(undefined, '?tab=not-a-tab')
 

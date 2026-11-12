@@ -99,7 +99,7 @@ describe('campaignErrorGuidance', () => {
   it('tells a blocked platform switch to clear mappings, not to change the key', () => {
     const guidance = campaignErrorGuidance('PROVIDER_SWITCH_BLOCKED')
     expect(guidance?.title).not.toBe(campaignErrorGuidance('INSTANTLY_WORKSPACE_MISMATCH')?.title)
-    expect(guidance?.explanation).toMatch(/unlink or clear/i)
+    expect(guidance?.explanation).toMatch(/delete each client campaign/i)
     expect(guidance?.explanation).not.toMatch(/right key/i)
   })
 

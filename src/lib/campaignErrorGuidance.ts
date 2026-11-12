@@ -137,7 +137,7 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
   },
   INSTANTLY_SCOPE_REQUIRED: {
     title: 'The key is missing a permission',
-    explanation: 'The key authenticates but is not allowed to do this. It needs campaign and lead scopes. Reconnecting with a fully scoped key resolves it.',
+    explanation: 'The key authenticates but is not allowed to do this. It needs campaign and lead scopes, including delete for campaigns and leads when you delete a campaign. Reconnecting with a fully scoped key resolves it.',
     remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
   },
   INSTANTLY_PLAN_REQUIRED: {
@@ -150,9 +150,29 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
     explanation: 'The stored campaigns belong to a workspace this key cannot see, so nothing here matches what the sending platform returns. Reconnecting with the right key resolves it.',
     remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
   },
+  CAMPAIGN_NOT_FOUND: {
+    title: 'This campaign is already gone',
+    explanation: 'There is no campaign for this client any more, so there is nothing left to delete. The list has been refreshed.',
+    remedy: { kind: 'none' },
+  },
+  CAMPAIGN_SYNC_IN_PROGRESS: {
+    title: 'The campaign is busy on the sending platform',
+    explanation: 'It is being set up or changed right now. Deleting it mid-way could leave a campaign on the platform that nothing here points to. Try again in a minute.',
+    remedy: { kind: 'retry', label: 'Try again' },
+  },
+  CAMPAIGN_DELETE_FAILED: {
+    title: 'The campaign was not fully deleted',
+    explanation: 'Part of the delete did not finish. Running it again is safe: anything already removed from the sending platform is skipped.',
+    remedy: { kind: 'retry', label: 'Try again' },
+  },
+  CAMPAIGN_PLATFORM_UNREACHABLE: {
+    title: 'The sending platform is not connected',
+    explanation: 'Without a working key the campaign cannot be deleted there. Reconnect the platform to delete it in both places, or remove it from this app only and delete it on the platform yourself.',
+    remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
+  },
   PROVIDER_SWITCH_BLOCKED: {
     title: 'This workspace still has campaigns on its current sending platform',
-    explanation: 'Their campaign and lead ids only mean something on that platform, so switching now would strand them. The details list what is still mapped; unlink or clear those campaigns and staged leads first, then connect the new platform.',
+    explanation: 'Their campaign and lead ids only mean something on that platform, so switching now would strand them. In Client Campaigns, delete each client campaign from its row menu (that removes its staged leads too) and unlink any linked campaigns on the client page, then connect the new platform.',
     remedy: { kind: 'link', label: 'Open Client Campaigns', module: 'client-campaigns' },
   },
   INSTANTLY_CREDENTIAL_INVALID: {

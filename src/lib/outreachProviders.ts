@@ -70,7 +70,7 @@ export const OUTREACH_PROVIDERS: OutreachProviderInfo[] = [
     tagline: 'Campaigns, leads, mailbox pause and daily send history.',
     keyLabel: 'Instantly V2 API key',
     keyPlaceholder: 'Paste the workspace API key',
-    keyHelp: 'In Instantly: Settings → Integrations → API keys. Scopes needed: workspace and account read; campaign read/create/update; lead read/create/update.',
+    keyHelp: 'In Instantly: Settings → Integrations → API keys. Scopes needed: workspace and account read; campaign read/create/update/delete; lead read/create/update/delete.',
     needsBaseUrl: false,
     limitations: [],
     capabilities: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true },
@@ -107,4 +107,35 @@ export const OUTREACH_PROVIDERS: OutreachProviderInfo[] = [
 
 export function outreachProviderInfo(kind: OutreachProviderKind | null | undefined): OutreachProviderInfo {
   return OUTREACH_PROVIDERS.find((provider) => provider.kind === kind) ?? OUTREACH_PROVIDERS[0]
+}
+
+/**
+ * The campaign's page in the sending platform's own app, or null when there is
+ * no page to link to: no platform campaign yet, or no usable instance address.
+ *
+ * Email Bison runs on the agency's own address. The server validated it when
+ * the workspace connected; it is checked again here because it becomes an href.
+ */
+export function providerCampaignUrl(
+  integration: Pick<WorkspaceInstantlyIntegration, 'provider' | 'provider_base_url'> | null | undefined,
+  campaignId: string | null | undefined,
+): string | null {
+  if (!campaignId) return null
+  const id = encodeURIComponent(campaignId)
+  const kind = integrationProvider(integration)
+  if (kind === 'instantly') return `https://app.instantly.ai/app/campaign/${id}/analytics`
+  // ReachInbox's help center gives this shape (singular "campaign", the API id).
+  if (kind === 'reachinbox') return `https://app.reachinbox.ai/campaign/${id}/analytics`
+  if (kind === 'emailbison') {
+    if (!integration?.provider_base_url) return null
+    let origin: URL
+    try {
+      origin = new URL(integration.provider_base_url)
+    } catch {
+      return null
+    }
+    if (origin.protocol !== 'https:') return null
+    return `${origin.origin}/campaigns/${id}`
+  }
+  return null
 }

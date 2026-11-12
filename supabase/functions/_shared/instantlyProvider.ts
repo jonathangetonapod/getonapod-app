@@ -588,6 +588,17 @@ export class InstantlyProvider implements OutreachProvider {
     );
   }
 
+  async deleteCampaign(id: string): Promise<"deleted"> {
+    // The endpoint defines no body, so none is sent. Past 1,000 leads Instantly
+    // finishes removing them in a background job; the campaign is gone now.
+    await instantlyRequest<unknown>(
+      this.apiKey,
+      `/campaigns/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    );
+    return "deleted";
+  }
+
   async campaignAnalytics(id: string) {
     return safeInstantlyAnalytics(
       await instantlyRequest<unknown>(this.apiKey, "/campaigns/analytics/overview", {

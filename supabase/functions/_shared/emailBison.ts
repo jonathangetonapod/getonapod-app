@@ -891,6 +891,13 @@ export class EmailBisonProvider implements OutreachProvider {
     return await this.getCampaign(id);
   }
 
+  async deleteCampaign(id: string): Promise<"deleted"> {
+    // Queued: Email Bison deletes in the background, and the campaign stops
+    // answering the API at once. Replies that still arrive are captured there.
+    await this.request<unknown>(`/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return "deleted";
+  }
+
   async campaignAnalytics(id: string): Promise<AnalyticsSummary> {
     const row = record(dataOf(await this.request<unknown>(`/campaigns/${encodeURIComponent(id)}`)));
     if (!row) throw invalid("campaign");

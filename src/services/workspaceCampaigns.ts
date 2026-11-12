@@ -675,6 +675,35 @@ export async function setWorkspaceCampaignRunning(
   return response.campaign
 }
 
+/**
+ * What happened on the sending platform: deleted there, only paused (a
+ * platform with no delete, ReachInbox), already gone, deliberately left alone
+ * (`localOnly`), or null when there was nothing on the platform to remove.
+ */
+export type CampaignDeleteOutcome = 'deleted' | 'paused' | 'missing' | 'skipped' | null
+
+/**
+ * Deletes the client's campaign on the sending platform and here, with its
+ * staged pitches. Not reversible.
+ *
+ * `localOnly` removes it from this app without touching the platform, for
+ * when the platform cannot be reached; the campaign may keep sending there.
+ */
+export async function deleteWorkspaceCampaign(
+  workspaceId: string,
+  clientId: string,
+  options: { localOnly?: boolean } = {},
+): Promise<CampaignDeleteOutcome> {
+  const response = await invokeWorkspaceCampaigns<{ deleted?: boolean; provider_outcome?: CampaignDeleteOutcome }>({
+    action: 'delete',
+    workspace_id: workspaceId,
+    client_id: clientId,
+    ...(options.localOnly ? { local_only: true } : {}),
+  }, 'The campaign could not be deleted.')
+  if (!response.deleted) throw new Error('The campaign could not be deleted.')
+  return response.provider_outcome ?? null
+}
+
 export interface ResearchPromptOverride {
   /** Null when the stage runs the shipped instructions and only its model was chosen. */
   content: string | null

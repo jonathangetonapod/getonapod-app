@@ -592,6 +592,15 @@ export class ReachInboxProvider implements OutreachProvider {
     return await this.getCampaign(id);
   }
 
+  async deleteCampaign(id: string): Promise<"paused"> {
+    // ReachInbox's API has no campaign delete. Clearing its leads is no
+    // substitute: /leads/delete with an empty list deletes every lead, a
+    // request this class never builds. Pausing stops it sending; the campaign
+    // stays in ReachInbox for someone to delete there.
+    await this.pauseCampaign(id);
+    return "paused";
+  }
+
   async campaignAnalytics(id: string): Promise<AnalyticsSummary> {
     const end = new Date();
     const start = new Date(end.getTime() - 365 * 86_400_000);

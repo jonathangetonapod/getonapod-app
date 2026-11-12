@@ -1744,3 +1744,35 @@ assert.match(edge, /finally \{[\s\S]{0,300}?\.update\(\{ updated_at: new Date\(\
 assert.match(edge, /if \(Date\.now\(\) > deadline\) break;[\s\S]*?Promise\.allSettled\([\s\S]*?\.map\(syncConnection\)/u)
 
 console.log('Workspace Client Campaign inbox write-safety checks passed')
+
+// Deleting a client campaign: manager-gated, platform first (so a platform
+// failure leaves everything in place), already-gone tolerated, a lead staged
+// into a linked campaign removed too, and audited.
+{
+  const del = edge.slice(edge.indexOf('if (action === "delete")'), edge.indexOf('if (action === "pause" || action === "resume")'))
+  assert.ok(del.length > 0, 'delete action exists')
+  assert.match(del, /requireOnlyKeys\(body, \["action", "workspace_id", "client_id", "local_only"\]\)[\s\S]*?requireCampaignManager\(access\)/u)
+  // A live setup refuses; a dead one (past the reaper's five minutes) does not
+  // strand the campaign, and its marker-named platform campaign is recovered.
+  assert.match(del, /5 \* 60_000[\s\S]*?provider_sync_started_at >= staleBefore[\s\S]*?CAMPAIGN_SYNC_IN_PROGRESS/u)
+  assert.match(del, /searchCampaigns\(marker, 10\)[\s\S]*?candidate\.name\.includes\(marker\)/u)
+  // The row is claimed before any platform call, and handed back on failure.
+  assert.match(del, /provider_sync_state: "syncing", provider_sync_started_at: deleteClaimedAt[\s\S]*?\.eq\("provider_sync_state", campaign\.provider_sync_state\)[\s\S]*?outreach\.deleteCampaign/u)
+  assert.match(del, /catch \(error\) \{\s*await releaseClaim\(\);\s*throw error;/u)
+  // local_only never touches the platform.
+  assert.match(del, /if \(localOnly\) \{\s*providerOutcome = [^;]*"skipped"[^;]*;\s*\} else if/u)
+  // Bookings lose only their link, before the cascade that would fail on them.
+  assert.match(del, /\.from\("bookings"\)\s*\.update\(\{ campaign_target_id: null \}\)[\s\S]*?\.from\("workspace_client_campaigns"\)\s*\.delete\(\)/u)
+  assert.match(del, /outreach\s*\.removeLead\([\s\S]*?outreach\.deleteCampaign\(platformId\)[\s\S]*?\.from\("workspace_client_campaigns"\)\s*\.delete\(\)/u)
+  assert.match(del, /error\.status === 404/u)
+  assert.match(del, /\.from\("client_instantly_campaign_links"\)\s*\.delete\(\)[\s\S]*?\.eq\("instantly_campaign_id", campaign\.instantly_campaign_id\)/u)
+  assert.match(del, /\.eq\("id", campaign\.id\)\s*\.eq\("workspace_id", workspaceId\)\s*\.eq\("client_id", clientId\)/u)
+  assert.match(del, /"workspace\.client_campaign\.deleted"/u)
+  assert.match(providerCore, /deleteCampaign\(id: string\): Promise<"deleted" \| "paused">/u)
+  assert.match(adapter, /async deleteCampaign[\s\S]*?`\/campaigns\/\$\{encodeURIComponent\(id\)\}`,\s*\{ method: "DELETE" \}/u)
+}
+console.log('Workspace Client Campaign delete checks passed')
+{
+  const fix = readFileSync('supabase/migrations/20261112000100_bookings_campaign_target_fk_set_null_column.sql', 'utf8')
+  assert.match(fix, /ON DELETE SET NULL \(campaign_target_id\);/u, 'a deleted target nulls only the booking link')
+}

@@ -440,3 +440,24 @@ Deno.test("a Bison refusal carries Bison's own reason, which it nests under data
     assertEquals(message, "Email Bison refused the request: The email field must be a valid email address.", "reason shown");
   });
 });
+
+Deno.test("deleting a campaign is one DELETE on that campaign, and a missing one is a 404", async () => {
+  await withFetch(
+    (call) => call.url.pathname === "/api/campaigns/9"
+      ? { body: { data: { success: true, message: "queued for deletion" } } }
+      : { status: 404, body: {} },
+    async (calls) => {
+      const provider = new EmailBisonProvider(ORIGIN, KEY);
+      assertEquals(await provider.deleteCampaign("9"), "deleted", "outcome");
+      assertEquals(calls.map((call) => `${call.method} ${call.url.pathname}`), ["DELETE /api/campaigns/9"], "one call");
+      assertEquals(calls[0].body, null, "no body");
+      let status = 0;
+      try {
+        await provider.deleteCampaign("10");
+      } catch (error) {
+        status = error instanceof OutreachProviderError ? error.status : -1;
+      }
+      assertEquals(status, 404, "already gone surfaces as 404");
+    },
+  );
+});

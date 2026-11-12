@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { integrationProviderLabel } from '@/lib/outreachProviders'
+import { integrationProvider, integrationProviderLabel, providerCampaignUrl } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Mic2,
   Pause,
+  Trash2,
   Play,
   RefreshCw,
   Send,
@@ -23,7 +24,9 @@ import {
   Sparkles,
   UserRound,
 } from 'lucide-react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { DeleteCampaignDialog } from '@/components/workspace/DeleteCampaignDialog'
+import { RowMenu } from '@/components/workspace/RowMenu'
 import { toast } from 'sonner'
 import { campaignErrorToast } from '@/lib/campaignErrorGuidance'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
@@ -419,6 +422,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const integration = campaignState?.integration || null
   // Named once, so every line on this page says which platform does the sending.
   const providerName = integrationProviderLabel(integration)
+  const providerCampaignHref = providerCampaignUrl(integration, campaign?.instantly_campaign_id)
   const storedCampaignTargets = useMemo(() => campaignState?.targets || [], [campaignState?.targets])
   const campaignTargets = useMemo(
     () => storedCampaignTargets.filter(targetWasSentToCampaign),
@@ -692,6 +696,8 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
     ])
   }
   const [confirmActivateOpen, setConfirmActivateOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const navigate = useNavigate()
   const runningMutation = useMutation({
     mutationFn: (running: boolean) => setWorkspaceCampaignRunning(workspaceId, clientId, running),
     onMutate: (running) => setCampaignRunningPreview(running),
@@ -879,6 +885,16 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline"><Link to={clientHref}><UserRound className="mr-2 h-4 w-4" />Open client</Link></Button>
+            {/* Only with a connection record: without one the platform is
+                unknown, and guessing Instantly would link to the wrong app. */}
+            {integration && providerCampaignHref && (
+              <Button asChild variant="outline">
+                <a href={providerCampaignHref} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" />Open in {providerName}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+              </Button>
+            )}
             {/* Launching is the one action the page exists for, so it sits in
                 the header; Options keeps a copy beside the settings it depends
                 on. The same confirm guards both. */}
@@ -886,6 +902,17 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
               <Button variant={campaignIsRunning ? 'destructive' : 'default'} disabled={runningMutation.isPending} onClick={() => (campaignIsRunning ? runningMutation.mutate(false) : setConfirmActivateOpen(true))}>
                 {runningMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : campaignIsRunning ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}{campaignRunningAction}
               </Button>
+            )}
+            {campaign && canManageCampaign && (
+              <RowMenu
+                label="More campaign actions"
+                items={[{
+                  label: 'Delete campaign',
+                  icon: <Trash2 className="mr-2 h-4 w-4" />,
+                  destructive: true,
+                  onSelect: () => setConfirmDeleteOpen(true),
+                }]}
+              />
             )}
           </div>
         </header>
@@ -1540,6 +1567,25 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           starts emailing hosts on its own — is a change to what a button
           elsewhere in the product means, so it is stated here rather than
           discovered later. */}
+      <DeleteCampaignDialog
+        workspaceId={workspaceId}
+        target={confirmDeleteOpen && campaign ? {
+          clientId: client.id,
+          clientName: client.name,
+          campaignName: campaign.name || `${client.name} Podcast Outreach`,
+          onPlatform: Boolean(campaign.instantly_campaign_id),
+          pitchCount: campaign.target_counts?.total ?? 0,
+        } : null}
+        providerKind={integrationProvider(integration)}
+        providerLabel={providerName}
+        onClose={() => setConfirmDeleteOpen(false)}
+        onDeleted={() => {
+          // Dropped, not refetched: coming back to this client within the
+          // cache window must not show the deleted campaign.
+          queryClient.removeQueries({ queryKey: campaignQueryKey })
+          navigate(`${baseHref}/client-campaigns`)
+        }}
+      />
       <Dialog open={confirmActivateOpen} onOpenChange={(next) => !runningMutation.isPending && setConfirmActivateOpen(next)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

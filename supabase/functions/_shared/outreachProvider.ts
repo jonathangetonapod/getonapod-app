@@ -269,6 +269,13 @@ export interface OutreachProvider {
   ): Promise<ProviderCampaign>;
   pauseCampaign(id: string): Promise<ProviderCampaign>;
   activateCampaign(id: string): Promise<ProviderCampaign>;
+  /**
+   * Deletes the campaign on the platform, with its leads and sequence. Not
+   * reversible. Throws OutreachProviderError with status 404 when already gone.
+   * "paused" when the platform has no delete (ReachInbox): it is stopped there
+   * instead, and stays for someone to delete by hand.
+   */
+  deleteCampaign(id: string): Promise<"deleted" | "paused">;
   campaignAnalytics(id: string): Promise<AnalyticsSummary>;
   /** Missing ids are absent from the map (usually deleted upstream). */
   bulkCampaignAnalytics(ids: string[]): Promise<Map<string, CampaignAnalytics>>;

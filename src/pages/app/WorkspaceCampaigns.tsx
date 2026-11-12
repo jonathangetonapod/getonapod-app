@@ -15,6 +15,7 @@ import {
   Plus,
   PlugZap,
   Search,
+  Trash2,
   ShieldCheck,
   Users,
 } from 'lucide-react'
@@ -37,6 +38,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AssignInstantlyCampaignsDialog } from '@/components/workspace/AssignInstantlyCampaignsDialog'
 import { OutreachConnectionCard } from '@/components/workspace/OutreachConnectionCard'
+import { DeleteCampaignDialog, type DeleteCampaignTarget } from '@/components/workspace/DeleteCampaignDialog'
+import { RowMenu } from '@/components/workspace/RowMenu'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
 import {
   Dialog,
@@ -391,6 +394,7 @@ const WorkspaceCampaigns = ({
 
   const integration = campaignOverviewQuery.data?.integration || null
   const canManageCampaigns = Boolean(campaignOverviewQuery.data?.can_manage_campaigns)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteCampaignTarget | null>(null)
   const sendingAccounts = integration?.accounts || []
   const providerName = integrationProviderLabel(integration)
   const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
@@ -966,7 +970,28 @@ const WorkspaceCampaigns = ({
                               ? <span className="font-semibold text-amber-700">{metrics.staged} · {metrics.stagedSending} sending</span>
                               : <span className="font-medium">{metrics.staged} waiting</span>}
                         </TableCell>
-                        <TableCell className="text-right"><Button asChild variant="ghost" size="icon" className="text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`} aria-label={`Open ${summary.client.name} campaign`}><ArrowRight className="h-4 w-4" /></Link></Button></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button asChild variant="ghost" size="icon" className="text-primary"><Link to={`${baseHref}/client-campaigns/${summary.client.id}`} aria-label={`Open ${summary.client.name} campaign`}><ArrowRight className="h-4 w-4" /></Link></Button>
+                            {canManageCampaigns && summary.campaign && (
+                              <RowMenu
+                                label={`More actions for ${summary.client.name} campaign`}
+                                items={[{
+                                  label: 'Delete campaign',
+                                  icon: <Trash2 className="mr-2 h-4 w-4" />,
+                                  destructive: true,
+                                  onSelect: () => setDeleteTarget({
+                                    clientId: summary.client.id,
+                                    clientName: summary.client.name,
+                                    campaignName: summary.campaign.name || `${summary.client.name} Podcast Outreach`,
+                                    onPlatform: Boolean(summary.campaign.instantly_campaign_id),
+                                    pitchCount: summary.campaign.target_counts?.total ?? 0,
+                                  }),
+                                }]}
+                              />
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     )
                   })}
@@ -976,6 +1001,14 @@ const WorkspaceCampaigns = ({
           </>
         )}
       </Card>
+
+      <DeleteCampaignDialog
+        workspaceId={workspaceId}
+        target={deleteTarget}
+        providerKind={integrationProvider(integration)}
+        providerLabel={providerName}
+        onClose={() => setDeleteTarget(null)}
+      />
 
       <AssignInstantlyCampaignsDialog
         open={assignOpen}
