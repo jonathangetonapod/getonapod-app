@@ -639,6 +639,21 @@ export async function syncWorkspaceCampaign(
   }, 'The campaign could not be synced with your sending platform.')
 }
 
+/**
+ * Creates the client's campaign on the sending platform now, paused, instead of
+ * with the first pitch. Safe to repeat: an existing campaign is returned as is.
+ */
+export async function provisionWorkspaceCampaign(
+  workspaceId: string,
+  clientId: string,
+): Promise<CampaignMutationResponse & { created: boolean }> {
+  return await invokeWorkspaceCampaigns<CampaignMutationResponse & { created: boolean }>({
+    action: 'provision',
+    workspace_id: workspaceId,
+    client_id: clientId,
+  }, 'The campaign could not be created on your sending platform.')
+}
+
 export interface WorkspaceCampaignAnalyticsRefresh {
   /** Launched campaigns the refresh asked the provider about. */
   requested: number

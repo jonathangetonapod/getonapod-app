@@ -18,6 +18,7 @@ import {
   Pause,
   Trash2,
   Play,
+  Plus,
   RefreshCw,
   Send,
   Settings2,
@@ -64,6 +65,7 @@ import {
   saveWorkspaceCampaign,
   setWorkspaceCampaignRunning,
   syncWorkspaceCampaign,
+  provisionWorkspaceCampaign,
   updateWorkspaceCampaignSettings,
   type WorkspaceCampaignProviderSchedule,
   type WorkspaceTargetLeadStatus,
@@ -717,6 +719,19 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
       toast.error(report.title, report.description ? { description: report.description } : undefined)
     },
   })
+  const provisionMutation = useMutation({
+    mutationFn: () => provisionWorkspaceCampaign(workspaceId, clientId),
+    onSuccess: async (result) => {
+      await refreshCampaignData()
+      toast.success(result.created
+        ? `Campaign created in ${providerName}. It stays paused until you launch it.`
+        : `This campaign already exists in ${providerName}.`)
+    },
+    onError: (error) => {
+      const report = campaignErrorToast(error, `The campaign could not be created in ${providerName}.`)
+      toast.error(report.title, report.description ? { description: report.description } : undefined)
+    },
+  })
   const settingsMutation = useMutation({
     mutationFn: async () => {
       const common = {
@@ -893,6 +908,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <ExternalLink className="mr-2 h-4 w-4" />Open in {providerName}
                   <span className="sr-only"> (opens in a new tab)</span>
                 </a>
+              </Button>
+            )}
+            {/* Without this the platform campaign only appeared with the first
+                pitch, so there was nothing to open or check in the meantime. */}
+            {!campaign?.instantly_campaign_id && integration?.connected && canManageCampaign && (
+              <Button variant="outline" disabled={provisionMutation.isPending} onClick={() => provisionMutation.mutate()}>
+                {provisionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Create in {providerName}
               </Button>
             )}
             {/* Launching is the one action the page exists for, so it sits in

@@ -1811,3 +1811,16 @@ console.log('Workspace Client Campaign delete checks passed')
 }
 console.log('Workspace Client Campaign delete race checks passed')
 
+// Creating the platform campaign on request: manager-only, refuses without a
+// sender, honours a delete in progress, and goes through the one creator.
+{
+  const provision = edge.match(/if \(action === "provision"\) \{[\s\S]*?\n    \}\n/u)?.[0] ?? ''
+  assert.ok(provision, 'the provision action must exist')
+  assert.match(provision, /requireCampaignManager\(access\)/u, 'provisioning must be manager-only')
+  assert.match(provision, /"CAMPAIGN_SENDER_REQUIRED"/u, 'provisioning must refuse a campaign with no sender')
+  assert.match(provision, /verifySelectedAccounts\(/u, 'provisioning must check the senders are active')
+  assert.match(provision, /assertCampaignNotBeingDeleted\(context\.admin, campaign\)/u, 'provisioning must not race a delete')
+  assert.match(provision, /ensureProviderCampaign\(context, campaign, outreach\)/u, 'provisioning must use the one campaign creator')
+  assert.doesNotMatch(provision, /createCampaign\(/u, 'provisioning must not create a campaign directly')
+}
+

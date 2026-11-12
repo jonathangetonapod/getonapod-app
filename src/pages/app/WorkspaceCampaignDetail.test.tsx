@@ -11,6 +11,7 @@ import {
   getWorkspaceCampaign,
   getWorkspaceCampaignSendingStatus,
   getWorkspaceTargetLeadStatus,
+  provisionWorkspaceCampaign,
   setWorkspaceCampaignRunning,
   syncWorkspaceCampaign,
   updateWorkspaceCampaignSettings,
@@ -26,6 +27,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   getWorkspaceCampaign: vi.fn(),
   getWorkspaceCampaignSendingStatus: vi.fn(),
   getWorkspaceTargetLeadStatus: vi.fn(),
+  provisionWorkspaceCampaign: vi.fn(),
   saveWorkspaceCampaign: vi.fn(),
   setWorkspaceCampaignRunning: vi.fn(),
   syncWorkspaceCampaign: vi.fn(),
@@ -150,6 +152,32 @@ describe('WorkspaceCampaignDetail', () => {
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
     expect(screen.getByRole('button', { name: 'More campaign actions' })).toBeInTheDocument()
+  })
+
+  it('creates the campaign on the sending platform before any pitch, then links to it', async () => {
+    const connected = { ...campaignState.integration, connected: true, status: 'connected' as const, active_account_count: 1 }
+    const draft = { ...activeCampaign, status: 'draft' as const, instantly_campaign_id: null, instantly_campaign_status: null }
+    mockedCampaign
+      .mockResolvedValueOnce({ ...campaignState, integration: connected, campaign: draft })
+      .mockResolvedValue({ ...campaignState, integration: connected, campaign: { ...draft, instantly_campaign_id: 'instantly-new' } })
+    vi.mocked(provisionWorkspaceCampaign).mockResolvedValue({ created: true } as never)
+    renderPage()
+
+    expect(screen.queryByRole('link', { name: /Open in Instantly/ })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Create in Instantly' }))
+
+    await waitFor(() => expect(provisionWorkspaceCampaign).toHaveBeenCalledWith(workspaceId, clientId))
+    const link = await screen.findByRole('link', { name: /Open in Instantly/ })
+    expect(link).toHaveAttribute('href', 'https://app.instantly.ai/app/campaign/instantly-new/analytics')
+    expect(screen.queryByRole('button', { name: 'Create in Instantly' })).not.toBeInTheDocument()
+  })
+
+  it('offers no create button without a connected platform', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: { ...activeCampaign, instantly_campaign_id: null } })
+    renderPage()
+
+    await screen.findByRole('tab', { name: 'Podcasts' })
+    expect(screen.queryByRole('button', { name: /^Create in / })).not.toBeInTheDocument()
   })
 
   it('deletes the campaign from the header menu and returns to the list', async () => {

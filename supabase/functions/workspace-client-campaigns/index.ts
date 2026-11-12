@@ -6659,6 +6659,75 @@ serve(async (req) => {
      *
      * Bookings made from a target keep the booking and drop only the link.
      */
+    // Creates the client's campaign on the sending platform without waiting for
+    // a first pitch, so the operator can see it there, check its settings and
+    // follow the link from this app. Created paused, exactly as the first
+    // staged pitch would create it: nothing sends until it is launched.
+    if (action === "provision") {
+      requireOnlyKeys(body, ["action", "workspace_id", "client_id"]);
+      requireCampaignManager(access);
+      const connection = await readConnection(context.admin, workspaceId);
+      if (!connection) {
+        throw new HttpError(
+          409,
+          "INSTANTLY_NOT_CONNECTED",
+          "Connect a sending platform before creating the campaign there",
+        );
+      }
+      const campaign = await ensureLocalCampaign(
+        context,
+        workspaceId,
+        requireClientRow(),
+      );
+      const alreadyCreated = Boolean(campaign.instantly_campaign_id);
+      if (!alreadyCreated) {
+        const senders = campaign.sender_accounts || [];
+        if (senders.length === 0) {
+          throw new HttpError(
+            400,
+            "CAMPAIGN_SENDER_REQUIRED",
+            "Choose at least one sending mailbox for this campaign in Options first",
+          );
+        }
+        verifySelectedAccounts(
+          senders,
+          await freshOrSnapshotAccounts(context, connection),
+        );
+      }
+      await assertCampaignNotBeingDeleted(context.admin, campaign);
+      const outreach = await integrationProvider(connection);
+      await ensureProviderCampaign(context, campaign, outreach);
+      const updated = await readCampaign(context.admin, workspaceId, clientId);
+      if (!updated?.instantly_campaign_id) {
+        throw new HttpError(
+          500,
+          "CAMPAIGN_PROVIDER_MAPPING_FAILED",
+          `${outreach.label} created the campaign but its client mapping could not be confirmed`,
+        );
+      }
+      const created = updated.instantly_campaign_id !== campaign.instantly_campaign_id;
+      if (created) {
+        await writeAudit(context.admin, {
+          workspaceId,
+          actorUserId: context.user.id,
+          action: "workspace.client_campaign.provisioned",
+          entityType: "workspace_client_campaign",
+          entityId: updated.id,
+          metadata: {
+            client_id: clientId,
+            instantly_campaign_id: updated.instantly_campaign_id,
+            provider: outreach.kind,
+          },
+        });
+      }
+      const targets = await readTargets(context.admin, workspaceId, updated.id);
+      return jsonResponse(req, METHODS, 200, {
+        campaign: campaignDto(updated, targets),
+        targets: targets.map(targetDto),
+        created,
+      });
+    }
+
     if (action === "delete") {
       requireOnlyKeys(body, ["action", "workspace_id", "client_id", "local_only"]);
       requireCampaignManager(access);

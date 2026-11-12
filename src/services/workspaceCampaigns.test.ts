@@ -6,6 +6,7 @@ import {
   connectWorkspaceInstantly,
   createClientInstantlyCampaign,
   deleteWorkspaceCampaign,
+  provisionWorkspaceCampaign,
   getClientInstantlyCampaignLinks,
   setClientInstantlyCampaignLinks,
   getWorkspaceCampaignOverview,
@@ -483,6 +484,14 @@ describe('client instantly campaign links', () => {
     })
 
     expect(invoke.mock.calls[0][1].body).toMatchObject({ timezone: 'Australia/Melbourne', daily_limit: 50 })
+  })
+
+  it('creates the campaign on the sending platform on request', async () => {
+    invoke.mockResolvedValueOnce({ data: { campaign: { id: 'c1' }, targets: [], created: true }, error: null } as never)
+    await expect(provisionWorkspaceCampaign(workspaceId, clientId)).resolves.toMatchObject({ created: true })
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'provision', workspace_id: workspaceId, client_id: clientId },
+    })
   })
 
   it('deletes a client campaign and reports what the platform did', async () => {
