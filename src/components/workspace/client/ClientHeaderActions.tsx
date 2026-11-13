@@ -22,6 +22,8 @@ interface ClientHeaderActionsProps {
   onboardingHref: string
   pipelineHref: string
   campaignHref: string
+  /** The menu entry for the campaign, carrying its state when it is known. */
+  campaignLabel?: string
   finderHref: string
   /** The four required host brief sections are approved. */
   briefReady: boolean
@@ -37,13 +39,14 @@ export const ClientHeaderActions = ({
   onboardingHref,
   pipelineHref,
   campaignHref,
+  campaignLabel = 'Client Campaigns',
   finderHref,
   briefReady,
 }: ClientHeaderActionsProps) => {
   const links: ClientHeaderLink[] = [
     { label: 'Onboarding', href: onboardingHref, icon: BookOpenCheck },
     { label: 'Pipeline', href: pipelineHref, icon: Activity },
-    { label: 'Client Campaigns', href: campaignHref, icon: Megaphone },
+    { label: campaignLabel, href: campaignHref, icon: Megaphone },
     { label: 'Podcast Finder', href: finderHref, icon: Search },
   ].filter((link) => link.href !== nextStepHref)
 

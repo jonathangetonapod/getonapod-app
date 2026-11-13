@@ -3,12 +3,15 @@ import { describe, expect, it } from 'vitest'
 import type { WorkspaceClientBooking } from '@/services/clients'
 
 import {
+  clientCampaignStatusLabel,
+  getClientCampaignStep,
   getClientFunnel,
   getClientNextStep,
   getClientSetupItems,
   getClientUpcoming,
   hasOutreachStarted,
   outreachAgo,
+  waitingPitchCount,
   type ClientProgressState,
 } from './clientNextStep'
 
@@ -213,5 +216,48 @@ describe('outreachAgo', () => {
     expect(outreachAgo('2026-10-22T08:00:00.000Z', NOW)).toBe('yesterday')
     expect(outreachAgo('2026-10-20T08:00:00.000Z', NOW)).toBe('3 days ago')
     expect(outreachAgo('2026-09-25T08:00:00.000Z', NOW)).toBe('4 weeks ago')
+  })
+})
+
+describe('getClientCampaignStep', () => {
+  const campaign = (overrides: Record<string, unknown> = {}) => ({
+    status: 'draft', instantly_campaign_id: 'eb-1', last_error: null, ...overrides,
+  }) as never
+  const target = (overrides: Record<string, unknown> = {}) => ({
+    status: 'ready', lead_staged_at: '2026-11-01T00:00:00Z', launched_at: null, lead_staged_campaign_status: 0, ...overrides,
+  }) as never
+
+  it('reads the campaign as it stands', () => {
+    expect(getClientCampaignStep(null)).toEqual({ label: 'Set up campaign', tab: 'options' })
+    expect(getClientCampaignStep(campaign({ instantly_campaign_id: null }))).toEqual({ label: 'Set up campaign', tab: 'options' })
+    expect(getClientCampaignStep(campaign())).toEqual({ label: 'Open campaign', tab: null })
+    expect(getClientCampaignStep(campaign({ status: 'active' })).label).toBe('View campaign')
+    expect(getClientCampaignStep(campaign({ status: 'paused' })).label).toBe('Resume campaign')
+  })
+
+  it('counts only pitches still waiting to send', () => {
+    expect(getClientCampaignStep(campaign(), [target(), target()]))
+      .toEqual({ label: 'Launch 2 staged pitches', tab: 'options' })
+    // Sent by a campaign launch, staged into a live campaign, or already out.
+    const gone = [
+      target({ status: 'in_outreach' }),
+      target({ lead_staged_campaign_status: 1 }),
+      target({ launched_at: '2026-11-02T00:00:00Z' }),
+      target({ status: 'replied' }),
+    ]
+    expect(waitingPitchCount(gone)).toBe(0)
+    expect(getClientCampaignStep(campaign({ status: 'paused' }), gone).label).toBe('Resume campaign')
+    expect(getClientCampaignStep(campaign(), [target(), ...gone]).label).toBe('Launch 1 staged pitch')
+  })
+
+  it('sends a campaign fault to be resolved', () => {
+    expect(getClientCampaignStep(campaign({ status: 'active', last_error: 'Key rejected' })))
+      .toEqual({ label: 'Resolve campaign issue', tab: 'options' })
+  })
+
+  it('names the state as the campaign list does', () => {
+    expect(clientCampaignStatusLabel(null)).toBe('not started')
+    expect(clientCampaignStatusLabel(campaign())).toBe('draft')
+    expect(clientCampaignStatusLabel(campaign({ status: 'active' }))).toBe('active')
   })
 })

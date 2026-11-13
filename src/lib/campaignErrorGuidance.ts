@@ -83,8 +83,8 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
   },
   CAMPAIGN_SENDER_REQUIRED: {
     title: 'The campaign has no sending account',
-    explanation: 'A campaign needs at least one active sending mailbox before it can send anything.',
-    remedy: { kind: 'link', label: 'Open Mailboxes', module: 'mailboxes' },
+    explanation: 'Choose at least one active sending mailbox for this campaign in its Options tab and save, then try again.',
+    remedy: { kind: 'none' },
   },
   CAMPAIGN_TARGET_NOT_APPROVED: {
     title: 'This podcast is not approved yet',
@@ -209,6 +209,11 @@ const GUIDANCE: Record<string, CampaignErrorGuidance> = {
     title: 'That account is connected to another workspace',
     explanation: 'Each sending-platform account can be connected to one Get On A Pod workspace. Use a different account, or disconnect it from the other workspace first.',
     remedy: { kind: 'none' },
+  },
+  CAMPAIGN_PROVIDER_MAPPING_FAILED: {
+    title: 'The campaign may exist on the sending platform but is not linked here',
+    explanation: 'Refresh the page before trying again: if it was created, the next attempt finds and links it rather than making a second one.',
+    remedy: { kind: 'retry', label: 'Try again' },
   },
   CAMPAIGN_PROVIDER_SETUP_FAILED: {
     title: 'Campaign setup could not be completed',

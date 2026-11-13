@@ -16,6 +16,7 @@ import {
 } from '@/services/clients'
 import { getWorkspaceProspects } from '@/services/prospectDashboards'
 import { getWorkspaceClientPodcastSystem, type ClientPodcastSystemItem } from '@/services/clientPodcastSystem'
+import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 vi.mock('@/services/clients', () => ({
@@ -36,6 +37,11 @@ vi.mock('@/services/prospectDashboards', () => ({
 }))
 vi.mock('@/services/clientPodcastSystem', () => ({
   getWorkspaceClientPodcastSystem: vi.fn(),
+}))
+// Unanswered by default, so the campaign button keeps its generic words unless
+// a test gives it a campaign to read.
+vi.mock('@/services/workspaceCampaigns', () => ({
+  getWorkspaceCampaign: vi.fn().mockRejectedValue(new Error('not loaded')),
 }))
 vi.mock('@/components/admin/WorkspaceSwitcher', () => ({ WorkspaceSwitcher: () => <div>Workspace switcher</div> }))
 vi.mock('@/components/workspace/ClientInstantlyCampaignsCard', () => ({
@@ -361,6 +367,37 @@ describe('WorkspaceClientDetail', () => {
       .toHaveAttribute('href', '/app/relationships')
     expect(screen.getByRole('link', { name: 'prep billing' }))
       .toHaveAttribute('href', '/app/settings/billing')
+  })
+
+  it('words the campaign button from the campaign itself', async () => {
+    mockedDetail.mockResolvedValue({
+      ...detail,
+      outreach: { initial_emails_sent: 0, podcasts_contacted: 0, pending_review_count: 0, approved_count: 0, failed_count: 0, last_sent_at: null },
+      bookings: [],
+    })
+    const staged = { status: 'ready', lead_staged_at: '2026-11-01T00:00:00Z', launched_at: null, lead_staged_campaign_status: 0 }
+    vi.mocked(getWorkspaceCampaign).mockResolvedValueOnce({
+      campaign: { status: 'draft', instantly_campaign_id: 'eb-1', last_error: null },
+      targets: [staged, staged],
+    } as never)
+    renderPage()
+
+    // The header button and the overview's next-step card say the same thing.
+    const links = await screen.findAllByRole('link', { name: 'Launch 2 staged pitches' })
+    for (const link of links) expect(link).toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=options`)
+  })
+
+  it('shows the campaign state in the menu once outreach is under way', async () => {
+    vi.mocked(getWorkspaceCampaign).mockResolvedValueOnce({
+      campaign: { status: 'paused', instantly_campaign_id: 'eb-1', last_error: null },
+      targets: [],
+    } as never)
+    renderPage()
+
+    await screen.findByRole('link', { name: 'View pipeline' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More client actions' }), { key: 'Enter', code: 'Enter' })
+    expect(await screen.findByRole('menuitem', { name: 'Campaign (paused)' }))
+      .toHaveAttribute('href', `/app/client-campaigns/${clientId}`)
   })
 
   it('is the one client record: overview, guest brief, shortlist, placements, sharing, intake', async () => {

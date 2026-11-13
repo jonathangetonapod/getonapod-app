@@ -6674,11 +6674,17 @@ serve(async (req) => {
           "Connect a sending platform before creating the campaign there",
         );
       }
-      const campaign = await ensureLocalCampaign(
-        context,
-        workspaceId,
-        requireClientRow(),
-      );
+      // Read, never created here: a refusal below must leave nothing behind,
+      // and a row made only to be refused read as a configured draft on every
+      // other screen.
+      const campaign = await readCampaign(context.admin, workspaceId, clientId);
+      if (!campaign) {
+        throw new HttpError(
+          400,
+          "CAMPAIGN_SENDER_REQUIRED",
+          "Choose at least one sending mailbox for this campaign in Options first",
+        );
+      }
       const alreadyCreated = Boolean(campaign.instantly_campaign_id);
       if (!alreadyCreated) {
         const senders = campaign.sender_accounts || [];

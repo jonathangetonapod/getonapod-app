@@ -1822,5 +1822,6 @@ console.log('Workspace Client Campaign delete race checks passed')
   assert.match(provision, /assertCampaignNotBeingDeleted\(context\.admin, campaign\)/u, 'provisioning must not race a delete')
   assert.match(provision, /ensureProviderCampaign\(context, campaign, outreach\)/u, 'provisioning must use the one campaign creator')
   assert.doesNotMatch(provision, /createCampaign\(/u, 'provisioning must not create a campaign directly')
+  assert.doesNotMatch(provision, /ensureLocalCampaign\(/u, 'a refused provision must not leave a local campaign row behind')
 }
 

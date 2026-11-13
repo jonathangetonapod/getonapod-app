@@ -1,5 +1,6 @@
 import { clientBriefStatus } from '@/lib/clientSdrProfile'
 import type { WorkspaceClientBooking, WorkspaceClientDetail } from '@/services/clients'
+import type { WorkspaceCampaignTarget, WorkspaceClientCampaign } from '@/services/workspaceCampaigns'
 
 /*
  * Where a client stands and the one thing to do next.
@@ -36,6 +37,65 @@ export const CLIENT_NEXT_STEP_LABELS: Record<ClientNextStepAction, string> = {
   build_shortlist: 'Build shortlist',
   launch_campaign: 'Launch campaign',
   view_pipeline: 'View pipeline',
+}
+
+export type ClientCampaignSnapshot = Pick<WorkspaceClientCampaign, 'status' | 'instantly_campaign_id' | 'last_error'>
+export type ClientCampaignTargetSnapshot = Pick<
+  WorkspaceCampaignTarget,
+  'status' | 'lead_staged_at' | 'launched_at' | 'lead_staged_campaign_status'
+>
+
+export interface ClientCampaignStep {
+  label: string
+  /** Which campaign tab the step lands on; null for the page's own default. */
+  tab: 'options' | null
+}
+
+/*
+ * Pitches sitting in the platform campaign that nothing has sent yet — the
+ * shortlist's "Queued in campaign". target_counts.staged is not this: a lead
+ * staged and later sent by a campaign launch keeps lead_staged_at and never
+ * gets launched_at, so it stays in that count after it has gone out.
+ */
+export function waitingPitchCount(targets: ClientCampaignTargetSnapshot[]): number {
+  return targets.filter((target) => (
+    Boolean(target.lead_staged_at) &&
+    !target.launched_at &&
+    target.lead_staged_campaign_status !== 1 &&
+    !['launching', 'in_outreach', 'replied', 'completed', 'failed'].includes(target.status)
+  )).length
+}
+
+/*
+ * The campaign button's words, from the campaign as it stands rather than one
+ * fixed "Launch campaign", in the words the campaign page and list use.
+ */
+export function getClientCampaignStep(
+  campaign: ClientCampaignSnapshot | null,
+  targets: ClientCampaignTargetSnapshot[] = [],
+): ClientCampaignStep {
+  // No campaign, or one not yet on the sending platform: the next thing is
+  // choosing senders and creating it, which is done from Options.
+  if (!campaign) return { label: 'Set up campaign', tab: 'options' }
+  if (campaign.last_error || campaign.status === 'attention') return { label: 'Resolve campaign issue', tab: 'options' }
+  const waiting = waitingPitchCount(targets)
+  if (waiting > 0 && campaign.status !== 'active') {
+    return { label: `Launch ${waiting} staged pitch${waiting === 1 ? '' : 'es'}`, tab: 'options' }
+  }
+  if (!campaign.instantly_campaign_id) return { label: 'Set up campaign', tab: 'options' }
+  if (campaign.status === 'active' || campaign.status === 'completed') return { label: 'View campaign', tab: null }
+  if (campaign.status === 'paused') return { label: 'Resume campaign', tab: null }
+  return { label: 'Open campaign', tab: null }
+}
+
+/** The campaign's state in a word or two, as the campaign list words it. */
+export function clientCampaignStatusLabel(campaign: ClientCampaignSnapshot | null): string {
+  if (!campaign) return 'not started'
+  if (campaign.last_error || campaign.status === 'attention') return 'needs attention'
+  if (campaign.status === 'active') return 'active'
+  if (campaign.status === 'paused') return 'paused'
+  if (campaign.status === 'completed') return 'completed'
+  return 'draft'
 }
 
 export type SetupItemStatus = 'done' | 'in_progress' | 'not_started'

@@ -61,6 +61,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { placementOverdueDays } from '@/lib/placementStatus'
 import { formatLocalDateKey } from '@/lib/localDate'
 import {
+  clientCampaignStatusLabel,
+  getClientCampaignStep,
   getClientFunnel,
   getClientNextStep,
   getClientSetupItems,
@@ -88,6 +90,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { clientBriefStatus } from '@/lib/clientSdrProfile'
 import { possessive } from '@/lib/clientName'
+import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CLIENT_DETAIL_TABS = new Set(['overview', 'brief', 'shortlist', 'placements', 'sharing', 'intake'])
@@ -340,6 +343,17 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
     gcTime: isPlatformWorkspace ? 0 : undefined,
   })
 
+  // What the campaign button says depends on the campaign itself — started,
+  // live, paused, waiting on staged pitches — which the client record does not
+  // carry. Shares its key prefix with the campaign list, so a change made
+  // there (launch, pause, delete) refreshes this too.
+  const campaignSummaryQuery = useQuery({
+    queryKey: ['workspace-client-campaigns', workspaceId, 'client-summary', canonicalClientId],
+    queryFn: () => getWorkspaceCampaign(workspaceId, canonicalClientId),
+    enabled: validAddress,
+    retry: false,
+  })
+
   // Loaded only when the picker opens: most visits never link a prospect page,
   // and this is a separate workspace-wide query.
   const prospectsQuery = useQuery({
@@ -424,7 +438,28 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   }
 
   const canManage = detail.can_manage
-  const nextStep = getClientNextStep(detail)
+  // Undefined while loading or on failure: the button then keeps its generic
+  // words rather than guessing at a campaign it has not read.
+  const campaignSummary = campaignSummaryQuery.data
+  const campaignStep = campaignSummary
+    ? getClientCampaignStep(campaignSummary.campaign, campaignSummary.targets || [])
+    : null
+  const baseNextStep = getClientNextStep(detail)
+  // While the campaign is still loading, a neutral label: "Launch campaign"
+  // first and something else a moment later read as the page changing its mind.
+  const nextStep = baseNextStep.action === 'launch_campaign'
+    ? { ...baseNextStep, label: campaignStep?.label ?? 'Open campaign' }
+    : baseNextStep
+  // Outreach counted from the legacy message log misses a campaign sending
+  // through the platform, so the pending line has to ask the campaign too.
+  const campaignStatus = campaignSummary?.campaign?.status
+  const outreachPendingText = campaignStatus === 'active'
+    ? 'The campaign is live.'
+    : campaignStatus === 'paused'
+      ? 'The campaign is paused.'
+      : campaignStatus === 'completed'
+        ? 'The campaign has finished.'
+        : 'Outreach starts once the shortlist is approved.'
   const setupItems = getClientSetupItems(detail)
   const setupComplete = setupItems.every((item) => item.status === 'done')
   const outreachStarted = hasOutreachStarted(detail)
@@ -453,7 +488,11 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const finderHref = `${baseHref}/podcast-finder?client=${encodeURIComponent(client.id)}`
   const databaseHref = `${baseHref}/podcast-database?client=${encodeURIComponent(client.id)}`
   const podcastSystemHref = `${baseHref}/client-podcast-system?client=${encodeURIComponent(client.id)}`
-  const campaignHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
+  const campaignPageHref = `${baseHref}/client-campaigns/${encodeURIComponent(client.id)}`
+  const campaignHref = campaignStep?.tab ? `${campaignPageHref}?tab=${campaignStep.tab}` : campaignPageHref
+  const campaignMenuLabel = campaignSummary
+    ? `Campaign (${clientCampaignStatusLabel(campaignSummary.campaign)})`
+    : 'Client Campaigns'
   const nextStepHref = {
     start_onboarding: onboardingHref,
     continue_onboarding: onboardingHref,
@@ -787,6 +826,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
               onboardingHref={onboardingHref}
               pipelineHref={podcastSystemHref}
               campaignHref={campaignHref}
+              campaignLabel={campaignMenuLabel}
               finderHref={finderHref}
               briefReady={briefStatus.ready}
             />
@@ -818,14 +858,14 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 emailsSent={detail.outreach.initial_emails_sent}
                 failedCount={detail.outreach.failed_count}
                 pendingReviewCount={detail.outreach.pending_review_count}
-                campaignHref={campaignHref}
+                campaignHref={campaignPageHref}
               />
             ) : (
               <p
                 data-testid="client-outreach-pending"
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
               >
-                <span>Outreach starts once the shortlist is approved.</span>
+                <span>{outreachPendingText}</span>
                 <Link to={nextStepHref} className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline">
                   {nextStep.label}<ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
@@ -899,7 +939,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 databaseHref={databaseHref}
                 finderHref={finderHref}
                 initialFilter={searchParams.get('filter')}
-                campaignHref={campaignHref}
+                campaignHref={campaignPageHref}
                 relationshipsHref={relationshipsHref}
                 billingHref={billingHref}
                 byoAi={(detail.ai_keys?.anthropic || detail.ai_keys?.openai)}

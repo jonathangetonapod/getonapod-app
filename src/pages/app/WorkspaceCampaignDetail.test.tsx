@@ -172,6 +172,24 @@ describe('WorkspaceCampaignDetail', () => {
     expect(screen.queryByRole('button', { name: 'Create in Instantly' })).not.toBeInTheDocument()
   })
 
+  it('sends the operator to choose senders instead of a create that can only be refused', async () => {
+    const connected = { ...campaignState.integration, connected: true, status: 'connected' as const, active_account_count: 1 }
+    mockedCampaign.mockResolvedValue({ ...campaignState, integration: connected, campaign: { ...activeCampaign, status: 'draft' as const, instantly_campaign_id: null, sender_accounts: [] } })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create in Instantly' }))
+
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Options' })).toHaveAttribute('aria-selected', 'true'))
+    expect(provisionWorkspaceCampaign).not.toHaveBeenCalled()
+  })
+
+  it('shows the campaign fault the list and client record send people here to resolve', async () => {
+    mockedCampaign.mockResolvedValue({ ...campaignState, campaign: { ...activeCampaign, last_error: 'The Instantly key was rejected.' } })
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The Instantly key was rejected.')
+  })
+
   it('offers no create button without a connected platform', async () => {
     mockedCampaign.mockResolvedValue({ ...campaignState, campaign: { ...activeCampaign, instantly_campaign_id: null } })
     renderPage()

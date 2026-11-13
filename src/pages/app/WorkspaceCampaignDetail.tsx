@@ -727,7 +727,10 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
         ? `Campaign created in ${providerName}. It stays paused until you launch it.`
         : `This campaign already exists in ${providerName}.`)
     },
-    onError: (error) => {
+    onError: async (error) => {
+      // The refusal may follow a change made elsewhere (senders cleared, the
+      // campaign created by a pitch meanwhile); show the page as it now is.
+      await refreshCampaignData()
       const report = campaignErrorToast(error, `The campaign could not be created in ${providerName}.`)
       toast.error(report.title, report.description ? { description: report.description } : undefined)
     },
@@ -913,7 +916,20 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             {/* Without this the platform campaign only appeared with the first
                 pitch, so there was nothing to open or check in the meantime. */}
             {!campaign?.instantly_campaign_id && integration?.connected && canManageCampaign && (
-              <Button variant="outline" disabled={provisionMutation.isPending} onClick={() => provisionMutation.mutate()}>
+              <Button
+                variant="outline"
+                disabled={provisionMutation.isPending}
+                onClick={() => {
+                  // Created from the saved settings, so without a saved sender
+                  // it could only be refused; send the operator to choose one.
+                  if (!campaign?.sender_accounts?.length) {
+                    selectTab('options')
+                    toast.info(`Choose at least one sending mailbox in Options and save, then create the campaign in ${providerName}.`)
+                    return
+                  }
+                  provisionMutation.mutate()
+                }}
+              >
                 {provisionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Create in {providerName}
               </Button>
@@ -939,6 +955,16 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
             )}
           </div>
         </header>
+
+        {/* The campaign's own fault, from the last sync or launch. The list
+            and the client record both point here to resolve it, so it has to
+            be visible on arrival, whichever tab that is. */}
+        {campaign?.last_error && (
+          <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p><span className="font-medium">Campaign issue:</span> {campaign.last_error}</p>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={selectTab} className="space-y-4">
           <div className="overflow-x-auto pb-1">
