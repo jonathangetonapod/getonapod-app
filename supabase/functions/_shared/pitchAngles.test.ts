@@ -101,3 +101,25 @@ Deno.test('caps a title, description and grounding', () => {
   assertEquals(angles[0].description.length, 800)
   assertEquals(angles[0].grounding.length, 800)
 })
+
+// The takeaways are the pitch's topic bullets, and the fit rating is what stops
+// the writer overselling. Both are optional: a podcast researched before angles
+// carried them must still parse, with empty values rather than undefined.
+Deno.test('carries takeaways, story and fit, and tolerates their absence', () => {
+  const { angles } = splitStructuredAngles(block([
+    {
+      title: 'Full',
+      description: 'Has everything.',
+      takeaways: ['  One  ', 'Two', 3, '', 'Three', 'Four'],
+      story: ' Nearly went bankrupt in year two. ',
+      fit: 'Strong',
+    },
+    { title: 'Bare', description: 'Older shape.', fit: 'perfect' },
+  ]))
+  assertEquals(angles[0].takeaways, ['One', 'Two', 'Three'])
+  assertEquals(angles[0].story, 'Nearly went bankrupt in year two.')
+  assertEquals(angles[0].fit, 'strong')
+  assertEquals(angles[1].takeaways, [])
+  assertEquals(angles[1].story, '')
+  assertEquals(angles[1].fit, '')
+})

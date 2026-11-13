@@ -3,7 +3,20 @@ export interface StructuredAngle {
   description: string
   /** The moment, quote or fact the angle is built on. Never client-facing. */
   grounding: string
+  /**
+   * What a listener leaves with, as the three topic bullets of the pitch.
+   * Written by find_topics, where the whole research is in view, so the email
+   * writer lists them rather than inventing topics from the title alone. Empty
+   * for a podcast researched before angles carried them.
+   */
+  takeaways: string[]
+  /** The client experience the episode is built on; empty when the bio had none. */
+  story: string
+  /** find_topics' own rating of the angle. Empty when absent or unrecognised. */
+  fit: 'strong' | 'stretch' | 'weak' | ''
 }
+
+const ANGLE_FITS = new Set(['strong', 'stretch', 'weak'])
 
 /**
  * The angles find_topics proposed, read off the end of its own answer.
@@ -68,6 +81,13 @@ export function splitStructuredAngles(
       title: title.slice(0, 160),
       description: description.slice(0, 800),
       grounding: typeof record.grounding === 'string' ? record.grounding.trim().slice(0, 800) : '',
+      takeaways: (Array.isArray(record.takeaways) ? record.takeaways : [])
+        .flatMap((entry) => typeof entry === 'string' && entry.trim() ? [entry.trim().slice(0, 200)] : [])
+        .slice(0, 3),
+      story: typeof record.story === 'string' ? record.story.trim().slice(0, 800) : '',
+      fit: (typeof record.fit === 'string' && ANGLE_FITS.has(record.fit.trim().toLowerCase())
+        ? record.fit.trim().toLowerCase()
+        : '') as StructuredAngle['fit'],
     }]
   }).slice(0, 3)
 

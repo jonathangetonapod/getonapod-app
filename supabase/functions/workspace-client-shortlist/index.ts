@@ -803,7 +803,7 @@ function pitchSequenceChecks(sequence: PitchSequence): string[] {
   const flags: string[] = []
   const words = (text: string) => text.trim().split(/\s+/u).filter(Boolean).length
   if (words(sequence.subject) > 8) flags.push('subject longer than 8 words')
-  if (words(sequence.email_1) > 150) flags.push(`email_1 runs ${words(sequence.email_1)} words (cap 140)`)
+  if (words(sequence.email_1) > 160) flags.push(`email_1 runs ${words(sequence.email_1)} words (cap 150)`)
   if (sequence.follow_up_1 && words(sequence.follow_up_1) > 100) flags.push('follow_up_1 over 80-word cap')
   if (sequence.follow_up_2 && words(sequence.follow_up_2) > 80) flags.push('follow_up_2 over 60-word cap')
   if ((sequence.email_1.match(/https?:\/\//gu) ?? []).length > 1) flags.push('more than one link in email_1')
@@ -3008,6 +3008,34 @@ serve(async (req) => {
       const angleGrounding = typeof structuredAngles[angleIndex]?.grounding === 'string'
         ? structuredAngles[angleIndex].grounding.trim()
         : ''
+      // The topic bullets, the story and the fit rating, as find_topics wrote
+      // them with the whole research in view. All optional for the same reason
+      // as the grounding: older research has none, and the prompt tells the
+      // writer what to do without them.
+      const angleTakeaways = Array.isArray(structuredAngles[angleIndex]?.takeaways)
+        ? structuredAngles[angleIndex].takeaways.filter((entry) => typeof entry === 'string' && entry.trim())
+        : []
+      const angleStory = typeof structuredAngles[angleIndex]?.story === 'string'
+        ? structuredAngles[angleIndex].story.trim()
+        : ''
+      const angleFit = typeof structuredAngles[angleIndex]?.fit === 'string'
+        ? structuredAngles[angleIndex].fit.trim()
+        : ''
+      // The first follow-up pitches one of the other angles. Handed over as the
+      // same structured lines the selected angle gets, so it is written from
+      // what find_topics decided rather than from whatever survives in 4,000
+      // truncated characters of prose.
+      const otherAngles = structuredAngles
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry, index }) => index !== angleIndex && typeof entry?.title === 'string' && entry.title.trim())
+        .map(({ entry }) => [
+          `- ${entry.title.trim()}${typeof entry.fit === 'string' && entry.fit ? ` (fit: ${entry.fit})` : ''}`,
+          typeof entry.description === 'string' && entry.description.trim() ? `  Hook: ${entry.description.trim()}` : '',
+          typeof entry.story === 'string' && entry.story.trim() ? `  Client story: ${entry.story.trim()}` : '',
+          Array.isArray(entry.takeaways) && entry.takeaways.length > 0
+            ? `  Takeaways: ${entry.takeaways.filter((item) => typeof item === 'string' && item.trim()).join('; ')}`
+            : '',
+        ].filter(Boolean).join('\n'))
 
       const anthropicKey = await resolveTextAiKey(authContext.admin, workspaceId)
       if (!anthropicKey) throw new HttpError(500, 'SERVER_MISCONFIGURED', 'Pitch writing is not configured')
@@ -3201,6 +3229,12 @@ serve(async (req) => {
             // it used to reach the writer only as part of 4,000 truncated
             // characters of topic research, if at all.
             angleGrounding ? `WHAT THIS ANGLE IS BUILT ON: ${angleGrounding}` : '',
+            angleFit ? `FIT RATING FOR THIS ANGLE: ${angleFit}` : '',
+            angleStory ? `CLIENT STORY BEHIND THIS ANGLE: ${angleStory}` : '',
+            angleTakeaways.length > 0
+              ? `LISTENER TAKEAWAYS FOR THIS ANGLE (the topic bullets):\n${angleTakeaways.map((entry) => `- ${entry}`).join('\n')}`
+              : '',
+            otherAngles.length > 0 ? `OTHER ANGLES (for the first follow-up):\n${otherAngles.join('\n')}` : '',
             topicResearch ? '(full topic research provided in <topic_research> within the CONTEXT section above)' : '',
           ].filter(Boolean).join('\n\n') || null,
         }),
