@@ -803,7 +803,7 @@ function pitchSequenceChecks(sequence: PitchSequence): string[] {
   const flags: string[] = []
   const words = (text: string) => text.trim().split(/\s+/u).filter(Boolean).length
   if (words(sequence.subject) > 8) flags.push('subject longer than 8 words')
-  if (words(sequence.email_1) > 150) flags.push(`email_1 runs ${words(sequence.email_1)} words (cap 130)`)
+  if (words(sequence.email_1) > 150) flags.push(`email_1 runs ${words(sequence.email_1)} words (cap 140)`)
   if (sequence.follow_up_1 && words(sequence.follow_up_1) > 100) flags.push('follow_up_1 over 80-word cap')
   if (sequence.follow_up_2 && words(sequence.follow_up_2) > 80) flags.push('follow_up_2 over 60-word cap')
   if ((sequence.email_1.match(/https?:\/\//gu) ?? []).length > 1) flags.push('more than one link in email_1')

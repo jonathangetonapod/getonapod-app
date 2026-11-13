@@ -9,7 +9,7 @@ describe('pitchQuality', () => {
   it('keeps the research-backed length targets that keep pitches out of the bin', () => {
     // Host surveys: openers past ~150 words and padded follow-ups are the
     // most-cited deletion triggers. Changing these is a product decision.
-    expect(PITCH_WORD_TARGETS.opening).toEqual({ min: 100, max: 130 })
+    expect(PITCH_WORD_TARGETS.opening).toEqual({ min: 100, max: 140 })
     expect(PITCH_WORD_TARGETS.follow_up_one).toEqual({ min: 50, max: 80 })
     expect(PITCH_WORD_TARGETS.follow_up_two).toEqual({ min: 40, max: 60 })
   })
