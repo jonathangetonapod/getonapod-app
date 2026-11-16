@@ -95,7 +95,12 @@ const EXPECTED_COUNTS = Object.freeze({
   // 226 after inbox-nudge-tick/index.ts was deleted (2026-11-04).
   // 228: _shared/pitchRecipients.ts and its Deno test, for multi-recipient
   // pitches (2026-11-04).
-  edgeTypeScriptFiles: 228,
+  // 230: _shared/pitchFollowUps.ts and its Deno test, for follow-ups written
+  // as short emails (2026-11-15).
+  // 232: _shared/pitchGreeting.ts and its Deno test, for the greeting the
+  // pitch writer chooses (2026-11-16). The two pairs above landed without
+  // this count moving with them, so the release gate was failing on main.
+  edgeTypeScriptFiles: 232,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
