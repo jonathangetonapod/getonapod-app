@@ -37,7 +37,10 @@ assert.doesNotMatch(recipients, /CC:/u)
 // The writer greets the one recipient; the rules are code, not an editable prompt.
 assert.match(shortlist, /recipientsPromptBlock\(pitchRecipients\)/u)
 assert.match(recipients, /Never open with "Hi all"/u)
-assert.match(shortlist, /!recipientsAffectCopy\(pitchRecipients\)/u)
+// Reused only when it was written for the same greeting: the host, or that
+// producer or booking role. A draft with no recorded role was written for the host.
+assert.match(shortlist, /const greetingRole = recipientsAffectCopy\(pitchRecipients\) \? String\(pitchTo\?\.contact_role\) : 'host'/u)
+assert.match(shortlist, /\(saved\.pitch\.recipient_role \?\? 'host'\) === greetingRole && saved\.research_run_started_at === current\?\.research_progress\?\.started_at/u)
 
 // Contact records are per workspace: one tenant's outcomes, finds and MX
 // results never reach another, through reads or writes.

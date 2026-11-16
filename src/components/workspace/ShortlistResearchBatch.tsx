@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Clock, FlaskConical, Loader2, AlertCircle, AlertTriangle, PanelRightOpen, X } from 'lucide-react'
+import { CheckCircle2, Clock, FlaskConical, Loader2, AlertCircle, AlertTriangle, PanelRightOpen, PenLine, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -10,14 +10,10 @@ import { supabase } from '@/lib/supabase'
 import { toFunctionError } from '@/lib/functionErrors'
 import { blockedClientFields, clientResearchInfoQueryKey, describeClientFields, type ClientResearchField } from '@/lib/researchProgress'
 import { getWorkspaceClientDetail } from '@/services/clients'
+import { getResearchJobDraft, jobHasDraft, listResearchJobs, researchJobsQueryKey, researchJobsRefetchInterval, type ResearchJob } from '@/services/researchJobs'
 import { ClientResearchInfoForm } from '@/components/workspace/ClientResearchInfoForm'
 
-interface Job {
- id: string; shortlist_podcast_id: string; batch_id: string; podcast_name: string; status: 'queued'|'running'|'completed'|'failed'|'skipped'; phase: string; message: string|null
- research_progress?: {status?:string|null;completed_stages?:string[];current_stage?:string|null;updated_at?:string|null;missing_fields?:string[]|null}|null
- pitch_steps_completed?:number
- pitch: {subject:string;body:string;follow_up_1_body?:string;follow_up_2_body?:string}|null
-}
+type Job = ResearchJob
 const FIELD_ORDER:ClientResearchField[] = ['bio','linkedin_url','website']
 const RESEARCH_STEPS = ['podcast_profile','recent_episodes','host_profile','guest_patterns','guest_fit','pitch_angles']
 const STAGE_LABELS:Record<string,string> = {
@@ -28,12 +24,17 @@ function savedResearchSteps(job:Job) {
  return job.phase === 'pitch' || job.status === 'completed' ? 6
    : RESEARCH_STEPS.filter(id=>job.research_progress?.completed_stages?.includes(id)).length
 }
+// A pitch-only job has no research of its own to count: its three steps are the whole job.
+function jobSteps(job:Job):[number,number] {
+ return job.kind==='pitch' ? [job.pitch_steps_completed ?? 0,3] : [savedResearchSteps(job)+(job.pitch_steps_completed ?? 0),9]
+}
 function jobStatus(job:Job) {
  if (['completed','failed','skipped'].includes(job.status)) return job.status
  const running = job.status === 'running'
  if (job.phase === 'pitch') {
    const saved=job.pitch_steps_completed ?? 0
    const next=saved===0?'pitch draft':saved===1?'claim audit':'pitch cleanup'
+   if (job.kind==='pitch') return `${saved}/3 pitch steps saved · ${running?'Working on':'Waiting for'} ${next}`
    return `Research complete${saved ? ` · ${saved} pitch steps saved` : ''} · ${running?'Working on':'Waiting for'} ${next}`
  }
  const saved=savedResearchSteps(job)
@@ -47,32 +48,40 @@ function readHidden(clientId:string):string|null { try { return window.localStor
 function writeHidden(clientId:string,batchId:string|null) {
  try { if (batchId) window.localStorage.setItem(hiddenKey(clientId),batchId); else window.localStorage.removeItem(hiddenKey(clientId)) } catch { /* storage unavailable: hiding lasts this visit */ }
 }
-export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHref}:{workspaceId:string;clientId:string;selectedIds:string[];pitchHref?:(id:string)=>string}) {
+/**
+ * selectedIds are the ticked rows; pitchIds are the ticked rows that are approved,
+ * researched and still have no pitch, which is what a pitch-only batch writes for.
+ * pitchStatusKnown is false until the campaign's pitch statuses have loaded.
+ */
+export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchIds=[],pitchStatusKnown=true,pitchHref}:{workspaceId:string;clientId:string;selectedIds:string[];pitchIds?:string[];pitchStatusKnown?:boolean;pitchHref?:(id:string)=>string}) {
  const cache = useQueryClient()
- const [review,setReview] = useState(false)
+ const [review,setReview] = useState<false|'research'|'pitch'>(false)
  const [busy,setBusy] = useState(false)
  const [draft,setDraft] = useState<Job|null>(null)
  const [detailsOpen,setDetailsOpen] = useState(false)
  const [hiddenBatch,setHiddenBatch] = useState<string|null>(()=>readHidden(clientId))
  useEffect(()=>setHiddenBatch(readHidden(clientId)),[clientId])
- const key = ['research-batches',workspaceId,clientId]
+ const key = researchJobsQueryKey(workspaceId,clientId)
  async function invoke(action:string,extra:Record<string,unknown> = {}) {
    const {data,error} = await supabase.functions.invoke('workspace-client-shortlist',{body:{action,workspace_id:workspaceId,client_id:clientId,...extra}})
    if(error) throw await toFunctionError(error,'The research batch could not be updated.')
    return data
  }
- const query = useQuery({queryKey:key,queryFn:async()=> (await invoke('research-batch-list')).jobs as Job[],refetchInterval:5000})
+ const query = useQuery({queryKey:key,queryFn:()=>listResearchJobs(workspaceId,clientId),refetchInterval:query=>researchJobsRefetchInterval(query.state.data)})
  const jobs = query.data ?? []
  const [selectedBatch,setSelectedBatch] = useState<string>('')
  const batchIds = [...new Set(jobs.map(job=>job.batch_id))]
  const visible = jobs.filter(job=>job.batch_id === (selectedBatch || batchIds[0]))
- const transitions = jobs.map(job=>`${job.id}:${job.status}:${job.phase}:${job.research_progress?.updated_at ?? ''}`).join('|')
+ // Finished shows count whole; a show under way counts by the steps it has saved.
+ const batchProgress = (batch:Job[]) => batch.reduce((sum,job)=>sum + (['completed','failed','skipped'].includes(job.status)?1:Math.min(0.95,jobSteps(job)[0]/jobSteps(job)[1])),0)
+ // A pitch-only job never changes a shortlist row until it finishes, so its steps do not reload the shortlist.
+ const transitions = jobs.map(job=>job.kind==='pitch' ? `${job.id}:${['completed','failed','skipped'].includes(job.status)}` : `${job.id}:${job.status}:${job.phase}:${job.research_progress?.updated_at ?? ''}`).join('|')
  useEffect(()=>{
    if (transitions) void cache.invalidateQueries({queryKey:['client-shortlist',workspaceId,clientId]})
  },[transitions,cache,workspaceId,clientId])
  const running = visible.filter(job=>job.status==='running').length
  const waiting = visible.filter(job=>job.status==='queued').length
- const progress = visible.reduce((sum,job)=>sum + (['completed','failed','skipped'].includes(job.status)?1:Math.min(0.95,(savedResearchSteps(job)+(job.pitch_steps_completed ?? 0))/9)),0)
+ const progress = batchProgress(visible)
  const completed = visible.filter(job=>job.status==='completed').length
  const failed = visible.filter(job=>job.status==='failed').length
  const skipped = visible.filter(job=>job.status==='skipped').length
@@ -92,6 +101,9 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
    blocked: latestJobs.filter(job=>job.status==='failed' && blockedClientFields(job.research_progress).length>0).length,
  }
  const active = line.running + line.waiting > 0
+ // The line is named for what the newest batch was started to do.
+ const pitchBatch = latestJobs.some(job=>job.kind==='pitch')
+ const statusName = pitchBatch ? 'Pitch writing' : 'Research'
  // Hidden only while the batch it was hidden on is the latest and finished; a new batch shows again.
  const lineHidden = !active && latestBatch !== null && hiddenBatch === latestBatch
  // Hiding removes the focused button, so focus moves to whatever replaces it.
@@ -106,7 +118,7 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
  const hideLine = () => { setHiddenBatch(latestBatch); writeHidden(clientId,latestBatch); setFocusAfterToggle('show') }
  const showLine = () => { setHiddenBatch(null); writeHidden(clientId,null); setFocusAfterToggle('line') }
  // Before a batch starts: client fields research prompts commonly need, left empty.
- const clientInfoQuery = useQuery({queryKey:clientResearchInfoQueryKey(workspaceId,clientId),queryFn:()=>getWorkspaceClientDetail(workspaceId,clientId),enabled:review,retry:false})
+ const clientInfoQuery = useQuery({queryKey:clientResearchInfoQueryKey(workspaceId,clientId),queryFn:()=>getWorkspaceClientDetail(workspaceId,clientId),enabled:review==='research',retry:false})
  const emptyClientFields = clientInfoQuery.data ? FIELD_ORDER.filter(field=>!(clientInfoQuery.data.client[field] || '').trim()) : []
  async function retryJobs(targets:Job[]) {
    setBusy(true)
@@ -120,11 +132,25 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
      await cache.invalidateQueries({queryKey:['client-shortlist',workspaceId,clientId]})
    }
  }
+ // The list says only that a draft exists; the emails are read when asked for.
+ async function openDraft(job:Job) {
+   if (job.pitch?.body) { setDraft(job); return }
+   setBusy(true)
+   try { setDraft({...job,pitch:await getResearchJobDraft(workspaceId,clientId,job.id)}) }
+   catch(error) {toast.error(error instanceof Error?error.message:'The draft could not be loaded.')}
+   finally {setBusy(false)}
+ }
  async function act(action:string,extra:Record<string,unknown>) {
    setBusy(true)
    try {
      const response = await invoke(action,extra)
      if (response.batch_id) setSelectedBatch(response.batch_id)
+     if (extra.mode==='pitch' && typeof response.queued==='number') {
+       const skippedNote = response.skipped ? ` ${response.skipped} skipped — see Details for why.` : ''
+       // Queued rows stop being offered once the list reloads; a second click must not queue a batch of refusals.
+       if (response.queued>0) toast.success(`${response.queued} ${response.queued===1?'pitch':'pitches'} queued.${skippedNote}`)
+       else toast.error(`No pitches were queued.${skippedNote}`)
+     }
      setReview(false)
      await cache.invalidateQueries({queryKey:key})
      await cache.invalidateQueries({queryKey:['client-shortlist',workspaceId,clientId]})
@@ -132,11 +158,15 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
    finally {setBusy(false)}
  }
  return <section aria-label="Bulk research" className="space-y-3">
-   {selectedIds.length>0 && <Button variant="outline" onClick={()=>setReview(true)} disabled={busy}><FlaskConical className="mr-2 h-4 w-4"/>Run research on {selectedIds.length} selected</Button>}
+   {selectedIds.length>0 && <div className="flex flex-wrap items-center gap-2">
+     <Button variant="outline" onClick={()=>setReview('research')} disabled={busy}><FlaskConical className="mr-2 h-4 w-4"/>Run research on {selectedIds.length} selected</Button>
+     <Button variant="outline" onClick={()=>setReview('pitch')} disabled={busy || pitchIds.length===0} aria-describedby="pitch-batch-note"><PenLine className="mr-2 h-4 w-4"/>Write pitches for {pitchIds.length} selected</Button>
+     <span id="pitch-batch-note" className="text-xs text-muted-foreground">{!pitchStatusKnown ? 'Pitch statuses are still loading.' : pitchIds.length<selectedIds.length ? `${pitchIds.length===0?'None of the selected shows':`${pitchIds.length} of ${selectedIds.length} selected shows`} ${pitchIds.length===1?'is':'are'} approved, researched and without a pitch.` : ''}</span>
+   </div>}
    {query.isError && <p role="alert" className="text-sm text-destructive">Research batches could not be loaded. <button className="underline" onClick={()=>void query.refetch()}>Retry</button></p>}
-   {latestJobs.length>0 && !lineHidden && <div ref={lineRef} tabIndex={-1} role="region" aria-label="Research status" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
-     {active ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600"/> : <FlaskConical className="h-4 w-4 shrink-0 text-muted-foreground"/>}
-     <span className="font-medium">Research:</span>
+   {latestJobs.length>0 && !lineHidden && <div ref={lineRef} tabIndex={-1} role="region" aria-label={`${statusName} status`} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border bg-muted/20 px-3 py-2 text-sm">
+     {active ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600"/> : pitchBatch ? <PenLine className="h-4 w-4 shrink-0 text-muted-foreground"/> : <FlaskConical className="h-4 w-4 shrink-0 text-muted-foreground"/>}
+     <span className="font-medium">{statusName}:</span>
      <span>{line.completed} done</span>
      {line.running>0 && <span>· {line.running} running</span>}
      {line.waiting>0 && <span>· {line.waiting} waiting</span>}
@@ -145,12 +175,16 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
      {line.blocked>0 && <Button size="sm" variant="link" className="h-auto p-0 text-amber-800" onClick={()=>{setSelectedBatch(latestBatch ?? '');setDetailsOpen(true)}}>· {line.blocked} waiting on client info</Button>}
      <span className="ml-auto flex items-center gap-1">
        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={()=>setDetailsOpen(true)}><PanelRightOpen className="mr-1 h-3.5 w-3.5"/>Details</Button>
-       {!active && <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" onClick={hideLine} aria-label="Hide research status"><X className="h-3.5 w-3.5"/></Button>}
+       {!active && <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" onClick={hideLine} aria-label={`Hide ${statusName.toLowerCase()} status`}><X className="h-3.5 w-3.5"/></Button>}
      </span>
+     {active && <div className="flex w-full items-center gap-2">
+       <progress aria-label={`${statusName} progress`} className="h-2 w-full accent-primary" max={latestJobs.length} value={batchProgress(latestJobs)}/>
+       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{latestJobs.length-line.running-line.waiting} of {latestJobs.length}</span>
+     </div>}
    </div>}
-   {latestJobs.length>0 && lineHidden && <button ref={showRef} type="button" className="inline-flex min-h-8 items-center rounded px-1 text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={showLine}>Show research status</button>}
+   {latestJobs.length>0 && lineHidden && <button ref={showRef} type="button" className="inline-flex min-h-8 items-center rounded px-1 text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={showLine}>Show {statusName.toLowerCase()} status</button>}
    <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}><SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-   <SheetHeader><SheetTitle>Bulk research</SheetTitle><SheetDescription>Per-podcast progress and drafts for each research batch.</SheetDescription></SheetHeader>
+   <SheetHeader><SheetTitle>Bulk research and pitches</SheetTitle><SheetDescription>Per-podcast progress and drafts for each research or pitch-writing batch.</SheetDescription></SheetHeader>
    {visible.length>0 && <div className="mt-4 space-y-3">
      <p role="status" className="text-sm">{completed} complete · {running} running · {waiting} waiting · {failed} need attention · {skipped} skipped</p>
      <label className="block text-sm">Batch history<select aria-label="Batch history" className="ml-2 rounded border bg-background p-1" value={selectedBatch || batchIds[0]} onChange={event=>setSelectedBatch(event.target.value)}>{batchIds.map((id,index)=><option key={id} value={id}>{index===0 ? 'Latest batch' : `Earlier batch ${batchIds.length-index}`}</option>)}</select></label>
@@ -163,20 +197,26 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchHr
      {failedJobs.length>1 && <div className="flex justify-end"><Button size="sm" variant="outline" disabled={busy} onClick={()=>void retryJobs(failedJobs)}>Retry all {failedJobs.length}</Button></div>}
      <div className="divide-y">{visible.map(job=><div key={job.id} className="flex items-start gap-2 py-3 text-sm">
        {job.status==='running'?<Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-blue-600"/>:job.status==='completed'?<CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"/>:job.status==='failed'?<AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600"/>:<Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"/>}
-       <div className="min-w-0 flex-1"><p className="font-medium">{job.podcast_name}</p><p className="text-xs text-muted-foreground">{jobStatus(job)}{blockedClientFields(job.research_progress).length>0 && job.status==='failed' ? ` — waiting on the client’s ${describeClientFields(blockedClientFields(job.research_progress))}` : job.message?` — ${job.message}`:''}</p>{['queued','running'].includes(job.status) && <progress aria-label={`Research progress for ${job.podcast_name}`} className="mt-2 h-1.5 w-full accent-primary" max={9} value={savedResearchSteps(job)+(job.pitch_steps_completed ?? 0)}/>}</div>
+       <div className="min-w-0 flex-1"><p className="font-medium">{job.podcast_name}</p><p className="text-xs text-muted-foreground">{jobStatus(job)}{blockedClientFields(job.research_progress).length>0 && job.status==='failed' ? ` — waiting on the client’s ${describeClientFields(blockedClientFields(job.research_progress))}` : job.message?` — ${job.message}`:''}</p>{['queued','running'].includes(job.status) && <progress aria-label={`${job.kind==='pitch'?'Pitch':'Research'} progress for ${job.podcast_name}`} className="mt-2 h-1.5 w-full accent-primary" max={jobSteps(job)[1]} value={jobSteps(job)[0]}/>}</div>
        {job.status==='failed' && <Button size="sm" variant="outline" disabled={busy} onClick={()=>void act('research-batch-retry',{job_id:job.id})}>Retry</Button>}
-       {job.pitch && <Button size="sm" variant="outline" onClick={()=>setDraft(job)}>View draft</Button>}
+       {jobHasDraft(job) && <Button size="sm" variant="outline" disabled={busy} onClick={()=>void openDraft(job)}>View draft</Button>}
      </div>)}</div>
    </div>}
    </SheetContent></Sheet>
-   <Dialog open={review} onOpenChange={setReview}><DialogContent><DialogHeader><DialogTitle>Research {selectedIds.length} selected shows</DialogTitle><DialogDescription>Run the saved research prompts and write a recommended pitch sequence for each eligible show. Uses the workspace’s configured AI provider. The batch continues after you leave this page.</DialogDescription></DialogHeader>
+   <Dialog open={review==='research'} onOpenChange={open=>setReview(open?'research':false)}><DialogContent><DialogHeader><DialogTitle>Research {selectedIds.length} selected shows</DialogTitle><DialogDescription>Run the saved research prompts and write a recommended pitch sequence for each eligible show. Uses the workspace’s configured AI provider. The batch continues after you leave this page.</DialogDescription></DialogHeader>
      {emptyClientFields.length>0 && <div aria-label="Client info check" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
        <p className="text-sm text-amber-950"><span className="font-semibold">This client has no {describeClientFields(emptyClientFields)} yet.</span> Research stages set to require them will stop without charging. Add them now to avoid that.</p>
        <ClientResearchInfoForm workspaceId={workspaceId} clientId={clientId} fields={emptyClientFields} saveLabel="Save client info" requireAll={false}/>
      </div>}
-     <p className="text-sm">Shows already researched, archived, already running, or requiring relationship review will be skipped with a reason. Existing campaign drafts are preserved. Generated drafts appear in the batch for review.</p>
+     <p className="text-sm">Shows already researched, archived, already running, or requiring relationship review will be skipped with a reason. For shows that are already researched, use Write pitches instead. Existing campaign drafts are preserved. Generated drafts appear in the batch for review.</p>
      <Button disabled={busy || selectedIds.length>200} onClick={()=>void act('research-batch-start',{shortlist_podcast_ids:selectedIds})}>{busy?'Queuing…':'Start batch'}</Button>
      {selectedIds.length>200 && <p className="text-sm">Select up to 200 shows per batch.</p>}
+   </DialogContent></Dialog>
+   <Dialog open={review==='pitch'} onOpenChange={open=>setReview(open?'pitch':false)}><DialogContent><DialogHeader><DialogTitle>Write pitches for {pitchIds.length} {pitchIds.length===1?'show':'shows'}</DialogTitle><DialogDescription>Writes the recommended angle’s opening email and two follow-ups for each show from its saved research, using your pitch prompts and the workspace’s configured AI provider. The batch continues after you leave this page.</DialogDescription></DialogHeader>
+     <p className="text-sm">Drafts are saved for review: nothing is added to a campaign and no emails are sent. Open a show’s pitch view to choose the recipient, edit, and send.</p>
+     {selectedIds.length>pitchIds.length && <p className="text-sm text-muted-foreground">{selectedIds.length-pitchIds.length} selected {selectedIds.length-pitchIds.length===1?'show is':'shows are'} left out: not approved, not researched yet, archived, or already has a pitch written or being written.</p>}
+     <Button disabled={busy || pitchIds.length===0 || pitchIds.length>200} onClick={()=>void act('research-batch-start',{shortlist_podcast_ids:pitchIds,mode:'pitch'})}>{busy?'Queuing…':`Write ${pitchIds.length} ${pitchIds.length===1?'pitch':'pitches'}`}</Button>
+     {pitchIds.length>200 && <p className="text-sm">Select up to 200 shows per batch.</p>}
    </DialogContent></Dialog>
    <Dialog open={!!draft} onOpenChange={open=>{if(!open)setDraft(null)}}><DialogContent className="max-h-[85vh] overflow-auto"><DialogHeader><DialogTitle>{draft?.pitch?.subject}</DialogTitle><DialogDescription>{draft?.podcast_name} — generated sequence for review</DialogDescription></DialogHeader>{draft && pitchHref && <Button asChild variant="outline"><Link to={pitchHref(draft.shortlist_podcast_id)}>Continue in pitch editor</Link></Button>}{[draft?.pitch?.body,draft?.pitch?.follow_up_1_body,draft?.pitch?.follow_up_2_body].filter(Boolean).map((body,index)=><div key={index}><h4 className="font-medium">{index===0?'Opening email':`Follow-up ${index}`}</h4><p className="whitespace-pre-wrap text-sm mt-2">{body}</p></div>)}</DialogContent></Dialog>
  </section>

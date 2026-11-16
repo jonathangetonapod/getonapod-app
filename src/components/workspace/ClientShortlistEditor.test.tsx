@@ -16,8 +16,15 @@ import {
   type ClientShortlistPodcast,
 } from '@/services/clientShortlist'
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
+import { listResearchJobs } from '@/services/researchJobs'
 
-vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: () => null }))
+vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: ({ pitchIds }: { pitchIds?: string[] }) => <p data-testid="pitch-ids">{(pitchIds ?? []).join(',')}</p> }))
+vi.mock('@/services/researchJobs', () => ({
+  researchJobsQueryKey: (workspace: string, client: string) => ['research-batches', workspace, client],
+  listResearchJobs: vi.fn(),
+  researchJobsRefetchInterval: () => false,
+  jobHasDraft: (job: { has_pitch?: boolean; pitch?: { body?: string } | null }) => job.has_pitch === true || Boolean(job.pitch?.body),
+}))
 
 vi.mock('@/services/clientShortlist', () => ({
   FIT_SCORE_BATCH_SIZE: 20,
@@ -154,6 +161,7 @@ describe('ClientShortlistEditor', () => {
       ],
     })
     vi.mocked(searchClientPodcastCatalog).mockResolvedValue([])
+    vi.mocked(listResearchJobs).mockResolvedValue([])
     vi.mocked(addClientShortlistPodcasts).mockResolvedValue({ added: 1, skipped: 0, podcast_ids: ['podcast-new'] })
     vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast())
     vi.mocked(getWorkspaceCampaign).mockResolvedValue({
@@ -270,6 +278,32 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 1 podcast in this view' }))
     fireEvent.click(screen.getByRole('button', { name: 'Mark passed' }))
     await waitFor(() => expect(setClientShortlistFeedbackBulk).toHaveBeenLastCalledWith(workspaceId, clientId, ['podcast-two'], 'rejected'))
+  })
+
+  it('offers bulk pitch writing only for selected shows that are researched and have no pitch', async () => {
+    const researched = { status: 'completed' as const, current_stage: null, completed_stages: [], started_at: 'run-1' }
+    vi.mocked(getClientShortlist).mockResolvedValue({
+      client: { id: clientId, name: 'Taylor Client' },
+      podcasts: [
+        podcast({ research_progress: researched }),
+        podcast({ id: '44444444-4444-4444-8444-444444444444', podcast_id: 'podcast-two', podcast_name: 'Operator Weekly', display_order: 1, research_progress: null }),
+        podcast({ id: '66666666-6666-4666-8666-666666666666', podcast_id: 'podcast-three', podcast_name: 'Drafted Show', display_order: 2, research_progress: researched }),
+      ],
+    })
+    vi.mocked(listResearchJobs).mockResolvedValue([{
+      id: 'job', batch_id: 'batch', shortlist_podcast_id: '66666666-6666-4666-8666-666666666666', podcast_name: 'Drafted Show',
+      status: 'completed', phase: 'pitch', kind: 'pitch', message: null, research_run_started_at: 'run-1', pitch: { subject: 'Idea', body: 'Hello' },
+    }])
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+
+    // A batch draft shows on its row, and its button reviews rather than writes.
+    expect(await screen.findByText('Draft written')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Review Draft for Drafted Show' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 3 podcasts in this view' }))
+    // Not the unresearched show, and not the one whose draft is already written.
+    await waitFor(() => expect(screen.getByTestId('pitch-ids')).toHaveTextContent(new RegExp(`^${podcastRowId}$`)))
   })
 
   it('archives every selected show at once', async () => {

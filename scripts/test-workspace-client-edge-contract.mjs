@@ -109,6 +109,23 @@ assert.match(researchBatchAuth, /body\.action !== \(job\.phase === 'research' \?
 assert.match(researchBatchAuth, /\(body\.continue_token \?\? null\) !== job\.continue_token/u)
 assert.match(researchBatchAuth, /admin\.auth\.admin\.getUserById\(job\.actor_id\)[\s\S]*?if \(userError \|\| !data\.user\) throw new HttpError\(403,/u)
 assert.match(researchBatchAuth, /tokenIssuedAt:job\.actor_issued_at, tokenAppMetadata:job\.actor_metadata/u)
+// A pitch-only batch starts in the pitch phase, tied to the research it writes from,
+// and never queues a show that already has campaign copy or a current draft.
+assert.match(shortlistEdge, /requireOnlyKeys\(body,\['action','workspace_id','client_id','shortlist_podcast_ids','mode'\]\)/u)
+assert.match(shortlistEdge, /\.\.\.\(pitchOnly \? \{kind:'pitch',phase:'pitch',research_run_started_at:researchRun\} : \{\}\)/u)
+assert.match(shortlistEdge, /if \(progress\?\.status !== 'completed'\) reason = 'Research is not complete/u)
+assert.match(shortlistEdge, /else if \(pitchedIds\.has\(row\.id\)\) reason = 'A pitch is already written for this show'/u)
+// A pitch-only job whose research was re-run while it waited is skipped, not written against the wrong run.
+assert.match(shortlistEdge, /if \(batchJob\?\.kind === 'pitch'\) \{[\s\S]{0,500}?saveBatch\(\{status:'skipped',message:'Research changed after this pitch was queued; queue it again'\}\)/u)
+// The polled list carries no emails or saved model outputs; one draft is read on demand, scoped to the workspace and client.
+assert.match(shortlistEdge, /if \(body\.slim === true\) \{[\s\S]{0,400}?pitch_steps,pitch_subject:pitch->>subject/u)
+assert.match(shortlistEdge, /action === 'research-batch-draft'[\s\S]{0,300}?\.eq\('id',requireUuid\(body\.job_id,'job_id'\)\)\.eq\('workspace_id',workspaceId\)\.eq\('client_id',clientId\)/u)
+// The whole selection's relationships are read once, and judged by the rule a single show uses.
+assert.match(shortlistEdge, /const refusal = relationshipRefusal\(relationship, acknowledged\)\s+if \(refusal\) throw refusal/u)
+assert.match(shortlistEdge, /if \(!reason\) reason = relationshipRefusal\(relationships\.get\(row\.podcast_id\), false\)\?\.message \?\? null/u)
+// An audit answer that will not parse is already checkpointed; it must not fail the job on every retry.
+assert.match(shortlistEdge, /if \(auditRaw !== null\) try \{/u)
+assert.match(shortlistEdge, /draftRuns\.has\(row\.id\) && \(!researchRun \|\| draftRuns\.get\(row\.id\) === researchRun\)\) reason = /u)
 assert.match(shortlistEdge, /if \(!workspaceCredentialIsFresh\(authContext\)\)/u)
 assert.match(shortlistEdge, /const access = await requireWorkspaceFeatureAccess\(authContext, workspaceId\)[\s\S]*?requireManager\(access\)/u)
 assert.match(shortlistEdge, /\.from\('clients'\)[\s\S]*?\.eq\('id', clientId\)[\s\S]*?\.eq\('workspace_id', workspaceId\)/u)

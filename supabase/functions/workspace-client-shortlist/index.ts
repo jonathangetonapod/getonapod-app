@@ -696,21 +696,28 @@ async function preflightPodcastRelationship(
 ): Promise<PodcastRelationship | undefined> {
   const relationships = await readPodcastRelationships(admin, workspaceId, [podcastId])
   const relationship = relationships.get(podcastId)
+  const refusal = relationshipRefusal(relationship, acknowledged)
+  if (refusal) throw refusal
+  return relationship
+}
+
+/** Why work on this show must stop, if it must. One rule for a single show and for a batch. */
+function relationshipRefusal(relationship: PodcastRelationship | undefined, acknowledged: boolean): HttpError | null {
   if (relationship?.state === 'suppressed' || relationship?.manual_stage === 'do_not_contact') {
-    throw new HttpError(
+    return new HttpError(
       409,
       'PODCAST_SUPPRESSED',
       'This host is marked do not contact for the workspace. No research credits, contact lookup, or pitch generation were used.',
     )
   }
   if (relationshipNeedsReview(relationship) && !acknowledged) {
-    throw new HttpError(
+    return new HttpError(
       409,
       'RELATIONSHIP_REVIEW_REQUIRED',
       'You have reached out to this podcast or host before. Review the relationship warning and confirm before using research, contact, or pitch credits.',
     )
   }
-  return relationship
+  return null
 }
 
 /** Human-readable summary of the relationship, for prompts and operators. */
@@ -940,9 +947,23 @@ serve(async (req) => {
     }
 
     if (action === 'research-batch-list') {
-      requireOnlyKeys(body, ['action','workspace_id','client_id'])
+      requireOnlyKeys(body, ['action','workspace_id','client_id','slim'])
+      // The page polls this while a batch runs. Slim leaves out every written
+      // email and saved model output — megabytes across a long history — and
+      // says only that a draft exists; research-batch-draft fetches one on demand.
+      if (body.slim === true) {
+        const { data, error } = await authContext.admin.from('client_research_jobs')
+          .select('id,batch_id,kind,shortlist_podcast_id,podcast_name,status,phase,message,pitch_steps,pitch_subject:pitch->>subject,research_run_started_at,created_at,updated_at,podcast:client_dashboard_podcasts!shortlist_podcast_id(research_progress)')
+          .eq('workspace_id',workspaceId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(1000)
+        if (error) throw new HttpError(500,'BATCH_READ_FAILED','Could not read research batches')
+        return jsonResponse(req,METHODS,200,{jobs:(data ?? []).map(({podcast,pitch_steps,pitch_subject,...job}) => {
+          const joined = (Array.isArray(podcast) ? podcast[0] : podcast) as {research_progress?:unknown} | null
+          return {...job,research_progress:joined?.research_progress ?? null,pitch_steps_completed:pitch_steps ?? 0,has_pitch:pitch_subject !== null,pitch:null}
+        })})
+      }
+      // Older app builds, which read each draft out of the list itself.
       const { data, error } = await authContext.admin.from('client_research_jobs')
-        .select('id,batch_id,shortlist_podcast_id,podcast_name,status,phase,message,pitch,pitch_outputs,created_at,updated_at,podcast:client_dashboard_podcasts!shortlist_podcast_id(research_progress)')
+        .select('id,batch_id,kind,shortlist_podcast_id,podcast_name,status,phase,message,pitch,pitch_outputs,research_run_started_at,created_at,updated_at,podcast:client_dashboard_podcasts!shortlist_podcast_id(research_progress)')
         .eq('workspace_id',workspaceId).eq('client_id',clientId).order('created_at',{ascending:false}).limit(1000)
       if (error) throw new HttpError(500,'BATCH_READ_FAILED','Could not read research batches')
       return jsonResponse(req,METHODS,200,{jobs:(data ?? []).map(({podcast,pitch_outputs,...job}) => {
@@ -950,36 +971,79 @@ serve(async (req) => {
         return {...job,research_progress:joined?.research_progress ?? null,pitch_steps_completed:Array.isArray(pitch_outputs)?pitch_outputs.length:0}
       })})
     }
+    if (action === 'research-batch-draft') {
+      requireOnlyKeys(body,['action','workspace_id','client_id','job_id'])
+      const { data, error } = await authContext.admin.from('client_research_jobs').select('pitch')
+        .eq('id',requireUuid(body.job_id,'job_id')).eq('workspace_id',workspaceId).eq('client_id',clientId).maybeSingle()
+      if (error) throw new HttpError(500,'BATCH_READ_FAILED','Could not read the draft')
+      if (!data?.pitch) throw new HttpError(404,'DRAFT_NOT_FOUND','This draft is no longer available')
+      return jsonResponse(req,METHODS,200,{pitch:data.pitch})
+    }
     if (action === 'research-batch-start') {
       if (!Deno.env.get('RESEARCH_TICK_SECRET')) throw new HttpError(503,'BATCH_NOT_CONFIGURED','Background research is not configured yet')
-      requireOnlyKeys(body,['action','workspace_id','client_id','shortlist_podcast_ids'])
+      requireOnlyKeys(body,['action','workspace_id','client_id','shortlist_podcast_ids','mode'])
+      // 'pitch' writes the sequence for shows whose research is already done;
+      // the default researches first and then writes, as it always has.
+      if (body.mode !== undefined && body.mode !== 'research' && body.mode !== 'pitch') throw new HttpError(400,'INVALID_BATCH','Unknown batch mode')
+      const pitchOnly = body.mode === 'pitch'
       const ids = body.shortlist_podcast_ids
       if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200) throw new HttpError(400,'INVALID_BATCH','Select between 1 and 200 shows')
       const uniqueIds = [...new Set(ids.map(id => requireUuid(id,'shortlist_podcast_id')))]
       const { data: rows, error } = await authContext.admin.from('client_dashboard_podcasts')
         .select('id,podcast_id,podcast_name,visibility,research_progress').eq('client_id',clientId).in('id',uniqueIds)
       if (error || rows?.length !== uniqueIds.length) throw new HttpError(400,'INVALID_BATCH','Some shows are no longer on this client shortlist')
+      // What a pitch-only batch must not write over or pay for twice: copy
+      // already on the campaign, and a draft already written from this research.
+      const pitchedIds = new Set<string>()
+      const draftRuns = new Map<string, string | null>()
+      const activeIds = new Set<string>()
+      if (pitchOnly) {
+        const [targets, earlier] = await Promise.all([
+          authContext.admin.from('workspace_client_campaign_targets').select('shortlist_podcast_id,pitch_subject,pitch_body,status,launched_at')
+            .eq('workspace_id',workspaceId).eq('client_id',clientId).in('shortlist_podcast_id',uniqueIds),
+          authContext.admin.from('client_research_jobs').select('shortlist_podcast_id,status,pitch_subject:pitch->>subject,research_run_started_at,created_at')
+            .eq('workspace_id',workspaceId).eq('client_id',clientId).in('shortlist_podcast_id',uniqueIds).in('status',['queued','running','completed']).order('created_at',{ascending:false}),
+        ])
+        if (targets.error || earlier.error) throw new HttpError(503,'BATCH_ELIGIBILITY_UNAVAILABLE','Cannot verify which shows already have a pitch')
+        for (const target of targets.data ?? []) {
+          if (target.pitch_subject?.trim() || target.pitch_body?.trim() || target.launched_at || !['draft','failed'].includes(target.status)) pitchedIds.add(target.shortlist_podcast_id)
+        }
+        // Newest first, so a long history can only lose its oldest rows and the
+        // first finished draft seen per show is the current one.
+        for (const job of earlier.data ?? []) {
+          if (job.status !== 'completed') activeIds.add(job.shortlist_podcast_id)
+          else if (job.pitch_subject !== null && !draftRuns.has(job.shortlist_podcast_id)) draftRuns.set(job.shortlist_podcast_id, job.research_run_started_at ?? null)
+        }
+      }
+      // One lookup for the whole selection: a row at a time was three round trips
+      // per show, and 200 shows held the request open for most of a minute.
+      const relationships = await readPodcastRelationships(authContext.admin, workspaceId, [...new Set(rows.map(row => row.podcast_id as string))])
       const batchId = crypto.randomUUID()
       const jobs = []
       for (const row of rows) {
         let reason: string | null = null
-        const progress = row.research_progress as {status?:string;updated_at?:string} | null
+        const progress = row.research_progress as {status?:string;updated_at?:string;started_at?:string} | null
+        const researchRun = typeof progress?.started_at === 'string' ? progress.started_at : null
         if (row.visibility === 'archived') reason = 'Archived show'
-        else if (progress?.status === 'completed') reason = 'Research already complete; use the individual pitch view to regenerate'
-        else if (['running','queued'].includes(progress?.status ?? '') && Date.now()-Date.parse(progress?.updated_at ?? '') < RESEARCH_STALE_LOCK_MS) reason = 'Research already running'
-        if (!reason) {
-          try { await preflightPodcastRelationship(authContext.admin,workspaceId,row.podcast_id,false) }
-          catch (error) {
-            if (error instanceof HttpError && ['PODCAST_SUPPRESSED','RELATIONSHIP_REVIEW_REQUIRED'].includes(error.code)) reason = error.message
-            else throw error
-          }
+        else if (pitchOnly) {
+          if (progress?.status !== 'completed') reason = 'Research is not complete; run research on this show first'
+          else if (pitchedIds.has(row.id)) reason = 'A pitch is already written for this show'
+          else if (activeIds.has(row.id)) reason = 'Already queued'
+          // Research with no recorded run cannot be told apart from the draft's, so it is not paid for twice.
+          else if (draftRuns.has(row.id) && (!researchRun || draftRuns.get(row.id) === researchRun)) reason = 'A draft is already written from this research; open the pitch view to review it'
         }
+        else if (progress?.status === 'completed') reason = 'Research already complete; use Write pitches to draft the pitch'
+        else if (['running','queued'].includes(progress?.status ?? '') && Date.now()-Date.parse(progress?.updated_at ?? '') < RESEARCH_STALE_LOCK_MS) reason = 'Research already running'
+        if (!reason) reason = relationshipRefusal(relationships.get(row.podcast_id), false)?.message ?? null
         jobs.push({batch_id:batchId,workspace_id:workspaceId,client_id:clientId,shortlist_podcast_id:row.id,podcast_name:row.podcast_name,
-          actor_id:authContext.user.id,actor_issued_at:authContext.tokenIssuedAt,actor_metadata:authContext.tokenAppMetadata,status:reason?'skipped':'queued',message:reason})
+          actor_id:authContext.user.id,actor_issued_at:authContext.tokenIssuedAt,actor_metadata:authContext.tokenAppMetadata,status:reason?'skipped':'queued',message:reason,
+          // A pitch-only job starts where a research job ends up, and carries the
+          // research run it wrote from so the pitch view can tell a current draft from a stale one.
+          ...(pitchOnly ? {kind:'pitch',phase:'pitch',research_run_started_at:researchRun} : {})})
       }
       const { error: insertError } = await authContext.admin.from('client_research_jobs').insert(jobs)
       if (insertError) throw new HttpError(409,'BATCH_START_FAILED','Could not queue the batch. A selected show may already be queued; refresh and try again.')
-      return jsonResponse(req,METHODS,200,{batch_id:batchId})
+      return jsonResponse(req,METHODS,200,{batch_id:batchId,queued:jobs.filter(job=>job.status==='queued').length,skipped:jobs.filter(job=>job.status==='skipped').length})
     }
     if (action === 'research-batch-retry') {
       requireOnlyKeys(body,['action','workspace_id','client_id','job_id'])
@@ -2911,7 +2975,7 @@ serve(async (req) => {
       const [{ data: shortlistRow }, { data: clientProfile }, { data: target }] = await Promise.all([
         authContext.admin
           .from('client_dashboard_podcasts')
-          .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, ai_clean_description, ai_fit_reasons, ai_pitch_angles, research_document, pitch_recipients')
+          .select('id, podcast_id, podcast_name, podcast_description, podcast_url, publisher_name, ai_clean_description, ai_fit_reasons, ai_pitch_angles, research_document, research_progress, pitch_recipients')
           .eq('id', shortlistPodcastId)
           .eq('client_id', clientId)
           .maybeSingle(),
@@ -2929,6 +2993,18 @@ serve(async (req) => {
           .maybeSingle(),
       ])
       if (!shortlistRow) throw new HttpError(404, 'PODCAST_NOT_FOUND', 'Shortlist podcast not found for this client')
+      // A pitch-only job is tied to the research it was queued against. If that
+      // research was re-run or reset while the job waited, a draft written now
+      // would carry the old run's tag: unreachable from the pitch view, and
+      // mixing one run's saved steps with another's evidence.
+      if (batchJob?.kind === 'pitch') {
+        const queuedProgress = shortlistRow.research_progress as { status?: string; started_at?: string } | null
+        if (queuedProgress?.status !== 'completed'
+          || (batchJob.research_run_started_at && queuedProgress.started_at !== batchJob.research_run_started_at)) {
+          await saveBatch({status:'skipped',message:'Research changed after this pitch was queued; queue it again'})
+          return jsonResponse(req,METHODS,200,{batch_skipped:true})
+        }
+      }
       const relationship = await preflightPodcastRelationship(
         authContext.admin,
         workspaceId,
@@ -2941,13 +3017,15 @@ serve(async (req) => {
         ? shortlistRow.pitch_recipients as PitchRecipient[]
         : null
       const pitchTo = pitchRecipients?.[0] ?? null
-      // A background batch wrote its pitch before anyone chose a recipient, so
-      // it is reused only when the recipient would not change the opening.
-      if (!batchJob && angleIndex === 0 && !recipientsAffectCopy(pitchRecipients)) {
+      // Who the opening greets: the host, or a producer or booking contact by
+      // role. A batch draft is reused only when it was written for the same one;
+      // drafts from before this was recorded were all written for the host.
+      const greetingRole = recipientsAffectCopy(pitchRecipients) ? String(pitchTo?.contact_role) : 'host'
+      if (!batchJob && angleIndex === 0) {
         const {data:saved} = await authContext.admin.from('client_research_jobs').select('pitch,research_run_started_at')
           .eq('workspace_id',workspaceId).eq('client_id',clientId).eq('shortlist_podcast_id',shortlistPodcastId).eq('status','completed').order('created_at',{ascending:false}).limit(1).maybeSingle()
         const {data:current} = await authContext.admin.from('client_dashboard_podcasts').select('research_progress').eq('id',shortlistPodcastId).single()
-        if (saved?.pitch && saved.research_run_started_at === current?.research_progress?.started_at) return jsonResponse(req,METHODS,200,{pitch:saved.pitch})
+        if (saved?.pitch && (saved.pitch.recipient_role ?? 'host') === greetingRole && saved.research_run_started_at === current?.research_progress?.started_at) return jsonResponse(req,METHODS,200,{pitch:saved.pitch})
       }
       // The catalog row is the fresher copy of show metadata and carries the
       // stored episode capture; the shortlist copy is only the fallback.
@@ -3366,13 +3444,23 @@ serve(async (req) => {
         // anything remaining ships to the UI as visible flags, never
         // silently.
         let flags = pitchSequenceChecks(sequence)
+        // The call and the parse fail differently for a batch. A failed call
+        // saved nothing, so the job fails and a retry asks again. An answer that
+        // will not parse is already checkpointed: failing on it would replay the
+        // same text on every retry, so it ships on the deterministic checks.
+        let auditRaw: string | null = null
         try {
-          const auditRaw = await runPitchPrompt(
+          auditRaw = await runPitchPrompt(
             anthropicKey,
             { model: 'claude-sonnet-5-5', maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
             `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
             usage,
           )
+        } catch (_error) {
+          if (batchJob) throw _error
+          console.warn('[Client Shortlist] Claim audit unavailable; shipping with deterministic checks only')
+        }
+        if (auditRaw !== null) try {
           const audit = JSON.parse(auditRaw.replace(/^```(?:json)?\s*/u, '').replace(/\s*```$/u, '')) as { unsupported?: Array<{ claim?: unknown; problem?: unknown }> }
           for (const item of audit.unsupported ?? []) {
             if (typeof item?.claim === 'string' && item.claim.trim()) {
@@ -3380,8 +3468,7 @@ serve(async (req) => {
             }
           }
         } catch (_error) {
-          if (batchJob) throw _error
-          console.warn('[Client Shortlist] Claim audit unavailable; shipping with deterministic checks only')
+          console.warn('[Client Shortlist] Claim audit unreadable; shipping with deterministic checks only')
         }
         if (flags.length > 0) {
           const revisedRaw = await runPitchPrompt(
@@ -3424,6 +3511,7 @@ serve(async (req) => {
             audit_flags: flags.slice(0, 12),
             chain_version: PITCH_CHAIN_VERSION,
             angle_index: angleIndex,
+            ...(batchJob ? { recipient_role: greetingRole } : {}),
           },
         }
         if (batchJob) await saveBatch({status:'completed',pitch:result.pitch})

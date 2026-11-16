@@ -16,7 +16,7 @@ import { isTargetInActiveOutreach, pitchActionLabel } from '@/lib/campaignTarget
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { shortlistContactEmail } from '@/lib/shortlistEmail'
 import { compactNumber, qualityFlags, researchStatusLabel } from '@/lib/shortlistRow'
-import { pitchBadgeLabel } from '@/lib/shortlistPitchStatus'
+import { pitchBadgeLabel, pitchStatus } from '@/lib/shortlistPitchStatus'
 import { clientPitchHref } from '@/lib/workspaceRoutes'
 import { cn } from '@/lib/utils'
 import { FitScoreBadge } from '@/components/workspace/ShortlistFit'
@@ -33,7 +33,7 @@ const MOBILE_LABEL = 'text-xs text-muted-foreground min-[1100px]:hidden'
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
 const SHORT_PITCH_LABELS: Record<string, string> = {
-  'Write Pitch': 'Write', 'Write Re-pitch': 'Re-pitch', 'View Pitch': 'View', 'Continue Draft': 'Continue',
+  'Write Pitch': 'Write', 'Write Re-pitch': 'Re-pitch', 'View Pitch': 'View', 'Continue Draft': 'Continue', 'Review Draft': 'Review',
 }
 
 export const FeedbackBadge = ({ podcast }: { podcast: Pick<ClientShortlistPodcast, 'feedback_status'> }) => {
@@ -90,6 +90,8 @@ interface ShortlistTableProps {
   onToggle: (podcastId: string, checked: boolean) => void
   fitProfile: ClientShortlistFitProfile | null
   targetsByPodcast: Map<string, WorkspaceCampaignTarget>
+  /** Rows with a batch-written pitch waiting in the pitch view. */
+  draftIds?: ReadonlySet<string>
   pitchDataAvailable: boolean
   pitchError: boolean
   pendingPodcastId: string | null
@@ -126,13 +128,15 @@ export const ShortlistTable = (props: ShortlistTableProps) => {
 }
 
 const ShortlistRow = ({
-  podcast, selectedIds, onToggle, fitProfile, targetsByPodcast, pitchDataAvailable, pitchError, pendingPodcastId,
+  podcast, selectedIds, onToggle, fitProfile, targetsByPodcast, draftIds, pitchDataAvailable, pitchError, pendingPodcastId,
   workspaceBaseHref, clientId, onOpenDetails, onDecision, onToggleFeatured, onRestore, onArchive, onDelete,
 }: ShortlistTableProps & { podcast: ClientShortlistPodcast }) => {
   const target = targetsByPodcast.get(podcast.id)
   const inOutreach = isTargetInActiveOutreach(target)
   const hasDraft = Boolean(target?.pitch_subject?.trim() || target?.pitch_body?.trim())
-  const pitchLabel = !inOutreach && hasDraft ? 'Continue Draft' : pitchActionLabel({ inActiveOutreach: inOutreach, previouslyContacted: Boolean(podcast.prior_outreach_at) })
+  // Written by a batch and not yet on the campaign: the pitch view opens with it.
+  const batchDraft = !inOutreach && !hasDraft && pitchStatus(target) === 'pending' && Boolean(draftIds?.has(podcast.id))
+  const pitchLabel = !inOutreach && hasDraft ? 'Continue Draft' : batchDraft ? 'Review Draft' : pitchActionLabel({ inActiveOutreach: inOutreach, previouslyContacted: Boolean(podcast.prior_outreach_at) })
   const flags = qualityFlags(podcast)
   const research = researchStatusLabel(podcast.research_progress)
   const hostLine = [podcast.host_name, podcast.publisher_name].filter((part, index, parts) => part && parts.indexOf(part) === index).join(' · ')
@@ -180,7 +184,7 @@ const ShortlistRow = ({
         </div>
         <div role="cell" className="min-w-0">
           <p className={MOBILE_LABEL}>Pitch</p>
-          <p className="text-xs font-medium leading-tight">{pitchDataAvailable ? pitchBadgeLabel(target) : pitchError ? 'Unavailable' : 'Loading…'}</p>
+          <p className="text-xs font-medium leading-tight">{batchDraft ? 'Draft written' : pitchDataAvailable ? pitchBadgeLabel(target) : pitchError ? 'Unavailable' : 'Loading…'}</p>
           {research && research !== 'Research complete' && <p className="mt-0.5 text-[11px] leading-tight text-amber-800"><span className="sr-only">Research status: </span>{research}</p>}
         </div>
       </div>

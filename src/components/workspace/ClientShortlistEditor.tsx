@@ -50,6 +50,8 @@ import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
 import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
+import { activeJobIds, batchDraftIds, pitchWritableIds } from '@/lib/pitchDrafts'
+import { listResearchJobs, researchJobsQueryKey, researchJobsRefetchInterval } from '@/services/researchJobs'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
 import { ShortlistDeleteDialog } from '@/components/workspace/ShortlistDeleteDialog'
 import { FeedbackBadge, PodcastArtwork, ShortlistTable } from '@/components/workspace/ShortlistTable'
@@ -235,6 +237,22 @@ export function ClientShortlistEditor({
   useEffect(() => setSelectedIds(new Set()), [filter, searchQuery, fitFilter, fitThreshold, pitchFilter, emailFilter])
 
   const podcasts = useMemo(() => shortlistQuery.data?.podcasts || [], [shortlistQuery.data?.podcasts])
+  // Same key and poll as the batch panel, so the rows cost no second request.
+  const researchJobsQuery = useQuery({
+    queryKey: researchJobsQueryKey(workspaceId, clientId),
+    queryFn: () => listResearchJobs(workspaceId, clientId),
+    enabled: Boolean(workspaceId) && Boolean(clientId),
+    refetchInterval: (query) => researchJobsRefetchInterval(query.state.data),
+  })
+  const draftIds = useMemo(() => batchDraftIds(researchJobsQuery.data ?? [], podcasts), [researchJobsQuery.data, podcasts])
+  // Until pitch statuses load, nothing is offered: a batch must not write over copy it cannot see.
+  const pitchIds = useMemo(() => (pitchDataAvailable
+    ? pitchWritableIds(
+      podcasts.filter((podcast) => selectedIds.has(podcast.podcast_id)),
+      targetsByPodcast,
+      new Set([...draftIds, ...activeJobIds(researchJobsQuery.data ?? [])]),
+    )
+    : []), [pitchDataAvailable, podcasts, selectedIds, targetsByPodcast, draftIds, researchJobsQuery.data])
   const featured = useMemo(() => podcasts
     .filter((podcast) => podcast.visibility === 'visible' && podcast.is_featured)
     .sort((left, right) => (left.featured_order ?? 99) - (right.featured_order ?? 99)), [podcasts])
@@ -524,7 +542,7 @@ export function ClientShortlistEditor({
         </CardHeader>
 
         <CardContent className="space-y-3 p-3 sm:p-4">
-          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} />
+          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} pitchIds={pitchIds} pitchStatusKnown={pitchDataAvailable} />
           {campaignTargetsQuery.isError && <p role="status" className="text-sm text-muted-foreground">{pitchDataAvailable ? 'Pitch statuses could not be refreshed. Showing last loaded statuses.' : 'Pitch statuses could not be loaded.'} <button type="button" className="underline" onClick={() => void campaignTargetsQuery.refetch()}>Retry</button></p>}
           <ShortlistBulkBar
             workspaceId={workspaceId}
@@ -548,6 +566,7 @@ export function ClientShortlistEditor({
               onToggle={toggleSelected}
               fitProfile={shortlistQuery.data?.fit_profile ?? null}
               targetsByPodcast={targetsByPodcast}
+              draftIds={draftIds}
               pitchDataAvailable={pitchDataAvailable}
               pitchError={campaignTargetsQuery.isError}
               pendingPodcastId={pendingPodcastId}

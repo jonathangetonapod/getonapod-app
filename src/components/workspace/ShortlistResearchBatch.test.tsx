@@ -8,7 +8,7 @@ vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn()}}))
 const clients = vi.hoisted(()=>({getWorkspaceClientDetail:vi.fn(),updateWorkspaceClient:vi.fn(),updateWorkspaceClientProfile:vi.fn()}))
 vi.mock('@/services/clients',()=>clients)
 const clientRecord = (overrides:Record<string,unknown> = {})=>({can_manage:true,client:{id:'client',workspace_id:'workspace',name:'Taylor',email:'t@example.com',contact_person:'',linkedin_url:'',website:'',status:'active',notes:'keep me',bio:'',updated_at:'2026-11-04T00:00:00.000Z',...overrides}})
-function mount(client = new QueryClient({defaultOptions:{queries:{retry:false}}})){return render(<QueryClientProvider client={client}><ShortlistResearchBatch workspaceId="workspace" clientId="client" selectedIds={['row-one','row-two']}/></QueryClientProvider>)}
+function mount(client = new QueryClient({defaultOptions:{queries:{retry:false}}}),pitchIds:string[] = []){return render(<QueryClientProvider client={client}><ShortlistResearchBatch workspaceId="workspace" clientId="client" selectedIds={['row-one','row-two']} pitchIds={pitchIds}/></QueryClientProvider>)}
 beforeEach(()=>{
  invoke.mockReset();invoke.mockResolvedValue({data:{jobs:[]},error:null})
  clients.getWorkspaceClientDetail.mockReset().mockResolvedValue(clientRecord({bio:'Founder',linkedin_url:'https://linkedin.com/in/t',website:'https://t.com'}))
@@ -136,4 +136,62 @@ it('collapses a batch into one status line, and hides a finished batch until a n
  mount()
  expect(await screen.findByLabelText('Research status')).toHaveTextContent('1 waiting')
  expect(screen.queryByRole('button',{name:'Hide research status'})).not.toBeInTheDocument()
+})
+
+it('queues a pitch-only batch for the researched rows, after a review that says nothing is sent',async()=>{
+ invoke.mockImplementation(async(_name:string,{body}:{body:{action:string}})=>body.action==='research-batch-start'?{data:{batch_id:'batch',queued:1,skipped:0},error:null}:{data:{jobs:[]},error:null})
+ mount(undefined,['row-two'])
+ expect(screen.getByText('1 of 2 selected shows is approved, researched and without a pitch.')).toBeInTheDocument()
+ fireEvent.click(screen.getByRole('button',{name:'Write pitches for 1 selected'}))
+ expect(screen.getByText(/nothing is added to a campaign and no emails are sent/)).toBeInTheDocument()
+ expect(invoke.mock.calls.some(call=>call[1].body.action==='research-batch-start')).toBe(false)
+ fireEvent.click(screen.getByRole('button',{name:'Write 1 pitch'}))
+ await waitFor(()=>expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-start',workspace_id:'workspace',client_id:'client',shortlist_podcast_ids:['row-two'],mode:'pitch'}}))
+})
+
+it('will not start a pitch batch when no selected show is ready for one',()=>{
+ mount()
+ expect(screen.getByRole('button',{name:'Write pitches for 0 selected'})).toBeDisabled()
+ expect(screen.getByRole('button',{name:'Write pitches for 0 selected'})).toHaveAccessibleDescription('None of the selected shows are approved, researched and without a pitch.')
+})
+
+it('names the status line for a pitch batch and counts its three steps',async()=>{
+ window.localStorage.clear()
+ invoke.mockResolvedValue({data:{jobs:[{id:'one',batch_id:'batch',kind:'pitch',podcast_name:'Pitching show',status:'running',phase:'pitch',pitch_steps_completed:1,pitch:null}]},error:null})
+ mount()
+ expect(await screen.findByLabelText('Pitch writing status')).toHaveTextContent('Pitch writing:0 done· 1 running')
+ // The bar sits on the page itself while the batch runs, not only in the drawer.
+ expect(screen.getByRole('progressbar',{name:'Pitch writing progress'})).toHaveAttribute('value',String(1/3))
+ expect(screen.getByLabelText('Pitch writing status')).toHaveTextContent('0 of 1')
+ fireEvent.click(screen.getByRole('button',{name:'Details'}))
+ expect(await screen.findByText('1/3 pitch steps saved · Working on claim audit')).toBeInTheDocument()
+ expect(screen.getByRole('progressbar',{name:'Pitch progress for Pitching show'})).toHaveAttribute('max','3')
+})
+
+it('polls a list without the emails and reads a draft only when it is opened',async()=>{
+ invoke.mockImplementation(async(_name:string,{body}:{body:{action:string}})=>body.action==='research-batch-draft'
+   ?{data:{pitch:{subject:'Fetched subject',body:'Fetched email'}},error:null}
+   :{data:{jobs:[{id:'one',batch_id:'batch',kind:'pitch',podcast_name:'One',status:'completed',phase:'pitch',has_pitch:true,pitch:null}]},error:null})
+ mount()
+ fireEvent.click(await screen.findByRole('button',{name:'Details'}))
+ expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-list',workspace_id:'workspace',client_id:'client',slim:true}})
+ expect(invoke.mock.calls.some(call=>call[1].body.action==='research-batch-draft')).toBe(false)
+ fireEvent.click(await screen.findByRole('button',{name:'View draft'}))
+ expect(await screen.findByText('Fetched email')).toBeInTheDocument()
+ expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-draft',workspace_id:'workspace',client_id:'client',job_id:'one'}})
+})
+
+it('does not reload the shortlist for each step of a pitch-only job',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}})
+ const invalidate=vi.spyOn(client,'invalidateQueries')
+ const job={id:'one',batch_id:'batch',kind:'pitch',podcast_name:'One',status:'queued',phase:'pitch',pitch_steps_completed:0}
+ invoke.mockResolvedValue({data:{jobs:[job]},error:null})
+ mount(client)
+ await screen.findByLabelText('Pitch writing status')
+ await waitFor(()=>expect(invalidate).toHaveBeenCalledWith({queryKey:['client-shortlist','workspace','client']}))
+ invalidate.mockClear()
+ invoke.mockResolvedValue({data:{jobs:[{...job,status:'running',pitch_steps_completed:1}]},error:null})
+ await client.invalidateQueries({queryKey:['research-batches','workspace','client']})
+ await waitFor(()=>expect(screen.getByLabelText('Pitch writing status')).toHaveTextContent('1 running'))
+ expect(invalidate).not.toHaveBeenCalledWith({queryKey:['client-shortlist','workspace','client']})
 })

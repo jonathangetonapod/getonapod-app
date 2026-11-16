@@ -44,3 +44,11 @@ The parallel claim migration and 15-second refill schedule were applied to produ
 ## Ten-way limit — 2026-10-29
 
 Applied `20261031001200` and deployed the worker with a ten-job claim. The database now caps each workspace at ten active jobs and the installation at twenty. The 15-second refill schedule is unchanged. Temporary database fixtures verified 100 queued shows drained in ten ten-job waves, unique leases, global/workspace caps, and freed-slot reuse. This is a queue validation; a live ten-podcast provider run is tracked separately.
+
+## Bulk pitch writing — 2026-11-15
+
+**Write pitches for selected** queues a pitch-only batch on the same queue: `research-batch-start` with `mode: 'pitch'` inserts jobs that start in the pitch phase (`kind = 'pitch'`), so the worker, leases, concurrency caps, checkpointing, charging and refunds are unchanged. Shows are skipped with a reason when research is not complete, when the campaign already holds a pitch for them, when they are already queued, when a draft from the current research run already exists, or when they are archived or need relationship review. Nothing is added to a campaign and nothing is sent; the pitch view reuses the draft when it is opened, unless the chosen recipient is a producer or booking contact, which rewrites the greeting.
+
+The shortlist polls `research-batch-list` with `slim: true`, which returns no email bodies or saved model outputs (the step count comes from the generated `pitch_steps` column); **View draft** reads one job through `research-batch-draft`. Polling is every 5 seconds while a job is queued or running and every 30 seconds otherwise, and the steps of a pitch-only job do not reload the shortlist. Batch start reads the whole selection's relationships in one lookup.
+
+Apply `20261115000100_bulk_pitch_writing.sql` **before** deploying `workspace-client-shortlist`: the batch list reads the new `kind` and `pitch_steps` columns.
