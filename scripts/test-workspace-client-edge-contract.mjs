@@ -129,6 +129,13 @@ assert.match(shortlistEdge, /else if \(rewrite && !draftRuns\.has\(row\.id\)\) r
 assert.ok(shortlistEdge.indexOf("reason = 'A pitch is already written for this show'") < shortlistEdge.indexOf("reason = 'No draft to rewrite"), 'campaign copy is checked before a rewrite is allowed')
 // Follow-up layout is checked in code, so a rewritten prompt cannot ship one-block follow-ups unflagged.
 assert.match(shortlistEdge, /flags\.push\(\.\.\.followUpFormatFlags\('follow_up_1', sequence\.follow_up_1 \?\? ''\), \.\.\.followUpFormatFlags\('follow_up_2', sequence\.follow_up_2 \?\? ''\)\)/u)
+// Who to greet is the writer's decision: it is given the evidence, the audit leaves the greeting to it
+// (except a greeting to a known guest), and a revision that blanks the chosen name has it put back.
+assert.match(shortlistEdge, /const greetingEvidence = greetingEvidenceBlock\(\{\s+hostName: operatorHostName \?\? \(typeof pitchCatalogRow\?\.host_name === 'string' \? pitchCatalogRow\.host_name : null\),\s+operatorEntered: operatorHostName !== null,/u)
+assert.match(shortlistEdge, /recipientsPromptBlock\(pitchRecipients\),\s+greetingEvidence,/u)
+assert.match(shortlistEdge, /The greeting line is the writer's decision, made from the <greeting> section/u)
+assert.match(shortlistEdge, /email_1: keepWriterGreeting\(writtenSequence\.email_1, sequence\.email_1\),/u)
+assert.doesNotMatch(shortlistEdge, /restoreHostGreeting|resolveGreetingName\(/u)
 // An audit answer that will not parse is already checkpointed; it must not fail the job on every retry.
 assert.match(shortlistEdge, /if \(auditRaw !== null\) try \{/u)
 assert.match(shortlistEdge, /!rewrite && draftRuns\.has\(row\.id\) && \(!researchRun \|\| draftRuns\.get\(row\.id\) === researchRun\)\) reason = /u)

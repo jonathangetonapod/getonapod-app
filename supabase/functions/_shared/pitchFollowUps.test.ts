@@ -1,4 +1,4 @@
-import { assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts'
+import { assertEquals } from 'jsr:@std/assert@1'
 import { followUpFormatFlags } from './pitchFollowUps.ts'
 
 Deno.test('a follow-up laid out as greeting, paragraph, closing line passes', () => {

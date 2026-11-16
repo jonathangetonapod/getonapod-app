@@ -2,6 +2,7 @@ import { textTokenUsage, textAiFetch, type TextAiCredential } from '../_shared/t
 import { BatchYield, BatchCheckpointError, batchPromptRunner, researchBatchRecovery } from '../_shared/researchBatchCheckpoint.ts'
 import { researchBatchAuth } from '../_shared/researchBatchAuth.ts'
 import { followUpFormatFlags } from '../_shared/pitchFollowUps.ts'
+import { greetingEvidenceBlock, keepWriterGreeting } from '../_shared/pitchGreeting.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -505,7 +506,7 @@ function present(value: string | null | undefined): string {
 // Stamped on research documents and generated pitches so reply rates can be
 // compared per prompt-chain revision once volume exists. Bump on any change
 // to the prompt chain or its assembly.
-const PITCH_CHAIN_VERSION = 'p6-follow-up-layout-2026-11-16'
+const PITCH_CHAIN_VERSION = 'p7-writer-greeting-2026-11-16'
 
 export interface PodcastRelationship {
   podcast_id: string
@@ -3250,6 +3251,23 @@ serve(async (req) => {
           ? `${angle.title} — ${angle.description}`
           : null,
       }
+      // Who the emails greet is the writer's decision. This is the evidence it
+      // decides from, laid out in one place: the bare "Host:" line below hid
+      // where the name came from and that a listed co-host may be a guest.
+      const operatorHostName = typeof target?.host_name === 'string' && target.host_name.trim() ? target.host_name : null
+      const greetingEvidence = greetingEvidenceBlock({
+        hostName: operatorHostName ?? (typeof pitchCatalogRow?.host_name === 'string' ? pitchCatalogRow.host_name : null),
+        operatorEntered: operatorHostName !== null,
+        publisherName: typeof pitchCatalogRow?.publisher_name === 'string' ? pitchCatalogRow.publisher_name : null,
+        guestNames: [
+          ...storedEpisodes.flatMap((episode) => Array.isArray(episode?.guests)
+            ? (episode.guests as Array<{ name?: unknown }>).map((guest) => typeof guest?.name === 'string' ? guest.name : null)
+            : []),
+          typeof researchDocument.recent_guest_name === 'string' ? researchDocument.recent_guest_name : null,
+        ],
+        toEmail: pitchTo?.email ?? target?.contact_email ?? null,
+        recipientRole: greetingRole === 'host' ? null : greetingRole,
+      })
       const topicResearch = typeof researchDocument.find_topics === 'string'
         ? String(researchDocument.find_topics).slice(0, 4_000)
         : ''
@@ -3291,6 +3309,7 @@ serve(async (req) => {
         // Who the email is addressed to, with the greeting rules. Empty for a
         // pitch with no recipient saved.
         recipientsPromptBlock(pitchRecipients),
+        greetingEvidence,
         `<research_report>\n${present(variables.research_report)}\n</research_report>`,
         `<topic_research>\n${present(topicResearch)}\n</topic_research>`,
         '</context>',
@@ -3451,6 +3470,8 @@ serve(async (req) => {
         // with no supporting evidence. One revision pass fixes what it can;
         // anything remaining ships to the UI as visible flags, never
         // silently.
+        // As the writer wrote it, before any revision.
+        const writtenSequence = sequence
         let flags = pitchSequenceChecks(sequence)
         // The call and the parse fail differently for a batch. A failed call
         // saved nothing, so the job fails and a retry asks again. An answer that
@@ -3461,7 +3482,7 @@ serve(async (req) => {
           auditRaw = await runPitchPrompt(
             anthropicKey,
             { model: 'claude-sonnet-5-5', maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
-            `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
+            `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. The greeting line is the writer's decision, made from the <greeting> section: do not list it as unsupported because the research calls the host's name unconfirmed. List it only if it greets someone the <greeting> section names as a guest of a recent episode. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
             usage,
           )
         } catch (_error) {
@@ -3499,6 +3520,16 @@ serve(async (req) => {
             sequence = revised
             flags = pitchSequenceChecks(sequence)
           }
+        }
+
+        // The writer chose who to greet. A revision that blanks that name
+        // for "Hi there," is undoing a decision, not fixing a flag, so the
+        // writer's greeting is kept. Any other change the revision makes stands.
+        sequence = {
+          ...sequence,
+          email_1: keepWriterGreeting(writtenSequence.email_1, sequence.email_1),
+          follow_up_1: keepWriterGreeting(writtenSequence.follow_up_1, sequence.follow_up_1),
+          follow_up_2: keepWriterGreeting(writtenSequence.follow_up_2, sequence.follow_up_2),
         }
 
         await logOperationCost(authContext.admin, {
