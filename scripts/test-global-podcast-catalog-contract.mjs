@@ -115,6 +115,14 @@ assert.match(prepDialog, /const contactIsStale = emailAlreadyUnlocked && storedE
 const recipientCards = readFileSync('src/components/workspace/PitchRecipientCards.tsx', 'utf8')
 assert.match(prepDialog, /stale: contactIsStale,/u)
 assert.match(recipientCards, /verified\.stale \? 'This contact needs a fresh lookup before outreach\.'/u)
-assert.match(recipientCards, /Uses your selected AI key and platform-managed contact enrichment\. AI provider charges apply\./u)
+// What a paid lookup costs, stated on the card that can start one: an
+// operator with their own AI key is told where the charge lands, and one
+// without is told what to connect. The wording was rewritten in "Pitch Step 1:
+// equal cards in one radio group" (51b98fc7); the promise it carries did not
+// change, and this assertion was left behind pointing at the old sentence.
+assert.match(
+  recipientCards,
+  /byoAi \? 'Billed to your AI provider\. No app credits\.' : 'Connect your Claude or OpenAI key in Billing to search\.'/u,
+)
 
 process.stdout.write('Global podcast catalog contract checks passed.\n')
