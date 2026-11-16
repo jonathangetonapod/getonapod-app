@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom'
 
 import { BookingDetailDialog } from '@/components/portal/BookingDetailDialog'
 import { JourneyStatusCard } from '@/components/portal/JourneyStatusCard'
+import { PortalStatTile } from '@/components/portal/PortalStatTile'
 import { PortalLayout } from '@/components/portal/PortalLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { placementStatusLabel } from '@/lib/placementStatus'
 import { plural } from '@/lib/plural'
-import { portalJourneyCounts, portalJourneyStatus } from '@/lib/portalJourney'
+import { portalJourneyCounts, portalJourneyStatus, portalJourneySteps } from '@/lib/portalJourney'
 import { setPortalNotifications, type PortalExperienceBooking } from '@/services/clientPortal'
 
 // The words come from the shared table; only the colours live here.
@@ -216,6 +217,7 @@ export default function PortalDashboardMvp() {
   // "pitch sent" there can never be two different numbers.
   const journeyCounts = portalJourneyCounts(overview)
   const journeyStatus = portalJourneyStatus(journeyCounts)
+  const journeySteps = portalJourneySteps(journeyCounts, review?.approved_count ?? 0)
 
   const latestLive = published
     .filter((booking) => isRecentlyLive(booking.publish_date))
@@ -245,11 +247,11 @@ export default function PortalDashboardMvp() {
       : []),
   ]
   const statsGridClass = {
-    3: 'grid gap-4 sm:grid-cols-3',
-    4: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4',
-    5: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-5',
-    6: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6',
-  }[journeyStats.length] ?? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4'
+    3: 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4',
+    4: 'grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4',
+    5: 'grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5',
+    6: 'grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6',
+  }[journeyStats.length] ?? 'grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4'
 
   return (
     <PortalLayout>
@@ -308,7 +310,7 @@ export default function PortalDashboardMvp() {
           </Card>
         )}
         {reviewHref && review && review.awaiting_count === 0 && review.total_visible > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card px-4 py-3 text-sm shadow-sm">
             <p className="flex items-center gap-2 text-muted-foreground">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
               Shortlist reviewed: {review.approved_count} {review.approved_count === 1 ? 'pick' : 'picks'}. New shows appear here first.
@@ -392,7 +394,7 @@ export default function PortalDashboardMvp() {
           </Card>
         )}
 
-        {journeyStatus && !awaitingShortlist && <JourneyStatusCard status={journeyStatus} />}
+        {journeyStatus && !awaitingShortlist && <JourneyStatusCard status={journeyStatus} steps={journeySteps} />}
 
         {/* Only once there is data to summarize. Rendered unconditionally,
             these tiles asserted "0" of everything during loading and kept
@@ -401,13 +403,7 @@ export default function PortalDashboardMvp() {
         {overview && !awaitingShortlist && (
         <div className={statsGridClass}>
           {journeyStats.map((stat) => (
-            <Card key={stat.label}>
-              <CardHeader className="pb-2">
-                <CardDescription>{stat.label}</CardDescription>
-                <CardTitle className="text-3xl">{stat.value}</CardTitle>
-              </CardHeader>
-              <CardContent><stat.icon className="h-5 w-5 text-muted-foreground" /></CardContent>
-            </Card>
+            <PortalStatTile key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} />
           ))}
         </div>
         )}
@@ -503,9 +499,11 @@ export default function PortalDashboardMvp() {
                 </Button>
               </div>
             ) : bookings.length === 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-                <Headphones className="h-9 w-9" />
-                <p className="font-medium text-foreground">No shows yet</p>
+              <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/20 px-6 py-8 text-center text-muted-foreground">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Headphones className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <p className="mt-1 font-medium text-foreground">No shows yet</p>
                 {/* During outreach "no shows" is true and misleading at once:
                     nothing is booked, and a great deal is under way. */}
                 {journeyCounts.inOutreach > 0 ? (

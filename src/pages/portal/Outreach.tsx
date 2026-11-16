@@ -12,14 +12,16 @@ import { CalendarClock, Loader2, MessageSquare, Mic2, RefreshCw, Send } from 'lu
 
 import { OutreachActivityList } from '@/components/portal/OutreachActivityList'
 import { PortalLayout } from '@/components/portal/PortalLayout'
+import { PortalStatTile } from '@/components/portal/PortalStatTile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { OUTREACH_STAGE_LABELS, PLACEMENT_STATUS_LABELS } from '@/lib/placementStatus'
 import { outreachStageCounts, portalJourneyCounts, portalJourneyStatus } from '@/lib/portalJourney'
 
-// Chart hues validated with the dataviz palette checker (light surface).
-const MESSAGES_COLOR = '#4F46E5'
+// Pitches take the portal's theme colour, so the chart wears the agency's
+// brand; episodes keep a green validated against a light surface.
+const MESSAGES_COLOR = 'hsl(var(--primary))'
 const EPISODES_COLOR = '#059669'
 
 interface MonthBucket {
@@ -144,17 +146,9 @@ export default function PortalOutreach() {
         ) : (
           <>
             {hasOutreach && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                 {tiles.map((stat) => (
-                  <Card key={stat.label}>
-                    <CardHeader className="pb-2">
-                      <CardDescription className="flex items-center gap-2">
-                        <stat.icon className="h-4 w-4" aria-hidden="true" />{stat.label}
-                      </CardDescription>
-                      <CardTitle className="text-3xl tabular-nums">{stat.value}</CardTitle>
-                    </CardHeader>
-                    <CardContent><p className="text-xs text-muted-foreground">{stat.hint}</p></CardContent>
-                  </Card>
+                  <PortalStatTile key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} hint={stat.hint} />
                 ))}
               </div>
             )}
@@ -166,7 +160,7 @@ export default function PortalOutreach() {
               </CardHeader>
               <CardContent>
                 {status && (
-                  <div className="mb-5 rounded-lg border bg-muted/20 px-4 py-3">
+                  <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
                     <p className="text-sm font-semibold">{status.headline}</p>
                     <p className="mt-0.5 text-sm leading-6 text-muted-foreground">{status.detail}</p>
                   </div>
@@ -178,15 +172,15 @@ export default function PortalOutreach() {
                 ) : (
                   <ul className="space-y-2.5" aria-label="Your pipeline">
                     {pipeline.map((row) => (
-                      <li key={row.label} className="grid grid-cols-[9.5rem,1fr,2rem] items-center gap-3">
-                        <span className="text-sm text-muted-foreground">{row.label}</span>
-                        <span className="h-4 overflow-hidden rounded-sm bg-muted/40">
+                      <li key={row.label} className="grid grid-cols-[9.5rem,1fr,2.5rem] items-center gap-3">
+                        <span className={row.count > 0 ? 'text-sm font-medium' : 'text-sm text-muted-foreground'}>{row.label}</span>
+                        <span className="h-2.5 overflow-hidden rounded-full bg-muted/60">
                           <span
-                            className="block h-full rounded-sm bg-primary/80"
+                            className="block h-full rounded-full bg-primary"
                             style={{ width: `${(row.count / pipelineMax) * 100}%` }}
                           />
                         </span>
-                        <span className="text-right text-sm font-semibold tabular-nums">{row.count}</span>
+                        <span className={`text-right text-sm tabular-nums ${row.count > 0 ? 'font-semibold' : 'text-muted-foreground'}`}>{row.count}</span>
                       </li>
                     ))}
                   </ul>
@@ -197,17 +191,15 @@ export default function PortalOutreach() {
             {/* Two empty charts are two cards of nothing; they earn their
                 space once either has a month to show. */}
             {(hasMessageData || hasEpisodeData) && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className={`grid gap-4 ${hasMessageData && hasEpisodeData ? 'lg:grid-cols-2' : ''}`}>
+              {hasMessageData && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Pitches emailed by month</CardTitle>
                   <CardDescription>Shows that were emailed a pitch for you.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {!hasMessageData ? (
-                    <p className="text-sm text-muted-foreground">No pitches have been emailed in the last six months.</p>
-                  ) : (
-                    <div className="h-44" role="img" aria-label="Bar chart of outreach messages sent per month">
+                  <div className="h-44" role="img" aria-label="Bar chart of outreach messages sent per month">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={messagesByMonth} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
                           <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.6} />
@@ -218,19 +210,17 @@ export default function PortalOutreach() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                  )}
                 </CardContent>
               </Card>
+              )}
+              {hasEpisodeData && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Episodes live by month</CardTitle>
                   <CardDescription>Your appearances that went live.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {!hasEpisodeData ? (
-                    <p className="text-sm text-muted-foreground">No episodes published in the last six months.</p>
-                  ) : (
-                    <div className="h-44" role="img" aria-label="Bar chart of published episodes per month">
+                  <div className="h-44" role="img" aria-label="Bar chart of published episodes per month">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={episodesByMonth} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
                           <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.6} />
@@ -241,9 +231,9 @@ export default function PortalOutreach() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
-                  )}
                 </CardContent>
               </Card>
+              )}
             </div>
             )}
 

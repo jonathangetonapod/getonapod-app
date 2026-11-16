@@ -143,3 +143,28 @@ export function portalJourneyStatus(counts: PortalJourneyCounts): PortalJourneyS
   }
   return null
 }
+
+export interface PortalJourneyStep {
+  label: string
+  reached: boolean
+}
+
+/**
+ * The whole road, with how far along it the client is. A later step reached
+ * marks the earlier ones too: a booked show had a pitch and a reply whether or
+ * not this record still carries them.
+ */
+export function portalJourneySteps(counts: PortalJourneyCounts, showsPicked: number): PortalJourneyStep[] {
+  const reached = [
+    showsPicked > 0,
+    counts.inOutreach > 0,
+    counts.emailed > 0,
+    counts.replied > 0 || counts.conversations > 0,
+    counts.secured > 0,
+    counts.live > 0,
+  ]
+  const labels = ['Shortlist', 'Pitches', 'Emailed', 'Host replies', 'Booked', 'On air']
+  let furthest = -1
+  reached.forEach((value, index) => { if (value) furthest = index })
+  return labels.map((label, index) => ({ label, reached: index <= furthest }))
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { outreachStageCounts, portalJourneyCounts, portalJourneyStatus } from '@/lib/portalJourney'
+import { outreachStageCounts, portalJourneyCounts, portalJourneyStatus, portalJourneySteps } from '@/lib/portalJourney'
 import type { PortalExperienceBooking, PortalOutreachTarget } from '@/services/clientPortal'
 
 const target = (stage: PortalOutreachTarget['stage'], id: string): PortalOutreachTarget => ({
@@ -132,5 +132,26 @@ describe('portal journey status', () => {
 
   it('names conversations when nothing is confirmed yet', () => {
     expect(portalJourneyStatus({ ...none, conversations: 1 })?.headline).toBe('Your team is talking to 1 host')
+  })
+})
+
+describe('portal journey steps', () => {
+  const none = { preparing: 0, queued: 0, emailed: 0, replied: 0, inOutreach: 0, conversations: 0, secured: 0, live: 0 }
+  const reached = (steps: ReturnType<typeof portalJourneySteps>) => steps.filter((step) => step.reached).map((step) => step.label)
+
+  it('marks how far outreach has got', () => {
+    expect(reached(portalJourneySteps({ ...none, queued: 84, emailed: 15, inOutreach: 99 }, 108)))
+      .toEqual(['Shortlist', 'Pitches', 'Emailed'])
+  })
+
+  it('marks nothing before the shortlist is picked', () => {
+    expect(reached(portalJourneySteps(none, 0))).toEqual([])
+  })
+
+  // A booking added by hand has no outreach rows behind it; the road still
+  // reads as travelled up to that point.
+  it('fills in the steps behind the furthest one reached', () => {
+    expect(reached(portalJourneySteps({ ...none, secured: 1 }, 0)))
+      .toEqual(['Shortlist', 'Pitches', 'Emailed', 'Host replies', 'Booked'])
   })
 })

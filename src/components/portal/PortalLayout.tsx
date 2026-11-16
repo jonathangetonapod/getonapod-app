@@ -15,6 +15,7 @@ import {
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { cn } from '@/lib/utils'
+import { applyBrandTheme } from '@/lib/brandTheme'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { portalLoginPath, rememberPortalBrand } from '@/components/portal/portalBrandMemory'
 import { isPortalPreview } from '@/components/portal/portalPreviewMarker'
@@ -49,6 +50,10 @@ export function PortalLayout({ children }: PortalLayoutProps) {
       primary_color: primaryColor,
     })
   }, [branding?.name, branding?.logo_url, isImpersonating, primaryColor])
+
+  // The agency's colour for every button, link and chart, not only the logo
+  // tile. Undone on leaving the portal so the rest of the app keeps its own.
+  useEffect(() => applyBrandTheme(primaryColor), [primaryColor])
 
   const handleLogout = async () => {
     await logout()
@@ -97,12 +102,12 @@ export function PortalLayout({ children }: PortalLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <Helmet>
         <title>{documentTitle}</title>
       </Helmet>
       {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b bg-background">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           {/* Logo/Brand */}
           <div className="flex items-center gap-2">
@@ -233,12 +238,12 @@ export function PortalLayout({ children }: PortalLayoutProps) {
       </div>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 md:py-8">
+      <main className="container mx-auto w-full flex-1 px-4 py-6 md:py-8">
         {children}
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-auto">
+      <footer className="mt-auto border-t bg-background">
         <div className="container mx-auto px-4 py-6">
           <p className="text-center text-sm text-muted-foreground">
             © {new Date().getFullYear()} {agencyName}. All rights reserved.
