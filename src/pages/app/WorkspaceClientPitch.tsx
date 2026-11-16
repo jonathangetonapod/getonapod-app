@@ -246,6 +246,7 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
           shortlistHref={shortlistHref}
           podcast={podcast}
           byoAi={(detail.ai_keys?.anthropic === true || detail.ai_keys?.openai === true)}
+          nextPitch={pitchQueue.next ? { name: pitchQueue.next.podcast_name, href: pitchHrefFor(pitchQueue.next.id) } : null}
           onArchive={() => setArchiveOpen(true)}
         />
       </div>

@@ -739,21 +739,29 @@ assert.match(stagingMigration, /ADD COLUMN IF NOT EXISTS lead_staged_campaign_st
 // The dialog holds a confirmation naming the contact, the campaign, and whether
 // the sequence is running, with the next step spelled out.
 assert.match(prepDialog, /setStagedResult\(\{[\s\S]*?willSend: result\.will_send/u)
-assert.match(prepDialog, /aria-label="Pitch added to client campaign"/u)
+// The confirmation is its own component; the dialog hands it the result.
+const stagedConfirmation = readFileSync('src/components/workspace/PitchStagedConfirmation.tsx', 'utf8')
+assert.match(prepDialog, /<PitchStagedConfirmation\s+result=\{stagedResult\}/u)
+assert.match(stagedConfirmation, /aria-label="Pitch added to client campaign"/u)
 // Three outcomes, not two. "Paused" and "no lead exists" both mean nothing is
 // going out today, but only one of them is finished work — reporting a lead
 // that was never created sends somebody to Instantly to look for a host who is
 // not there.
+assert.match(stagedConfirmation, /const noLead = !result\.leadStaged\s+const live = result\.leadStaged && result\.willSend/u)
 assert.match(
-  prepDialog,
-  /'Live — starts automatically'[\s\S]*?stagedResult\.leadStaged[\s\S]*?'Paused — nothing sends yet'[\s\S]*?'Nothing to send — no lead yet'/u,
-  'the confirmation must separate a paused campaign from a missing lead',
+  stagedConfirmation,
+  /noLead \? 'Nothing to send — no lead yet' : live \? 'Live — sends automatically' : 'Paused — nothing sends yet'/u,
+  'the confirmation must separate a live send, a paused campaign and a missing lead',
 )
+// Only the unfinished outcome is a warning; a send the operator confirmed is not.
+assert.match(stagedConfirmation, /noLead \? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50\/60'/u)
 assert.match(
-  prepDialog,
-  /stagedResult\.leadStaged\s*\n?\s*\?\s*`\$\{stagedResult\.hostName[\s\S]*?as a lead/u,
+  stagedConfirmation,
+  /noLead\s+\? `The podcast and its sequence are saved[\s\S]*?No lead was created[\s\S]*?: live\s+\? `\$\{host\} was[\s\S]*?: `\$\{host\} was[\s\S]*?as a lead/u,
   'the lead sentence may only render when a lead was staged',
 )
+// The next pitch is offered only for finished work, never beside a missing lead.
+assert.match(stagedConfirmation, /\{nextPitch && !noLead && \(/u)
 assert.doesNotMatch(
   prepDialog.match(/onSuccess: async \(result\) => \{[\s\S]*?\n    \},/u)[0],
   /onOpenChange\(false\)/u,
@@ -794,7 +802,8 @@ assert.match(prepDialog, /const \[prepareError, setPrepareError\] = useState<[\s
 // email a host the operator was trying to take out of the campaign.
 assert.match(prepDialog, /else if \(retrying === 'remove'\) removeMutation\.mutate\(\)/u)
 // The undo offered right after a send needs the alert the footer no longer has.
-assert.match(prepDialog, /\{prepareErrorAlert && <div className="mt-6 w-full max-w-xl text-left">/u)
+assert.match(prepDialog, /errorAlert=\{prepareErrorAlert\}/u)
+assert.match(stagedConfirmation, /\{errorAlert && <div className="mt-6 w-full max-w-xl text-left">\{errorAlert\}<\/div>\}/u)
 assert.match(prepDialog, /role="alert"[\s\S]*?This pitch was not sent to Client Campaign/u)
 assert.doesNotMatch(
   prepDialog.match(/const prepareMutation = useMutation\(\{[\s\S]*?\n  \}\)/u)[0],

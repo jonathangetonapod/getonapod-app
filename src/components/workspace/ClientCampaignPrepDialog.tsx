@@ -1,4 +1,5 @@
 import { ResearchSourceNote } from '@/components/workspace/ResearchSourceNote'
+import { PitchStagedConfirmation, type PitchStagedResult } from '@/components/workspace/PitchStagedConfirmation'
 import { showOperationError } from '@/lib/billingRecovery'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -137,6 +138,8 @@ export interface ClientCampaignPrepProps {
   billingHref: string
   /** The client's Shortlist tab: where the page layout returns to. */
   shortlistHref?: string
+  /** The next podcast in the pitch queue, offered once this one is sent. */
+  nextPitch?: { name: string; href: string } | null
   podcast: ClientShortlistPodcast | null
   /**
    * Whether the flow is on screen. A dialog passes its open state so queries
@@ -176,19 +179,7 @@ interface ClientCampaignPrepDialogProps extends Omit<
 
 type PitchStep = 'email' | 'research' | 'pitch'
 
-interface PrepareResult {
-  added: boolean
-  /**
-   * The lead reached Instantly. Without it the podcast is on the campaign list
-   * and the copy is saved, but no host exists to receive any of it — a
-   * difference the screen used to paper over.
-   */
-  leadStaged: boolean
-  willSend: boolean
-  hostName: string
-  contactEmail: string
-  campaignName: string
-}
+type PrepareResult = PitchStagedResult
 type SequenceEmailStep = 'opening' | 'follow_up_one' | 'follow_up_two'
 type ResearchProgressStatus = 'complete' | 'active' | 'queued' | 'failed'
 type EmailUnlockVisualStatus = 'available' | 'queued' | 'running' | 'unlocked' | 'not_found' | 'failed'
@@ -328,6 +319,7 @@ export function ClientCampaignPrep({
   onArchive,
   onPrepared,
   onDismiss,
+  nextPitch,
   onDirtyChange,
 }: ClientCampaignPrepProps) {
   const page = layout === 'page'
@@ -2569,99 +2561,22 @@ export function ClientCampaignPrep({
   ) : null
 
   const body = stagedResult ? (
-            <div
-              role="status"
-              aria-label="Pitch added to client campaign"
-              className={stagedResult.willSend || !stagedResult.leadStaged
-                ? `${page ? '' : 'm-6 '}flex min-h-80 flex-col items-center justify-center rounded-2xl border border-amber-300 bg-amber-50 px-6 py-10 text-center`
-                : `${page ? '' : 'm-6 '}flex min-h-80 flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/60 px-6 py-10 text-center`}
-            >
-              {/* Green is a claim that the work is finished. Without a lead it
-                  is not: the podcast is listed and nobody can be reached. */}
-              {stagedResult.willSend || !stagedResult.leadStaged
-                ? <AlertCircle className="h-10 w-10 text-amber-700" />
-                : <CheckCircle2 className="h-10 w-10 text-emerald-600" />}
-              <h3 className="mt-4 text-lg font-semibold">
-                {stagedResult.willSend
-                  ? `${podcast?.podcast_name || 'This podcast'} is now in a live sequence`
-                  : stagedResult.leadStaged
-                    ? `${podcast?.podcast_name || 'This podcast'} was added to ${stagedResult.campaignName}`
-                    : `${podcast?.podcast_name || 'This podcast'} was added, but has no lead`}
-              </h3>
-              {/* Saying "added as a lead" when no lead exists is the failure
-                  that sends somebody to Instantly looking for a host who was
-                  never created. The sequence only attaches to a real lead. */}
-              <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                {stagedResult.leadStaged
-                  ? `${stagedResult.hostName || 'The host'} was ${stagedResult.added ? 'added' : 'updated'} in ${stagedResult.campaignName} as a lead, with the full three-email sequence attached.`
-                  : `The podcast and its sequence are saved to ${stagedResult.campaignName}. No lead was created, because there is no contact email to create one for, so nothing can reach the host yet.`}
-              </p>
-              <dl className="mt-5 w-full max-w-sm space-y-2 rounded-xl border bg-background/80 p-4 text-left text-xs">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Contact</dt>
-                  <dd className={stagedResult.contactEmail ? 'truncate font-medium' : 'truncate font-medium text-amber-800'}>
-                    {stagedResult.contactEmail || 'None yet'}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Campaign</dt><dd className="truncate font-medium">{stagedResult.campaignName}</dd></div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Sending</dt>
-                  <dd className={stagedResult.willSend || !stagedResult.leadStaged ? 'font-semibold text-amber-800' : 'font-medium'}>
-                    {stagedResult.willSend
-                      ? 'Live — starts automatically'
-                      : stagedResult.leadStaged
-                        ? 'Paused — nothing sends yet'
-                        : 'Nothing to send — no lead yet'}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-4 max-w-md text-xs leading-5 text-muted-foreground">
-                {stagedResult.willSend
-                  ? 'The opening email goes out on the campaign\u2019s next send window, then the two follow-ups on day 6 and day 13. To stop it, pause the campaign in Client Campaigns.'
-                  : stagedResult.leadStaged
-                    ? 'Open Client Campaigns and choose Approve & start outreach when you are ready for this to send. You can keep editing the sequence until then.'
-                    : 'Add a contact email and send again to create the lead. Approving outreach before then starts a sequence with nobody in it.'}
-              </p>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-                {/* The one move that finishes what this screen reports. */}
-                {!stagedResult.leadStaged && (
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setStagedResult(null)
-                      setActiveStep('email')
-                    }}
-                  >
-                    Add a contact email
-                  </Button>
-                )}
-                {page ? (
-                  <>
-                    {shortlistHref && <Button asChild variant="outline"><Link to={shortlistHref}><ArrowLeft className="mr-2 h-4 w-4" />Back to shortlist</Link></Button>}
-                    <Button asChild variant={stagedResult.willSend || !stagedResult.leadStaged ? 'outline' : 'default'}><Link to={campaignHref}>Open campaign<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
-                  </>
-                ) : (
-                  <>
-                    <Button asChild variant={stagedResult.willSend || !stagedResult.leadStaged ? 'outline' : 'default'}><Link to={campaignHref}>Open Client Campaigns</Link></Button>
-                    <Button type="button" variant={stagedResult.willSend ? 'outline' : 'default'} onClick={onDismiss}>Done</Button>
-                  </>
-                )}
-              </div>
-              {prepareErrorAlert && <div className="mt-6 w-full max-w-xl text-left">{prepareErrorAlert}</div>}
-              {/* The undo. Most valuable in exactly the moment it is offered:
-                  right after a send the operator did not mean to make. */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="mt-3 text-destructive hover:text-destructive"
-                onClick={() => setConfirmRemoveOpen(true)}
-                disabled={removeMutation.isPending}
-              >
-                {removeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Remove from campaign
-              </Button>
-            </div>
+            <PitchStagedConfirmation
+              result={stagedResult}
+              podcastName={podcast?.podcast_name || 'This podcast'}
+              page={page}
+              campaignHref={campaignHref}
+              shortlistHref={shortlistHref}
+              nextPitch={nextPitch}
+              onDismiss={onDismiss}
+              onAddEmail={() => {
+                setStagedResult(null)
+                setActiveStep('email')
+              }}
+              onRemove={() => setConfirmRemoveOpen(true)}
+              removing={removeMutation.isPending}
+              errorAlert={prepareErrorAlert}
+            />
           ) : campaignQuery.isLoading ? (
             <div className="flex min-h-96 flex-col items-center justify-center gap-3"><Loader2 className="h-7 w-7 animate-spin text-primary" /><p className="text-sm text-muted-foreground">Loading the pitch workspace…</p></div>
           ) : locked ? (

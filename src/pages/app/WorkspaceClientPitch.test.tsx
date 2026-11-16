@@ -1255,9 +1255,15 @@ describe('WorkspaceClientPitch', () => {
     await waitFor(() => expect(prepareWorkspaceCampaignPodcast).toHaveBeenCalled())
 
     const confirmation = await screen.findByRole('status', { name: 'Pitch added to client campaign' })
-    expect(within(confirmation).getByText(/is now in a live sequence/i)).toBeInTheDocument()
-    expect(within(confirmation).getByText('Live — starts automatically')).toBeInTheDocument()
-    expect(within(confirmation).getByText(/To stop it, pause the campaign/i)).toBeInTheDocument()
+    // A send the operator just confirmed reads as done, with what happens next.
+    expect(within(confirmation).getByRole('heading', { name: /^Pitch sent: .+ is in the live sequence$/ })).toBeInTheDocument()
+    expect(within(confirmation).getByText(/No further approval is needed/)).toBeInTheDocument()
+    expect(within(confirmation).getByText('Live — sends automatically')).toBeInTheDocument()
+    const next = within(within(confirmation).getByRole('list', { name: 'What happens next' }))
+    expect(next.getByText('Next send window')).toBeInTheDocument()
+    expect(next.getByText('Day 6, same thread')).toBeInTheDocument()
+    expect(next.getByText('Day 13, same thread')).toBeInTheDocument()
+    expect(within(confirmation).getByText(/Follow-ups stop as soon as the host replies\. To hold this one back, remove it below, or pause the campaign/)).toBeInTheDocument()
   })
 
   it('says nothing sends when the campaign is paused', async () => {
