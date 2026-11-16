@@ -56,7 +56,7 @@ assert.match(edge, /nullsFirst: true/u)
 // Outreach activity: internal failures never reach the client, and only
 // aggregate engagement counts are exposed — never message content.
 assert.match(edge, /if \(status === 'failed'\) return null/u)
-assert.match(edge, /select\('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,last_contact_at,last_activity_at,email_open_count,email_reply_count'\)/u)
+assert.match(edge, /select\('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,first_contact_at,last_contact_at,last_activity_at,email_open_count,email_reply_count'\)/u)
 // A pitch added straight into the sending campaign never sets launched_at, so
 // the stage must read lead_staged_at too: written and waiting to send is
 // "queued", and only an email the platform reports makes it "contacted".
@@ -66,6 +66,12 @@ assert.match(edge, /: \{ stage: 'queued', sentAt: null, queuedAt \}/u)
 // page's numbers stay exact past two hundred shows.
 assert.match(edge, /outreachPipeline\[journey\.stage\] = [\s\S]{0,2500}?\.slice\(0, 200\)/u)
 assert.match(edge, /outreach_pipeline: outreachPipeline,/u)
+// The client's "emailed" date comes from the first send, which never moves —
+// last_contact_at advances with every follow-up and made the date creep.
+assert.match(edge, /const firstContactAt = stringOrNull\(row\.first_contact_at\)/u)
+assert.match(edge, /const sentAt = launchedAt \?\? firstContactAt/u)
+// Reach rides along from the shortlist row that is already loaded.
+assert.match(edge, /audience_size: shortlist \? positiveNumber\(shortlist\.audience_size\) : null/u)
 
 // Release plumbing.
 assert.match(config, /\[functions\.portal-experience\]\nverify_jwt = false/u)

@@ -246,6 +246,8 @@ export interface WorkspaceCampaignTarget {
    * When an email last went out to this host. Null means none has. Distinct
    * from last_activity_at, which moves on any change to the lead record.
    */
+  /** When the first pitch email reached the host. Written once, never moved. */
+  first_contact_at: string | null
   last_contact_at: string | null
   last_activity_at: string | null
   last_error: string | null

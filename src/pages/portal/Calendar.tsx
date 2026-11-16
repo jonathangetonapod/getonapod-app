@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Mic2, Plus, Radio, Re
 import { AddCalendarEventDialog } from '@/components/portal/AddCalendarEventDialog'
 import { BookingDetailDialog } from '@/components/portal/BookingDetailDialog'
 import { PortalLayout } from '@/components/portal/PortalLayout'
+import { PortalStatTile } from '@/components/portal/PortalStatTile'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
@@ -171,33 +172,30 @@ export default function PortalCalendar() {
           </div>
         ) : (
           <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border bg-card p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next recording</p>
-              <p className="mt-1 truncate text-lg font-semibold">
-                {summary.nextRecording ? displayDate(summary.nextRecording.date) : 'Not scheduled'}
+          {/* The next date is the question this page is opened for, so it
+              takes the full width on a phone and the two counts share a row
+              beneath it. */}
+          <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="col-span-2 rounded-xl border bg-card p-4 shadow-sm sm:col-span-1 sm:p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">Next recording</p>
+                  <p className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">
+                    {summary.nextRecording ? displayDate(summary.nextRecording.date) : 'Not scheduled'}
+                  </p>
+                </div>
+                <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary min-[420px]:flex">
+                  <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+              <p className="mt-2 truncate text-xs text-muted-foreground">
+                {summary.nextRecording
+                  ? `${summary.nextRecording.booking.podcast_name} · time to be confirmed by your team`
+                  : 'Your team will add dates as they book them.'}
               </p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {summary.nextRecording ? summary.nextRecording.booking.podcast_name : 'Your team will add dates as they book them.'}
-              </p>
-              {summary.nextRecording && (
-                <p className="mt-0.5 text-xs text-muted-foreground">Time to be confirmed by your team</p>
-              )}
             </div>
-            <div className="rounded-xl border bg-card p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recordings ahead</p>
-              <p className="mt-1 flex items-center gap-2 text-lg font-semibold">
-                <Mic2 className="h-4 w-4 text-violet-600" />{summary.recordings}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Booked and planned dates.</p>
-            </div>
-            <div className="rounded-xl border bg-card p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Episodes going live</p>
-              <p className="mt-1 flex items-center gap-2 text-lg font-semibold">
-                <Radio className="h-4 w-4 text-emerald-600" />{summary.releases}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Release dates still to come.</p>
-            </div>
+            <PortalStatTile label="Recordings ahead" value={summary.recordings} icon={Mic2} hint="Booked and planned dates." />
+            <PortalStatTile label="Episodes going live" value={summary.releases} icon={Radio} hint="Release dates still to come." />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
@@ -241,7 +239,7 @@ export default function PortalCalendar() {
                       <div
                         key={cell.iso}
                         className={cn(
-                          'min-h-24 border-b border-r p-1.5 text-left align-top last:border-r-0',
+                          'min-h-16 border-b border-r p-1 text-left align-top last:border-r-0 sm:min-h-24 sm:p-1.5',
                           (index + 1) % 7 === 0 && 'border-r-0',
                           index >= cells.length - 7 && 'border-b-0',
                           !cell.inMonth && 'bg-muted/25',

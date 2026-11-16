@@ -38,6 +38,8 @@ describe('PortalOutreach', () => {
             podcast_name: 'Operator Weekly',
             podcast_image_url: null,
             stage: 'replied',
+            audience_size: 12400,
+            itunes_rating: 4.8,
             first_message_at: '2026-07-10T10:00:00.000Z',
             last_activity_at: '2026-07-12T10:00:00.000Z',
             opens: 5,
@@ -82,7 +84,12 @@ describe('PortalOutreach', () => {
     expect(screen.getAllByText('Host replied').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Pitch sent').length).toBeGreaterThan(0)
     expect(screen.getByText('Your personalized pitch is being written')).toBeInTheDocument()
-    expect(screen.getByText(/5 opens · 1 reply/)).toBeInTheDocument()
+    expect(screen.getByText('5 opens')).toBeInTheDocument()
+    expect(screen.getByText('1 reply')).toBeInTheDocument()
+    // Reach rides along from the shortlist, so a list of names also says
+    // whether the shows were worth pitching.
+    expect(screen.getByText(/12.4K listeners/)).toBeInTheDocument()
+    expect(screen.getByText('4.8')).toBeInTheDocument()
   })
 
   // The stage words are the shared client vocabulary, not the workspace's.

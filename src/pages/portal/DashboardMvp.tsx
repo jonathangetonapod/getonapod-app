@@ -32,6 +32,7 @@ import { Switch } from '@/components/ui/switch'
 import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { safeExternalUrl } from '@/lib/externalUrl'
+import { compactNumber } from '@/lib/compactNumber'
 import { placementStatusLabel } from '@/lib/placementStatus'
 import { plural } from '@/lib/plural'
 import { portalJourneyCounts, portalJourneyStatus, portalJourneySteps } from '@/lib/portalJourney'
@@ -68,11 +69,6 @@ const bookingDate = (booking: PortalExperienceBooking) => {
     return booking.recording_date || booking.scheduled_date || booking.publish_date
   }
   return booking.scheduled_date || booking.recording_date || booking.publish_date
-}
-
-const compactNumber = (value: number | null): string | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
-  return Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
 const isUpcoming = (value: string | null): boolean => {

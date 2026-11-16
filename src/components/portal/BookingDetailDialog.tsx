@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { CalendarPlus, CheckCircle2, Circle, ExternalLink, Headphones, Loader2, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { compactNumber } from '@/lib/compactNumber'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,11 +25,6 @@ const displayDate = (value: string | null | undefined) => {
   return Number.isNaN(date.getTime())
     ? null
     : date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-const compactNumber = (value: number | null): string | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
-  return Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
 interface TimelineStep {

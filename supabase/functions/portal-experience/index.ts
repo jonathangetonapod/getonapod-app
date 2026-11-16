@@ -378,7 +378,7 @@ serve(async (req) => {
         .maybeSingle(),
       admin
         .from('workspace_client_campaign_targets')
-        .select('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,last_contact_at,last_activity_at,email_open_count,email_reply_count')
+        .select('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,first_contact_at,last_contact_at,last_activity_at,email_open_count,email_reply_count')
         .eq('client_id', clientId)
         .limit(5_000),
       admin
@@ -497,11 +497,17 @@ serve(async (req) => {
       if (status === 'failed') return null
       const launchedAt = stringOrNull(row.launched_at)
       const stagedAt = stringOrNull(row.lead_staged_at)
-      const lastContactAt = stringOrNull(row.last_contact_at)
+      /*
+        * first_contact_at, not last_contact_at: the latter advances with every
+        * follow-up, so a client who read "Emailed Nov 9" saw the same show say
+        * "Emailed Nov 16" a week later. The fallback is for a row the backfill
+        * could not reach; a date that moves beats no date at all.
+        */
+      const firstContactAt = stringOrNull(row.first_contact_at) ?? stringOrNull(row.last_contact_at)
       const queuedAt = stagedAt ?? launchedAt
       // An explicit launch counts as sent, as it always has. A staged pitch
       // counts once the sending platform reports an email or an open.
-      const sentAt = launchedAt ?? lastContactAt
+      const sentAt = launchedAt ?? firstContactAt
       if (status === 'replied') return { stage: 'replied', sentAt, queuedAt }
       if (status === 'completed') return { stage: 'completed', sentAt, queuedAt }
       const inCampaign = Boolean(queuedAt) || status === 'in_outreach' || status === 'launching'
@@ -524,9 +530,18 @@ serve(async (req) => {
     // Hosts a pitch was emailed to, booked shows included: a show that became
     // a booking was still contacted.
     let emailedShows = 0
+    /* Reach, from the shortlist row this target came from. A list of a
+     * hundred podcast names says nothing about whether the work was any good;
+     * the audience and rating were already loaded for these same shows and
+     * thrown away. */
+    const positiveNumber = (value: unknown): number | null =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
     const outreachTargets = ((targetsResult.data ?? []) as Array<Record<string, unknown>>)
       .flatMap((row) => {
         const journey = targetJourney(row)
+        const shortlist = typeof row.shortlist_podcast_id === 'string'
+          ? shortlistById.get(row.shortlist_podcast_id)
+          : null
         if (!journey || typeof row.podcast_name !== 'string' || !row.podcast_name) return []
         if (['contacted', 'replied', 'completed'].includes(journey.stage)) emailedShows += 1
         if (typeof row.shortlist_podcast_id === 'string' && bookedShortlistIds.has(row.shortlist_podcast_id)) {
@@ -540,6 +555,8 @@ serve(async (req) => {
             ? imageByShortlistId.get(row.shortlist_podcast_id) ?? null
             : null,
           stage: journey.stage,
+          audience_size: shortlist ? positiveNumber(shortlist.audience_size) : null,
+          itunes_rating: shortlist ? positiveNumber(shortlist.itunes_rating) : null,
           first_message_at: journey.sentAt,
           queued_at: journey.queuedAt,
           last_activity_at: typeof row.last_activity_at === 'string' ? row.last_activity_at : null,

@@ -213,6 +213,9 @@ export interface PortalOutreachTarget {
   podcast_image_url: string | null
   /** queued: the pitch is written and in the sending campaign, not yet emailed. */
   stage: 'preparing' | 'queued' | 'contacted' | 'replied' | 'completed'
+  /** Reach of the show, from the shortlist row. Absent from older responses. */
+  audience_size?: number | null
+  itunes_rating?: number | null
   first_message_at: string | null
   /** When the pitch went into the sending campaign. Absent from older responses. */
   queued_at?: string | null

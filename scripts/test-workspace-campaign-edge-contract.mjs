@@ -322,7 +322,7 @@ assert.match(
   /last_contact_at: lead\.timestamp_last_contact/u,
   'the last contact time must be stored from the provider field of that name',
 )
-assert.match(edge, /"instantly_campaign_id",\s*\n\s*"last_contact_at",/u)
+assert.match(edge, /"instantly_campaign_id",\s*\n\s*"first_contact_at",\s*\n\s*"last_contact_at",/u)
 assert.match(edge, /last_contact_at: target\.last_contact_at,/u)
 
 // An operator's edit to a reply draft persists, and merges into the stored
@@ -1779,6 +1779,19 @@ console.log('Workspace Client Campaign inbox write-safety checks passed')
   assert.match(providerCore, /deleteCampaign\(id: string\): Promise<"deleted" \| "paused">/u)
   assert.match(adapter, /async deleteCampaign[\s\S]*?`\/campaigns\/\$\{encodeURIComponent\(id\)\}`,\s*\{ method: "DELETE" \}/u)
 }
+// The first send time is written once and never moved: last_contact_at
+// advances with every follow-up, and the client portal reads the first one.
+// Every path that records a send must keep an existing value.
+const guardedFirstContact = edge.match(/first_contact_at: target\.first_contact_at \?\?/gu) ?? []
+assert.ok(
+  guardedFirstContact.length >= 3,
+  `every send path must record first_contact_at without overwriting it; found ${guardedFirstContact.length}`,
+)
+assert.ok(
+  !/first_contact_at: lead\./u.test(edge),
+  'first_contact_at must never be written straight from the provider, which would move it',
+)
+
 console.log('Workspace Client Campaign delete checks passed')
 {
   const fix = readFileSync('supabase/migrations/20261112000100_bookings_campaign_target_fk_set_null_column.sql', 'utf8')

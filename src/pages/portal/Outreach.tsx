@@ -172,15 +172,15 @@ export default function PortalOutreach() {
                 ) : (
                   <ul className="space-y-2.5" aria-label="Your pipeline">
                     {pipeline.map((row) => (
-                      <li key={row.label} className="grid grid-cols-[9.5rem,1fr,2.5rem] items-center gap-3">
-                        <span className={row.count > 0 ? 'text-sm font-medium' : 'text-sm text-muted-foreground'}>{row.label}</span>
+                      <li key={row.label} className="grid grid-cols-[7.5rem,1fr,2rem] items-center gap-2 sm:grid-cols-[9.5rem,1fr,2.5rem] sm:gap-3">
+                        <span className={`text-xs sm:text-sm ${row.count > 0 ? 'font-medium' : 'text-muted-foreground'}`}>{row.label}</span>
                         <span className="h-2.5 overflow-hidden rounded-full bg-muted/60">
                           <span
                             className="block h-full rounded-full bg-primary"
                             style={{ width: `${(row.count / pipelineMax) * 100}%` }}
                           />
                         </span>
-                        <span className={`text-right text-sm tabular-nums ${row.count > 0 ? 'font-semibold' : 'text-muted-foreground'}`}>{row.count}</span>
+                        <span className={`text-right text-xs tabular-nums sm:text-sm ${row.count > 0 ? 'font-semibold' : 'text-muted-foreground'}`}>{row.count}</span>
                       </li>
                     ))}
                   </ul>

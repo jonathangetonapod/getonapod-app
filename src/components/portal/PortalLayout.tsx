@@ -211,7 +211,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
       {/* Navigation Tabs */}
       <div className="border-b bg-background">
         <div className="container mx-auto px-4">
-          <nav className="flex gap-1 overflow-x-auto" aria-label="Portal sections">
+          <nav className="flex gap-0.5 overflow-x-auto sm:gap-1" aria-label="Portal sections">
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.path
@@ -221,14 +221,18 @@ export function PortalLayout({ children }: PortalLayoutProps) {
                   to={item.path}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                    // Four tabs have to fit a 360px screen: equal shares and
+                    // tighter type on a phone, the roomier shape from sm up.
+                    'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-2 py-3 text-xs font-medium transition-colors sm:flex-none sm:justify-start sm:gap-2 sm:px-4 sm:text-sm',
                     isActive
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/50'
                   )}
                   style={isActive && accentColor ? { borderColor: accentColor, color: accentColor } : undefined}
                 >
-                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {/* Below ~400px four labels plus four icons do not fit; the label is
+                      the part that has to survive. */}
+                  <Icon className="hidden h-4 w-4 shrink-0 min-[400px]:block" aria-hidden="true" />
                   {item.label}
                 </Link>
               )

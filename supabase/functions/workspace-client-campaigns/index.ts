@@ -188,6 +188,7 @@ const TARGET_COLUMNS = [
   "instantly_lead_id",
   "instantly_lead_status",
   "instantly_campaign_id",
+  "first_contact_at",
   "last_contact_at",
   "email_open_count",
   "email_reply_count",
@@ -312,6 +313,8 @@ interface TargetRow {
   launched_at: string | null;
   lead_staged_at: string | null;
   lead_staged_campaign_status: number | null;
+  /** When the first pitch email reached the host. Written once, never moved. */
+  first_contact_at: string | null;
   /** When an email last went out, as opposed to when the record last moved. */
   last_contact_at: string | null;
   last_activity_at: string | null;
@@ -684,6 +687,7 @@ function targetDto(target: TargetRow) {
     // sends and staging into a paused one does not.
     lead_staged_at: target.lead_staged_at || null,
     lead_staged_campaign_status: target.lead_staged_campaign_status ?? null,
+    first_contact_at: target.first_contact_at,
     last_contact_at: target.last_contact_at,
     last_activity_at: target.last_activity_at,
     last_error: target.last_error,
@@ -2498,6 +2502,9 @@ async function launchTarget(
           approved_by: context.user.id,
           approved_at: now,
           launched_at: now,
+          // Set once: a follow-up moves last_contact_at, and the client's
+          // portal reads this one so its "emailed" date never shifts.
+          first_contact_at: target.first_contact_at ?? lead.timestamp_last_contact ?? now,
           last_contact_at: lead.timestamp_last_contact,
           last_activity_at: lead.timestamp_updated || now,
           last_error: null,
@@ -2618,6 +2625,7 @@ async function syncProviderCampaign(
               : target.status === "completed"
               ? "completed"
               : "in_outreach",
+            first_contact_at: target.first_contact_at ?? lead.timestamp_last_contact,
             last_contact_at: lead.timestamp_last_contact ?? target.last_contact_at,
             last_activity_at: lead.timestamp_updated || target.last_activity_at,
             last_error: null,
@@ -4891,6 +4899,7 @@ serve(async (req) => {
           instantly_lead_status: lead.status,
           email_open_count: lead.email_open_count,
           email_reply_count: lead.email_reply_count,
+          first_contact_at: target.first_contact_at ?? lead.timestamp_last_contact,
           last_contact_at: lead.timestamp_last_contact ?? target.last_contact_at,
           last_activity_at: lead.timestamp_last_reply ?? lead.timestamp_last_open ??
             lead.timestamp_last_contact ?? target.last_activity_at,

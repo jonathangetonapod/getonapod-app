@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Headphones } from 'lucide-react'
+import { Headphones, Star } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { compactNumber } from '@/lib/compactNumber'
 import { OUTREACH_STAGE_LABELS } from '@/lib/placementStatus'
 import { plural } from '@/lib/plural'
 import { cn } from '@/lib/utils'
@@ -30,6 +31,8 @@ const displayDate = (value: string | null | undefined) => {
     ? null
     : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+const audience = (target: PortalOutreachTarget): string | null => compactNumber(target.audience_size)
 
 const targetDetail = (target: PortalOutreachTarget): string => {
   if (target.stage === 'preparing') return 'Your personalized pitch is being written'
@@ -104,21 +107,33 @@ export const OutreachActivityList = ({ targets, total }: OutreachActivityListPro
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="truncate font-medium">{target.podcast_name}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="min-w-0 truncate font-medium">{target.podcast_name}</p>
                 <Badge variant="outline" className={`shrink-0 ${stageClassName[target.stage] ?? 'bg-muted text-muted-foreground'}`}>
                   {OUTREACH_STAGE_LABELS[target.stage] ?? String(target.stage).replace(/_/gu, ' ')}
                 </Badge>
               </div>
               <p className="mt-0.5 text-sm text-muted-foreground">{targetDetail(target)}</p>
+              {/* Reach and engagement on one wrapping line. A fixed right-hand
+                  column put "4 opens · 1 reply" alongside a title that was
+                  already wrapping on a phone. */}
+              {(audience(target) || target.itunes_rating || target.opens > 0 || target.replies > 0) && (
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {audience(target) && (
+                    <span className="inline-flex items-center gap-1">
+                      <Headphones className="h-3 w-3" aria-hidden="true" />{audience(target)} listeners
+                    </span>
+                  )}
+                  {target.itunes_rating ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Star className="h-3 w-3 text-amber-500" aria-hidden="true" />{Number(target.itunes_rating).toFixed(1)}
+                    </span>
+                  ) : null}
+                  {target.opens > 0 && <span>{plural(target.opens, 'open')}</span>}
+                  {target.replies > 0 && <span>{plural(target.replies, 'reply', 'replies')}</span>}
+                </p>
+              )}
             </div>
-            {(target.opens > 0 || target.replies > 0) && (
-              <p className="shrink-0 self-center text-xs text-muted-foreground">
-                {target.opens > 0 ? `${target.opens} open${target.opens === 1 ? '' : 's'}` : ''}
-                {target.opens > 0 && target.replies > 0 ? ' · ' : ''}
-                {target.replies > 0 ? `${target.replies} repl${target.replies === 1 ? 'y' : 'ies'}` : ''}
-              </p>
-            )}
           </li>
         ))}
       </ul>
