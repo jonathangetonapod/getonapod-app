@@ -18,7 +18,10 @@ import {
   Star,
 } from 'lucide-react'
 
+import { Link } from 'react-router-dom'
+
 import { BookingDetailDialog } from '@/components/portal/BookingDetailDialog'
+import { JourneyStatusCard } from '@/components/portal/JourneyStatusCard'
 import { PortalLayout } from '@/components/portal/PortalLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,6 +31,8 @@ import { useClientPortal } from '@/contexts/ClientPortalContext'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { safeExternalUrl } from '@/lib/externalUrl'
 import { placementStatusLabel } from '@/lib/placementStatus'
+import { plural } from '@/lib/plural'
+import { portalJourneyCounts, portalJourneyStatus } from '@/lib/portalJourney'
 import { setPortalNotifications, type PortalExperienceBooking } from '@/services/clientPortal'
 
 // The words come from the shared table; only the colours live here.
@@ -206,6 +211,11 @@ export default function PortalDashboardMvp() {
     ), 0),
   )
 
+  // The same count the Outreach page draws from, so "hosts emailed" here and
+  // "pitch sent" there can never be two different numbers.
+  const journeyCounts = portalJourneyCounts(overview)
+  const journeyStatus = portalJourneyStatus(journeyCounts)
+
   const latestLive = published
     .filter((booking) => isRecentlyLive(booking.publish_date))
     .sort((a, b) => String(b.publish_date).localeCompare(String(a.publish_date)))[0] ?? null
@@ -214,8 +224,8 @@ export default function PortalDashboardMvp() {
   const journeyStats: JourneyStat[] = [
     ...(outreach
       ? [
-        { label: 'Podcasts contacted', value: String(outreach.podcasts_contacted), icon: Send },
-        { label: 'Replies', value: String(outreach.replies), icon: MessageSquare },
+        { label: 'Podcasts contacted', value: String(Math.max(outreach.podcasts_contacted, journeyCounts.emailed)), icon: Send },
+        { label: 'Replies', value: String(Math.max(outreach.replies, journeyCounts.replied)), icon: MessageSquare },
         { label: 'Shows secured', value: String(securedBookings.length), icon: Mic2 },
         { label: 'Published episodes', value: String(published.length), icon: Radio },
       ]
@@ -375,6 +385,8 @@ export default function PortalDashboardMvp() {
           </Card>
         )}
 
+        {journeyStatus && !awaitingShortlist && <JourneyStatusCard status={journeyStatus} />}
+
         {/* Only once there is data to summarize. Rendered unconditionally,
             these tiles asserted "0" of everything during loading and kept
             asserting it after a failed fetch — a confidently wrong dashboard
@@ -487,7 +499,17 @@ export default function PortalDashboardMvp() {
               <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
                 <Headphones className="h-9 w-9" />
                 <p className="font-medium text-foreground">No shows yet</p>
-                <p className="text-sm">They appear here as your team books them.</p>
+                {/* During outreach "no shows" is true and misleading at once:
+                    nothing is booked, and a great deal is under way. */}
+                {journeyCounts.inOutreach > 0 ? (
+                  <p className="max-w-md text-sm">
+                    A show appears here once a host starts a conversation about having you on.{' '}
+                    {plural(journeyCounts.inOutreach, 'show')} {journeyCounts.inOutreach === 1 ? 'is' : 'are'} in outreach right now.{' '}
+                    <Link to="/portal/outreach" className="font-medium text-primary hover:underline">See outreach</Link>
+                  </p>
+                ) : (
+                  <p className="text-sm">They appear here as your team books them.</p>
+                )}
               </div>
             ) : (
               <div className="divide-y">

@@ -211,8 +211,11 @@ export interface PortalOutreachTarget {
   id: string
   podcast_name: string
   podcast_image_url: string | null
-  stage: 'preparing' | 'contacted' | 'replied' | 'completed'
+  /** queued: the pitch is written and in the sending campaign, not yet emailed. */
+  stage: 'preparing' | 'queued' | 'contacted' | 'replied' | 'completed'
   first_message_at: string | null
+  /** When the pitch went into the sending campaign. Absent from older responses. */
+  queued_at?: string | null
   last_activity_at: string | null
   opens: number
   replies: number
@@ -244,6 +247,8 @@ export interface PortalExperienceOverview {
     replied_count: number
     completed_count: number
   } | null
+  /** Exact count of shows at each outreach stage. Absent from older responses. */
+  outreach_pipeline?: Partial<Record<PortalOutreachTarget['stage'], number>>
   outreach_targets?: PortalOutreachTarget[]
   pitch_profile: {
     professional_bio: string | null

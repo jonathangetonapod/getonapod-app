@@ -236,7 +236,11 @@ function deliveryDotClass(target?: WorkspaceCampaignTarget): string {
 }
 
 function leadDelivery(target?: WorkspaceCampaignTarget): { label: string; detail: string; className: string } {
-  const stage = pitchStage(target)
+  const stored = pitchStage(target)
+  // A pitch sent into the campaign has its lead at the provider straight away,
+  // but the row's status stays "ready" until the next sync. Reading the status
+  // alone called a host who is queued to be emailed "Ready for campaign".
+  const stage: PitchStage = stored === 'ready' && target?.lead_staged_at ? 'in-outreach' : stored
   // A negative outcome outranks whatever our own record last called this. It
   // is the provider reporting what happened to a real email.
   const outcome = providerLeadOutcome(target?.instantly_lead_status)
@@ -859,8 +863,11 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const activityTargets = [...campaignTargets]
     .filter((target) => target.launched_at || ['in_outreach', 'replied', 'completed', 'failed'].includes(target.status))
     .sort((left, right) => (right.last_activity_at || right.updated_at).localeCompare(left.last_activity_at || left.updated_at))
+  // The same judgement the Delivery column makes row by row. Counting the
+  // in_outreach status put every staged lead in this total, so the tile said
+  // 34 emailed above a table of rows saying "not emailed yet".
   const emailedPodcastCount = campaignTargets.filter((target) => (
-    Boolean(target.launched_at) || ['in_outreach', 'replied', 'completed'].includes(target.status)
+    targetHasBeenEmailed(target) || ['replied', 'completed'].includes(target.status)
   )).length
   const openedPodcastCount = campaignTargets.filter((target) => target.email_open_count > 0).length
   const repliedPodcastCount = campaignTargets.filter((target) => target.email_reply_count > 0 || target.status === 'replied').length

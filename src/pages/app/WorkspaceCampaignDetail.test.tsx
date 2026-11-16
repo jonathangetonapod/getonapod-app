@@ -560,6 +560,28 @@ function withStagedLead() {
     expect(within(row).queryByText('Emailed')).not.toBeInTheDocument()
   })
 
+  // Sending a pitch into the campaign creates the lead at once, but the status
+  // stays "ready" until a sync. The row read "Ready for campaign" for a host
+  // already queued, and the Emailed tile counted leads nothing had gone to.
+  it('shows a pitch sent into the campaign as staged before any sync, and does not count it as emailed', async () => {
+    mockedCampaign.mockResolvedValue({
+      ...campaignState,
+      targets: [
+        { ...sentTargets[0], status: 'ready', instantly_lead_id: 'lead-one', instantly_lead_status: 1, lead_staged_at: '2026-08-01T09:00:00Z', launched_at: null, last_contact_at: null },
+        { ...sentTargets[1], status: 'in_outreach', instantly_lead_id: 'lead-two', instantly_lead_status: 1, launched_at: null, last_contact_at: null },
+      ],
+    } as WorkspaceCampaignDetailResponse)
+    renderPage()
+
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Podcasts' }), { button: 0 })
+    const table = await screen.findByRole('table')
+    const row = within(table).getByText('Founder Show').closest('tr') as HTMLElement
+    expect(within(row).getByText('Staged')).toBeInTheDocument()
+    expect(within(row).queryByText('Ready for campaign')).not.toBeInTheDocument()
+    const emailedTile = within(screen.getByLabelText('Podcast outreach summary')).getByText('Emailed').parentElement as HTMLElement
+    expect(emailedTile).toHaveTextContent('Emailed0')
+  })
+
   it('calls it emailed once the provider says a send happened', async () => {
     mockedCampaign.mockResolvedValue({
       ...campaignState,

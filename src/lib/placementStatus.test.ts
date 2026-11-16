@@ -22,6 +22,7 @@ describe('placementStatus', () => {
   it('gives every outreach stage a client-facing label', () => {
     expect(OUTREACH_STAGE_LABELS).toEqual({
       preparing: 'Pitch being written',
+      queued: 'Pitch scheduled',
       contacted: 'Pitch sent',
       replied: 'Host replied',
       completed: 'Conversation closed',

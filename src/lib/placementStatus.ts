@@ -23,6 +23,7 @@ export const PLACEMENT_STATUS_LABELS: Record<PlacementStatus, string> = {
 
 export const OUTREACH_STAGE_LABELS: Record<OutreachStage, string> = {
   preparing: 'Pitch being written',
+  queued: 'Pitch scheduled',
   contacted: 'Pitch sent',
   replied: 'Host replied',
   completed: 'Conversation closed',

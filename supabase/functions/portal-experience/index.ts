@@ -378,7 +378,7 @@ serve(async (req) => {
         .maybeSingle(),
       admin
         .from('workspace_client_campaign_targets')
-        .select('id,shortlist_podcast_id,podcast_name,status,launched_at,last_activity_at,email_open_count,email_reply_count')
+        .select('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,last_contact_at,last_activity_at,email_open_count,email_reply_count')
         .eq('client_id', clientId)
         .limit(5_000),
       admin
@@ -480,35 +480,82 @@ serve(async (req) => {
         typeof booking.shortlist_podcast_id === 'string' ? [booking.shortlist_podcast_id] : []
       )),
     )
-    const targetStage = (status: unknown): string | null => {
-      if (status === 'in_outreach') return 'contacted'
-      if (status === 'replied') return 'replied'
-      if (status === 'completed') return 'completed'
+    /*
+     * Where a show has got to, in the client's terms.
+     *
+     * A pitch reaches a host two ways: an operator launches outreach
+     * (launched_at), or the pitch is added straight into the sending campaign
+     * (lead_staged_at) and goes out in that campaign's next send window. The
+     * second path never sets launched_at and leaves the status at "ready"
+     * until a sync runs, so reading status and launched_at alone showed a
+     * pitch that was written and waiting to send as "being written", with no
+     * date. "queued" is that state: written, in the campaign, not yet emailed.
+     */
+    const stringOrNull = (value: unknown): string | null => (typeof value === 'string' && value ? value : null)
+    const targetJourney = (row: Record<string, unknown>): { stage: string; sentAt: string | null; queuedAt: string | null } | null => {
+      const status = row.status
       if (status === 'failed') return null
-      return 'preparing'
+      const launchedAt = stringOrNull(row.launched_at)
+      const stagedAt = stringOrNull(row.lead_staged_at)
+      const lastContactAt = stringOrNull(row.last_contact_at)
+      const queuedAt = stagedAt ?? launchedAt
+      // An explicit launch counts as sent, as it always has. A staged pitch
+      // counts once the sending platform reports an email or an open.
+      const sentAt = launchedAt ?? lastContactAt
+      if (status === 'replied') return { stage: 'replied', sentAt, queuedAt }
+      if (status === 'completed') return { stage: 'completed', sentAt, queuedAt }
+      const inCampaign = Boolean(queuedAt) || status === 'in_outreach' || status === 'launching'
+      if (!inCampaign) return { stage: 'preparing', sentAt: null, queuedAt: null }
+      const emailed = Boolean(sentAt) || clampCount(row.email_open_count) > 0
+      return emailed
+        ? { stage: 'contacted', sentAt, queuedAt }
+        : { stage: 'queued', sentAt: null, queuedAt }
     }
+    // Furthest along first, newest first within a stage.
+    const stageOrder: Record<string, number> = { replied: 0, contacted: 1, queued: 2, completed: 3, preparing: 4 }
+    /*
+     * Exact stage totals, counted before the list is capped. The page draws
+     * its pipeline and its headline numbers from these, so a client with more
+     * shows than the list carries still sees totals that add up — and the
+     * tiles, the pipeline and the list cannot disagree, because they are one
+     * count.
+     */
+    const outreachPipeline: Record<string, number> = { preparing: 0, queued: 0, contacted: 0, replied: 0, completed: 0 }
+    // Hosts a pitch was emailed to, booked shows included: a show that became
+    // a booking was still contacted.
+    let emailedShows = 0
     const outreachTargets = ((targetsResult.data ?? []) as Array<Record<string, unknown>>)
       .flatMap((row) => {
-        const stage = targetStage(row.status)
-        if (!stage || typeof row.podcast_name !== 'string' || !row.podcast_name) return []
+        const journey = targetJourney(row)
+        if (!journey || typeof row.podcast_name !== 'string' || !row.podcast_name) return []
+        if (['contacted', 'replied', 'completed'].includes(journey.stage)) emailedShows += 1
         if (typeof row.shortlist_podcast_id === 'string' && bookedShortlistIds.has(row.shortlist_podcast_id)) {
           return []
         }
+        outreachPipeline[journey.stage] = (outreachPipeline[journey.stage] ?? 0) + 1
         return [{
           id: typeof row.id === 'string' ? row.id : '',
           podcast_name: row.podcast_name.slice(0, 300),
           podcast_image_url: typeof row.shortlist_podcast_id === 'string'
             ? imageByShortlistId.get(row.shortlist_podcast_id) ?? null
             : null,
-          stage,
-          first_message_at: typeof row.launched_at === 'string' ? row.launched_at : null,
+          stage: journey.stage,
+          first_message_at: journey.sentAt,
+          queued_at: journey.queuedAt,
           last_activity_at: typeof row.last_activity_at === 'string' ? row.last_activity_at : null,
           opens: clampCount(row.email_open_count),
           replies: clampCount(row.email_reply_count),
         }]
       })
-      .sort((a, b) => String(b.first_message_at ?? '').localeCompare(String(a.first_message_at ?? '')))
+      .sort((a, b) => (
+        (stageOrder[a.stage] ?? 9) - (stageOrder[b.stage] ?? 9)
+        || String(b.first_message_at ?? b.queued_at ?? '').localeCompare(String(a.first_message_at ?? a.queued_at ?? ''))
+      ))
       .slice(0, 200)
+    // The sending platform's own count is the better figure where it reports
+    // one and per-host send times are missing; never show fewer than the
+    // per-show record proves.
+    if (outreach) outreach.podcasts_contacted = Math.max(outreach.podcasts_contacted, emailedShows)
 
     // The guest profile is only shared once the workspace approved it.
     let pitchProfile: Record<string, unknown> | null = null
@@ -542,6 +589,7 @@ serve(async (req) => {
         rejected_count: rejectedCount,
       },
       outreach,
+      outreach_pipeline: outreachPipeline,
       outreach_targets: outreachTargets,
       pitch_profile: pitchProfile,
       bookings: enrichedBookings,

@@ -126,7 +126,9 @@ export function PortalLayout({ children }: PortalLayoutProps) {
                 matters most; it truncates rather than pushing the menu off
                 the edge. */}
             <div className="min-w-0">
-              <h1 className="max-w-[40vw] truncate text-lg font-semibold sm:max-w-none">{agencyName}</h1>
+              {/* A paragraph, not a heading: each page has its own h1, and two
+                  of them left a screen reader with no single page title. */}
+              <p className="max-w-[40vw] truncate text-lg font-semibold sm:max-w-none">{agencyName}</p>
               <p className="hidden text-xs text-muted-foreground sm:block">Client portal</p>
             </div>
           </div>
@@ -136,6 +138,8 @@ export function PortalLayout({ children }: PortalLayoutProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2">
+                  {/* On a phone the trigger is an avatar alone. */}
+                  <span className="sr-only md:hidden">Account menu</span>
                   <Avatar className="h-8 w-8">
                     {client?.photo_url && <AvatarImage src={client.photo_url} alt={client.name} />}
                     <AvatarFallback className="bg-primary/10 text-primary text-xs">
@@ -202,7 +206,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
       {/* Navigation Tabs */}
       <div className="border-b bg-background">
         <div className="container mx-auto px-4">
-          <nav className="flex gap-1 overflow-x-auto">
+          <nav className="flex gap-1 overflow-x-auto" aria-label="Portal sections">
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.path
@@ -210,6 +214,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
                 <Link
                   key={item.path}
                   to={item.path}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
                     isActive
@@ -218,7 +223,7 @@ export function PortalLayout({ children }: PortalLayoutProps) {
                   )}
                   style={isActive && accentColor ? { borderColor: accentColor, color: accentColor } : undefined}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {item.label}
                 </Link>
               )

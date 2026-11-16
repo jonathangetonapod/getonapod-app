@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   Bar,
   BarChart,
@@ -8,35 +8,19 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { CheckCircle2, Headphones, Loader2, Mail, MessageSquare, RefreshCw, Send } from 'lucide-react'
+import { CalendarClock, Loader2, MessageSquare, Mic2, RefreshCw, Send } from 'lucide-react'
 
+import { OutreachActivityList } from '@/components/portal/OutreachActivityList'
 import { PortalLayout } from '@/components/portal/PortalLayout'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePortalExperience } from '@/hooks/usePortalExperience'
 import { OUTREACH_STAGE_LABELS, PLACEMENT_STATUS_LABELS } from '@/lib/placementStatus'
-import type { PortalOutreachTarget } from '@/services/clientPortal'
+import { outreachStageCounts, portalJourneyCounts, portalJourneyStatus } from '@/lib/portalJourney'
 
 // Chart hues validated with the dataviz palette checker (light surface).
 const MESSAGES_COLOR = '#4F46E5'
 const EPISODES_COLOR = '#059669'
-
-// The words come from the shared table; only the colours live here.
-const stageClassName: Record<PortalOutreachTarget['stage'], string> = {
-  preparing: 'bg-muted text-muted-foreground',
-  contacted: 'bg-sky-50 text-sky-700 border-sky-200',
-  replied: 'bg-amber-50 text-amber-800 border-amber-200',
-  completed: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-}
-
-const displayDate = (value: string | null) => {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? null
-    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 interface MonthBucket {
   key: string
@@ -78,7 +62,6 @@ interface PipelineRow {
 
 export default function PortalOutreach() {
   const overviewQuery = usePortalExperience()
-  const [showAllTargets, setShowAllTargets] = useState(false)
 
   const overview = overviewQuery.data ?? null
   const targets = useMemo(() => overview?.outreach_targets ?? [], [overview])
@@ -102,23 +85,40 @@ export default function PortalOutreach() {
   const hasMessageData = messagesByMonth.some((bucket) => bucket.count > 0)
   const hasEpisodeData = episodesByMonth.some((bucket) => bucket.count > 0)
 
+  /*
+   * One count for the whole page. The tiles used to quote the sending
+   * platform's totals while the pipeline counted rows, and the two disagreed
+   * a few centimetres apart.
+   */
+  const stages = useMemo(() => outreachStageCounts(overview), [overview])
+  const counts = useMemo(() => portalJourneyCounts(overview), [overview])
+  const status = portalJourneyStatus(counts)
+  const totalTargets = stages.preparing + stages.queued + stages.contacted + stages.replied + stages.completed
+
   const pipeline: PipelineRow[] = useMemo(() => {
-    const stageCount = (stage: PortalOutreachTarget['stage']) => targets.filter((target) => target.stage === stage).length
     const bookingCount = (statuses: string[]) => bookings.filter((booking) => statuses.includes(booking.status)).length
     return [
-      { label: OUTREACH_STAGE_LABELS.preparing, count: stageCount('preparing') },
-      { label: OUTREACH_STAGE_LABELS.contacted, count: stageCount('contacted') },
-      { label: OUTREACH_STAGE_LABELS.replied, count: stageCount('replied') + stageCount('completed') },
+      { label: OUTREACH_STAGE_LABELS.preparing, count: stages.preparing },
+      { label: OUTREACH_STAGE_LABELS.queued, count: stages.queued },
+      { label: OUTREACH_STAGE_LABELS.contacted, count: stages.contacted },
+      { label: OUTREACH_STAGE_LABELS.replied, count: stages.replied + stages.completed },
       { label: PLACEMENT_STATUS_LABELS.conversation_started, count: bookingCount(['conversation_started', 'in_progress']) },
       { label: PLACEMENT_STATUS_LABELS.booked, count: bookingCount(['booked']) },
       { label: PLACEMENT_STATUS_LABELS.recorded, count: bookingCount(['recorded']) },
       { label: PLACEMENT_STATUS_LABELS.published, count: bookingCount(['published']) },
     ]
-  }, [targets, bookings])
+  }, [stages, bookings])
   const pipelineMax = Math.max(1, ...pipeline.map((row) => row.count))
   const pipelineHasData = pipeline.some((row) => row.count > 0)
 
-  const visibleTargets = showAllTargets ? targets : targets.slice(0, 8)
+  // The platform's own totals where they run ahead of the per-show record.
+  const tiles = [
+    { label: 'Shows in outreach', hint: 'Pitch written', value: counts.inOutreach, icon: CalendarClock },
+    { label: 'Hosts emailed', hint: 'Your pitch has gone out', value: Math.max(counts.emailed, summary?.podcasts_contacted ?? 0), icon: Send },
+    { label: 'Replies', hint: 'Hosts who wrote back', value: Math.max(counts.replied, summary?.replies ?? 0), icon: MessageSquare },
+    { label: 'Shows secured', hint: 'Booked, recorded or live', value: counts.secured, icon: Mic2 },
+  ]
+  const hasOutreach = Boolean(summary) || totalTargets > 0
 
   return (
     <PortalLayout>
@@ -143,20 +143,17 @@ export default function PortalOutreach() {
           </div>
         ) : (
           <>
-            {summary && (
+            {hasOutreach && (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { label: 'Podcasts contacted', value: summary.podcasts_contacted, icon: Send },
-                  { label: 'Emails sent', value: summary.emails_sent, icon: Mail },
-                  { label: 'Replies', value: summary.replies, icon: MessageSquare },
-                  { label: 'Meetings booked', value: summary.meetings_booked, icon: CheckCircle2 },
-                ].map((stat) => (
+                {tiles.map((stat) => (
                   <Card key={stat.label}>
                     <CardHeader className="pb-2">
-                      <CardDescription>{stat.label}</CardDescription>
-                      <CardTitle className="text-3xl">{stat.value}</CardTitle>
+                      <CardDescription className="flex items-center gap-2">
+                        <stat.icon className="h-4 w-4" aria-hidden="true" />{stat.label}
+                      </CardDescription>
+                      <CardTitle className="text-3xl tabular-nums">{stat.value}</CardTitle>
                     </CardHeader>
-                    <CardContent><stat.icon className="h-5 w-5 text-muted-foreground" /></CardContent>
+                    <CardContent><p className="text-xs text-muted-foreground">{stat.hint}</p></CardContent>
                   </Card>
                 ))}
               </div>
@@ -168,6 +165,12 @@ export default function PortalOutreach() {
                 <CardDescription>Your pipeline right now, from first pitch to live episode.</CardDescription>
               </CardHeader>
               <CardContent>
+                {status && (
+                  <div className="mb-5 rounded-lg border bg-muted/20 px-4 py-3">
+                    <p className="text-sm font-semibold">{status.headline}</p>
+                    <p className="mt-0.5 text-sm leading-6 text-muted-foreground">{status.detail}</p>
+                  </div>
+                )}
                 {!pipelineHasData ? (
                   <p className="text-sm text-muted-foreground">
                     Your pipeline fills in as soon as your team starts outreach for the shows you picked.
@@ -191,15 +194,18 @@ export default function PortalOutreach() {
               </CardContent>
             </Card>
 
+            {/* Two empty charts are two cards of nothing; they earn their
+                space once either has a month to show. */}
+            {(hasMessageData || hasEpisodeData) && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Messages sent by month</CardTitle>
-                  <CardDescription>First outreach messages that went out for you.</CardDescription>
+                  <CardTitle className="text-base">Pitches emailed by month</CardTitle>
+                  <CardDescription>Shows that were emailed a pitch for you.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {!hasMessageData ? (
-                    <p className="text-sm text-muted-foreground">No messages sent in the last six months.</p>
+                    <p className="text-sm text-muted-foreground">No pitches have been emailed in the last six months.</p>
                   ) : (
                     <div className="h-44" role="img" aria-label="Bar chart of outreach messages sent per month">
                       <ResponsiveContainer width="100%" height="100%">
@@ -239,6 +245,7 @@ export default function PortalOutreach() {
                 </CardContent>
               </Card>
             </div>
+            )}
 
             <Card>
               <CardHeader>
@@ -251,51 +258,7 @@ export default function PortalOutreach() {
                     Outreach activity appears here once your team starts contacting the shows you picked.
                   </p>
                 ) : (
-                  <>
-                    <ul className="divide-y">
-                      {visibleTargets.map((target) => {
-                        const meta = {
-                          label: OUTREACH_STAGE_LABELS[target.stage] ?? String(target.stage).replace(/_/gu, ' '),
-                          className: stageClassName[target.stage] ?? 'bg-muted text-muted-foreground',
-                        }
-                        const sent = displayDate(target.first_message_at)
-                        const activity = displayDate(target.last_activity_at)
-                        return (
-                          <li key={target.id} className="flex gap-3 py-3.5 first:pt-0 last:pb-0">
-                            {target.podcast_image_url ? (
-                              <img src={target.podcast_image_url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg border object-cover" />
-                            ) : (
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
-                                <Headphones className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate font-medium">{target.podcast_name}</p>
-                                <Badge variant="outline" className={`shrink-0 ${meta.className}`}>{meta.label}</Badge>
-                              </div>
-                              <p className="mt-0.5 text-sm text-muted-foreground">
-                                {sent ? `First pitch sent ${sent}` : 'Your personalized pitch is being written'}
-                                {activity && activity !== sent ? ` · Latest activity ${activity}` : ''}
-                              </p>
-                            </div>
-                            {(target.opens > 0 || target.replies > 0) && (
-                              <p className="shrink-0 self-center text-xs text-muted-foreground">
-                                {target.opens > 0 ? `${target.opens} open${target.opens === 1 ? '' : 's'}` : ''}
-                                {target.opens > 0 && target.replies > 0 ? ' · ' : ''}
-                                {target.replies > 0 ? `${target.replies} repl${target.replies === 1 ? 'y' : 'ies'}` : ''}
-                              </p>
-                            )}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                    {targets.length > visibleTargets.length && (
-                      <Button variant="outline" size="sm" className="mt-4" onClick={() => setShowAllTargets(true)}>
-                        Show all {targets.length}
-                      </Button>
-                    )}
-                  </>
+                  <OutreachActivityList targets={targets} total={totalTargets} />
                 )}
               </CardContent>
             </Card>

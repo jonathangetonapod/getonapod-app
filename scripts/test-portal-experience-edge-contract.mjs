@@ -56,7 +56,16 @@ assert.match(edge, /nullsFirst: true/u)
 // Outreach activity: internal failures never reach the client, and only
 // aggregate engagement counts are exposed — never message content.
 assert.match(edge, /if \(status === 'failed'\) return null/u)
-assert.match(edge, /select\('id,shortlist_podcast_id,podcast_name,status,launched_at,last_activity_at,email_open_count,email_reply_count'\)/u)
+assert.match(edge, /select\('id,shortlist_podcast_id,podcast_name,status,launched_at,lead_staged_at,last_contact_at,last_activity_at,email_open_count,email_reply_count'\)/u)
+// A pitch added straight into the sending campaign never sets launched_at, so
+// the stage must read lead_staged_at too: written and waiting to send is
+// "queued", and only an email the platform reports makes it "contacted".
+assert.match(edge, /const queuedAt = stagedAt \?\? launchedAt/u)
+assert.match(edge, /: \{ stage: 'queued', sentAt: null, queuedAt \}/u)
+// Stage totals are counted before the list is capped, and returned, so the
+// page's numbers stay exact past two hundred shows.
+assert.match(edge, /outreachPipeline\[journey\.stage\] = [\s\S]{0,2500}?\.slice\(0, 200\)/u)
+assert.match(edge, /outreach_pipeline: outreachPipeline,/u)
 
 // Release plumbing.
 assert.match(config, /\[functions\.portal-experience\]\nverify_jwt = false/u)

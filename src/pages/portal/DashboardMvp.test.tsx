@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import PortalDashboardMvp from '@/pages/portal/DashboardMvp'
@@ -101,7 +102,7 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <PortalDashboardMvp />
+      <MemoryRouter><PortalDashboardMvp /></MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -539,6 +540,33 @@ describe('PortalDashboardMvp', () => {
    * empty list read as a broken page; one card saying the research is under
    * way is the truth.
    */
+  // Weeks of outreach used to read as four small numbers over "No shows yet".
+  it('says what is happening during outreach, and points at the detail', async () => {
+    mockedGetExperience.mockResolvedValue({
+      ...overview(),
+      bookings: [],
+      outreach_pipeline: { preparing: 0, queued: 84, contacted: 15, replied: 0, completed: 0 },
+    })
+    renderPage()
+
+    expect(await screen.findByText('Your pitch has reached 15 hosts')).toBeInTheDocument()
+    expect(screen.getByText(/84 more pitches are scheduled/)).toBeInTheDocument()
+    for (const link of screen.getAllByRole('link', { name: /See outreach/ })) expect(link).toHaveAttribute('href', '/portal/outreach')
+    expect(screen.getByText(/99 shows are in outreach right now/)).toBeInTheDocument()
+  })
+
+  // The tile and the outreach page read one count: never fewer contacted than
+  // the per-show record proves.
+  it('never reports fewer podcasts contacted than the shows emailed', async () => {
+    mockedGetExperience.mockResolvedValue({
+      ...overview(),
+      outreach_pipeline: { preparing: 0, queued: 0, contacted: 30, replied: 0, completed: 0 },
+    })
+    renderPage()
+
+    expect((await screen.findByText('Podcasts contacted')).nextElementSibling).toHaveTextContent('30')
+  })
+
   it('shows one preparing card instead of zero tiles before the shortlist exists', async () => {
     const fresh = overview()
     fresh.bookings = []
