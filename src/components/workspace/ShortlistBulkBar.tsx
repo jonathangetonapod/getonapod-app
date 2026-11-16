@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Archive, Loader2, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
+import { Archive, Loader2, RotateCcw, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { chunk } from '@/lib/shortlistFit'
@@ -21,20 +21,24 @@ interface ShortlistBulkBarProps {
 
 /** Approve, pass, archive or delete every selected show in one go. */
 export const ShortlistBulkBar = ({ workspaceId, clientId, selectedIds, onClear, onSaved }: ShortlistBulkBarProps) => {
-  const [saving, setSaving] = useState<ClientShortlistFeedbackStatus | 'archive' | 'none'>('none')
+  // Keyed by action rather than by status, because a cleared decision is
+  // itself null and would be indistinguishable from "not saving".
+  const [saving, setSaving] = useState<'approved' | 'rejected' | 'to_review' | 'archive' | 'none'>('none')
   const [deleteOpen, setDeleteOpen] = useState(false)
   if (selectedIds.length === 0) return null
   const count = selectedIds.length
   const shows = `${count} show${count === 1 ? '' : 's'}`
 
-  const save = async (status: 'approved' | 'rejected') => {
-    setSaving(status)
+  const save = async (status: ClientShortlistFeedbackStatus) => {
+    setSaving(status ?? 'to_review')
     let done = 0
     try {
       for (const batch of chunk(selectedIds, BULK_FEEDBACK_BATCH_SIZE)) {
         done += (await setClientShortlistFeedbackBulk(workspaceId, clientId, batch, status)).updated
       }
-      toast.success(`${shows} marked ${status === 'approved' ? 'approved' : 'passed'}.`)
+      toast.success(status === null
+        ? `${shows} moved back to review.`
+        : `${shows} marked ${status === 'approved' ? 'approved' : 'passed'}.`)
       onClear()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The podcasts could not be updated.'
@@ -72,6 +76,9 @@ export const ShortlistBulkBar = ({ workspaceId, clientId, selectedIds, onClear, 
         </Button>
         <Button size="sm" variant="outline" disabled={saving !== 'none'} onClick={() => void save('rejected')}>
           {saving === 'rejected' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />}Mark passed
+        </Button>
+        <Button size="sm" variant="outline" disabled={saving !== 'none'} onClick={() => void save(null)}>
+          {saving === 'to_review' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}Move back to review
         </Button>
         <Button size="sm" variant="outline" disabled={saving !== 'none'} onClick={() => void archive()}>
           {saving === 'archive' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}Archive

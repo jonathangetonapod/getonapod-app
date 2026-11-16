@@ -506,6 +506,57 @@ describe('ClientShortlistEditor', () => {
     expect(screen.queryByRole('menuitem', { name: /Hide from client/i })).not.toBeInTheDocument()
   })
 
+  /*
+   * A decision made by mistake, or one the client changed their mind about,
+   * had no way back: the menu offered only the two decisions themselves, and
+   * the bulk bar only marked approved or passed.
+   */
+  it('moves a decided podcast back to review from its actions menu', async () => {
+    vi.mocked(updateClientShortlistPodcast).mockResolvedValue(podcast({ feedback_status: null }))
+    renderEditor()
+    await screen.findByText('Founder Stories')
+
+    const actions = screen.getByRole('button', { name: 'Actions for Founder Stories' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Move back to review/i }))
+
+    await waitFor(() => expect(updateClientShortlistPodcast).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      'podcast-one',
+      { feedback_status: null },
+    ))
+  })
+
+  it('offers no way back to review for a podcast that has no decision yet', async () => {
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+
+    const actions = screen.getByRole('button', { name: 'Actions for Operator Weekly' })
+    actions.focus()
+    fireEvent.keyDown(actions, { key: 'Enter', code: 'Enter' })
+
+    expect(await screen.findByRole('menuitem', { name: /Mark approved/i })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Move back to review/i })).not.toBeInTheDocument()
+  })
+
+  it('moves every selected show back to review at once', async () => {
+    vi.mocked(setClientShortlistFeedbackBulk).mockResolvedValue({ updated: 1 })
+    renderEditor()
+    await screen.findByText('Founder Stories')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Founder Stories' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move back to review' }))
+
+    await waitFor(() => expect(setClientShortlistFeedbackBulk).toHaveBeenCalledWith(
+      workspaceId,
+      clientId,
+      ['podcast-one'],
+      null,
+    ))
+  })
+
   it('shows no more than ten podcasts on each list page', async () => {
     vi.mocked(getClientShortlist).mockResolvedValue({
       client: { id: clientId, name: 'Taylor Client' },

@@ -581,7 +581,13 @@ export function ClientShortlistEditor({
               workspaceBaseHref={workspaceBaseHref}
               clientId={clientId}
               onOpenDetails={openPodcastDetails}
-              onDecision={(podcast, status) => void updatePodcast(podcast, { feedback_status: status }, `${podcast.podcast_name} marked ${status === 'approved' ? 'approved' : 'passed'}.`)}
+              onDecision={(podcast, status) => void updatePodcast(
+                podcast,
+                { feedback_status: status },
+                status === null
+                  ? `${podcast.podcast_name} moved back to review.`
+                  : `${podcast.podcast_name} marked ${status === 'approved' ? 'approved' : 'passed'}.`,
+              )}
               onToggleFeatured={(podcast) => void toggleFeatured(podcast)}
               onRestore={(podcast) => void updatePodcast(podcast, { visibility: 'visible' }, `${podcast.podcast_name} restored to the client list.`)}
               onArchive={setArchiveTarget}

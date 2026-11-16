@@ -20,7 +20,7 @@ import { pitchBadgeLabel, pitchStatus } from '@/lib/shortlistPitchStatus'
 import { clientPitchHref } from '@/lib/workspaceRoutes'
 import { cn } from '@/lib/utils'
 import { FitScoreBadge } from '@/components/workspace/ShortlistFit'
-import type { ClientShortlistFitProfile, ClientShortlistPodcast } from '@/services/clientShortlist'
+import type { ClientShortlistFeedbackStatus, ClientShortlistFitProfile, ClientShortlistPodcast } from '@/services/clientShortlist'
 import type { WorkspaceCampaignTarget } from '@/services/workspaceCampaigns'
 
 /*
@@ -98,7 +98,7 @@ interface ShortlistTableProps {
   workspaceBaseHref: string
   clientId: string
   onOpenDetails: (podcast: ClientShortlistPodcast) => void
-  onDecision: (podcast: ClientShortlistPodcast, status: 'approved' | 'rejected') => void
+  onDecision: (podcast: ClientShortlistPodcast, status: ClientShortlistFeedbackStatus) => void
   onToggleFeatured: (podcast: ClientShortlistPodcast) => void
   onRestore: (podcast: ClientShortlistPodcast) => void
   onArchive: (podcast: ClientShortlistPodcast) => void
@@ -213,6 +213,10 @@ const ShortlistRow = ({
             <DropdownMenuSeparator />
             {podcast.feedback_status !== 'approved' && <DropdownMenuItem onClick={() => onDecision(podcast, 'approved')}><ThumbsUp className="mr-2 h-4 w-4 text-emerald-600" />Mark approved</DropdownMenuItem>}
             {podcast.feedback_status !== 'rejected' && <DropdownMenuItem onClick={() => onDecision(podcast, 'rejected')}><ThumbsDown className="mr-2 h-4 w-4 text-rose-600" />Mark passed</DropdownMenuItem>}
+            {/* A decision made by mistake, or one the client changed their mind
+                about, had no way back: the only options were the two decisions
+                themselves. Clearing it returns the show to the review queue. */}
+            {podcast.feedback_status && <DropdownMenuItem onClick={() => onDecision(podcast, null)}><RotateCcw className="mr-2 h-4 w-4" />Move back to review</DropdownMenuItem>}
             <DropdownMenuSeparator />
             {podcast.visibility === 'visible' && <DropdownMenuItem onClick={() => onToggleFeatured(podcast)}><Star className="mr-2 h-4 w-4" />{podcast.is_featured ? 'Remove from featured' : 'Add to featured'}</DropdownMenuItem>}
             {podcast.visibility === 'archived' ? (
