@@ -43,6 +43,34 @@ describe('portal journey counts', () => {
     expect(counts.contacted).toBe(0)
   })
 
+  // Between syncs the sending platform's total runs ahead of the per-show
+  // send records. The page showed "reached 5 hosts" beside a tile saying 15.
+  it('moves scheduled shows to sent up to the sending platform total', () => {
+    const source = {
+      bookings: [],
+      outreach: { podcasts_contacted: 15 } as never,
+      outreach_pipeline: { preparing: 0, queued: 94, contacted: 5, replied: 0, completed: 0 },
+    }
+    expect(outreachStageCounts(source)).toEqual({ preparing: 0, queued: 84, contacted: 15, replied: 0, completed: 0 })
+    const counts = portalJourneyCounts(source)
+    expect(counts.emailed).toBe(15)
+    expect(counts.queued).toBe(84)
+    expect(counts.inOutreach).toBe(99)
+  })
+
+  it('never moves more shows than are scheduled, nor lowers a recorded count', () => {
+    expect(outreachStageCounts({
+      bookings: [],
+      outreach: { podcasts_contacted: 500 } as never,
+      outreach_pipeline: { queued: 3, contacted: 2 },
+    })).toEqual({ preparing: 0, queued: 0, contacted: 5, replied: 0, completed: 0 })
+    expect(outreachStageCounts({
+      bookings: [],
+      outreach: { podcasts_contacted: 1 } as never,
+      outreach_pipeline: { queued: 3, contacted: 2 },
+    })).toEqual({ preparing: 0, queued: 3, contacted: 2, replied: 0, completed: 0 })
+  })
+
   it('separates emailed from scheduled, and conversations from secured shows', () => {
     const counts = portalJourneyCounts({
       outreach_pipeline: { preparing: 8, queued: 84, contacted: 15, replied: 2, completed: 1 },

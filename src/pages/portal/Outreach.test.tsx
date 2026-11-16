@@ -69,8 +69,8 @@ describe('PortalOutreach', () => {
     // One count for the page: the per-show record, lifted to the sending
     // platform's total where that runs ahead. "Meetings booked" was the
     // platform's own counter, not this client's bookings, and is gone.
-    expect(await screen.findByText('Shows in outreach')).toBeInTheDocument()
-    expect(screen.getByText('Shows in outreach').nextElementSibling).toHaveTextContent('2')
+    expect(await screen.findByText('Pitches in queue')).toBeInTheDocument()
+    expect(screen.getByText('Pitches in queue').nextElementSibling).toHaveTextContent('0')
     expect(screen.getByText('Hosts emailed').nextElementSibling).toHaveTextContent('18')
     expect(screen.getByText('Replies').nextElementSibling).toHaveTextContent('5')
     expect(screen.getByText('Shows secured').nextElementSibling).toHaveTextContent('1')
@@ -164,7 +164,7 @@ describe('PortalOutreach', () => {
 
     render(<PortalOutreach />)
 
-    expect((await screen.findByText('Shows in outreach')).nextElementSibling).toHaveTextContent('250')
+    expect((await screen.findByText('Pitches in queue')).nextElementSibling).toHaveTextContent('240')
     expect(screen.getByText('Your pitch has reached 10 hosts')).toBeInTheDocument()
     expect(screen.getByText('Showing the 1 show furthest along, of 250 in outreach.')).toBeInTheDocument()
     // No month has anything to chart, so the two charts stay out of the way.

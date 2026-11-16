@@ -33,6 +33,7 @@ export interface PortalJourneyStatus {
 }
 
 type JourneySource = Pick<PortalExperienceOverview, 'bookings' | 'outreach_pipeline' | 'outreach_targets'>
+  & { outreach?: PortalExperienceOverview['outreach'] }
 
 const STAGES: Array<PortalOutreachTarget['stage']> = ['preparing', 'queued', 'contacted', 'replied', 'completed']
 
@@ -49,10 +50,24 @@ export function outreachStageCounts(overview: JourneySource | null | undefined):
       const value = overview.outreach_pipeline[stage]
       counts[stage] = typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
     }
-    return counts
+  } else {
+    for (const target of overview.outreach_targets ?? []) {
+      if (target.stage in counts) counts[target.stage] += 1
+    }
   }
-  for (const target of overview.outreach_targets ?? []) {
-    if (target.stage in counts) counts[target.stage] += 1
+  /*
+   * A show counts as emailed on its own send record, which only a sync fills
+   * in. The sending platform's total is current, so between syncs it runs
+   * ahead: it said fifteen hosts while the rows proved five, and the page
+   * showed both. The difference can only be shows still marked scheduled, so
+   * that many move from scheduled to sent and every number on the page agrees.
+   */
+  const platformEmailed = overview.outreach?.podcasts_contacted
+  if (typeof platformEmailed === 'number' && Number.isFinite(platformEmailed)) {
+    const recorded = counts.contacted + counts.replied + counts.completed
+    const moved = Math.min(counts.queued, Math.max(0, Math.floor(platformEmailed) - recorded))
+    counts.queued -= moved
+    counts.contacted += moved
   }
   return counts
 }

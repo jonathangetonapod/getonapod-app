@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowRight,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   Download,
@@ -224,6 +225,11 @@ export default function PortalDashboardMvp() {
   const journeyStats: JourneyStat[] = [
     ...(outreach
       ? [
+        // The queue first while there is one: during outreach it is the
+        // number that says how much is still to come.
+        ...(journeyCounts.queued > 0
+          ? [{ label: 'Pitches in queue', value: String(journeyCounts.queued), icon: CalendarClock }]
+          : []),
         { label: 'Podcasts contacted', value: String(Math.max(outreach.podcasts_contacted, journeyCounts.emailed)), icon: Send },
         { label: 'Replies', value: String(Math.max(outreach.replies, journeyCounts.replied)), icon: MessageSquare },
         { label: 'Shows secured', value: String(securedBookings.length), icon: Mic2 },
@@ -242,6 +248,7 @@ export default function PortalDashboardMvp() {
     3: 'grid gap-4 sm:grid-cols-3',
     4: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4',
     5: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-5',
+    6: 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6',
   }[journeyStats.length] ?? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-4'
 
   return (

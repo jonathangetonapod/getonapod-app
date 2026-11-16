@@ -545,11 +545,16 @@ describe('PortalDashboardMvp', () => {
     mockedGetExperience.mockResolvedValue({
       ...overview(),
       bookings: [],
-      outreach_pipeline: { preparing: 0, queued: 84, contacted: 15, replied: 0, completed: 0 },
+      // The sending platform has emailed 15; only 5 rows carry a send record
+      // yet. Every number on the page follows the platform's total.
+      outreach: { ...overview().outreach!, podcasts_contacted: 15, replies: 0 },
+      outreach_pipeline: { preparing: 0, queued: 94, contacted: 5, replied: 0, completed: 0 },
     })
     renderPage()
 
     expect(await screen.findByText('Your pitch has reached 15 hosts')).toBeInTheDocument()
+    expect(screen.getByText('Pitches in queue').nextElementSibling).toHaveTextContent('84')
+    expect(screen.getByText('Podcasts contacted').nextElementSibling).toHaveTextContent('15')
     expect(screen.getByText(/84 more pitches are scheduled/)).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: /See outreach/ })) expect(link).toHaveAttribute('href', '/portal/outreach')
     expect(screen.getByText(/99 shows are in outreach right now/)).toBeInTheDocument()

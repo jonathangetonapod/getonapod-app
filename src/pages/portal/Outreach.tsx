@@ -113,7 +113,7 @@ export default function PortalOutreach() {
 
   // The platform's own totals where they run ahead of the per-show record.
   const tiles = [
-    { label: 'Shows in outreach', hint: 'Pitch written', value: counts.inOutreach, icon: CalendarClock },
+    { label: 'Pitches in queue', hint: 'Written and scheduled to send', value: counts.queued, icon: CalendarClock },
     { label: 'Hosts emailed', hint: 'Your pitch has gone out', value: Math.max(counts.emailed, summary?.podcasts_contacted ?? 0), icon: Send },
     { label: 'Replies', hint: 'Hosts who wrote back', value: Math.max(counts.replied, summary?.replies ?? 0), icon: MessageSquare },
     { label: 'Shows secured', hint: 'Booked, recorded or live', value: counts.secured, icon: Mic2 },
