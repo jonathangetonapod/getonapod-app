@@ -10,8 +10,8 @@ describe('pitchQuality', () => {
     // Host surveys: openers past ~150 words and padded follow-ups are the
     // most-cited deletion triggers. Changing these is a product decision.
     expect(PITCH_WORD_TARGETS.opening).toEqual({ min: 100, max: 150 })
-    expect(PITCH_WORD_TARGETS.follow_up_one).toEqual({ min: 50, max: 80 })
-    expect(PITCH_WORD_TARGETS.follow_up_two).toEqual({ min: 40, max: 60 })
+    expect(PITCH_WORD_TARGETS.follow_up_one).toEqual({ min: 45, max: 75 })
+    expect(PITCH_WORD_TARGETS.follow_up_two).toEqual({ min: 30, max: 55 })
   })
 
   it('counts words without being fooled by extra whitespace', () => {

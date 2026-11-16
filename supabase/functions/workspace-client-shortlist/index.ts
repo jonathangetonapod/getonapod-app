@@ -1,6 +1,7 @@
 import { textTokenUsage, textAiFetch, type TextAiCredential } from '../_shared/textAi.ts'
 import { BatchYield, BatchCheckpointError, batchPromptRunner, researchBatchRecovery } from '../_shared/researchBatchCheckpoint.ts'
 import { researchBatchAuth } from '../_shared/researchBatchAuth.ts'
+import { followUpFormatFlags } from '../_shared/pitchFollowUps.ts'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 import {
@@ -504,7 +505,7 @@ function present(value: string | null | undefined): string {
 // Stamped on research documents and generated pitches so reply rates can be
 // compared per prompt-chain revision once volume exists. Bump on any change
 // to the prompt chain or its assembly.
-const PITCH_CHAIN_VERSION = 'p5-outreach-cooldown-2026-07-27'
+const PITCH_CHAIN_VERSION = 'p6-follow-up-layout-2026-11-16'
 
 export interface PodcastRelationship {
   podcast_id: string
@@ -811,8 +812,9 @@ function pitchSequenceChecks(sequence: PitchSequence): string[] {
   const words = (text: string) => text.trim().split(/\s+/u).filter(Boolean).length
   if (words(sequence.subject) > 8) flags.push('subject longer than 8 words')
   if (words(sequence.email_1) > 160) flags.push(`email_1 runs ${words(sequence.email_1)} words (cap 150)`)
-  if (sequence.follow_up_1 && words(sequence.follow_up_1) > 100) flags.push('follow_up_1 over 80-word cap')
-  if (sequence.follow_up_2 && words(sequence.follow_up_2) > 80) flags.push('follow_up_2 over 60-word cap')
+  if (sequence.follow_up_1 && words(sequence.follow_up_1) > 90) flags.push('follow_up_1 over 75-word cap')
+  if (sequence.follow_up_2 && words(sequence.follow_up_2) > 70) flags.push('follow_up_2 over 55-word cap')
+  flags.push(...followUpFormatFlags('follow_up_1', sequence.follow_up_1 ?? ''), ...followUpFormatFlags('follow_up_2', sequence.follow_up_2 ?? ''))
   if ((sequence.email_1.match(/https?:\/\//gu) ?? []).length > 1) flags.push('more than one link in email_1')
   for (const [key, value] of Object.entries(sequence)) {
     if (!value) continue
@@ -981,11 +983,16 @@ serve(async (req) => {
     }
     if (action === 'research-batch-start') {
       if (!Deno.env.get('RESEARCH_TICK_SECRET')) throw new HttpError(503,'BATCH_NOT_CONFIGURED','Background research is not configured yet')
-      requireOnlyKeys(body,['action','workspace_id','client_id','shortlist_podcast_ids','mode'])
+      requireOnlyKeys(body,['action','workspace_id','client_id','shortlist_podcast_ids','mode','rewrite'])
       // 'pitch' writes the sequence for shows whose research is already done;
       // the default researches first and then writes, as it always has.
       if (body.mode !== undefined && body.mode !== 'research' && body.mode !== 'pitch') throw new HttpError(400,'INVALID_BATCH','Unknown batch mode')
       const pitchOnly = body.mode === 'pitch'
+      // Rewrite replaces a batch draft nobody has saved to the campaign yet,
+      // for when the prompts changed after it was written. Campaign copy is
+      // still never touched.
+      if (body.rewrite !== undefined && (body.rewrite !== true || !pitchOnly)) throw new HttpError(400,'INVALID_BATCH','Rewrite is only available when writing pitches')
+      const rewrite = body.rewrite === true
       const ids = body.shortlist_podcast_ids
       if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200) throw new HttpError(400,'INVALID_BATCH','Select between 1 and 200 shows')
       const uniqueIds = [...new Set(ids.map(id => requireUuid(id,'shortlist_podcast_id')))]
@@ -1029,8 +1036,9 @@ serve(async (req) => {
           if (progress?.status !== 'completed') reason = 'Research is not complete; run research on this show first'
           else if (pitchedIds.has(row.id)) reason = 'A pitch is already written for this show'
           else if (activeIds.has(row.id)) reason = 'Already queued'
-          // Research with no recorded run cannot be told apart from the draft's, so it is not paid for twice.
-          else if (draftRuns.has(row.id) && (!researchRun || draftRuns.get(row.id) === researchRun)) reason = 'A draft is already written from this research; open the pitch view to review it'
+          else if (rewrite && !draftRuns.has(row.id)) reason = 'No draft to rewrite; use Write pitches'
+          // Research with no recorded run cannot be told apart from the draft's, so it is not written twice.
+          else if (!rewrite && draftRuns.has(row.id) && (!researchRun || draftRuns.get(row.id) === researchRun)) reason = 'A draft is already written from this research; open the pitch view to review it'
         }
         else if (progress?.status === 'completed') reason = 'Research already complete; use Write pitches to draft the pitch'
         else if (['running','queued'].includes(progress?.status ?? '') && Date.now()-Date.parse(progress?.updated_at ?? '') < RESEARCH_STALE_LOCK_MS) reason = 'Research already running'

@@ -18,7 +18,7 @@ import {
 import { getWorkspaceCampaign } from '@/services/workspaceCampaigns'
 import { listResearchJobs } from '@/services/researchJobs'
 
-vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: ({ pitchIds }: { pitchIds?: string[] }) => <p data-testid="pitch-ids">{(pitchIds ?? []).join(',')}</p> }))
+vi.mock('@/components/workspace/ShortlistResearchBatch', () => ({ ShortlistResearchBatch: ({ pitchIds, rewriteIds }: { pitchIds?: string[]; rewriteIds?: string[] }) => <><p data-testid="pitch-ids">{(pitchIds ?? []).join(',')}</p><p data-testid="rewrite-ids">{(rewriteIds ?? []).join(',')}</p></> }))
 vi.mock('@/services/researchJobs', () => ({
   researchJobsQueryKey: (workspace: string, client: string) => ['research-batches', workspace, client],
   listResearchJobs: vi.fn(),
@@ -304,6 +304,8 @@ describe('ClientShortlistEditor', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 3 podcasts in this view' }))
     // Not the unresearched show, and not the one whose draft is already written.
     await waitFor(() => expect(screen.getByTestId('pitch-ids')).toHaveTextContent(new RegExp(`^${podcastRowId}$`)))
+    // The drafted show is the one a rewrite would take.
+    expect(screen.getByTestId('rewrite-ids')).toHaveTextContent(/^66666666-6666-4666-8666-666666666666$/)
   })
 
   it('archives every selected show at once', async () => {

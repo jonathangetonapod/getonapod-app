@@ -52,3 +52,9 @@ Applied `20261031001200` and deployed the worker with a ten-job claim. The datab
 The shortlist polls `research-batch-list` with `slim: true`, which returns no email bodies or saved model outputs (the step count comes from the generated `pitch_steps` column); **View draft** reads one job through `research-batch-draft`. Polling is every 5 seconds while a job is queued or running and every 30 seconds otherwise, and the steps of a pitch-only job do not reload the shortlist. Batch start reads the whole selection's relationships in one lookup.
 
 Apply `20261115000100_bulk_pitch_writing.sql` **before** deploying `workspace-client-shortlist`: the batch list reads the new `kind` and `pitch_steps` columns.
+
+## Follow-up layout and bulk rewrite — 2026-11-16
+
+`write_email` and `clean_email` now lay out both follow-ups as short emails: the greeting on its own line, a blank line, then two short paragraphs, with no restated credentials and no stock opener (follow-up one 45-75 words, follow-up two 30-55). `_shared/pitchFollowUps.ts` checks the layout in code, so a breach goes through the revision pass and anything left is shown as a flag. `PITCH_CHAIN_VERSION` is `p6-follow-up-layout-2026-11-16`. A workspace or client that saved its own `write_email` keeps its wording; the code check still applies.
+
+**Rewrite drafts** (`research-batch-start` with `mode: 'pitch', rewrite: true`) writes a show's batch draft again with the current prompts. It only takes shows that have a draft and no copy on the campaign; the newest draft is the one the pitch view opens.

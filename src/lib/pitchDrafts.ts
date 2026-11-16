@@ -56,3 +56,22 @@ export function pitchWritableIds(
     return !hasWrittenPitch(target) && pitchStatus(target) === 'pending'
   }).map((podcast) => podcast.id)
 }
+
+/**
+ * Which of these rows hold a batch draft that could be written again: a draft
+ * exists, nothing is saved to the campaign, and no job is working on the show.
+ * For after the prompts change; campaign copy is never rewritten.
+ */
+export function draftRewritableIds(
+  podcasts: readonly WritablePodcast[],
+  targetsByPodcast: ReadonlyMap<string, WorkspaceCampaignTarget>,
+  drafts: ReadonlySet<string>,
+  active: ReadonlySet<string>,
+): string[] {
+  return podcasts.filter((podcast) => {
+    if (podcast.visibility !== 'visible' || podcast.feedback_status !== 'approved') return false
+    if (!drafts.has(podcast.id) || active.has(podcast.id)) return false
+    const target = targetsByPodcast.get(podcast.id)
+    return !hasWrittenPitch(target) && pitchStatus(target) === 'pending'
+  }).map((podcast) => podcast.id)
+}

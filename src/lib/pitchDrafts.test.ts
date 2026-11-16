@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeJobIds, batchDraftIds, pitchWritableIds } from '@/lib/pitchDrafts'
+import { activeJobIds, batchDraftIds, draftRewritableIds, pitchWritableIds } from '@/lib/pitchDrafts'
 import type { ResearchJob } from '@/services/researchJobs'
 import type { WorkspaceCampaignTarget } from '@/services/workspaceCampaigns'
 
@@ -57,5 +57,14 @@ describe('pitchWritableIds', () => {
     ])
     const taken = new Set(['drafted', ...activeJobIds([job({ shortlist_podcast_id: 'queued', status: 'queued', pitch: null })])])
     expect(pitchWritableIds(podcasts, targets, taken)).toEqual(['ready'])
+  })
+})
+
+describe('draftRewritableIds', () => {
+  it('offers only drafts that are not on the campaign and not being written', () => {
+    const podcasts = [row('drafted'), row('no-draft'), row('saved'), row('running'), row('passed', { feedback_status: 'rejected' })]
+    const targets = new Map([['saved', { status: 'draft', pitch_subject: 'Idea', pitch_body: 'Hello' } as WorkspaceCampaignTarget]])
+    const drafts = new Set(['drafted', 'saved', 'running', 'passed'])
+    expect(draftRewritableIds(podcasts, targets, drafts, new Set(['running']))).toEqual(['drafted'])
   })
 })

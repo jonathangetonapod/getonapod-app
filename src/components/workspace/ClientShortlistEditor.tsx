@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils'
 import { WEAK_FIT_BELOW } from '@/lib/shortlistFit'
 import { FitDetails, ShortlistFitRunner } from '@/components/workspace/ShortlistFit'
 import { ShortlistResearchBatch } from '@/components/workspace/ShortlistResearchBatch'
-import { activeJobIds, batchDraftIds, pitchWritableIds } from '@/lib/pitchDrafts'
+import { activeJobIds, batchDraftIds, draftRewritableIds, pitchWritableIds } from '@/lib/pitchDrafts'
 import { listResearchJobs, researchJobsQueryKey, researchJobsRefetchInterval } from '@/services/researchJobs'
 import { ShortlistBulkBar } from '@/components/workspace/ShortlistBulkBar'
 import { ShortlistDeleteDialog } from '@/components/workspace/ShortlistDeleteDialog'
@@ -251,6 +251,14 @@ export function ClientShortlistEditor({
       podcasts.filter((podcast) => selectedIds.has(podcast.podcast_id)),
       targetsByPodcast,
       new Set([...draftIds, ...activeJobIds(researchJobsQuery.data ?? [])]),
+    )
+    : []), [pitchDataAvailable, podcasts, selectedIds, targetsByPodcast, draftIds, researchJobsQuery.data])
+  const rewriteIds = useMemo(() => (pitchDataAvailable
+    ? draftRewritableIds(
+      podcasts.filter((podcast) => selectedIds.has(podcast.podcast_id)),
+      targetsByPodcast,
+      draftIds,
+      activeJobIds(researchJobsQuery.data ?? []),
     )
     : []), [pitchDataAvailable, podcasts, selectedIds, targetsByPodcast, draftIds, researchJobsQuery.data])
   const featured = useMemo(() => podcasts
@@ -542,7 +550,7 @@ export function ClientShortlistEditor({
         </CardHeader>
 
         <CardContent className="space-y-3 p-3 sm:p-4">
-          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} pitchIds={pitchIds} pitchStatusKnown={pitchDataAvailable} />
+          <ShortlistResearchBatch pitchHref={id => clientPitchHref(workspaceBaseHref,clientId,id)} workspaceId={workspaceId} clientId={clientId} selectedIds={podcasts.filter(podcast => selectedIds.has(podcast.podcast_id)).map(podcast => podcast.id)} pitchIds={pitchIds} rewriteIds={rewriteIds} pitchStatusKnown={pitchDataAvailable} />
           {campaignTargetsQuery.isError && <p role="status" className="text-sm text-muted-foreground">{pitchDataAvailable ? 'Pitch statuses could not be refreshed. Showing last loaded statuses.' : 'Pitch statuses could not be loaded.'} <button type="button" className="underline" onClick={() => void campaignTargetsQuery.refetch()}>Retry</button></p>}
           <ShortlistBulkBar
             workspaceId={workspaceId}

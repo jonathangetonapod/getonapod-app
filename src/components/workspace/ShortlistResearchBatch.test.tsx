@@ -8,7 +8,7 @@ vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn()}}))
 const clients = vi.hoisted(()=>({getWorkspaceClientDetail:vi.fn(),updateWorkspaceClient:vi.fn(),updateWorkspaceClientProfile:vi.fn()}))
 vi.mock('@/services/clients',()=>clients)
 const clientRecord = (overrides:Record<string,unknown> = {})=>({can_manage:true,client:{id:'client',workspace_id:'workspace',name:'Taylor',email:'t@example.com',contact_person:'',linkedin_url:'',website:'',status:'active',notes:'keep me',bio:'',updated_at:'2026-11-04T00:00:00.000Z',...overrides}})
-function mount(client = new QueryClient({defaultOptions:{queries:{retry:false}}}),pitchIds:string[] = []){return render(<QueryClientProvider client={client}><ShortlistResearchBatch workspaceId="workspace" clientId="client" selectedIds={['row-one','row-two']} pitchIds={pitchIds}/></QueryClientProvider>)}
+function mount(client = new QueryClient({defaultOptions:{queries:{retry:false}}}),pitchIds:string[] = [],rewriteIds:string[] = []){return render(<QueryClientProvider client={client}><ShortlistResearchBatch workspaceId="workspace" clientId="client" selectedIds={['row-one','row-two']} pitchIds={pitchIds} rewriteIds={rewriteIds}/></QueryClientProvider>)}
 beforeEach(()=>{
  invoke.mockReset();invoke.mockResolvedValue({data:{jobs:[]},error:null})
  clients.getWorkspaceClientDetail.mockReset().mockResolvedValue(clientRecord({bio:'Founder',linkedin_url:'https://linkedin.com/in/t',website:'https://t.com'}))
@@ -194,4 +194,19 @@ it('does not reload the shortlist for each step of a pitch-only job',async()=>{
  await client.invalidateQueries({queryKey:['research-batches','workspace','client']})
  await waitFor(()=>expect(screen.getByLabelText('Pitch writing status')).toHaveTextContent('1 running'))
  expect(invalidate).not.toHaveBeenCalledWith({queryKey:['client-shortlist','workspace','client']})
+})
+
+it('rewrites selected drafts only after saying what is replaced and what is left alone',async()=>{
+ invoke.mockImplementation(async(_name:string,{body}:{body:{action:string}})=>body.action==='research-batch-start'?{data:{batch_id:'batch',queued:2,skipped:0},error:null}:{data:{jobs:[]},error:null})
+ mount(undefined,[],['row-one','row-two'])
+ fireEvent.click(screen.getByRole('button',{name:'Rewrite 2 drafts'}))
+ expect(screen.getByText(/anything you have edited and saved, staged or sent is left alone/)).toBeInTheDocument()
+ expect(invoke.mock.calls.some(call=>call[1].body.action==='research-batch-start')).toBe(false)
+ fireEvent.click(screen.getAllByRole('button',{name:'Rewrite 2 drafts'}).at(-1)!)
+ await waitFor(()=>expect(invoke).toHaveBeenCalledWith('workspace-client-shortlist',{body:{action:'research-batch-start',workspace_id:'workspace',client_id:'client',shortlist_podcast_ids:['row-one','row-two'],mode:'pitch',rewrite:true}}))
+})
+
+it('offers no rewrite when no selected show has a draft',()=>{
+ mount()
+ expect(screen.queryByRole('button',{name:/Rewrite/})).not.toBeInTheDocument()
 })

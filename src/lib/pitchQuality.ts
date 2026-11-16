@@ -21,8 +21,8 @@ export interface PitchWordTarget {
 
 export const PITCH_WORD_TARGETS: Record<PitchEmailId, PitchWordTarget> = {
   opening: { min: 100, max: 150 },
-  follow_up_one: { min: 50, max: 80 },
-  follow_up_two: { min: 40, max: 60 },
+  follow_up_one: { min: 45, max: 75 },
+  follow_up_two: { min: 30, max: 55 },
 }
 
 /** Phrases podcast hosts name as instant "this is AI" tells. */

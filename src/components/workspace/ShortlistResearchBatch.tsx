@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Clock, FlaskConical, Loader2, AlertCircle, AlertTriangle, PanelRightOpen, PenLine, X } from 'lucide-react'
+import { CheckCircle2, Clock, FlaskConical, Loader2, AlertCircle, AlertTriangle, PanelRightOpen, PenLine, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -51,11 +51,12 @@ function writeHidden(clientId:string,batchId:string|null) {
 /**
  * selectedIds are the ticked rows; pitchIds are the ticked rows that are approved,
  * researched and still have no pitch, which is what a pitch-only batch writes for.
+ * rewriteIds are the ticked rows holding a batch draft that is not on the campaign yet.
  * pitchStatusKnown is false until the campaign's pitch statuses have loaded.
  */
-export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchIds=[],pitchStatusKnown=true,pitchHref}:{workspaceId:string;clientId:string;selectedIds:string[];pitchIds?:string[];pitchStatusKnown?:boolean;pitchHref?:(id:string)=>string}) {
+export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchIds=[],rewriteIds=[],pitchStatusKnown=true,pitchHref}:{workspaceId:string;clientId:string;selectedIds:string[];pitchIds?:string[];rewriteIds?:string[];pitchStatusKnown?:boolean;pitchHref?:(id:string)=>string}) {
  const cache = useQueryClient()
- const [review,setReview] = useState<false|'research'|'pitch'>(false)
+ const [review,setReview] = useState<false|'research'|'pitch'|'rewrite'>(false)
  const [busy,setBusy] = useState(false)
  const [draft,setDraft] = useState<Job|null>(null)
  const [detailsOpen,setDetailsOpen] = useState(false)
@@ -148,7 +149,7 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchId
      if (extra.mode==='pitch' && typeof response.queued==='number') {
        const skippedNote = response.skipped ? ` ${response.skipped} skipped — see Details for why.` : ''
        // Queued rows stop being offered once the list reloads; a second click must not queue a batch of refusals.
-       if (response.queued>0) toast.success(`${response.queued} ${response.queued===1?'pitch':'pitches'} queued.${skippedNote}`)
+       if (response.queued>0) toast.success(`${response.queued} ${extra.rewrite?(response.queued===1?'rewrite':'rewrites'):(response.queued===1?'pitch':'pitches')} queued.${skippedNote}`)
        else toast.error(`No pitches were queued.${skippedNote}`)
      }
      setReview(false)
@@ -160,6 +161,7 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchId
  return <section aria-label="Bulk research" className="space-y-3">
    {selectedIds.length>0 && <div className="flex flex-wrap items-center gap-2">
      <Button variant="outline" onClick={()=>setReview('research')} disabled={busy}><FlaskConical className="mr-2 h-4 w-4"/>Run research on {selectedIds.length} selected</Button>
+     {rewriteIds.length>0 && <Button variant="outline" onClick={()=>setReview('rewrite')} disabled={busy}><RefreshCw className="mr-2 h-4 w-4"/>Rewrite {rewriteIds.length} {rewriteIds.length===1?'draft':'drafts'}</Button>}
      <Button variant="outline" onClick={()=>setReview('pitch')} disabled={busy || pitchIds.length===0} aria-describedby="pitch-batch-note"><PenLine className="mr-2 h-4 w-4"/>Write pitches for {pitchIds.length} selected</Button>
      <span id="pitch-batch-note" className="text-xs text-muted-foreground">{!pitchStatusKnown ? 'Pitch statuses are still loading.' : pitchIds.length<selectedIds.length ? `${pitchIds.length===0?'None of the selected shows':`${pitchIds.length} of ${selectedIds.length} selected shows`} ${pitchIds.length===1?'is':'are'} approved, researched and without a pitch.` : ''}</span>
    </div>}
@@ -217,6 +219,11 @@ export function ShortlistResearchBatch({workspaceId,clientId,selectedIds,pitchId
      {selectedIds.length>pitchIds.length && <p className="text-sm text-muted-foreground">{selectedIds.length-pitchIds.length} selected {selectedIds.length-pitchIds.length===1?'show is':'shows are'} left out: not approved, not researched yet, archived, or already has a pitch written or being written.</p>}
      <Button disabled={busy || pitchIds.length===0 || pitchIds.length>200} onClick={()=>void act('research-batch-start',{shortlist_podcast_ids:pitchIds,mode:'pitch'})}>{busy?'Queuing…':`Write ${pitchIds.length} ${pitchIds.length===1?'pitch':'pitches'}`}</Button>
      {pitchIds.length>200 && <p className="text-sm">Select up to 200 shows per batch.</p>}
+   </DialogContent></Dialog>
+   <Dialog open={review==='rewrite'} onOpenChange={open=>setReview(open?'rewrite':false)}><DialogContent><DialogHeader><DialogTitle>Rewrite {rewriteIds.length} {rewriteIds.length===1?'draft':'drafts'}</DialogTitle><DialogDescription>Writes all three emails again for each show from its saved research, using your pitch prompts as they are now. Use this after the prompts change.</DialogDescription></DialogHeader>
+     <p className="text-sm">The new draft replaces the old one in the pitch view. Only drafts that have not been saved to a campaign are rewritten: anything you have edited and saved, staged or sent is left alone. Nothing is added to a campaign and no emails are sent. Each rewrite uses your AI provider.</p>
+     <Button disabled={busy || rewriteIds.length===0 || rewriteIds.length>200} onClick={()=>void act('research-batch-start',{shortlist_podcast_ids:rewriteIds,mode:'pitch',rewrite:true})}>{busy?'Queuing…':`Rewrite ${rewriteIds.length} ${rewriteIds.length===1?'draft':'drafts'}`}</Button>
+     {rewriteIds.length>200 && <p className="text-sm">Select up to 200 shows per batch.</p>}
    </DialogContent></Dialog>
    <Dialog open={!!draft} onOpenChange={open=>{if(!open)setDraft(null)}}><DialogContent className="max-h-[85vh] overflow-auto"><DialogHeader><DialogTitle>{draft?.pitch?.subject}</DialogTitle><DialogDescription>{draft?.podcast_name} — generated sequence for review</DialogDescription></DialogHeader>{draft && pitchHref && <Button asChild variant="outline"><Link to={pitchHref(draft.shortlist_podcast_id)}>Continue in pitch editor</Link></Button>}{[draft?.pitch?.body,draft?.pitch?.follow_up_1_body,draft?.pitch?.follow_up_2_body].filter(Boolean).map((body,index)=><div key={index}><h4 className="font-medium">{index===0?'Opening email':`Follow-up ${index}`}</h4><p className="whitespace-pre-wrap text-sm mt-2">{body}</p></div>)}</DialogContent></Dialog>
  </section>
