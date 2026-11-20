@@ -87,7 +87,8 @@ const EmailCell = ({ podcast }: { podcast: ClientShortlistPodcast }) => {
 interface ShortlistTableProps {
   podcasts: ClientShortlistPodcast[]
   selectedIds: Set<string>
-  onToggle: (podcastId: string, checked: boolean) => void
+  /** `range` is true on shift-click: select or clear everything since the last row clicked. */
+  onToggle: (podcastId: string, checked: boolean, range?: boolean) => void
   fitProfile: ClientShortlistFitProfile | null
   targetsByPodcast: Map<string, WorkspaceCampaignTarget>
   /** Rows with a batch-written pitch waiting in the pitch view. */
@@ -146,7 +147,11 @@ const ShortlistRow = ({
   return (
     <div role="row" className={cn('grid grid-cols-[20px_minmax(0,1fr)] gap-x-3 gap-y-2 px-3 py-3', GRID)}>
       <div role="cell" className="pt-1 min-[1100px]:pt-0">
-        <Checkbox className="h-5 w-5 min-[1100px]:h-4 min-[1100px]:w-4" checked={selectedIds.has(podcast.podcast_id)} onCheckedChange={(checked) => onToggle(podcast.podcast_id, checked === true)} aria-label={`Select ${podcast.podcast_name}`} />
+        <Checkbox className="h-5 w-5 min-[1100px]:h-4 min-[1100px]:w-4" checked={selectedIds.has(podcast.podcast_id)} onClick={(event) => {
+          if (!event.shiftKey) return
+          event.preventDefault()
+          onToggle(podcast.podcast_id, !selectedIds.has(podcast.podcast_id), true)
+        }} onCheckedChange={(checked) => onToggle(podcast.podcast_id, checked === true)} aria-label={`Select ${podcast.podcast_name}`} />
       </div>
       <div role="cell" className="min-w-0">
         <button type="button" className={cn('flex w-full min-w-0 items-start gap-3 rounded-md text-left', FOCUS_RING)} onClick={() => onOpenDetails(podcast)} aria-label={`View details for ${podcast.podcast_name}`} aria-describedby={`host-${podcast.podcast_id}`}>

@@ -308,6 +308,23 @@ describe('ClientShortlistEditor', () => {
     expect(screen.getByTestId('rewrite-ids')).toHaveTextContent(/^66666666-6666-4666-8666-666666666666$/)
   })
 
+  it('selects the first N shows in the view, and a range on shift-click', async () => {
+    renderEditor()
+    await screen.findByText('Operator Weekly')
+    const rows = screen.getAllByRole('checkbox', { name: /^Select (?!all)/ })
+    fireEvent.change(screen.getByLabelText('Number of podcasts to select'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+    expect(rows[0]).toBeChecked()
+    expect(rows[1]).not.toBeChecked()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 2 podcasts in this view' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all 2 podcasts in this view' }))
+    fireEvent.click(rows[0])
+    fireEvent.click(rows[1], { shiftKey: true })
+    expect(rows[0]).toBeChecked()
+    expect(rows[1]).toBeChecked()
+  })
+
   it('archives every selected show at once', async () => {
     vi.mocked(archiveClientShortlistPodcasts).mockResolvedValue({ archived: 2 })
     renderEditor()

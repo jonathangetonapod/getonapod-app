@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -337,12 +337,29 @@ export function ClientShortlistEditor({
     document.getElementById('client-podcast-list')?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
   }
   const allSelected = filtered.length > 0 && filtered.every((podcast) => selectedIds.has(podcast.podcast_id))
-  const toggleSelected = (podcastId: string, checked: boolean) => setSelectedIds((current) => {
-    const next = new Set(current)
-    if (checked) next.add(podcastId)
-    else next.delete(podcastId)
-    return next
-  })
+  const lastToggledId = useRef<string | null>(null)
+  const toggleSelected = (podcastId: string, checked: boolean, range = false) => {
+    const order = filtered.map((podcast) => podcast.podcast_id)
+    const from = range && lastToggledId.current ? order.indexOf(lastToggledId.current) : -1
+    const to = order.indexOf(podcastId)
+    const ids = from >= 0 && to >= 0 ? order.slice(Math.min(from, to), Math.max(from, to) + 1) : [podcastId]
+    lastToggledId.current = podcastId
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      for (const id of ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+  const [selectCount, setSelectCount] = useState('')
+  const selectFirst = () => {
+    const count = Math.min(filtered.length, Math.max(0, Math.floor(Number(selectCount))))
+    if (!count) return
+    setSelectedIds(new Set(filtered.slice(0, count).map((podcast) => podcast.podcast_id)))
+    lastToggledId.current = null
+  }
   const catalogResults = catalogSearchQuery.data || []
   const selectedCatalogPodcasts = Array.from(selectedCatalog.values())
 
@@ -560,10 +577,18 @@ export function ClientShortlistEditor({
             onSaved={refresh}
           />
           {filtered.length > 0 && (
-            <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-              <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelectedIds(checked ? new Set(filtered.map((podcast) => podcast.podcast_id)) : new Set())} aria-label={`Select all ${resultLabel(filtered.length)} in this view`} />
-              Select all {resultLabel(filtered.length)} in this view
-            </label>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <label className="flex w-fit cursor-pointer items-center gap-2">
+                <Checkbox checked={allSelected} onCheckedChange={(checked) => setSelectedIds(checked ? new Set(filtered.map((podcast) => podcast.podcast_id)) : new Set())} aria-label={`Select all ${resultLabel(filtered.length)} in this view`} />
+                Select all {resultLabel(filtered.length)} in this view
+              </label>
+              <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); selectFirst() }}>
+                <span>Select the first</span>
+                <Input type="number" inputMode="numeric" min={1} max={filtered.length} value={selectCount} onChange={(event) => setSelectCount(event.target.value)} placeholder={String(Math.min(200, filtered.length))} aria-label="Number of podcasts to select" className="h-8 w-20" />
+                <Button type="submit" variant="outline" size="sm" disabled={!(Number(selectCount) >= 1)}>Select</Button>
+              </form>
+              <span className="hidden text-xs sm:inline">Shift-click a checkbox to select a range.</span>
+            </div>
           )}
           {visiblePage.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center"><Search className="mx-auto h-8 w-8 text-muted-foreground/50" /><p className="mt-2 font-medium">No podcasts match this view</p><p className="text-sm text-muted-foreground">Try a different filter or add podcasts from the catalog.</p></div>
