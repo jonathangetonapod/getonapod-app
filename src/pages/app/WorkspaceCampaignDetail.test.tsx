@@ -94,7 +94,7 @@ const campaignState = {
 } as WorkspaceCampaignDetailResponse
 
 const activeCampaign = {
-  id: 'campaign-one', workspace_id: workspaceId, client_id: clientId, name: 'Dallas Fontaine Podcast Outreach', status: 'active', instantly_campaign_id: 'instantly-one', instantly_campaign_status: 1, sender_accounts: ['active@example.com'], timezone: 'America/New_York', daily_limit: 30, analytics: { emails_sent_count: 0, contacted_count: 0, open_count_unique: 0, reply_count_unique: 0, bounced_count: 0, unsubscribed_count: 0, total_interested: 0, total_meeting_booked: 0 }, target_counts: { total: 2, needs_contact: 1, needs_pitch: 1, ready: 0, in_outreach: 0, replied: 0, failed: 0 }, target_shortlist_podcast_ids: ['shortlist-one', 'shortlist-two'], last_synced_at: null, last_error: null, created_at: '2026-07-22T00:00:00Z', updated_at: '2026-07-22T00:00:00Z',
+  id: 'campaign-one', workspace_id: workspaceId, client_id: clientId, name: 'Dallas Fontaine Podcast Outreach', status: 'active', instantly_campaign_id: 'instantly-one', instantly_campaign_status: 1, sender_accounts: ['active@example.com'], timezone: 'America/New_York', daily_limit: 30, analytics: { emails_sent_count: 0, contacted_count: 0, open_count_unique: 0, reply_count_unique: 0, bounced_count: 0, unsubscribed_count: 0, total_interested: 0, total_meeting_booked: 0, total_opportunities: 0, total_opportunity_value: 0 }, target_counts: { total: 2, needs_contact: 1, needs_pitch: 1, ready: 0, in_outreach: 0, replied: 0, failed: 0 }, target_shortlist_podcast_ids: ['shortlist-one', 'shortlist-two'], last_synced_at: null, last_error: null, created_at: '2026-07-22T00:00:00Z', updated_at: '2026-07-22T00:00:00Z',
 } as WorkspaceClientCampaign
 
 function renderPage(platformWorkspaceId?: string, query = '') {

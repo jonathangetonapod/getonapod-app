@@ -71,6 +71,8 @@ Deno.test("Instantly provider values are reduced to the supported campaign DTO",
       unsubscribed_count: 0,
       total_interested: 2,
       total_meeting_booked: 0,
+      total_opportunities: 0,
+      total_opportunity_value: 0,
     },
     "analytics should expose only the supported non-negative counters",
   );
@@ -259,6 +261,8 @@ Deno.test("Campaign analytics are fetched for every campaign in one request", as
           reply_count_unique: 3,
           bounced_count: 1,
           unsubscribed_count: 0,
+          total_opportunities: 2,
+          total_opportunity_value: 3958,
         },
         // A campaign belonging to somebody else, which the caller never asked
         // for and must not be able to write onto its own rows.
@@ -311,6 +315,8 @@ Deno.test("Campaign analytics are fetched for every campaign in one request", as
         unsubscribed_count: 0,
         total_interested: 0,
         total_meeting_booked: 0,
+        total_opportunities: 2,
+        total_opportunity_value: 3958,
       },
       "the campaign row should map onto the stored analytics shape",
     );
@@ -388,6 +394,8 @@ Deno.test("A bulk refresh keeps the counts its endpoint does not report", () => 
       // zero, and zeroing a real number would read as lost interest.
       total_interested: 4,
       total_meeting_booked: 1,
+      total_opportunities: 0,
+      total_opportunity_value: 0,
     },
     "interested and meeting counts should survive a totals-only refresh",
   );
@@ -453,4 +461,33 @@ Deno.test("The sending day is the campaign's day, not UTC's", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+Deno.test("Contacted counts each lead once and opportunities carry their value", () => {
+  // The overview reported contacted_count 109 for a campaign holding 99 leads,
+  // every one emailed; the new-leads counter is the per-lead one.
+  const analytics = safeInstantlyAnalytics({
+    emails_sent_count: 109,
+    contacted_count: 109,
+    new_leads_contacted_count: 99,
+    total_interested: 3,
+    total_opportunities: 2,
+    total_opportunity_value: 3958.004,
+  });
+  assertEquals(analytics.contacted_count, 99, "contacted should be leads, not sends");
+  assertEquals(analytics.total_opportunities, 2, "opportunities should be read");
+  assertEquals(analytics.total_opportunity_value, 3958, "value should be kept to cents");
+  assertEquals(
+    safeInstantlyAnalytics({ contacted_count: 15 }).contacted_count,
+    15,
+    "a stored row without the new-leads counter should read as stored",
+  );
+  assertEquals(
+    withStoredOpportunityCounts(
+      safeInstantlyAnalytics({ emails_sent_count: 120 }),
+      { total_opportunities: 2, total_opportunity_value: 3958 },
+    ).total_opportunity_value,
+    3958,
+    "a refresh that reports no opportunities should not zero a stored value",
+  );
 });

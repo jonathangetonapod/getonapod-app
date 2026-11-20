@@ -123,6 +123,10 @@ export interface WorkspaceCampaignAnalytics {
   unsubscribed_count: number
   total_interested: number
   total_meeting_booked: number
+  /** Instantly's "Opportunities"; other providers report their interested count. */
+  total_opportunities: number
+  /** Summed deal value of those opportunities; zero where none is recorded. */
+  total_opportunity_value: number
 }
 
 export interface WorkspaceCampaignTargetCounts {

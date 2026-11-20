@@ -94,6 +94,11 @@ function pitchStage(target?: WorkspaceCampaignTarget): PitchStage {
   return target.status
 }
 
+/** Instantly shows opportunity value in whole dollars; so does this page. */
+function formatOpportunityValue(value: number): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
+}
+
 function targetWasSentToCampaign(target: WorkspaceCampaignTarget): boolean {
   return target.status !== 'draft'
     && Boolean(target.contact_email?.trim())
@@ -857,9 +862,14 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const campaignAnalytics = campaign?.analytics
   const contactedCount = campaignAnalytics?.contacted_count ?? detail.outreach.podcasts_contacted
   const replyCount = campaignAnalytics?.reply_count_unique ?? 0
-  const positiveReplyCount = campaignAnalytics?.total_interested || 0
+  // Instantly's "Opportunities", so this page and Instantly's own agree.
+  const opportunityCount = campaignAnalytics?.total_opportunities || 0
+  const opportunityValue = campaignAnalytics?.total_opportunity_value || 0
   const replyRate = contactedCount > 0 ? Math.round((replyCount / contactedCount) * 100) : 0
-  const positiveReplyRate = contactedCount > 0 ? Math.round((positiveReplyCount / contactedCount) * 100) : 0
+  const opportunityRate = contactedCount > 0 ? Math.round((opportunityCount / contactedCount) * 100) : 0
+  const opportunityDetail = opportunityValue > 0
+    ? `${formatOpportunityValue(opportunityValue)} in pipeline`
+    : `${opportunityRate}% of contacted`
   const activityTargets = [...campaignTargets]
     .filter((target) => target.launched_at || ['in_outreach', 'replied', 'completed', 'failed'].includes(target.status))
     .sort((left, right) => (right.last_activity_at || right.updated_at).localeCompare(left.last_activity_at || left.updated_at))
@@ -1127,11 +1137,11 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-0 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3"><Metric label="Sent" value={campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent} detail={`${contactedCount} unique podcast contacts`} icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Positive replies" value={positiveReplyCount} detail={`${positiveReplyRate}% positive reply rate`} icon={Inbox} /></div>
+            <div className="grid gap-3 sm:grid-cols-3"><Metric label="Sent" value={campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent} detail={`${contactedCount} unique podcast contacts`} icon={Mail} /><Metric label="Replies" value={replyCount} detail={`${replyRate}% reply rate`} icon={MessageSquare} /><Metric label="Opportunities" value={opportunityCount} detail={opportunityDetail} icon={Inbox} /></div>
             <Card>
-              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from podcast outreach to replies and positive interest.</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Campaign conversion</CardTitle><CardDescription>A direct view from podcast outreach to replies and opportunities.</CardDescription></CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-3">
-                {[['Contacted', contactedCount], ['Replied', replyCount], ['Positive replies', positiveReplyCount]].map(([label, value], index) => (
+                {[['Contacted', contactedCount], ['Replied', replyCount], ['Opportunities', opportunityCount]].map(([label, value], index) => (
                   <div key={String(label)} className="relative rounded-xl border bg-muted/15 p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold">{value}</p>
                     {index < 2 && <ArrowRight className="absolute -right-2.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-background text-muted-foreground sm:block" />}
@@ -1172,7 +1182,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Emails sent</span><strong>{campaignAnalytics?.emails_sent_count ?? detail.outreach.initial_emails_sent}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Podcasts contacted</span><strong>{contactedCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Unique replies</span><strong>{replyCount}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Positive replies</span><strong>{positiveReplyCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Opportunities</span><strong>{opportunityCount}{opportunityValue > 0 && ` · ${formatOpportunityValue(opportunityValue)}`}</strong></div>
                 </CardContent>
               </Card>
             </div>

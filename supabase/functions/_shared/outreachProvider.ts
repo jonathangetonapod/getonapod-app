@@ -95,6 +95,13 @@ export interface AnalyticsSummary {
   unsubscribed_count: number;
   total_interested: number;
   total_meeting_booked: number;
+  /**
+   * Instantly's "Opportunities". Providers with no such counter report their
+   * interested count here, the nearest thing they track.
+   */
+  total_opportunities: number;
+  /** Summed deal value; zero where the provider records none. */
+  total_opportunity_value: number;
 }
 
 export interface CampaignAnalytics {

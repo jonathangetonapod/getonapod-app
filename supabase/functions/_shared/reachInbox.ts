@@ -625,6 +625,9 @@ export class ReachInboxProvider implements OutreachProvider {
       unsubscribed_count: 0,
       total_interested: count(data.positiveReplies),
       total_meeting_booked: 0,
+      // No opportunity counter; positive replies are the nearest equivalent.
+      total_opportunities: count(data.positiveReplies),
+      total_opportunity_value: 0,
     };
   }
 
@@ -647,6 +650,8 @@ export class ReachInboxProvider implements OutreachProvider {
           unsubscribed_count: 0,
           total_interested: 0,
           total_meeting_booked: 0,
+          total_opportunities: 0,
+          total_opportunity_value: 0,
         },
       });
     }

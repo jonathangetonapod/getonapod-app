@@ -73,6 +73,10 @@ export interface InstantlyAnalyticsSummary {
   unsubscribed_count: number;
   total_interested: number;
   total_meeting_booked: number;
+  /** Leads marked with any positive interest status — Instantly's "Opportunities". */
+  total_opportunities: number;
+  /** The summed deal value of those opportunities, in the workspace's currency. */
+  total_opportunity_value: number;
 }
 
 export class InstantlyApiError extends OutreachProviderError {
@@ -635,14 +639,31 @@ export function safeInstantlyAnalytics(
   const analytics = record(value);
   return {
     emails_sent_count: finiteInteger(analytics?.emails_sent_count),
-    contacted_count: finiteInteger(analytics?.contacted_count),
+    // Leads reached, each once. The overview's contacted_count is not that: a
+    // campaign holding 99 leads, every one emailed, reported 109 — the same as
+    // its emails sent — while Instantly's own screen said 99. The new-leads
+    // counter is the per-lead one, and the list endpoint carries it too, so a
+    // single sync and a bulk refresh agree. A stored row, already normalised,
+    // has only contacted_count and is read as it is.
+    contacted_count: finiteInteger(
+      analytics?.new_leads_contacted_count,
+      finiteInteger(analytics?.contacted_count),
+    ),
     open_count_unique: finiteInteger(analytics?.open_count_unique),
     reply_count_unique: finiteInteger(analytics?.reply_count_unique),
     bounced_count: finiteInteger(analytics?.bounced_count),
     unsubscribed_count: finiteInteger(analytics?.unsubscribed_count),
     total_interested: finiteInteger(analytics?.total_interested),
     total_meeting_booked: finiteInteger(analytics?.total_meeting_booked),
+    total_opportunities: finiteInteger(analytics?.total_opportunities),
+    total_opportunity_value: finiteAmount(analytics?.total_opportunity_value),
   };
+}
+
+function finiteAmount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.round(value * 100) / 100
+    : 0;
 }
 
 export interface InstantlyCampaignAnalytics {
@@ -731,6 +752,10 @@ export function withStoredOpportunityCounts(
     total_interested: fresh.total_interested || previous.total_interested,
     total_meeting_booked: fresh.total_meeting_booked ||
       previous.total_meeting_booked,
+    total_opportunities: fresh.total_opportunities ||
+      previous.total_opportunities,
+    total_opportunity_value: fresh.total_opportunity_value ||
+      previous.total_opportunity_value,
   };
 }
 

@@ -202,7 +202,7 @@ function campaignListMetrics(summary: CampaignSummary) {
     progress: summary.status === 'Completed' ? 100 : progress,
     sent: campaign?.analytics.emails_sent_count ?? 0,
     replies: campaign ? campaign.analytics.reply_count_unique : null,
-    positiveReplies: campaign ? campaign.analytics.total_interested : null,
+    opportunities: campaign ? campaign.analytics.total_opportunities || 0 : null,
     // Sitting in Instantly without anyone having launched them from here.
     staged: campaign?.target_counts.staged ?? 0,
     // The subset already sending, because the campaign was live when they were
@@ -516,8 +516,8 @@ const WorkspaceCampaigns = ({
   const sentCount = scopedSummaries.reduce((total, summary) => (
     total + (summary.campaign?.analytics.emails_sent_count ?? 0)
   ), 0)
-  const positiveReplyCount = scopedSummaries.reduce((total, summary) => (
-    total + (summary.campaign?.analytics.total_interested || 0)
+  const opportunityCount = scopedSummaries.reduce((total, summary) => (
+    total + (summary.campaign?.analytics.total_opportunities || 0)
   ), 0)
   const assignedClientIds = new Set(providerBackedCampaigns.map((campaign) => campaign.client_id))
   const availableCampaignClients = activeClients.filter((client) => !assignedClientIds.has(client.id))
@@ -695,8 +695,8 @@ const WorkspaceCampaigns = ({
         <SummaryMetric label="Active campaigns" value={activeCount} detail={`Sending now · ${scopeLabel}`} icon={CheckCircle2} />
         <SummaryMetric label="Emails sent" value={sentCount} detail={`Synced from ${providerName} · ${scopeLabel}`} icon={Mail} />
         <SummaryMetric
-          label="Positive replies"
-          value={integration?.connected ? positiveReplyCount : '—'}
+          label="Opportunities"
+          value={integration?.connected ? opportunityCount : '—'}
           detail={!integration?.connected
             ? `Available after ${providerName} sync`
             : replyCount === 0
@@ -905,7 +905,7 @@ const WorkspaceCampaigns = ({
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div><p className="text-xs text-muted-foreground">Progress</p><p className="mt-1 font-medium">{metrics.progress === null ? '—' : `${metrics.progress}%`}</p></div>
                       <div><p className="text-xs text-muted-foreground">Sent</p><p className="mt-1 font-medium">{metrics.sent.toLocaleString()}</p></div>
-                      <div className="col-span-2"><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : `${metrics.replies.toLocaleString()}${metrics.positiveReplies === null ? '' : ` · ${metrics.positiveReplies.toLocaleString()} interested`}`}</p></div>
+                      <div className="col-span-2"><p className="text-xs text-muted-foreground">Replies</p><p className="mt-1 font-medium">{metrics.replies === null ? '—' : `${metrics.replies.toLocaleString()}${metrics.opportunities === null ? '' : ` · ${metrics.opportunities.toLocaleString()} ${metrics.opportunities === 1 ? 'opportunity' : 'opportunities'}`}`}</p></div>
                       <div><p className="text-xs text-muted-foreground">Waiting in {providerName}</p><p className={metrics.stagedSending > 0 ? 'mt-1 font-semibold text-amber-700' : 'mt-1 font-medium'}>{metrics.staged === 0 ? '—' : metrics.staged}{metrics.stagedSending > 0 ? ` · ${metrics.stagedSending} sending` : ''}</p></div>
                     </div>
                     <Link to={summary.nextAction.href} className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm font-medium text-primary hover:bg-muted">
@@ -962,7 +962,7 @@ const WorkspaceCampaigns = ({
                         {/* Replies and positive replies were two columns for one
                             question. Merged, they read as an outcome and leave
                             room for Next step without widening the table. */}
-                        <TableCell>{metrics.replies === null ? <span className="text-muted-foreground">—</span> : <span>{metrics.replies.toLocaleString()}{metrics.positiveReplies === null ? '' : <span className="text-muted-foreground"> · {metrics.positiveReplies.toLocaleString()} interested</span>}</span>}</TableCell>
+                        <TableCell>{metrics.replies === null ? <span className="text-muted-foreground">—</span> : <span>{metrics.replies.toLocaleString()}{metrics.opportunities === null ? '' : <span className="text-muted-foreground"> · {metrics.opportunities.toLocaleString()} {metrics.opportunities === 1 ? 'opportunity' : 'opportunities'}</span>}</span>}</TableCell>
                         <TableCell>
                           {metrics.staged === 0
                             ? <span className="text-muted-foreground">—</span>

@@ -298,6 +298,9 @@ function analyticsFrom(campaign: Json): AnalyticsSummary {
     total_interested: count(campaign.interested),
     // Bison has no meeting-booked counter; the caller carries the stored one.
     total_meeting_booked: 0,
+    // Nor opportunities: its interested count is the nearest equivalent.
+    total_opportunities: count(campaign.interested),
+    total_opportunity_value: 0,
   };
 }
 
