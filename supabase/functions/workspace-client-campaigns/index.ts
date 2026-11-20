@@ -2520,7 +2520,9 @@ async function launchTarget(
           status: localCampaignStatus(activeCampaign.status),
           provider_sync_state: "idle",
           provider_sync_started_at: null,
-          last_synced_at: now,
+          // No last_synced_at: launching one pitch reads none of the
+          // campaign's numbers. Stamping it said "Updated just now" over
+          // stale totals and sent the campaign to the back of the sync queue.
           last_error: null,
           updated_by: context.user.id,
         })
@@ -2551,7 +2553,52 @@ async function launchTarget(
   }
 }
 
+/** Target statuses that mean the pitch went to the provider. */
+const SENT_TARGET_STATUSES = new Set([
+  "launching",
+  "in_outreach",
+  "replied",
+  "completed",
+]);
+
+/**
+ * A failed sync says so on the campaign.
+ *
+ * The scheduled sweep and the page's background refresh both swallow a
+ * failure, and a failed sync leaves last_synced_at where it was — so a
+ * campaign could stop updating for days while every screen kept showing the
+ * last good numbers as if they were current. Written to last_error, which the
+ * campaign page already shows; the next good sync clears it.
+ */
 async function syncProviderCampaign(
+  context: AuthContext,
+  connection: ConnectionRow,
+  campaign: CampaignRow,
+): Promise<void> {
+  try {
+    await syncProviderCampaignOnce(context, connection, campaign);
+  } catch (error) {
+    // A campaign never launched has nothing to sync; that is not a fault.
+    if (!campaign.instantly_campaign_id) throw error;
+    const safe = safeInstantlyError(error);
+    console.error("[workspace-client-campaigns] campaign sync failed", {
+      campaign_id: campaign.id,
+      code: safe.code,
+    });
+    await context.admin
+      .from("workspace_client_campaigns")
+      .update({
+        last_error: `Sync failed: ${safe.message}`.slice(0, 1000),
+      })
+      .eq("id", campaign.id)
+      .eq("workspace_id", campaign.workspace_id)
+      .neq("provider_sync_state", "syncing")
+      .then(() => undefined, () => undefined);
+    throw error;
+  }
+}
+
+async function syncProviderCampaignOnce(
   context: AuthContext,
   connection: ConnectionRow,
   campaign: CampaignRow,
@@ -2602,17 +2649,47 @@ async function syncProviderCampaign(
     campaign.id,
   );
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
-  const leadsByEmail = new Map(leads.map((lead) => [lead.email, lead]));
+  const leadsByEmail = new Map(
+    leads.map((lead) => [lead.email?.trim().toLowerCase(), lead]),
+  );
+  /*
+   * Which lead each target reads, decided up front and one lead per target.
+   *
+   * The email fallback is for a pitch that went out before its lead id was
+   * recorded. It once matched drafts too: a host who runs two shows has one
+   * email, so a draft for the second show was handed the lead the first show
+   * already held — that broke the one-lead-per-target index, the whole sync
+   * threw, and the campaign's numbers stopped moving for good. Only a pitch
+   * that was sent can have a lead to find: a draft, or a ready pitch never
+   * staged, has sent nothing. And a lead another target holds is that
+   * target's.
+   */
+  const claimedLeadIds = new Set(
+    targets.flatMap((target) => target.instantly_lead_id ? [target.instantly_lead_id] : []),
+  );
+  const leadByTargetId = new Map<string, ProviderLead>();
+  for (const target of targets) {
+    if (target.instantly_lead_id) {
+      const lead = leadsById.get(target.instantly_lead_id);
+      if (lead) leadByTargetId.set(target.id, lead);
+      continue;
+    }
+    if (!target.contact_email || !SENT_TARGET_STATUSES.has(target.status)) continue;
+    const lead = leadsByEmail.get(target.contact_email.trim().toLowerCase());
+    if (!lead || claimedLeadIds.has(lead.id)) continue;
+    claimedLeadIds.add(lead.id);
+    leadByTargetId.set(target.id, lead);
+  }
 
+  // A pitch whose row cannot be written is counted and reported, not thrown:
+  // thrown, it took the campaign's totals and every other pitch down with it.
+  let failedTargets = 0;
   for (let offset = 0; offset < targets.length; offset += 25) {
     await Promise.all(
       targets.slice(offset, offset + 25).map(async (target) => {
-        const lead = target.instantly_lead_id
-          ? leadsById.get(target.instantly_lead_id)
-          : target.contact_email
-          ? leadsByEmail.get(target.contact_email)
-          : undefined;
+        const lead = leadByTargetId.get(target.id);
         if (!lead) return;
+        try {
         const { error } = await context.admin
           .from("workspace_client_campaign_targets")
           .update({
@@ -2634,11 +2711,8 @@ async function syncProviderCampaign(
           .eq("id", target.id)
           .eq("workspace_id", campaign.workspace_id);
         if (error) {
-          throw new HttpError(
-            500,
-            "CAMPAIGN_SYNC_FAILED",
-            "Campaign lead activity could not be saved",
-          );
+          failedTargets += 1;
+          return;
         }
         // Only an outcome for the address this pitch actually went to: a lead
         // matched by id may carry a different email than the target holds.
@@ -2654,6 +2728,9 @@ async function syncProviderCampaign(
             target.contact_email,
             lead.status === -1 ? "bounced" : "replied",
           );
+        }
+        } catch (_error) {
+          failedTargets += 1;
         }
       }),
     );
@@ -2673,7 +2750,9 @@ async function syncProviderCampaign(
       provider_sync_state: "idle",
       provider_sync_started_at: null,
       last_synced_at: now,
-      last_error: null,
+      last_error: failedTargets > 0
+        ? `Activity for ${failedTargets} podcast${failedTargets === 1 ? "" : "s"} could not be updated in the last sync. Campaign totals are current.`
+        : null,
       updated_by: context.user.id,
     })
     .eq("id", campaign.id)

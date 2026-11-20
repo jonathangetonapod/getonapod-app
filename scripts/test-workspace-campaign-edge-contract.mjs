@@ -1811,7 +1811,7 @@ console.log('Workspace Client Campaign delete checks passed')
   assert.match(edge, /if \(action === "prepare-podcast"\)[\s\S]*?\.maybeSingle\(\);\s*if \(error \|\| !data\) \{[\s\S]*?removeLeadForDeletedCampaign\([\s\S]*?staged\.providerCampaignId,\s*staged\.leadId/u)
   // Launch's mapping write and the provider sync never clear a delete claim.
   assert.match(fn('launchTarget'), /provider_sync_state: "idle"[\s\S]*?\.neq\("provider_sync_state", "syncing"\)/u)
-  assert.match(fn('syncProviderCampaign'), /provider_sync_state: "idle"[\s\S]*?\.neq\("provider_sync_state", "syncing"\);/u)
+  assert.match(fn('syncProviderCampaignOnce'), /provider_sync_state: "idle"[\s\S]*?\.neq\("provider_sync_state", "syncing"\);/u)
   // Dead claims are reaped by cron and by the create path.
   assert.match(edge, /\.eq\("provider_sync_state", "syncing"\)\s*\.lt\("provider_sync_started_at", new Date\(Date\.now\(\) - DELETE_CLAIM_TTL_MS\)/u)
   assert.match(fn('ensureProviderCampaign'), /\.in\("provider_sync_state", \["creating", "syncing"\]\)\s*\.lt\("provider_sync_started_at", staleBefore\)/u)
@@ -1847,3 +1847,19 @@ console.log('Workspace Client Campaign delete race checks passed')
   assert.doesNotMatch(provision, /ensureLocalCampaign\(/u, 'a refused provision must not leave a local campaign row behind')
 }
 
+
+// A sync matches a target to its lead by email only when the target has been
+// sent and the lead is not already another target's. Two shows sharing a host
+// email once collided on the one-lead-per-target index and stopped the
+// campaign's sync for good.
+assert.match(edge, /const claimedLeadIds = new Set\(/u)
+assert.match(edge, /if \(!lead \|\| claimedLeadIds\.has\(lead\.id\)\) continue;/u)
+assert.doesNotMatch(edge, /leadsByEmail\.get\(target\.contact_email\)\s*\n?\s*:/u)
+assert.match(edge, /const SENT_TARGET_STATUSES = new Set\(\[\s*"launching",\s*"in_outreach",\s*"replied",\s*"completed",\s*\]\)/u)
+assert.match(edge, /!SENT_TARGET_STATUSES\.has\(target\.status\)\) continue;/u)
+// One pitch's failed write is counted, not thrown, so the campaign's totals
+// still land; a whole failed sync is written where the page shows it.
+assert.match(edge, /if \(error\) \{\s*failedTargets \+= 1;\s*return;\s*\}/u)
+assert.match(edge, /async function syncProviderCampaign\([\s\S]*?await syncProviderCampaignOnce\([\s\S]*?last_error: `Sync failed: \$\{safe\.message\}`/u)
+// Launching a pitch does not claim the campaign's numbers were synced.
+assert.match(edge, /instantly_campaign_id: activeCampaign\.id,[\s\S]{0,400}?No last_synced_at/u)
