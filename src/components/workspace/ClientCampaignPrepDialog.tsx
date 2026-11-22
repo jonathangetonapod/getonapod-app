@@ -2473,10 +2473,10 @@ export function ClientCampaignPrep({
                                     model: event.target.value === '' ? null : event.target.value,
                                   })}
                                 >
-                                  {/* Empty means "follow the shipped default", which is not the
-                                      same as pinning that default's id — if we change the default
-                                      for a stage, a workspace that never chose should move with it. */}
-                                  <option value="">Default for the selected AI provider</option>
+                                  {/* Empty means "follow the workspace default" (Integrations), and
+                                      past that the shipped default — not pinning either id, so a
+                                      workspace that never chose moves with them. */}
+                                  <option value="">Workspace default (set in Integrations)</option>
                                   {promptModels.map((model) => (
                                     <option key={model.id} value={model.id}>
                                       {model.label} — {model.id}
@@ -2488,7 +2488,7 @@ export function ClientCampaignPrep({
                                     ? 'The model list could not be read from your selected AI provider, so this cannot be changed right now. Everything else on this stage still saves.'
                                     : promptModelsQuery.isLoading
                                       ? 'Reading the models this workspace can use…'
-                                      : 'Available models come from your selected AI provider. Change the default provider in Billing to use Claude or OpenAI. Model changes save immediately for every client in this workspace.'}
+                                      : 'Available models come from your selected AI provider. The workspace default model and every other AI step are set in Integrations. Model changes save immediately for every client in this workspace.'}
                                 </p>
                               </div>
                               <div className="mt-3 rounded-lg border bg-muted/20 p-3">

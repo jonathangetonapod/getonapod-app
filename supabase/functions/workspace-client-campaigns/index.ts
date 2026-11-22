@@ -36,6 +36,11 @@ import { normalizeRequiredVariables } from "../_shared/promptRequirements.ts";
 import { resolveTextAiKey } from "../_shared/workspaceAiKeys.ts";
 import { fetchPromptModels } from "../_shared/promptModels.ts";
 import {
+  AI_MODEL_SETTING_IDS,
+  isAiModelSettingId,
+  loadWorkspaceAiModels,
+} from "../_shared/workspaceAiModels.ts";
+import {
   type AuthContext,
   createAdminClient,
   errorResponse,
@@ -353,6 +358,40 @@ function requireIntegrationOwner(access: WorkspaceFeatureAccess): void {
       "Only the workspace owner can manage the outreach provider connection",
     );
   }
+}
+
+/**
+ * Confirms a model id is one the workspace's selected AI key can use, and
+ * returns it.
+ *
+ * Checked against the live list, not a list in this repo. The value reaches
+ * the selected provider as the `model` parameter, so an unverified string here
+ * is a tenant choosing what we send upstream — and a model that does not exist
+ * would fail every run of that step with a 404 the operator cannot act on.
+ */
+async function verifyWorkspaceModel(
+  admin: AuthContext["admin"],
+  workspaceId: string,
+  requested: string,
+): Promise<string> {
+  const modelKey = await resolveTextAiKey(admin, workspaceId);
+  if (!modelKey) {
+    throw new HttpError(503, "PROMPTS_UNAVAILABLE", "No AI credential is configured, so the model cannot be verified");
+  }
+  let available: Awaited<ReturnType<typeof fetchPromptModels>>;
+  try {
+    available = await fetchPromptModels(modelKey.apiKey, modelKey.provider);
+  } catch (error) {
+    throw new HttpError(
+      503,
+      "PROMPTS_UNAVAILABLE",
+      error instanceof Error ? error.message : "The model could not be verified",
+    );
+  }
+  if (!available.some((entry) => entry.id === requested)) {
+    throw new HttpError(400, "INVALID_FIELD", `"${requested}" is not a model this workspace can use`);
+  }
+  return requested;
 }
 
 async function requireWorkspaceClient(
@@ -3584,30 +3623,11 @@ serve(async (req) => {
       // null clears the choice and returns the stage to its shipped default.
       let model: string | null = null;
       if (body.model !== null && body.model !== undefined && body.model !== "") {
-        const requested = requireString(body.model, "model", { max: 128 });
-        const modelKey = await resolveTextAiKey(context.admin, workspaceId);
-        if (!modelKey) {
-          throw new HttpError(503, "PROMPTS_UNAVAILABLE", "No AI credential is configured, so the model cannot be verified");
-        }
-        // Checked against the live list, not a list in this repo. The value
-        // reaches the selected provider as the `model` parameter, so an unverified string
-        // here is a tenant choosing what we send upstream — and a model that
-        // does not exist would fail every run of this stage with a 404 the
-        // operator cannot act on.
-        let available: Awaited<ReturnType<typeof fetchPromptModels>>;
-        try {
-          available = await fetchPromptModels(modelKey.apiKey, modelKey.provider);
-        } catch (error) {
-          throw new HttpError(
-            503,
-            "PROMPTS_UNAVAILABLE",
-            error instanceof Error ? error.message : "The model could not be verified",
-          );
-        }
-        if (!available.some((entry) => entry.id === requested)) {
-          throw new HttpError(400, "INVALID_FIELD", `"${requested}" is not a model this workspace can use`);
-        }
-        model = requested;
+        model = await verifyWorkspaceModel(
+          context.admin,
+          workspaceId,
+          requireString(body.model, "model", { max: 128 }),
+        );
       }
       // Upsert, because a stage whose instructions were never customized has
       // no row yet and choosing a model must not require inventing one.
@@ -3646,6 +3666,81 @@ serve(async (req) => {
         entityType: "workspace",
         entityId: workspaceId,
         metadata: { prompt_id: promptId, model },
+      });
+      return jsonResponse(req, METHODS, 200, { success: true });
+    }
+
+    // The workspace default model and the per-step models for every AI step
+    // whose model is not a research/pitch stage (those stay on
+    // workspace_research_prompts.model, read through prompts-get).
+    if (action === "ai-models-get") {
+      requireOnlyKeys(body, ["action", "workspace_id"]);
+      requireCampaignManager(access);
+      const { data, error } = await context.admin
+        .from("workspace_ai_models")
+        .select("setting_id, model")
+        .eq("workspace_id", workspaceId);
+      if (error) {
+        throw new HttpError(503, "AI_MODELS_UNAVAILABLE", "AI model settings are temporarily unavailable");
+      }
+      const models: Record<string, string | null> = {};
+      for (const id of AI_MODEL_SETTING_IDS) models[id] = null;
+      for (const row of data ?? []) {
+        if (isAiModelSettingId(row.setting_id) && typeof row.model === "string" && row.model) {
+          models[row.setting_id] = row.model;
+        }
+      }
+      return jsonResponse(req, METHODS, 200, { models });
+    }
+
+    if (action === "ai-model-set") {
+      requireOnlyKeys(body, ["action", "workspace_id", "setting_id", "model"]);
+      requireIntegrationOwner(access);
+      if (!isAiModelSettingId(body.setting_id)) {
+        throw new HttpError(400, "INVALID_FIELD", "setting_id is not an AI step this workspace can configure");
+      }
+      const settingId = body.setting_id;
+      // null clears the choice: the step follows the workspace default, and the
+      // default follows each step's shipped model.
+      if (body.model === null || body.model === undefined || body.model === "") {
+        const { error } = await context.admin
+          .from("workspace_ai_models")
+          .delete()
+          .eq("workspace_id", workspaceId)
+          .eq("setting_id", settingId);
+        if (error) throw new HttpError(503, "AI_MODELS_UNAVAILABLE", "The model could not be saved");
+      } else {
+        const model = await verifyWorkspaceModel(
+          context.admin,
+          workspaceId,
+          requireString(body.model, "model", { max: 128 }),
+        );
+        const { error } = await context.admin
+          .from("workspace_ai_models")
+          .upsert({
+            workspace_id: workspaceId,
+            setting_id: settingId,
+            model,
+            updated_by: context.user.id,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "workspace_id,setting_id" });
+        if (error) throw new HttpError(503, "AI_MODELS_UNAVAILABLE", "The model could not be saved");
+      }
+      // Re-read through the same loader the AI steps use, so what is audited
+      // is what will actually run.
+      const saved = await loadWorkspaceAiModels(context.admin, workspaceId);
+      await writeAudit(context.admin, {
+        workspaceId,
+        actorUserId: context.user.id,
+        action: "workspace.ai_models.updated",
+        entityType: "workspace",
+        entityId: workspaceId,
+        metadata: {
+          setting_id: settingId,
+          model: settingId === "default"
+            ? saved.defaultModel
+            : (saved.steps as Record<string, string | undefined>)[settingId] ?? null,
+        },
       });
       return jsonResponse(req, METHODS, 200, { success: true });
     }

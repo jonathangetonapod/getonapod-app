@@ -776,6 +776,57 @@ export async function setWorkspacePromptModel(
   if (data?.success !== true) throw new Error('The model could not be saved.')
 }
 
+/**
+ * AI steps whose model is chosen in Integrations, besides the research and
+ * pitch stages (those keep their per-stage choice, see setWorkspacePromptModel).
+ * 'default' is the workspace-wide model every step falls back to.
+ */
+export const WORKSPACE_AI_MODEL_STEP_IDS = [
+  'research_structure',
+  'pitch_fact_check',
+  'host_discovery',
+  'fit_scoring',
+  'search_queries',
+  'prospect_dashboard',
+  'autopilot',
+  'profile_drafts',
+] as const
+
+export type WorkspaceAiModelStepId = typeof WORKSPACE_AI_MODEL_STEP_IDS[number]
+export type WorkspaceAiModelSettingId = 'default' | WorkspaceAiModelStepId
+
+/** Null means "follow the next level": a step follows the default, the default follows each step's shipped model. */
+export type WorkspaceAiModels = Record<WorkspaceAiModelSettingId, string | null>
+
+export async function getWorkspaceAiModels(workspaceId: string): Promise<WorkspaceAiModels> {
+  const data = await invokeWorkspaceCampaigns<{ models?: Partial<WorkspaceAiModels> }>({
+    action: 'ai-models-get',
+    workspace_id: workspaceId,
+  }, 'AI model settings could not be loaded.')
+  const models = { default: null } as WorkspaceAiModels
+  for (const id of WORKSPACE_AI_MODEL_STEP_IDS) models[id] = null
+  for (const id of ['default', ...WORKSPACE_AI_MODEL_STEP_IDS] as WorkspaceAiModelSettingId[]) {
+    const value = data.models?.[id]
+    if (typeof value === 'string' && value) models[id] = value
+  }
+  return models
+}
+
+/** Chooses the workspace default or one step's model. Null clears the choice. */
+export async function setWorkspaceAiModel(
+  workspaceId: string,
+  settingId: WorkspaceAiModelSettingId,
+  model: string | null,
+): Promise<void> {
+  const data = await invokeWorkspaceCampaigns<{ success?: boolean }>({
+    action: 'ai-model-set',
+    workspace_id: workspaceId,
+    setting_id: settingId,
+    model,
+  }, 'The model could not be saved.')
+  if (data?.success !== true) throw new Error('The model could not be saved.')
+}
+
 export async function getWorkspaceResearchPromptOverrides(
   workspaceId: string,
 ): Promise<ResearchPromptOverrides> {

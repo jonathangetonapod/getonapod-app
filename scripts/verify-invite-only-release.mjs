@@ -100,7 +100,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // 232: _shared/pitchGreeting.ts and its Deno test, for the greeting the
   // pitch writer chooses (2026-11-16). The two pairs above landed without
   // this count moving with them, so the release gate was failing on main.
-  edgeTypeScriptFiles: 232,
+  // 234: _shared/workspaceAiModels.ts and its Deno test, for the per-workspace
+  // AI model settings on Integrations (2026-11-21).
+  edgeTypeScriptFiles: 234,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([

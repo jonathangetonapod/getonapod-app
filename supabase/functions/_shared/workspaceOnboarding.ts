@@ -603,11 +603,19 @@ export async function sendDurableOnboardingEmail(
   }
 }
 
+/** The pitch-profile model when a workspace has not chosen one: the env override, else Sonnet 5.5. */
+export function shippedPitchProfileModel(): string {
+  return Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-5-5'
+}
+
 export async function generatePitchProfile(
   definition: OnboardingDefinition,
   answers: Record<string, unknown>,
   apiKeyOverride?: TextAiCredential,
+  /** The workspace's choice for profile drafts (Integrations); the shipped model otherwise. */
+  modelOverride?: string,
 ): Promise<{ profile: PitchProfile; usage: { inputTokens: number; outputTokens: number } }> {
+  const model = modelOverride || shippedPitchProfileModel()
   const apiKey = apiKeyOverride ?? platformTextAiKey()
   if (!apiKey) throw new Error('AI service is not configured')
   const answerRows = definition.sections.flatMap((section) => section.questions.map((question) => ({
@@ -619,8 +627,8 @@ export async function generatePitchProfile(
   const response = await textAiFetch(apiKey, {
     method: 'POST',
     body: JSON.stringify({
-      model: Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-5-5',
-      thinking: thinkingForModel(Deno.env.get('ONBOARDING_AI_MODEL')?.trim() || 'claude-sonnet-5-5') ?? undefined,
+      model,
+      thinking: thinkingForModel(model) ?? undefined,
       max_tokens: 2400,
       messages: [{ role: 'user', content: prompt }],
     }),

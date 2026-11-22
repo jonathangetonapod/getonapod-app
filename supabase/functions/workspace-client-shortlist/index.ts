@@ -30,7 +30,7 @@ import {
   readStoredEpisodes,
   refreshEpisodesCapture,
 } from '../_shared/podcastEpisodes.ts'
-import { discoverHostLinkedin, findBlitzEmail, linkedinProfileUrl } from '../_shared/hostContactDiscovery.ts'
+import { discoverHostLinkedin, findBlitzEmail, HOST_DISCOVERY_MODEL, linkedinProfileUrl } from '../_shared/hostContactDiscovery.ts'
 import { RESEARCH_PROMPT_DEFAULTS } from '../_shared/researchPromptDefaults.ts'
 import {
   buildClientVariables,
@@ -46,6 +46,7 @@ import {
 import { splitStructuredAngles, type StructuredAngle } from '../_shared/pitchAngles.ts'
 import { loadClientFitProfile } from '../_shared/clientFitProfile.ts'
 import { thinkingForModel } from '../_shared/promptModels.ts'
+import { loadWorkspaceAiModels, stageModel, stepModel } from '../_shared/workspaceAiModels.ts'
 import {
   describeMissingRequirements,
   missingRequiredVariables,
@@ -2222,9 +2223,11 @@ serve(async (req) => {
             .filter((row) => typeof row.model === 'string' && row.model)
             .map((row) => [String(row.prompt_id), String(row.model)]),
         )
+        // Then the workspace default from Integrations, then shipped.
+        const aiModels = await loadWorkspaceAiModels(authContext.admin, workspaceId)
         const promptSpec = (promptId: string) => ({
           ...RESEARCH_PROMPT_DEFAULTS[promptId],
-          model: promptModels.get(promptId) ?? RESEARCH_PROMPT_DEFAULTS[promptId].model,
+          model: stageModel(aiModels, promptModels.get(promptId), RESEARCH_PROMPT_DEFAULTS[promptId].model),
         })
 
         // Which fields each stage refuses to run without, resolved the same
@@ -2505,7 +2508,7 @@ serve(async (req) => {
         // ai_* columns so every downstream surface renders them unchanged.
         const structured = await runResearchPrompt(
           anthropicKey,
-          { model: 'claude-sonnet-5-5', maxTokens: 1_500, system: 'You convert podcast research into strict JSON. Return ONLY a JSON object, no markdown.' },
+          { model: stepModel(aiModels, 'research_structure'), maxTokens: 1_500, system: 'You convert podcast research into strict JSON. Return ONLY a JSON object, no markdown.' },
           `From the research and topic proposal below, return ONLY this JSON shape: {"clean_description": string (2 sentences about the show), "fit_reasons": string[] (3 specific reasons this guest fits), "pitch_angles": [{"title": string, "description": string}] (exactly 3 angles), "host_name": string or null, "recent_guest_name": string or null (full name of the guest on the analyzed episode per the guest report; null for solo episodes or when unverified)}.\n\nRESEARCH:\n${researchReport.slice(0, 12_000)}\n\nHOST REPORT:\n${hostReport.slice(0, 4_000)}\n\nGUEST REPORT:\n${guestReport ? guestReport.slice(0, 4_000) : 'Not available'}\n\nTOPIC PROPOSAL:\n${topicProposal.slice(0, 8_000)}`,
           usage,
         )
@@ -2757,7 +2760,7 @@ serve(async (req) => {
             social_links: catalog?.social_links ?? [],
             episodes: episodes.map((e: Record<string, unknown>) => ({ title: e.title, hosts: e.hosts, guests: e.guests })),
             transcript_excerpt: (catalog?.latest_episode_transcript ?? '').slice(0, 12_000),
-          }, usage)
+          }, usage, fetch, stepModel(await loadWorkspaceAiModels(authContext.admin, workspaceId), 'host_discovery', HOST_DISCOVERY_MODEL))
         }
         if (!profile) {
           const result = { status: 'not_found', current_stage: null, completed_stages: [], credit_cost: 0,
@@ -3160,9 +3163,10 @@ serve(async (req) => {
           .filter((row) => typeof row.model === 'string' && row.model)
           .map((row) => [String(row.prompt_id), String(row.model)]),
       )
+      const aiModels = await loadWorkspaceAiModels(authContext.admin, workspaceId)
       const promptSpec = (promptId: string) => ({
         ...RESEARCH_PROMPT_DEFAULTS[promptId],
-        model: promptModels.get(promptId) ?? RESEARCH_PROMPT_DEFAULTS[promptId].model,
+        model: stageModel(aiModels, promptModels.get(promptId), RESEARCH_PROMPT_DEFAULTS[promptId].model),
       })
       const promptContent = (promptId: string): string =>
         clientOverrides.get(promptId)
@@ -3481,7 +3485,7 @@ serve(async (req) => {
         try {
           auditRaw = await runPitchPrompt(
             anthropicKey,
-            { model: 'claude-sonnet-5-5', maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
+            { model: stepModel(aiModels, 'pitch_fact_check'), maxTokens: 700, system: 'You audit outreach copy for factual grounding. Return ONLY JSON.' },
             `EVIDENCE (the only permitted source of claims):\n${pitchContext}\n\nOUTREACH SEQUENCE (JSON):\n${JSON.stringify(sequence)}\n\nList every specific factual claim in the sequence (episode references, quotes, names, numbers, achievements) that is NOT supported by the evidence above. The greeting line is the writer's decision, made from the <greeting> section: do not list it as unsupported because the research calls the host's name unconfirmed. List it only if it greets someone the <greeting> section names as a guest of a recent episode. Respond ONLY with JSON: {"unsupported": [{"claim": string, "problem": string}]}. If everything is supported, return {"unsupported": []}.`,
             usage,
           )

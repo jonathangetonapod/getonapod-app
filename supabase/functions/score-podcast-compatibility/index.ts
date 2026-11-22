@@ -17,6 +17,7 @@ import {
 import { type ClientFitProfile, loadClientFitProfile } from '../_shared/clientFitProfile.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel, thinkingFields } from '../_shared/workspaceAiModels.ts'
 import {
   groupScoringPrompt,
   parseGroupScores,
@@ -199,6 +200,9 @@ serve(async (req) => {
       : body.podcasts
 
     let anthropicApiKey: TextAiCredential = platformTextAiKey() ?? ''
+    // Platform-admin calls keep the shipped model; workspace calls use the
+    // model chosen for fit scoring on Integrations.
+    let scoringModel = SCORING_MODEL
     let meteringActorUserId = ''
     let admin: ReturnType<typeof createAdminClient> | null = null
     // Everything on file about the client: bio, guest brief and intake answers.
@@ -226,6 +230,7 @@ serve(async (req) => {
       }
 
       const resolvedKey = await resolveTextAiKey(context.admin, workspaceId)
+      scoringModel = stepModel(await loadWorkspaceAiModels(context.admin, workspaceId), 'fit_scoring', SCORING_MODEL)
       const byoKeyUsed = resolvedKey?.source === 'workspace'
       if (resolvedKey) anthropicApiKey = resolvedKey
       meteringActorUserId = context.user.id
@@ -365,8 +370,8 @@ serve(async (req) => {
     let anthropicOutputTokens = 0
     const ask = async (prompt: string, maxTokens: number) => {
       const message = await anthropic.messages.create({
-        model: SCORING_MODEL,
-        ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
+        model: scoringModel,
+        ...(thinkingFields(scoringModel) as Record<string, unknown>),
         max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       }).catch((error: unknown) => { throw error instanceof HttpError ? error : providerException(credentialProvider(anthropicApiKey), error) })

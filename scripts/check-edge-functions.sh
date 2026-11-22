@@ -59,6 +59,7 @@ export DENO_DIR="${DENO_DIR:-${TMPDIR:-/tmp}/getonapod-deno-cache}"
   supabase/functions/_shared/flatBilling.test.ts \
   supabase/functions/_shared/textAi.test.ts \
   supabase/functions/_shared/textAiKeys.test.ts \
+  supabase/functions/_shared/workspaceAiModels.test.ts \
   supabase/functions/_shared/textAiReview.test.ts \
   supabase/functions/_shared/subscriptionCheckout.test.ts \
   supabase/functions/_shared/checkoutEmail.test.ts \

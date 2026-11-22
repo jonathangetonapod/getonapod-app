@@ -14,6 +14,8 @@ import {
   getWorkspaceMailboxes,
   getWorkspacePromptRequirements,
   getWorkspaceResearchPromptOverrides,
+  getWorkspaceAiModels,
+  setWorkspaceAiModel,
   resetClientPromptRequirements,
   setClientPromptRequirements,
   setWorkspacePromptRequirements,
@@ -513,5 +515,41 @@ describe('client instantly campaign links', () => {
   it('never reports a delete the server did not confirm', async () => {
     invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
     await expect(deleteWorkspaceCampaign(workspaceId, clientId)).rejects.toThrow('could not be deleted')
+  })
+
+  it('reads AI model settings, treating missing or blank entries as follow-the-default', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { models: { default: 'claude-haiku-5-5', fit_scoring: 'claude-opus-5-5', autopilot: '' } },
+      error: null,
+    } as never)
+
+    const models = await getWorkspaceAiModels(workspaceId)
+
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'ai-models-get', workspace_id: workspaceId },
+    })
+    expect(models.default).toBe('claude-haiku-5-5')
+    expect(models.fit_scoring).toBe('claude-opus-5-5')
+    expect(models.autopilot).toBeNull()
+    expect(models.pitch_fact_check).toBeNull()
+  })
+
+  it('saves and clears one AI model setting', async () => {
+    invoke.mockResolvedValueOnce({ data: { success: true }, error: null } as never)
+    await setWorkspaceAiModel(workspaceId, 'default', 'claude-haiku-5-5')
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: { action: 'ai-model-set', workspace_id: workspaceId, setting_id: 'default', model: 'claude-haiku-5-5' },
+    })
+
+    invoke.mockResolvedValueOnce({ data: { success: true }, error: null } as never)
+    await setWorkspaceAiModel(workspaceId, 'pitch_fact_check', null)
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: { action: 'ai-model-set', workspace_id: workspaceId, setting_id: 'pitch_fact_check', model: null },
+    })
+  })
+
+  it('never reports an AI model save the server did not confirm', async () => {
+    invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
+    await expect(setWorkspaceAiModel(workspaceId, 'default', 'claude-haiku-5-5')).rejects.toThrow('could not be saved')
   })
 })

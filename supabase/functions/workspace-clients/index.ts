@@ -19,6 +19,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveTextAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel, thinkingFields } from '../_shared/workspaceAiModels.ts'
 import { notifyBookingConfirmed, notifyEpisodePublished } from '../_shared/clientNotify.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
@@ -472,6 +473,8 @@ serve(async (req) => {
       if (!anthropicKey) {
         throw new HttpError(500, 'SERVER_MISCONFIGURED', 'AI drafting is not configured')
       }
+      // The model chosen for profile drafts on Integrations, else shipped.
+      const draftModel = stepModel(await loadWorkspaceAiModels(admin, workspaceId), 'profile_drafts')
       const usedByoKey = anthropicKey.source === 'workspace'
       const draftCharge = await chargeCredits(admin, {
         workspaceId,
@@ -521,9 +524,10 @@ serve(async (req) => {
         const response = await textAiFetch(anthropicKey, {
           method: 'POST',
           body: JSON.stringify({
-            model: 'claude-sonnet-5-5',
+            model: draftModel,
             // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
-            thinking: { type: 'between_tools' },
+            // The setting follows the model: only Sonnet 5.5 accepts between_tools.
+            ...thinkingFields(draftModel),
             max_tokens: 2_500,
             system: 'You draft podcast-guest AI SDR profiles for booking agencies. Write in the voice of the agency describing their client. Return ONLY a JSON object, no markdown.',
             messages: [{

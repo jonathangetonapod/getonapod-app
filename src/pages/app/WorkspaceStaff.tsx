@@ -32,6 +32,7 @@ import {
 } from '@/components/workspace/WorkspaceLayout'
 import { WorkspaceDeletionCard } from '@/components/workspace/WorkspaceDeletionCard'
 import { WorkspaceAiKeysCard } from '@/components/workspace/WorkspaceAiKeysCard'
+import { WorkspaceAiModelsCard } from '@/components/workspace/WorkspaceAiModelsCard'
 import { OutreachConnectionCard } from '@/components/workspace/OutreachConnectionCard'
 import { InfoTip } from '@/components/workspace/InfoTip'
 import { useSetupProgress } from '@/components/workspace/SetupChecklist'
@@ -1067,6 +1068,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                         either place. */}
                     <OutreachConnectionCard workspaceId={workspaceId} />
                     {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />}
+                    {canManageAiKeys && <WorkspaceAiModelsCard workspaceId={workspaceId} />}
                   </section>
 
                   <section id="workspace-access" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-access-title">

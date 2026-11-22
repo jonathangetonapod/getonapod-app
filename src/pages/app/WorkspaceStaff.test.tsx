@@ -50,6 +50,8 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   getWorkspaceMailboxes: vi.fn(),
 }))
 vi.mock('@/services/workspaceOnboarding', () => ({ listWorkspaceOnboarding: vi.fn() }))
+// The AI models card has its own data and is not under test here.
+vi.mock('@/components/workspace/WorkspaceAiModelsCard', () => ({ WorkspaceAiModelsCard: () => null }))
 vi.mock('@/services/workspaceStaff', () => ({
   createWorkspaceStaffTemporaryPassword: vi.fn(),
   getWorkspaceAiKeys: vi.fn(),

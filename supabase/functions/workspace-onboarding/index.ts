@@ -19,10 +19,12 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel } from '../_shared/workspaceAiModels.ts'
 import { workspaceLinkOrigin } from '../_shared/workspaceOrigin.ts'
 import {
   createOnboardingCapability,
   generatePitchProfile,
+  shippedPitchProfileModel,
   onboardingEmailConfigured,
   onboardingUrl,
   sendOnboardingEmail,
@@ -883,7 +885,12 @@ serve(async (req) => {
         byoKeyUsed: anthropicKey?.source === 'workspace',
       })
       try {
-        const { profile, usage } = await generatePitchProfile(definition, answers, anthropicKey)
+        const { profile, usage } = await generatePitchProfile(
+          definition,
+          answers,
+          anthropicKey,
+          stepModel(await loadWorkspaceAiModels(admin, workspaceId), 'profile_drafts', shippedPitchProfileModel()),
+        )
         await logOperationCost(admin, {
           workspaceId,
           operationType: 'pitch_profile',

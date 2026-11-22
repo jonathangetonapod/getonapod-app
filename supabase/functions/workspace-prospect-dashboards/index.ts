@@ -22,6 +22,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits, retryWindowKey } from '../_shared/billing.ts'
 import { resolveTextAiKey, resolveAiKey, workspaceAiKeyStatus } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel, thinkingFields } from '../_shared/workspaceAiModels.ts'
 import { decodeHtmlEntities, dedupeShows } from '../_shared/showText.ts'
 import { explanationsNeedingRewrite, MAX_FIT_EXPLANATION_CHARS } from '../_shared/fitExplanations.ts'
 
@@ -646,12 +647,14 @@ async function anthropicText(
   prompt: string,
   maxTokens: number,
   timeoutMs = 55_000,
+  model: string = RANKING_MODEL,
 ): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const response = await textAiFetch(apiKey, {
     method: 'POST',
     body: JSON.stringify({
-      model: RANKING_MODEL,
-      thinking: { type: 'between_tools' },
+      model,
+      // Follows the model: only Sonnet 5.5 accepts between_tools.
+      ...thinkingFields(model),
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -672,6 +675,7 @@ async function rankCandidates(
   prospectText: string,
   candidates: PodcastCandidate[],
   apiKeyOverride?: TextAiCredential,
+  model: string = RANKING_MODEL,
 ): Promise<{ ranked: RankedCandidate[]; inputTokens: number; outputTokens: number }> {
   const apiKey = apiKeyOverride ?? platformTextAiKey()
   if (!apiKey) throw new HttpError(500, 'BUILD_NOT_CONFIGURED', 'Prospect analysis is not configured')
@@ -709,7 +713,7 @@ Return ONLY a JSON array:
     ]
   }
 ]`
-  const reply = await anthropicText(apiKey, prompt, 8_192)
+  const reply = await anthropicText(apiKey, prompt, 8_192, undefined, model)
   const ranked = parseRankedCandidates(extractJsonArray(reply.text), candidates.length)
   if (ranked.length < 5) throw new Error('ranking response did not contain enough qualified matches')
   return { ranked, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens }
@@ -727,6 +731,7 @@ async function enforceDistinctExplanations(
   ranked: RankedCandidate[],
   apiKey: TextAiCredential,
   dashboardId: string,
+  model: string = RANKING_MODEL,
 ): Promise<{ inputTokens: number; outputTokens: number }> {
   const usage = { inputTokens: 0, outputTokens: 0 }
   const check = () => explanationsNeedingRewrite(ranked.map((rank) => ({
@@ -764,7 +769,7 @@ ${FIT_EXPLANATION_RULES}
 Return ONLY a JSON array: [{"key": 0, "reason": "..."}]`
     try {
       // Short: these run after a full ranking call, inside one request.
-      const reply = await anthropicText(apiKey, prompt, 2_048, 25_000)
+      const reply = await anthropicText(apiKey, prompt, 2_048, 25_000, model)
       usage.inputTokens += reply.inputTokens
       usage.outputTokens += reply.outputTokens
       const rewrites = extractJsonArray(reply.text)
@@ -942,6 +947,8 @@ async function buildProspect(
   }
 
   const anthropicKey = await resolveTextAiKey(context.admin, workspaceId)
+  // The model chosen for prospect dashboards on Integrations, else shipped.
+  const rankingModel = stepModel(await loadWorkspaceAiModels(context.admin, workspaceId), 'prospect_dashboard', RANKING_MODEL)
   const openaiKey = await resolveAiKey(context.admin, workspaceId, 'openai')
   const byoKeyUsed = anthropicKey?.source === 'workspace'
   let buildDelivered = false
@@ -1064,7 +1071,7 @@ async function buildProspect(
     let rankingSource: 'ai_ranked' | 'semantic' = 'ai_ranked'
     let ranked: RankedCandidate[]
     try {
-      const ranking = await rankCandidates(prospectText, candidates, anthropicKey)
+      const ranking = await rankCandidates(prospectText, candidates, anthropicKey, rankingModel)
       ranked = ranking.ranked
       buildUsage.anthropicInputTokens += ranking.inputTokens
       buildUsage.anthropicOutputTokens += ranking.outputTokens
@@ -1082,6 +1089,7 @@ async function buildProspect(
         ranked,
         anthropicKey,
         dashboardId,
+        rankingModel,
       )
       buildUsage.anthropicInputTokens += rewriteUsage.inputTokens
       buildUsage.anthropicOutputTokens += rewriteUsage.outputTokens
@@ -1187,7 +1195,7 @@ async function buildProspect(
       metadata: {
         shortlist_count: selected.length,
         ranking_source: rankingSource,
-        model: rankingSource === 'ai_ranked' ? RANKING_MODEL : null,
+        model: rankingSource === 'ai_ranked' ? rankingModel : null,
       },
     })
     buildDelivered = true

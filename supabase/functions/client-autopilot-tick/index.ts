@@ -11,6 +11,7 @@ import { createAdminClient, HttpError, secretsMatch, writeAudit } from '../_shar
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { isProviderRuntimeError, } from '../_shared/providerErrors.ts'
 import { resolveTextAiKey, resolveAiKey } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel, thinkingFields } from '../_shared/workspaceAiModels.ts'
 import { ensureEpisodesCaptured } from '../_shared/podcastEpisodes.ts'
 import { podscanFetch, withoutDuplicateShows } from '../_shared/podscan.ts'
 import { podscanSearchFailureKind, PodscanSearchError, searchAcrossQueries } from '../_shared/autopilotSearch.ts'
@@ -142,9 +143,10 @@ async function anthropicJson(
   content: string,
   maxTokens: number,
   usage: { input: number; output: number },
+  model: string,
 ): Promise<unknown> {
   try {
-    return await anthropicJsonOnce(apiKey, system, content, maxTokens, usage)
+    return await anthropicJsonOnce(apiKey, system, content, maxTokens, usage, model)
   } catch (error) {
     if (isProviderRuntimeError(error)) throw error
     throw new AnthropicError('Anthropic returned an invalid response')
@@ -157,13 +159,15 @@ async function anthropicJsonOnce(
   content: string,
   maxTokens: number,
   usage: { input: number; output: number },
+  model: string,
 ): Promise<unknown> {
   const response = await textAiFetch(apiKey, {
     method: 'POST',
     body: JSON.stringify({
-      model: 'claude-sonnet-5-5',
+      model,
       // Thinks by default; see THINKS_BY_DEFAULT in _shared/promptModels.ts.
-      thinking: { type: 'between_tools' },
+      // The setting follows the model: only Sonnet 5.5 accepts between_tools.
+      ...thinkingFields(model),
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content }],
@@ -339,6 +343,8 @@ serve(async (req) => {
     }
     usageKey = anthropicKey
     usedByoKey = anthropicKey.source === 'workspace'
+    // The model chosen for autopilot on Integrations, else shipped.
+    const autopilotModel = stepModel(await loadWorkspaceAiModels(admin, due.workspace_id), 'autopilot')
 
     // Charged before the model call so an empty balance never gets a free
     // ride, and given back below if that call never delivers. The tick runs
@@ -363,6 +369,7 @@ serve(async (req) => {
       `Draft ${QUERY_COUNT} distinct podcast-search queries (2-4 words each, plain keywords, no operators) to find active interview podcasts where this person would be a strong guest:\n\n${String(client.bio).slice(0, 4_000)}`,
       400,
       usage,
+      autopilotModel,
     )
     const queries = (Array.isArray(queriesRaw) ? queriesRaw : [])
       .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 1)
@@ -410,6 +417,7 @@ serve(async (req) => {
       })))}`,
       4_000,
       usage,
+      autopilotModel,
     )
     const scores = new Map(
       (Array.isArray(scoredRaw) ? scoredRaw : []).flatMap((entry) => {

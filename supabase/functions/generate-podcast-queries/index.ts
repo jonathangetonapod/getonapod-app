@@ -11,6 +11,7 @@ import {
 } from '../_shared/workspaceAuth.ts'
 import { chargeCredits, logOperationCost, refundCredits } from '../_shared/billing.ts'
 import { resolveTextAiKey, } from '../_shared/workspaceAiKeys.ts'
+import { loadWorkspaceAiModels, stepModel, thinkingFields } from '../_shared/workspaceAiModels.ts'
 import { assessProfile, filterQueries, queryProblem } from '../_shared/queryQuality.ts'
 
 const corsHeaders = {
@@ -143,6 +144,9 @@ serve(async (req) => {
     // the structured pitch profile is where positioning and topics live.
     let profileSections: Array<[string, unknown]> = []
 
+    // Platform-admin calls keep the shipped model; workspace calls use the
+    // model chosen for search queries on Integrations.
+    let queryModel = 'claude-sonnet-5-5'
     if (scopedRequest) {
       const workspaceId = requireUuid(body.workspaceId, 'workspaceId')
       const context = await requireAuthenticatedUser(req)
@@ -154,6 +158,7 @@ serve(async (req) => {
       }
 
       const resolvedKey = await resolveTextAiKey(context.admin, workspaceId)
+      queryModel = stepModel(await loadWorkspaceAiModels(context.admin, workspaceId), 'search_queries')
       const byoKeyUsed = resolvedKey?.source === 'workspace'
       if (resolvedKey) anthropicApiKey = resolvedKey
       metering = {
@@ -359,11 +364,11 @@ Return exactly one new query as JSON:
 
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanations. Just the raw JSON object.`
 
-      console.log('🤖 [AI] Calling Claude Sonnet 5.5 to generate new query...')
+      console.log('🤖 [AI] Calling the AI model to generate new query...')
 
       const message = await anthropic.messages.create({
-        model: 'claude-sonnet-5-5',
-        ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
+        model: queryModel,
+        ...(thinkingFields(queryModel) as Record<string, unknown>),
         max_tokens: 100,
         messages: [{ role: 'user', content: prompt }],
       }).catch((error: unknown) => {
@@ -455,8 +460,8 @@ ${Array.from({ length: queryCount }, (_unused, index) => `    "query ${index + 1
 CRITICAL: Your response must be ONLY valid JSON. No markdown, no code blocks, no explanations, no additional text. Just the raw JSON object starting with { and ending with }.`
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-5-5',
-      ...({ thinking: { type: 'between_tools' } } as Record<string, unknown>),
+      model: queryModel,
+      ...(thinkingFields(queryModel) as Record<string, unknown>),
       // Scaled with the request: twenty OR-chained queries do not fit in the
       // 500 that five needed, and a truncated reply has no usable queries.
       max_tokens: Math.min(4000, 400 + (queryCount * 80)),
