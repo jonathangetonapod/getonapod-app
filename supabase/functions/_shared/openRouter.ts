@@ -184,10 +184,14 @@ export function openRouterRequestBody(
     messages,
     max_tokens: openRouterMaxTokens(body.max_tokens, info, thinks),
     ...(reasoning ? { reasoning } : {}),
-    // Web search runs as OpenRouter's web plugin: native search for models
-    // that have it, Exa for the rest. Sources come back as url_citation
-    // annotations, normalized below into web_search_tool_result blocks.
-    ...(webSearch ? { plugins: [{ id: 'web', max_results: 5 }] } : {}),
+    // Web search runs as OpenRouter's web search server tool, pinned to Exa.
+    // Host discovery only accepts a profile that appears in the search
+    // results, so the results must come back to us. Exa returns them as
+    // url_citation annotations for every model. A provider's native search
+    // often returns none (verified live 2026-11-23: GPT, Claude and Gemini
+    // answered correctly with no sources), and the older `web` plugin is
+    // deprecated.
+    ...(webSearch ? { tools: [{ type: 'openrouter:web_search', parameters: { engine: 'exa', max_results: 5 } }] } : {}),
   }
 }
 

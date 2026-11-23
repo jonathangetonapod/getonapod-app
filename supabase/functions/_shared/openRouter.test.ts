@@ -102,7 +102,7 @@ Deno.test('OpenRouter receives only its key, a Chat Completions body and Claude 
     assert(body.messages[1].content[0].cache_control.type === 'ephemeral', 'Claude on OpenRouter keeps prompt caching')
     assert(body.reasoning.effort === 'low' && body.reasoning.exclude === true)
     assert(body.max_tokens === 500 + 4_096)
-    assert(!('plugins' in body))
+    assert(!('plugins' in body) && !('tools' in body))
     return Response.json(chatReply('An OpenRouter pitch'))
   }, seen))
   const payload = await response.json()
@@ -186,8 +186,9 @@ Deno.test('OpenRouter host discovery accepts only a profile present in its web c
   const usage = { input: 0, output: 0, searches: 0 }
   const profile = await discoverHostLinkedin(openrouter, { podcast: 'Show' }, usage, router((init) => {
     const body = JSON.parse(String(init?.body))
-    assert(body.plugins?.[0]?.id === 'web', 'web search runs as the web plugin')
-    assert(!('tools' in body))
+    assert(body.tools?.length === 1 && body.tools[0].type === 'openrouter:web_search', 'web search runs as the server tool')
+    assert(body.tools[0].parameters.engine === 'exa', 'pinned to Exa, which returns its sources for every model')
+    assert(!('plugins' in body), 'the deprecated web plugin is not used')
     return Response.json(chatReply('https://www.linkedin.com/in/real-host', {
       choices: [{ finish_reason: 'stop', message: { content: 'https://www.linkedin.com/in/real-host', annotations: [
         { type: 'url_citation', url_citation: { url: 'https://www.linkedin.com/in/real-host' } },
