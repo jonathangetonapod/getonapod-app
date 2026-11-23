@@ -11,6 +11,7 @@ import {
   setClientInstantlyCampaignLinks,
   getWorkspaceCampaignOverview,
   getWorkspaceCampaignReplies,
+  getWorkspaceRecentReplies,
   getWorkspaceCampaignSendingStatus,
   getWorkspaceMailboxes,
   getWorkspacePromptRequirements,
@@ -291,6 +292,30 @@ describe('workspaceCampaigns service', () => {
     expect(result.replies[0].target?.podcast_name).toBe('Tom & Jerry')
     expect(result.replies[0].body_text).toBe('Sounds good')
     expect(result.truncated).toBe(false)
+  })
+
+  it('reads the workspace recent replies and drops rows without a client', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        supported: true,
+        provider_label: 'Email Bison',
+        truncated: true,
+        failed_campaigns: 1,
+        checked_at: '2026-11-23T10:00:00Z',
+        replies: [
+          { id: '1', provider_campaign_id: '42', from_email: 'a@b.fm', from_name: null, subject: null, body_text: 'Hi', received_at: null, automated: false, interested: null, target: null, client: { id: clientId, name: 'Dallas' } },
+          { id: '2', provider_campaign_id: '42', from_email: 'c@d.fm', from_name: null, subject: null, body_text: 'Hi', received_at: null, automated: false, interested: null, target: null, client: null },
+        ],
+      },
+      error: null,
+    } as never)
+    const result = await getWorkspaceRecentReplies(workspaceId)
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'workspace-replies', workspace_id: workspaceId },
+    })
+    expect(result.replies.map((reply) => reply.id)).toEqual(['1'])
+    expect(result.failed_campaigns).toBe(1)
+    expect(result.truncated).toBe(true)
   })
 
   it('refuses an unreadable replies response instead of showing an empty list', async () => {

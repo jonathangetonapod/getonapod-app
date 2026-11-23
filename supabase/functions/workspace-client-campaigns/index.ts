@@ -1019,6 +1019,115 @@ async function integrationProvider(
   );
 }
 
+interface ReplyTargetRow {
+  id: string;
+  client_id: string;
+  shortlist_podcast_id: string;
+  podcast_id: string;
+  podcast_name: string | null;
+  host_name: string | null;
+  contact_email: string | null;
+  instantly_campaign_id: string | null;
+}
+
+const REPLY_TARGET_COLUMNS =
+  "id, client_id, shortlist_podcast_id, podcast_id, podcast_name, host_name, contact_email, instantly_campaign_id";
+
+/** Newest first; undated replies sink to the end. */
+function byNewestReply(a: { received_at: string | null }, b: { received_at: string | null }): number {
+  return (Date.parse(b.received_at ?? "") || 0) - (Date.parse(a.received_at ?? "") || 0);
+}
+
+/**
+ * Every provider campaign a client's pitches went through, the default
+ * first: a pitch can be sent through a linked campaign rather than the
+ * client's own.
+ */
+function replyCampaignIds(defaultCampaignId: string | null, targets: ReplyTargetRow[]): string[] {
+  return [
+    ...new Set(
+      [defaultCampaignId, ...targets.map((target) => target.instantly_campaign_id)]
+        .map((id) => normalizeProviderId(id))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+}
+
+/**
+ * Replies from several provider campaigns, a few reads at a time. One
+ * campaign failing does not hide the others' replies; it is counted, and
+ * only when every read fails is the first failure thrown.
+ */
+async function collectProviderReplies(
+  outreach: OutreachProvider,
+  providerCampaignIds: string[],
+  limitPerCampaign: number,
+): Promise<{ replies: ProviderReply[]; truncated: boolean; failed: number }> {
+  const CONCURRENCY = 4;
+  const replies: ProviderReply[] = [];
+  const seen = new Set<string>();
+  let truncated = false;
+  let failed = 0;
+  let firstError: unknown = null;
+  for (let start = 0; start < providerCampaignIds.length; start += CONCURRENCY) {
+    const batch = providerCampaignIds.slice(start, start + CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((id) => outreach.listReplies(id, { limit: limitPerCampaign })),
+    );
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        failed += 1;
+        firstError ??= result.reason;
+        return;
+      }
+      if (!result.value.complete) truncated = true;
+      for (const reply of result.value.replies) {
+        const key = `${batch[index]}:${reply.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        replies.push(reply);
+      }
+    });
+  }
+  if (providerCampaignIds.length > 0 && failed === providerCampaignIds.length) throw firstError;
+  replies.sort(byNewestReply);
+  return { replies, truncated, failed };
+}
+
+/** Each pitched address → its target, per client. The first pitch to an address wins. */
+function replyTargetIndex(targets: ReplyTargetRow[]): Map<string, ReplyTargetRow> {
+  const index = new Map<string, ReplyTargetRow>();
+  for (const target of targets) {
+    const email = target.contact_email?.trim().toLowerCase();
+    const key = email ? `${target.client_id}:${email}` : null;
+    if (key && !index.has(key)) index.set(key, target);
+  }
+  return index;
+}
+
+function replyDto(reply: ProviderReply, target: ReplyTargetRow | null) {
+  return {
+    id: reply.id,
+    provider_campaign_id: reply.campaign_id,
+    from_email: reply.from_email,
+    from_name: reply.from_name,
+    subject: reply.subject,
+    body_text: reply.body_text,
+    received_at: reply.received_at,
+    automated: reply.automated,
+    interested: reply.interested,
+    target: target
+      ? {
+        id: target.id,
+        shortlist_podcast_id: target.shortlist_podcast_id,
+        podcast_id: target.podcast_id,
+        podcast_name: target.podcast_name,
+        host_name: target.host_name,
+      }
+      : null,
+  };
+}
+
 /**
  * The raw Instantly key, for the inbox actions that only Instantly supports.
  * Any other provider is refused before a request is shaped for the wrong API.
@@ -4818,6 +4927,94 @@ serve(async (req) => {
       });
     }
 
+    // The newest replies across every client's campaign, for the campaigns
+    // list. Same read-only, nothing-stored rules as campaign-replies; only
+    // campaigns assigned to a client are read, so a reply always has a client
+    // to belong to.
+    if (action === "workspace-replies") {
+      requireOnlyKeys(body, ["action", "workspace_id"]);
+      const connection = await readConnection(context.admin, workspaceId);
+      const outreach = await integrationProvider(connection);
+      if (!outreach.capabilities.replies) {
+        return jsonResponse(req, METHODS, 200, {
+          supported: false,
+          provider_label: outreach.label,
+          replies: [],
+          truncated: false,
+          failed_campaigns: 0,
+          checked_at: new Date().toISOString(),
+        });
+      }
+      const [campaignsResult, targetsResult] = await Promise.all([
+        context.admin
+          .from("workspace_client_campaigns")
+          .select("id, client_id, instantly_campaign_id, updated_at, client:clients(id, name)")
+          .eq("workspace_id", workspaceId)
+          .not("instantly_campaign_id", "is", null)
+          .order("updated_at", { ascending: false })
+          .limit(200),
+        context.admin
+          .from("workspace_client_campaign_targets")
+          .select(REPLY_TARGET_COLUMNS)
+          .eq("workspace_id", workspaceId)
+          .not("contact_email", "is", null)
+          .or("launched_at.not.is.null,instantly_lead_id.not.is.null")
+          .limit(5_000),
+      ]);
+      if (campaignsResult.error || targetsResult.error) {
+        throw new HttpError(
+          500,
+          "CAMPAIGN_LOOKUP_FAILED",
+          "Client campaigns could not be loaded",
+        );
+      }
+      const campaignRows = (campaignsResult.data ?? []) as unknown as Array<{
+        client_id: string;
+        instantly_campaign_id: string | null;
+        client: { id: string; name: string } | null;
+      }>;
+      const targets = (targetsResult.data ?? []) as unknown as ReplyTargetRow[];
+      const targetsByClient = new Map<string, ReplyTargetRow[]>();
+      for (const target of targets) {
+        const list = targetsByClient.get(target.client_id) ?? [];
+        list.push(target);
+        targetsByClient.set(target.client_id, list);
+      }
+      // Provider campaign → the client it belongs to. A campaign claimed by
+      // two clients is read once and attributed to the first, most recently
+      // updated; the per-client tab reads it for each.
+      const clientByProviderCampaign = new Map<string, { id: string; name: string }>();
+      for (const row of campaignRows) {
+        if (!row.client) continue;
+        for (const id of replyCampaignIds(row.instantly_campaign_id, targetsByClient.get(row.client_id) ?? [])) {
+          if (!clientByProviderCampaign.has(id)) clientByProviderCampaign.set(id, row.client);
+        }
+      }
+      // Bounded: one paged read per campaign. The most recently active
+      // campaigns come first, which is where new replies are.
+      const MAX_WORKSPACE_REPLY_CAMPAIGNS = 20;
+      const allIds = [...clientByProviderCampaign.keys()];
+      const readIds = allIds.slice(0, MAX_WORKSPACE_REPLY_CAMPAIGNS);
+      const collected = await collectProviderReplies(outreach, readIds, 25);
+      const targetIndex = replyTargetIndex(targets);
+      const RECENT_LIMIT = 50;
+      return jsonResponse(req, METHODS, 200, {
+        supported: true,
+        provider_label: outreach.label,
+        replies: collected.replies.slice(0, RECENT_LIMIT).map((reply) => {
+          const client = reply.campaign_id ? clientByProviderCampaign.get(normalizeProviderId(reply.campaign_id) ?? "") ?? null : null;
+          const target = client && reply.from_email
+            ? targetIndex.get(`${client.id}:${reply.from_email}`) ?? null
+            : null;
+          return { ...replyDto(reply, target), client };
+        }).filter((reply) => reply.client !== null),
+        truncated: collected.truncated || collected.replies.length > RECENT_LIMIT ||
+          allIds.length > readIds.length,
+        failed_campaigns: collected.failed,
+        checked_at: new Date().toISOString(),
+      });
+    }
+
     const clientId = requireUuid(body.client_id, "client_id");
     /*
      * Unassigning a mailbox is the one client-scoped action that must survive
@@ -5179,7 +5376,7 @@ serve(async (req) => {
       }
       const { data: targetData, error: targetError } = await context.admin
         .from("workspace_client_campaign_targets")
-        .select("id, shortlist_podcast_id, podcast_id, podcast_name, host_name, contact_email, instantly_campaign_id")
+        .select(REPLY_TARGET_COLUMNS)
         .eq("workspace_id", workspaceId)
         .eq("campaign_id", campaign.id)
         .eq("client_id", clientId)
@@ -5191,77 +5388,24 @@ serve(async (req) => {
           "Campaign podcasts could not be loaded",
         );
       }
-      const targets = (targetData ?? []) as Array<{
-        id: string;
-        shortlist_podcast_id: string;
-        podcast_id: string;
-        podcast_name: string | null;
-        host_name: string | null;
-        contact_email: string | null;
-        instantly_campaign_id: string | null;
-      }>;
-      // A pitch can be sent through a campaign other than the client's
-      // default (a linked one), so every provider campaign this client's
-      // pitches went through is read, the default first. Bounded: each is
-      // its own paged read against the platform.
+      const targets = (targetData ?? []) as unknown as ReplyTargetRow[];
+      // Bounded: each campaign is its own paged read against the platform.
       const MAX_REPLY_CAMPAIGNS = 5;
-      const providerCampaignIds = [
-        ...new Set(
-          [campaign.instantly_campaign_id, ...targets.map((target) => target.instantly_campaign_id)]
-            .map((id) => normalizeProviderId(id))
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
+      const providerCampaignIds = replyCampaignIds(campaign.instantly_campaign_id, targets);
       const readIds = providerCampaignIds.slice(0, MAX_REPLY_CAMPAIGNS);
-      let truncated = providerCampaignIds.length > readIds.length;
-      const REPLY_LIMIT = 100;
-      const seen = new Set<string>();
-      const replies: ProviderReply[] = [];
-      for (const providerCampaignId of readIds) {
-        const result = await outreach.listReplies(providerCampaignId, { limit: REPLY_LIMIT });
-        if (!result.complete) truncated = true;
-        for (const reply of result.replies) {
-          const key = `${providerCampaignId}:${reply.id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          replies.push(reply);
-        }
-      }
-      const targetByEmail = new Map<string, (typeof targets)[number]>();
-      for (const target of targets) {
-        const email = target.contact_email?.trim().toLowerCase();
-        // The first pitch to an address wins; two shows sharing a host email
-        // are the same person answering either way.
-        if (email && !targetByEmail.has(email)) targetByEmail.set(email, target);
-      }
-      replies.sort((a, b) => (Date.parse(b.received_at ?? "") || 0) - (Date.parse(a.received_at ?? "") || 0));
+      const collected = await collectProviderReplies(outreach, readIds, 100);
+      const targetIndex = replyTargetIndex(targets);
       return jsonResponse(req, METHODS, 200, {
         supported: true,
         provider_label: outreach.label,
-        replies: replies.slice(0, REPLY_LIMIT * MAX_REPLY_CAMPAIGNS).map((reply) => {
-          const target = reply.from_email ? targetByEmail.get(reply.from_email) ?? null : null;
-          return {
-            id: reply.id,
-            provider_campaign_id: reply.campaign_id,
-            from_email: reply.from_email,
-            from_name: reply.from_name,
-            subject: reply.subject,
-            body_text: reply.body_text,
-            received_at: reply.received_at,
-            automated: reply.automated,
-            interested: reply.interested,
-            target: target
-              ? {
-                id: target.id,
-                shortlist_podcast_id: target.shortlist_podcast_id,
-                podcast_id: target.podcast_id,
-                podcast_name: target.podcast_name,
-                host_name: target.host_name,
-              }
-              : null,
-          };
-        }),
-        truncated,
+        replies: collected.replies.map((reply) =>
+          replyDto(
+            reply,
+            reply.from_email ? targetIndex.get(`${clientId}:${reply.from_email}`) ?? null : null,
+          )
+        ),
+        truncated: collected.truncated || collected.failed > 0 ||
+          providerCampaignIds.length > readIds.length,
         checked_at: new Date().toISOString(),
       });
     }

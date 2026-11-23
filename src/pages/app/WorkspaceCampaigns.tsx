@@ -39,6 +39,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { AssignInstantlyCampaignsDialog } from '@/components/workspace/AssignInstantlyCampaignsDialog'
 import { OutreachConnectionCard } from '@/components/workspace/OutreachConnectionCard'
 import { DeleteCampaignDialog, type DeleteCampaignTarget } from '@/components/workspace/DeleteCampaignDialog'
+import { RecentRepliesCard } from '@/components/workspace/RecentRepliesCard'
 import { RowMenu } from '@/components/workspace/RowMenu'
 import { InstantlyAccountPicker, type InstantlyAccountClientLink } from '@/components/workspace/InstantlyAccountPicker'
 import {
@@ -759,6 +760,19 @@ const WorkspaceCampaigns = ({
             </Button>
           )}
         </div>
+      )}
+
+      {/* Hosts' answers, across clients: without this, finding out whether
+          anyone replied meant opening every campaign. Reads the platform
+          only once opened. */}
+      {(integration?.connected || scopedSummaries.length > 0) && (
+        <RecentRepliesCard
+          workspaceId={workspaceId}
+          baseHref={baseHref}
+          providerName={providerName}
+          connected={Boolean(integration?.connected)}
+          clientId={filteredClient?.id ?? null}
+        />
       )}
 
       <Card className="overflow-hidden">

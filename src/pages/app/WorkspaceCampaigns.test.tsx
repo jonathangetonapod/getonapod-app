@@ -8,6 +8,7 @@ import { getWorkspaceClientDetail, type WorkspaceClient, type WorkspaceClientDet
 import {
   connectWorkspaceInstantly,
   getWorkspaceCampaignOverview,
+  getWorkspaceRecentReplies,
   refreshWorkspaceCampaignAnalytics,
   refreshWorkspaceInstantly,
   saveWorkspaceCampaign,
@@ -22,6 +23,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   deleteWorkspaceCampaign: vi.fn(),
   disconnectWorkspaceInstantly: vi.fn(),
   getWorkspaceCampaignOverview: vi.fn(),
+  getWorkspaceRecentReplies: vi.fn(),
   refreshWorkspaceCampaignAnalytics: vi.fn(),
   refreshWorkspaceInstantly: vi.fn(),
   saveWorkspaceCampaign: vi.fn(),
@@ -225,6 +227,59 @@ describe('WorkspaceCampaigns', () => {
     expect(screen.getByText('22% of 9 contacted replied')).toBeInTheDocument()
     expect(screen.queryByText('Ready to launch')).not.toBeInTheDocument()
     expect(screen.queryByText(/Feb 16–22|podcasts in view|Current wave/i)).not.toBeInTheDocument()
+  })
+
+  describe('recent replies', () => {
+    const recent = {
+      supported: true,
+      provider_label: 'Instantly',
+      truncated: false,
+      failed_campaigns: 0,
+      checked_at: '2026-07-24T12:00:00Z',
+      replies: [
+        {
+          id: 'r1', provider_campaign_id: persistedCampaign.instantly_campaign_id, from_email: 'host@founder.example', from_name: 'Jamie Host', subject: 'Re: idea',
+          body_text: 'We would love to have Dallas on.', received_at: '2026-07-24T10:00:00Z', automated: false, interested: true,
+          target: { id: 't1', shortlist_podcast_id: 'shortlist-one', podcast_id: 'p1', podcast_name: 'Founder Show', host_name: 'Jamie Host' },
+          client: { id: clientId, name: client.name },
+        },
+        {
+          id: 'r2', provider_campaign_id: 'other', from_email: 'away@ops.example', from_name: null, subject: 'Auto: away',
+          body_text: 'Out until Monday.', received_at: '2026-07-24T09:00:00Z', automated: true, interested: null, target: null,
+          client: { id: secondClientId, name: secondClient.name },
+        },
+      ],
+    }
+
+    it('reads replies only once opened, links each to its campaign, and hides automatic ones by default', async () => {
+      mockedOverview.mockResolvedValue({ ...campaignOverview, integration: connectedIntegration, campaigns: [persistedCampaign] })
+      vi.mocked(getWorkspaceRecentReplies).mockResolvedValue(recent)
+      renderCampaigns([client, secondClient])
+
+      const toggle = await screen.findByRole('button', { name: /Show replies/ })
+      expect(getWorkspaceRecentReplies).not.toHaveBeenCalled()
+      fireEvent.click(toggle)
+      expect(getWorkspaceRecentReplies).toHaveBeenCalledWith(workspaceId)
+
+      const link = await screen.findByRole('link', { name: /Founder Show/ })
+      expect(link).toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=replies&reply_podcast=shortlist-one`)
+      expect(screen.getByText('We would love to have Dallas on.')).toBeInTheDocument()
+      expect(screen.queryByText('Out until Monday.')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByLabelText('Hide 1 automatic reply'))
+      expect(screen.getByText('Out until Monday.')).toBeInTheDocument()
+    })
+
+    it('follows the page client filter', async () => {
+      mockedOverview.mockResolvedValue({ ...campaignOverview, integration: connectedIntegration, campaigns: [persistedCampaign] })
+      vi.mocked(getWorkspaceRecentReplies).mockResolvedValue(recent)
+      renderCampaigns([client, secondClient], `/app/client-campaigns?client=${secondClientId}`)
+
+      fireEvent.click(await screen.findByRole('button', { name: /Show replies/ }))
+      fireEvent.click(await screen.findByLabelText('Hide 1 automatic reply'))
+      expect(await screen.findByText('Out until Monday.')).toBeInTheDocument()
+      expect(screen.queryByText('We would love to have Dallas on.')).not.toBeInTheDocument()
+    })
   })
 
   it('deletes a campaign from its row menu, after typing to confirm', async () => {

@@ -1873,7 +1873,22 @@ assert.match(edge, /instantly_campaign_id: activeCampaign\.id,[\s\S]{0,400}?No l
   assert.match(replies, /readCampaign\(context\.admin, workspaceId, clientId\)/u)
   assert.match(replies, /!outreach\.capabilities\.replies[\s\S]*?supported: false/u)
   assert.match(replies, /\.eq\("workspace_id", workspaceId\)[\s\S]*?\.eq\("campaign_id", campaign\.id\)[\s\S]*?\.eq\("client_id", clientId\)/u)
-  assert.match(replies, /outreach\.listReplies\(/u)
+  assert.match(replies, /collectProviderReplies\(outreach,/u)
+  assert.match(edge, /outreach\.listReplies\(id, \{ limit: limitPerCampaign \}\)/u)
+  const workspaceReplies = edge.match(/if \(action === "workspace-replies"\) \{[\s\S]*?\n    \}\n/u)?.[0] ?? ''
+  assert.ok(workspaceReplies, 'workspace-replies action exists')
+  assert.ok(
+    edge.indexOf('action === "workspace-replies"') < edge.indexOf('const clientId = requireUuid(body.client_id, "client_id");'),
+    'workspace-replies needs no client id',
+  )
+  assert.match(workspaceReplies, /requireOnlyKeys\(body, \["action", "workspace_id"\]\)/u)
+  assert.match(workspaceReplies, /\.from\("workspace_client_campaigns"\)[\s\S]*?\.eq\("workspace_id", workspaceId\)/u)
+  assert.match(workspaceReplies, /\.from\("workspace_client_campaign_targets"\)[\s\S]*?\.eq\("workspace_id", workspaceId\)/u)
+  assert.match(workspaceReplies, /MAX_WORKSPACE_REPLY_CAMPAIGNS/u)
+  assert.doesNotMatch(workspaceReplies, /\.(insert|upsert|update|delete)\(/u, 'reading recent replies writes nothing')
+  const recentCard = readFileSync('src/components/workspace/RecentRepliesCard.tsx', 'utf8')
+  assert.doesNotMatch(recentCard, /dangerouslySetInnerHTML/u, 'recent reply bodies render as text')
+  assert.match(recentCard, /enabled: open && connected/u, 'the platform is read only once the card is opened')
   assert.doesNotMatch(replies, /\.(insert|upsert|update|delete)\(/u, 'reply reading writes nothing')
   assert.match(providerCore, /listReplies\(\s*campaignId: string,/u)
   assert.match(providerCore, /export function plainTextFromHtml/u)

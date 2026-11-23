@@ -1174,6 +1174,44 @@ export async function getWorkspaceCampaignReplies(
   }
 }
 
+export interface WorkspaceRecentReply extends WorkspaceCampaignReply {
+  client: { id: string; name: string }
+}
+
+export interface WorkspaceRecentRepliesResponse {
+  supported: boolean
+  provider_label: string
+  replies: WorkspaceRecentReply[]
+  /** Not every reply was read: more campaigns or replies than the window, or a campaign failed. */
+  truncated: boolean
+  /** Campaigns whose replies could not be read this time. */
+  failed_campaigns: number
+  checked_at: string
+}
+
+/** The newest replies across every client's campaign, read live from the sending platform. */
+export async function getWorkspaceRecentReplies(workspaceId: string): Promise<WorkspaceRecentRepliesResponse> {
+  const data = await invokeWorkspaceCampaigns<WorkspaceRecentRepliesResponse>({
+    action: 'workspace-replies',
+    workspace_id: workspaceId,
+  }, 'Replies could not be read from the sending platform.')
+  if (!data || typeof data !== 'object' || typeof data.supported !== 'boolean' || !Array.isArray(data.replies)) {
+    throw new Error('The replies response could not be read. Try again.')
+  }
+  return {
+    ...data,
+    replies: data.replies
+      .filter((reply) => reply?.client && typeof reply.client.id === 'string')
+      .map((reply) => ({
+        ...reply,
+        body_text: typeof reply.body_text === 'string' ? reply.body_text : '',
+        target: reply.target ? withDecodedPodcastName(reply.target) : null,
+      })),
+    truncated: data.truncated === true,
+    failed_campaigns: typeof data.failed_campaigns === 'number' ? data.failed_campaigns : 0,
+  }
+}
+
 export interface ClientInstantlyCampaignLink {
   instantly_campaign_id: string
   campaign_name: string | null
