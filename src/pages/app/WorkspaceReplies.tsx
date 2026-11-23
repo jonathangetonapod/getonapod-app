@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertCircle, Check, Loader2, MessageSquare, RefreshCw, Search, UserRoundPlus } from 'lucide-react'
+import { AlertCircle, Check, ExternalLink, Loader2, MessageSquare, RefreshCw, Search, UserRoundPlus } from 'lucide-react'
 import { WorkspaceLayout, type PlatformWorkspaceConfig } from '@/components/workspace/WorkspaceLayout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -190,7 +190,7 @@ const WorkspaceReplies = ({ platformWorkspaceId }: WorkspaceRepliesProps) => {
 
   return (
     <WorkspaceLayout platformWorkspace={platformWorkspace}>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold">
@@ -243,9 +243,9 @@ const WorkspaceReplies = ({ platformWorkspaceId }: WorkspaceRepliesProps) => {
 
         {repliesQuery.isPending ? (
           <div className="space-y-3" role="status" aria-label="Loading replies">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
           </div>
         ) : repliesQuery.isError ? (
           <div role="alert" className="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
@@ -266,62 +266,64 @@ const WorkspaceReplies = ({ platformWorkspaceId }: WorkspaceRepliesProps) => {
               : 'No replies match these filters.'}
           </p>
         ) : (
-          <ul className="space-y-3" aria-label="Replies">
+          <ul className="divide-y rounded-lg border bg-card" aria-label="Replies">
             {visible.slice(0, shown).map((reply) => {
               const key = replyKey(reply)
               const relationshipId = relationshipOf(reply)
               const open = expanded.has(key)
               const adding = addMutation.isPending && addMutation.variables && replyKey(addMutation.variables) === key
+              const sender = [reply.from_name || reply.target?.host_name, reply.from_email].filter(Boolean).join(' · ') || 'Unknown sender'
+              const body = reply.body_text || 'No text in this reply.'
               return (
-                <li key={key}>
-                  <Card>
-                    <CardContent className="space-y-2 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold">{reply.target?.podcast_name || reply.from_name || reply.from_email || 'Unknown sender'}</p>
-                            <span className="text-xs text-muted-foreground">for {reply.client.name}</span>
-                            {reply.automated && <Badge variant="outline">Automatic</Badge>}
-                            {reply.interested === true && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Interested</Badge>}
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {[reply.from_name || reply.target?.host_name, reply.from_email].filter(Boolean).join(' · ') || 'Unknown sender'} · {formatReceived(reply.received_at)}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {relationshipId ? (
-                            <Button asChild variant="outline" size="sm">
-                              <Link to={`${baseHref}/relationships?open=${encodeURIComponent(relationshipId)}`}>
-                                <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />In Relationships
-                              </Link>
-                            </Button>
-                          ) : canManage ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => addMutation.mutate(reply)}
-                              disabled={addMutation.isPending || !reply.from_email}
-                            >
-                              {adding ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <UserRoundPlus className="mr-1.5 h-3.5 w-3.5" />}
-                              Add to Relationships
-                            </Button>
-                          ) : null}
-                          <Button asChild variant="ghost" size="sm">
-                            <Link to={campaignHref(baseHref, reply)}>Open campaign</Link>
-                          </Button>
-                        </div>
-                      </div>
-                      {reply.subject && <p className="text-sm font-medium">{reply.subject}</p>}
-                      <p className={`whitespace-pre-wrap text-sm leading-6 text-foreground/80 ${open ? '' : 'line-clamp-4'}`}>
-                        {reply.body_text || 'No text in this reply.'}
-                      </p>
-                      {reply.body_text.length > 280 && (
-                        <Button type="button" variant="link" size="sm" className="h-auto px-0" aria-expanded={open} onClick={() => toggleExpanded(key)}>
-                          {open ? 'Show less' : 'Show the full reply'}
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
+                <li key={key} className="px-3 py-2 hover:bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+                      <span className="truncate font-medium">{reply.target?.podcast_name || reply.from_name || reply.from_email || 'Unknown sender'}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">for {reply.client.name}</span>
+                      {reply.interested === true && <Badge variant="outline" className="h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[11px] text-emerald-800">Interested</Badge>}
+                      {reply.automated && <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[11px]">Automatic</Badge>}
+                    </div>
+                    <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{formatReceived(reply.received_at)}</span>
+                    {relationshipId ? (
+                      <Button asChild variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs">
+                        <Link to={`${baseHref}/relationships?open=${encodeURIComponent(relationshipId)}`}>
+                          <Check className="mr-1 h-3.5 w-3.5 text-emerald-600" />In Relationships
+                        </Link>
+                      </Button>
+                    ) : canManage ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        onClick={() => addMutation.mutate(reply)}
+                        disabled={addMutation.isPending || !reply.from_email}
+                      >
+                        {adding ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <UserRoundPlus className="mr-1 h-3.5 w-3.5" />}
+                        Add to Relationships
+                      </Button>
+                    ) : null}
+                    <Button asChild variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                      <Link to={campaignHref(baseHref, reply)} aria-label="Open campaign" title="Open campaign">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
+                    </Button>
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {sender}
+                    <span className="sm:hidden"> · {formatReceived(reply.received_at)}</span>
+                    {reply.subject ? <> · <span className="text-foreground/70">{reply.subject}</span></> : null}
+                  </p>
+                  {/* One line until opened; the whole line is the toggle. */}
+                  <button
+                    type="button"
+                    className={`mt-0.5 block w-full text-left text-sm text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${open ? 'whitespace-pre-wrap leading-6' : 'truncate'}`}
+                    aria-expanded={open}
+                    aria-label={open ? 'Collapse reply' : 'Show the full reply'}
+                    onClick={() => toggleExpanded(key)}
+                  >
+                    {body}
+                  </button>
                 </li>
               )
             })}

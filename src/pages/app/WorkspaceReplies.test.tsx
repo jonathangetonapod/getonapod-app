@@ -101,6 +101,12 @@ describe('WorkspaceReplies', () => {
     expect(screen.queryByText('I am out of office.')).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Hide 1 automatic reply'))
     expect(screen.getByText('I am out of office.')).toBeInTheDocument()
+    // One line per reply until it is opened.
+    const [firstBody] = screen.getAllByRole('button', { name: 'Show the full reply' })
+    expect(firstBody).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(firstBody)
+    expect(firstBody).toHaveAttribute('aria-expanded', 'true')
+    expect(firstBody).toHaveAccessibleName('Collapse reply')
     expect(screen.getAllByRole('link', { name: 'Open campaign' })[0])
       .toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=replies&reply_podcast=shortlist-1`)
   })
