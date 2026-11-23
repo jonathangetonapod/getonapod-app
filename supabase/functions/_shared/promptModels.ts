@@ -54,6 +54,7 @@ const THINKS_BY_DEFAULT = new Set<string>([
   'claude-fable-5-1',
   'claude-opus-5-5',
   'claude-sonnet-5-5',
+  'claude-haiku-5-5',
 ])
 
 /** Lowest compatible thinking setting for short text-only prompt stages. */
@@ -63,6 +64,10 @@ export function thinkingForModel(id: string): { type: 'disabled' | 'between_tool
   if (id === 'claude-sonnet-5-5') return { type: 'between_tools' }
   // Opus 5.5 and Fable 5.1 always think; never send disabled to them.
   if (id === 'claude-opus-5' || id === 'claude-sonnet-5') return { type: 'disabled' }
+  // Haiku 5.5 thinks by default and accepts disabled at its default effort.
+  // Without this it spends a short step's whole output cap thinking —
+  // contact name extraction (50 tokens) came back empty on it.
+  if (id === 'claude-haiku-5-5') return { type: 'disabled' }
   return null
 }
 

@@ -226,6 +226,9 @@ export async function runAiStepProbe(key: TextAiCredential, id: AiProbeId, model
       return { ok: false, model: sentModel, ms, detail: 'Took longer than this step allows (90 seconds).', code: 'TIMEOUT' }
     }
     const message = error instanceof Error ? error.message : 'unknown error'
+    if (message === 'research prompt returned no text') {
+      return { ok: false, model: sentModel, ms, detail: 'Returned no text — usually the model spent this step\'s whole output limit thinking. Choose a model that answers within the limit.', code: 'EMPTY' }
+    }
     return { ok: false, model: sentModel, ms, detail: `The request failed: ${message.slice(0, 200)}`, code: 'FAILED' }
   }
 }

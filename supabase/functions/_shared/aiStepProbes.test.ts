@@ -94,3 +94,19 @@ Deno.test('the fact-check reports whether it caught the planted claim', async ()
     assertMatch(result.detail, /missed/u)
   })
 })
+
+Deno.test('Haiku 5.5 is told not to think, so a 50-token step still has room to answer', async () => {
+  await withProvider({ text: 'Dana Whitfield' }, async (bodies) => {
+    const result = await runAiStepProbe('key', 'host_name_extractor', 'claude-haiku-5-5')
+    assertEquals(result.ok, true)
+    assertEquals(bodies[0].thinking, { type: 'disabled' })
+  })
+})
+
+Deno.test('an empty research answer explains the likely cause', async () => {
+  await withProvider({ stop_reason: 'max_tokens' }, async () => {
+    const result = await runAiStepProbe('key', 'host_name_extractor', 'claude-opus-5-5')
+    assertEquals(result.ok, false)
+    assertMatch(result.detail, /output limit/u)
+  })
+})

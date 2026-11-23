@@ -27,7 +27,8 @@ Deno.test('disables thinking only for the models that would otherwise think', ()
   assertEquals(thinkingForModel('claude-sonnet-5-5'), { type: 'between_tools' })
   assertEquals(thinkingForModel('claude-opus-5-5'), null)
   assertEquals(thinkingForModel('claude-fable-5-1'), null)
-  assertEquals(thinkingForModel('claude-haiku-5-5'), null)
+  // Haiku 5.5 thinks by default; left on, it spent the 50-token name stage thinking.
+  assertEquals(thinkingForModel('claude-haiku-5-5'), { type: 'disabled' })
   assertEquals(thinkingForModel('a-model-that-ships-next-year'), null)
 })
 
