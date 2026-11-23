@@ -84,7 +84,7 @@ export const RelationshipRowMenu = ({
         {stage !== 'placed' && <DropdownMenuItem onSelect={() => onSetStage('placed')}>Mark placed</DropdownMenuItem>}
         {stage !== 'not_a_fit' && <DropdownMenuItem onSelect={() => onSetStage('not_a_fit')}>Not a fit</DropdownMenuItem>}
         <DropdownMenuItem onSelect={onEditDetails}>Edit show details…</DropdownMenuItem>
-        <DropdownMenuItem onSelect={onDismiss}>Not a host, remove</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onDismiss}>Remove from relationships</DropdownMenuItem>
         {stage !== 'do_not_contact' && (
           <>
             <DropdownMenuSeparator />

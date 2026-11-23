@@ -166,7 +166,7 @@ interface RelationshipRowProps {
   onSnoozeUntil: () => void
   onSetStage: (stage: 'placed' | 'not_a_fit') => void
   onEditDetails: () => void
-  /** "Not a host, remove": hides the row; the page offers an undo. */
+  /** "Remove from relationships": hides the row; the page offers an undo. */
   onDismiss: () => void
   onMarkDoNotContact: () => void
 }

@@ -1,6 +1,6 @@
 // List relationship-book rows that are probably not podcast hosts, for a person to review.
 // Read-only: it never changes a row. Remove the ones you agree with from the Relationships
-// page ("Not a host, remove"), which hides them and keeps them from coming back.
+// page ("Remove from relationships"), which hides them and keeps them from coming back.
 // Usage: node scripts/list-suspected-non-host-relationships.mjs <env-dir> [--workspace=<uuid>] [--json]
 // <env-dir> holds supabase.env (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY); keep it outside the repo.
 //

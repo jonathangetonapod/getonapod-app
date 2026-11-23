@@ -25,6 +25,7 @@ import {
   SnoozeUntilDialog,
   type ShowDetails,
 } from '@/components/workspace/RelationshipEditDialogs'
+import { RelationshipCampaignReplies } from '@/components/workspace/RelationshipCampaignReplies'
 import { RelationshipRow } from '@/components/workspace/RelationshipRow'
 import {
   WorkspaceLayout,
@@ -74,6 +75,7 @@ import {
   FOLLOW_UP_AFTER_DAYS,
   followUpOverdue,
   lastMessageSender,
+  mergeCampaignReply,
   needsAttention,
   relativeTime,
 } from '@/lib/relationshipAttention'
@@ -88,6 +90,7 @@ import {
   dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
+  listHostCampaignReplies,
   listHostRelationshipsPage,
   saveHostRelationship,
   unlinkHostRelationshipClient,
@@ -109,7 +112,10 @@ type RelationshipFilter = 'all' | 'needs_attention' | 'follow_up_overdue' | Rela
 /** The filters that matter day to day, as tabs. The rest of the stages sit in a dropdown. */
 const FILTER_TABS = ['all', 'needs_attention', 'in_conversation', 'follow_up_overdue', 'placed'] as const
 const DROPDOWN_STAGES = RELATIONSHIP_STAGES.filter((stage) => !(FILTER_TABS as readonly string[]).includes(stage))
-type RelationshipView = 'overview' | 'notes' | 'threads' | 'activity'
+type RelationshipView = 'overview' | 'notes' | 'threads' | 'replies' | 'activity'
+// Campaign replies are read live from the sending platform, one read per
+// campaign, so they are not re-read on every focus.
+const CAMPAIGN_REPLIES_STALE_MS = 5 * 60_000
 type SaveState = 'idle' | 'saving' | 'saved'
 
 interface RelationshipActivityItem {
@@ -375,11 +381,31 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     retry: false,
   })
 
+  const bookHasRows = (bookQuery.data?.pages[0]?.relationships.length ?? 0) > 0
+  // Each host's newest campaign reply, so a host who answered a campaign
+  // shows what they said without anyone saving the thread first.
+  const bookRepliesQuery = useQuery({
+    queryKey: ['host-relationships', workspaceId, 'campaign-replies'],
+    queryFn: () => listHostCampaignReplies(workspaceId),
+    enabled: validWorkspaceId && selectedWorkspaceReady && bookHasRows,
+    staleTime: CAMPAIGN_REPLIES_STALE_MS,
+    retry: false,
+  })
+  const hostRepliesQuery = useQuery({
+    queryKey: ['host-relationship', workspaceId, openPodcastId, 'campaign-replies'],
+    queryFn: () => listHostCampaignReplies(workspaceId, openPodcastId!),
+    enabled: validWorkspaceId && selectedWorkspaceReady && Boolean(openPodcastId),
+    staleTime: CAMPAIGN_REPLIES_STALE_MS,
+    retry: false,
+  })
+
   // Stable identity so the derived memos below only recompute on new data.
-  const relationships = useMemo(
-    () => bookQuery.data?.pages.flatMap((page) => page.relationships) ?? [],
-    [bookQuery.data],
-  )
+  const relationships = useMemo(() => {
+    const rows = bookQuery.data?.pages.flatMap((page) => page.relationships) ?? []
+    const newestReply = new Map((bookRepliesQuery.data?.replies ?? []).map((reply) => [reply.podcast_id, reply]))
+    if (newestReply.size === 0) return rows
+    return rows.map((row) => mergeCampaignReply(row, newestReply.get(row.podcast_id)))
+  }, [bookQuery.data, bookRepliesQuery.data])
   const firstBookPage = bookQuery.data?.pages[0]
   const bookTotal = firstBookPage?.total ?? relationships.length
   const filtered = useMemo(() => {
@@ -628,6 +654,7 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     ].filter(Boolean).join(' ').toLowerCase().includes(threadTerm)
   ))
   const clientNames = new Map((detail?.clients ?? []).map((client) => [client.client_id, client.client_name]))
+  const campaignReplies = hostRepliesQuery.data?.replies ?? []
   const activityItems: RelationshipActivityItem[] = [
     ...(detail?.events ?? []).map((event) => ({
       id: `event:${event.id}`,
@@ -647,6 +674,16 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       occurredAt: thread.latest_message_at || thread.updated_at,
       clientName: thread.client_name,
       ...splitCampaign(thread.campaign_name),
+    })),
+    ...campaignReplies.map((reply) => ({
+      id: `reply:${reply.id}`,
+      kind: 'email' as const,
+      title: reply.subject ? `Replied: ${reply.subject}` : 'Replied to a campaign',
+      body: reply.body_text,
+      occurredAt: reply.received_at ?? '',
+      clientName: reply.client_name,
+      campaignName: null,
+      sendStatus: null,
     })),
   ].sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
 
@@ -688,8 +725,10 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
       }
       return
     }
-    // A conversation opens what we have saved.
-    openRelationship(row.podcast_id, step === 'conversation' ? 'threads' : 'overview')
+    // A conversation opens where its last message is: a campaign reply on
+    // Replies, anything else on what we have saved.
+    if (step !== 'conversation') return openRelationship(row.podcast_id, 'overview')
+    openRelationship(row.podcast_id, row.last_message_source === 'campaign' ? 'replies' : 'threads')
   }
   const saveSummary = (podcastId: string) => {
     if (summaryDraft === (openRow?.summary ?? '') || summaryMutation.isPending) return
@@ -947,6 +986,9 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                             <TabsTrigger value="threads" className="rounded-b-none">
                               Threads <span className="ml-1 text-muted-foreground">{detail.threads.length}</span>
                             </TabsTrigger>
+                            <TabsTrigger value="replies" className="rounded-b-none">
+                              Replies <span className="ml-1 text-muted-foreground">{hostRepliesQuery.isLoading ? '…' : campaignReplies.length}</span>
+                            </TabsTrigger>
                             <TabsTrigger value="activity" className="rounded-b-none">
                               Activity <span className="ml-1 text-muted-foreground">{activityItems.length}</span>
                             </TabsTrigger>
@@ -966,11 +1008,17 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                           {row.last_message_body
                             ? <p className="mt-2 line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-foreground/80">{row.last_message_body}</p>
                             : <p className="mt-2 text-sm text-muted-foreground">No message saved for this host yet.</p>}
-                          {detail.threads.length > 0 && (
-                            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setActiveView('threads')}>
-                              View conversation
-                            </Button>
-                          )}
+                          {row.last_message_source === 'campaign'
+                            ? (
+                              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setActiveView('replies')}>
+                                View replies
+                              </Button>
+                            )
+                            : detail.threads.length > 0 && (
+                              <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setActiveView('threads')}>
+                                View conversation
+                              </Button>
+                            )}
                         </section>
 
                         <section className="space-y-2">
@@ -1252,12 +1300,22 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
                         </div>
                         </TabsContent>
 
+                        <TabsContent value="replies" className="mt-5">
+                          <RelationshipCampaignReplies
+                            data={hostRepliesQuery.data}
+                            isLoading={hostRepliesQuery.isLoading}
+                            error={hostRepliesQuery.error}
+                            onRetry={() => void hostRepliesQuery.refetch()}
+                            baseHref={baseHref}
+                          />
+                        </TabsContent>
+
                         <TabsContent value="activity" className="mt-5">
                         <div>
                           <div className="flex flex-wrap items-end justify-between gap-2">
                             <div>
                               <p className="text-sm font-medium">Activity log</p>
-                              <p className="mt-0.5 text-xs text-muted-foreground">Internal notes and saved conversations, newest first.</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">Internal notes, saved conversations and campaign replies, newest first.</p>
                             </div>
                             <span className="text-xs text-muted-foreground">{activityItems.length} activities</span>
                           </div>

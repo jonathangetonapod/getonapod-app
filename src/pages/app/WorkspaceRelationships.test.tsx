@@ -12,6 +12,7 @@ import {
   dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
+  listHostCampaignReplies,
   listHostRelationships,
   listHostRelationshipsPage,
   saveHostRelationship,
@@ -40,6 +41,7 @@ vi.mock('@/services/hostRelationships', () => {
     dismissHostRelationship: vi.fn(),
     getHostRelationship: vi.fn(),
     linkHostRelationshipClient: vi.fn(),
+    listHostCampaignReplies: vi.fn(),
     listHostRelationships,
     // The page reads the book a page at a time; by default one page holds the
     // whole list the older tests describe through listHostRelationships.
@@ -75,6 +77,8 @@ const mockedLinkClient = vi.mocked(linkHostRelationshipClient)
 const mockedListPage = vi.mocked(listHostRelationshipsPage)
 const mockedUnlinkClient = vi.mocked(unlinkHostRelationshipClient)
 const mockedDismiss = vi.mocked(dismissHostRelationship)
+const mockedCampaignReplies = vi.mocked(listHostCampaignReplies)
+const noReplies = { supported: true, provider_label: 'Instantly', replies: [], truncated: false, failed_campaigns: 0 }
 
 const workspaceId = '11111111-1111-4111-8111-111111111111'
 const platformWorkspaceId = '99999999-9999-4999-8999-999999999999'
@@ -179,6 +183,7 @@ describe('WorkspaceRelationships', () => {
     } as never)
     mockedList.mockResolvedValue([relationship])
     mockedDetail.mockResolvedValue(detail)
+    mockedCampaignReplies.mockResolvedValue(noReplies)
     mockedClients.mockResolvedValue([
       { id: clientId, name: 'Taylor Client', status: 'active' },
       { id: '33333333-3333-4333-8333-333333333333', name: 'Jordan Client', status: 'active' },
@@ -376,6 +381,45 @@ describe('WorkspaceRelationships', () => {
     expect(screen.queryByRole('link', { name: /reply/i })).not.toBeInTheDocument()
   })
 
+  // A host who answered a campaign shows it without anyone saving a thread.
+  it('shows a campaign reply on the row and in the Replies tab', async () => {
+    mockedList.mockResolvedValue([{
+      ...relationship,
+      derived_state: 'replied',
+      last_message_body: null,
+      last_message_at: null,
+      last_message_direction: null,
+      last_contacted_at: daysAgo(5),
+    }])
+    const reply = {
+      id: 'reply-1', podcast_id: 'show-one', client_id: clientId, client_name: 'Taylor Client',
+      from_email: 'morgan@example.com', from_name: 'Morgan Host', subject: 'Re: an idea',
+      body_text: 'Happy to have Taylor on in January.', received_at: daysAgo(1), automated: false, interested: true,
+    }
+    const autoReply = { ...reply, id: 'reply-2', body_text: 'I am out of office.', automated: true, received_at: daysAgo(4) }
+    mockedCampaignReplies.mockImplementation(async (_workspace, podcastId) => (
+      podcastId
+        ? { ...noReplies, replies: [reply, autoReply] }
+        : { ...noReplies, replies: [reply] }
+    ))
+    renderPage()
+
+    expect(await screen.findByText(/Happy to have Taylor on in January/)).toBeInTheDocument()
+    expect(screen.getByText('Morgan:')).toBeInTheDocument()
+    expect(mockedCampaignReplies).toHaveBeenCalledWith(workspaceId)
+
+    fireEvent.click(screen.getByRole('button', { name: 'View conversation' }))
+    expect(await screen.findByRole('tab', { name: 'Replies 2' })).toHaveAttribute('data-state', 'active')
+    expect(mockedCampaignReplies).toHaveBeenCalledWith(workspaceId, 'show-one')
+    expect(screen.getByText(/for Taylor Client/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open in the campaign' }))
+      .toHaveAttribute('href', `/app/client-campaigns/${clientId}?tab=replies`)
+    // Automatic replies are hidden until asked for.
+    expect(screen.queryByText('I am out of office.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Hide 1 automatic reply'))
+    expect(screen.getByText('I am out of office.')).toBeInTheDocument()
+  })
+
   it('turns the header chips into filters with whole-book counts', async () => {
     mockedListPage
       .mockResolvedValueOnce({
@@ -559,7 +603,7 @@ describe('WorkspaceRelationships', () => {
     await screen.findByRole('heading', { name: 'Founder & Operator' })
 
     fireEvent.keyDown(screen.getByRole('button', { name: 'More actions for Founder & Operator' }), { key: 'Enter' })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Not a host, remove' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Remove from relationships' }))
 
     await waitFor(() => expect(mockedDismiss).toHaveBeenCalledWith(workspaceId, {
       podcastId: 'show-one',
@@ -579,7 +623,7 @@ describe('WorkspaceRelationships', () => {
     expect(items.at(-1)).toBe('Mark as do not contact…')
     expect(items).toEqual(expect.arrayContaining([
       'Snooze 3 days', 'Snooze 1 week', 'Snooze 2 weeks', 'Snooze until…',
-      'Mark placed', 'Not a fit', 'Edit show details…', 'Not a host, remove',
+      'Mark placed', 'Not a fit', 'Edit show details…', 'Remove from relationships',
     ]))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Snooze 1 week' }))
 

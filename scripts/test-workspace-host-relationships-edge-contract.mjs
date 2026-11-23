@@ -123,7 +123,7 @@ assert.match(threadCaptureMigration, /CREATE TABLE public\.workspace_host_relati
 assert.match(threadCaptureMigration, /PRIMARY KEY \(workspace_id, thread_key\)/u)
 assert.match(threadCaptureMigration, /ALTER TABLE public\.workspace_host_relationship_threads FORCE ROW LEVEL SECURITY/u)
 
-// "Not a host, remove" hides a row without deleting it, so the address stays
+// "Remove from relationships" hides a row without deleting it, so the address stays
 // known and nothing adds it back; a deliberate manual add restores it.
 const dismissMigration = readFileSync('supabase/migrations/20261030000100_relationship_dismiss_and_snooze.sql', 'utf8')
 assert.match(dismissMigration, /ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ/u)
@@ -450,3 +450,22 @@ assert.match(relationships, /syncInstantlyBlockList\(admin, workspaceId, contact
 assert.match(relationships, /instantly_blocked: blocked\.synced/u)
 assert.match(relationships, /instantly_error: blocked\.reason/u)
 
+
+// Campaign replies are read live from the sending platform for hosts in the
+// book, never stored, and open to every member (reading, like the list).
+const campaignRepliesAction = relationships.slice(
+  relationships.indexOf("if (action === 'campaign-replies')"),
+  relationships.indexOf("if (action === 'create')"),
+)
+assert.match(campaignRepliesAction, /requireOnlyKeys\(body, \['action', 'workspace_id', 'podcast_id'\]\)/u)
+assert.doesNotMatch(campaignRepliesAction, /requireManager\(\)/u)
+const readReplies = relationships.slice(
+  relationships.indexOf('async function readCampaignReplies'),
+  relationships.indexOf('serve(async (req)'),
+)
+assert.match(readReplies, /\.is\('dismissed_at', null\)/u)
+assert.match(readReplies, /\.eq\('workspace_id', workspaceId\)/u)
+assert.match(readReplies, /outreach\.listReplies\(id, \{ limit: 100 \}\)/u)
+assert.match(readReplies, /MAX_REPLY_CAMPAIGNS/u)
+assert.doesNotMatch(readReplies, /\.(insert|update|upsert|delete)\(/u)
+assert.match(service, /action: 'campaign-replies'/u)

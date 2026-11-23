@@ -7,6 +7,7 @@ import {
   dismissHostRelationship,
   getHostRelationship,
   linkHostRelationshipClient,
+  listHostCampaignReplies,
   listHostRelationships,
   listHostRelationshipsPage,
   listOutreachSuppressions,
@@ -46,6 +47,33 @@ describe('hostRelationships service', () => {
     })
     expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
       body: { action: 'detail', workspace_id: canonicalWorkspaceId, podcast_id: 'show-one' },
+    })
+  })
+
+  it('reads campaign replies for the whole book or one host, and normalizes a thin response', async () => {
+    const reply = {
+      id: 'reply-1', podcast_id: 'show-one', client_id: clientId, client_name: 'Ada',
+      from_email: 'host@show.com', from_name: 'Host', subject: 'Re: idea', body_text: 'Sounds good',
+      received_at: '2026-11-20T10:00:00Z', automated: false, interested: true,
+    }
+    invoke
+      .mockResolvedValueOnce({
+        data: { supported: true, provider_label: 'Instantly', replies: [reply], truncated: false, failed_campaigns: 0 },
+        error: null,
+      } as never)
+      .mockResolvedValueOnce({ data: {}, error: null } as never)
+
+    await expect(listHostCampaignReplies(workspaceId)).resolves.toEqual({
+      supported: true, provider_label: 'Instantly', replies: [reply], truncated: false, failed_campaigns: 0,
+    })
+    await expect(listHostCampaignReplies(workspaceId, 'show-one')).resolves.toEqual({
+      supported: false, provider_label: null, replies: [], truncated: false, failed_campaigns: 0,
+    })
+    expect(invoke).toHaveBeenNthCalledWith(1, 'workspace-host-relationships', {
+      body: { action: 'campaign-replies', workspace_id: canonicalWorkspaceId },
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'workspace-host-relationships', {
+      body: { action: 'campaign-replies', workspace_id: canonicalWorkspaceId, podcast_id: 'show-one' },
     })
   })
 

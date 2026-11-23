@@ -38,6 +38,11 @@ export interface HostRelationshipSummary {
   last_message_at?: string | null
   /** 'inbound' when the host wrote it, 'outbound' when we did. */
   last_message_direction?: 'inbound' | 'outbound' | null
+  /**
+   * Where the last message came from: a thread saved to the book, or a
+   * campaign reply read live from the sending platform. Set on the page only.
+   */
+  last_message_source?: 'saved' | 'campaign'
   /** The thread a reply should open in the inbox. */
   last_thread_key?: string | null
   last_thread_client_id?: string | null
@@ -201,6 +206,54 @@ export async function getHostRelationship(workspaceId: string, podcastId: string
   }
 }
 
+/** A reply a host sent to a campaign, read live from the sending platform. */
+export interface HostCampaignReply {
+  id: string
+  podcast_id: string
+  client_id: string | null
+  client_name: string | null
+  from_email: string | null
+  from_name: string | null
+  subject: string | null
+  body_text: string
+  received_at: string | null
+  /** An out-of-office or other automatic answer. */
+  automated: boolean
+  interested: boolean | null
+}
+
+export interface HostCampaignReplies {
+  /** False when the sending platform cannot list replies, or none is connected. */
+  supported: boolean
+  provider_label: string | null
+  replies: HostCampaignReply[]
+  /** Some campaigns or older replies were not read. */
+  truncated: boolean
+  failed_campaigns: number
+}
+
+/**
+ * Campaign replies from hosts in the book. With a podcastId, every reply from
+ * that host; without, each host's newest real reply, for the list's preview.
+ */
+export async function listHostCampaignReplies(
+  workspaceId: string,
+  podcastId?: string,
+): Promise<HostCampaignReplies> {
+  const data = await invokeHostRelationships<Partial<HostCampaignReplies>>({
+    action: 'campaign-replies',
+    workspace_id: workspaceId.toLowerCase(),
+    ...(podcastId ? { podcast_id: podcastId } : {}),
+  }, 'Campaign replies could not be loaded.')
+  return {
+    supported: data?.supported === true,
+    provider_label: typeof data?.provider_label === 'string' ? data.provider_label : null,
+    replies: Array.isArray(data?.replies) ? data.replies : [],
+    truncated: data?.truncated === true,
+    failed_campaigns: count(data?.failed_campaigns),
+  }
+}
+
 export async function createHostRelationship(
   workspaceId: string,
   input: {
@@ -231,7 +284,7 @@ export async function createHostRelationship(
 }
 
 /**
- * "Not a host, remove": hides the row from the book without deleting it, so
+ * "Remove from relationships": hides the row from the book without deleting it, so
  * the address stays known and is never added back behind the operator.
  * Passing false undoes it.
  */

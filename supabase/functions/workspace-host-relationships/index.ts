@@ -297,6 +297,217 @@ async function syncInstantlyBlockList(
   }
 }
 
+/** The workspace's sending platform, or null when none is connected. */
+async function connectedOutreach(admin: SupabaseClient, workspaceId: string) {
+  const { data: connection, error } = await admin
+    .from('workspace_instantly_integrations')
+    .select('api_key_ciphertext, api_key_iv, status, provider, provider_base_url')
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+  if (error) {
+    throw new HttpError(500, 'OUTREACH_CONNECTION_LOOKUP_FAILED', 'The outreach provider connection could not be loaded')
+  }
+  if (!connection?.api_key_ciphertext || !connection?.api_key_iv || connection.status === 'disconnected') return null
+  const kind = requireProviderKind(connection.provider ?? 'instantly')
+  const apiKey = await decryptInstantlyApiKey({ ciphertext: connection.api_key_ciphertext, iv: connection.api_key_iv })
+  return await createOutreachProvider(kind, apiKey, connection.provider_base_url ?? null)
+}
+
+function normalizedEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const email = value.trim().toLowerCase()
+  return email.includes('@') ? email : null
+}
+
+// Provider campaigns read per request, most recently active first: one paged
+// read each, the same budget as the campaigns list's Recent replies card.
+const MAX_REPLY_CAMPAIGNS = 20
+const REPLY_CONCURRENCY = 4
+// The book-wide read only needs each host's newest reply for the row's
+// preview line, so it is shortened; one host's own panel gets the full text.
+const PREVIEW_BODY_MAX = 1_000
+
+interface CampaignReplyDto {
+  id: string
+  podcast_id: string
+  client_id: string | null
+  client_name: string | null
+  from_email: string | null
+  from_name: string | null
+  subject: string | null
+  body_text: string
+  received_at: string | null
+  automated: boolean
+  interested: boolean | null
+}
+
+/**
+ * Replies hosts in the book sent to a campaign, read live from the sending
+ * platform and never stored (the same rule as the campaign Replies tab).
+ *
+ * A reply belongs to a relationship when it came from that relationship's
+ * address, or from an address one of its show's campaign targets pitched.
+ * With a podcast_id, every reply from that one host; without, the newest
+ * real (not automatic) reply per host, for the list's preview line.
+ */
+async function readCampaignReplies(
+  admin: SupabaseClient,
+  workspaceId: string,
+  onlyPodcastId: string | null,
+) {
+  const empty = (supported: boolean, label: string | null) => ({
+    supported,
+    provider_label: label,
+    replies: [] as CampaignReplyDto[],
+    truncated: false,
+    failed_campaigns: 0,
+    checked_at: new Date().toISOString(),
+  })
+  let bookQuery = admin.from('workspace_host_relationships')
+    .select('podcast_id, contact_email')
+    .eq('workspace_id', workspaceId)
+    .is('dismissed_at', null)
+  if (onlyPodcastId) bookQuery = bookQuery.eq('podcast_id', onlyPodcastId)
+  const { data: bookRows, error: bookError } = await bookQuery.limit(10_000)
+  if (bookError) throw new HttpError(500, 'RELATIONSHIP_REPLIES_FAILED', 'Replies could not be loaded')
+  const book = (bookRows ?? []) as Array<{ podcast_id: string; contact_email: string | null }>
+  if (book.length === 0) return empty(true, null)
+  const bookIds = new Set(book.map((row) => row.podcast_id))
+
+  // Address → the relationships it belongs to.
+  const showsByEmail = new Map<string, Set<string>>()
+  const addEmail = (email: string | null, showId: string) => {
+    if (!email) return
+    const shows = showsByEmail.get(email) ?? new Set<string>()
+    shows.add(showId)
+    showsByEmail.set(email, shows)
+  }
+  for (const row of book) addEmail(normalizedEmail(row.contact_email), row.podcast_id)
+
+  const { data: targetRows, error: targetError } = await admin.from('workspace_client_campaign_targets')
+    .select('podcast_id, client_id, normalized_contact_email, instantly_campaign_id, updated_at')
+    .eq('workspace_id', workspaceId)
+    .not('normalized_contact_email', 'is', null)
+    .or('launched_at.not.is.null,instantly_lead_id.not.is.null')
+    .order('updated_at', { ascending: false })
+    .limit(10_000)
+  if (targetError) throw new HttpError(500, 'RELATIONSHIP_REPLIES_FAILED', 'Replies could not be loaded')
+  const targets = (targetRows ?? []) as Array<{
+    podcast_id: string | null
+    client_id: string
+    normalized_contact_email: string | null
+    instantly_campaign_id: string | null
+  }>
+  for (const target of targets) {
+    if (target.podcast_id && bookIds.has(target.podcast_id)) {
+      addEmail(normalizedEmail(target.normalized_contact_email), target.podcast_id)
+    }
+  }
+  if (showsByEmail.size === 0) return empty(true, null)
+
+  // Only the campaigns that pitched one of these addresses, plus the default
+  // campaign of each client that did, are worth reading.
+  const relevantTargets = targets.filter((target) => {
+    const email = normalizedEmail(target.normalized_contact_email)
+    return email !== null && showsByEmail.has(email)
+  })
+  const clientIds = [...new Set(relevantTargets.map((target) => target.client_id))]
+  const clientByCampaign = new Map<string, string>()
+  const orderedCampaigns: string[] = []
+  const addCampaign = (id: unknown, clientId: string) => {
+    if (typeof id !== 'string' || !id.trim()) return
+    const key = id.trim()
+    if (clientByCampaign.has(key)) return
+    clientByCampaign.set(key, clientId)
+    orderedCampaigns.push(key)
+  }
+  for (const target of relevantTargets) addCampaign(target.instantly_campaign_id, target.client_id)
+  const clientNames = new Map<string, string>()
+  if (clientIds.length > 0) {
+    const [{ data: campaignRows, error: campaignError }, { data: nameRows, error: nameError }] = await Promise.all([
+      admin.from('workspace_client_campaigns')
+        .select('client_id, instantly_campaign_id, updated_at')
+        .eq('workspace_id', workspaceId)
+        .in('client_id', clientIds)
+        .not('instantly_campaign_id', 'is', null)
+        .order('updated_at', { ascending: false }),
+      admin.from('clients').select('id, name').eq('workspace_id', workspaceId).in('id', clientIds),
+    ])
+    if (campaignError || nameError) throw new HttpError(500, 'RELATIONSHIP_REPLIES_FAILED', 'Replies could not be loaded')
+    for (const row of campaignRows ?? []) addCampaign(row.instantly_campaign_id, row.client_id)
+    for (const row of nameRows ?? []) clientNames.set(row.id, row.name)
+  }
+  if (orderedCampaigns.length === 0) return empty(true, null)
+
+  const outreach = await connectedOutreach(admin, workspaceId)
+  if (!outreach) return empty(false, null)
+  if (!outreach.capabilities.replies) return empty(false, outreach.label)
+
+  const readIds = orderedCampaigns.slice(0, MAX_REPLY_CAMPAIGNS)
+  const replies: CampaignReplyDto[] = []
+  const seen = new Set<string>()
+  let truncated = orderedCampaigns.length > readIds.length
+  let failed = 0
+  for (let start = 0; start < readIds.length; start += REPLY_CONCURRENCY) {
+    const batch = readIds.slice(start, start + REPLY_CONCURRENCY)
+    const results = await Promise.allSettled(batch.map((id) => outreach.listReplies(id, { limit: 100 })))
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        failed += 1
+        console.error('[workspace-host-relationships] campaign reply read failed', result.reason)
+        return
+      }
+      if (!result.value.complete) truncated = true
+      const clientId = clientByCampaign.get(batch[index]) ?? null
+      for (const reply of result.value.replies) {
+        const email = normalizedEmail(reply.from_email)
+        const shows = email ? showsByEmail.get(email) : undefined
+        if (!shows) continue
+        for (const showId of shows) {
+          const key = `${showId}:${batch[index]}:${reply.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          replies.push({
+            id: reply.id,
+            podcast_id: showId,
+            client_id: clientId,
+            client_name: clientId ? clientNames.get(clientId) ?? null : null,
+            from_email: reply.from_email,
+            from_name: reply.from_name,
+            subject: reply.subject,
+            body_text: reply.body_text,
+            received_at: reply.received_at,
+            automated: reply.automated,
+            interested: reply.interested,
+          })
+        }
+      }
+    })
+  }
+  if (readIds.length > 0 && failed === readIds.length) {
+    throw new HttpError(502, 'OUTREACH_PROVIDER_ERROR', `${outreach.label} did not return replies. Try again shortly`)
+  }
+  replies.sort((a, b) => (Date.parse(b.received_at ?? '') || 0) - (Date.parse(a.received_at ?? '') || 0))
+
+  let result = replies
+  if (!onlyPodcastId) {
+    const newest = new Map<string, CampaignReplyDto>()
+    for (const reply of replies) {
+      if (reply.automated || newest.has(reply.podcast_id)) continue
+      newest.set(reply.podcast_id, { ...reply, body_text: reply.body_text.slice(0, PREVIEW_BODY_MAX) })
+    }
+    result = [...newest.values()]
+  }
+  return {
+    supported: true,
+    provider_label: outreach.label,
+    replies: result,
+    truncated,
+    failed_campaigns: failed,
+    checked_at: new Date().toISOString(),
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse(req, METHODS)
   try {
@@ -573,6 +784,16 @@ serve(async (req) => {
           client_name: typeof row.client_id === 'string' ? clientNames.get(row.client_id) ?? null : null,
         })),
       })
+    }
+
+    // Read-only, like the list: every workspace member may see what a host
+    // wrote back to a campaign.
+    if (action === 'campaign-replies') {
+      requireOnlyKeys(body, ['action', 'workspace_id', 'podcast_id'])
+      const onlyPodcastId = body.podcast_id === undefined || body.podcast_id === null
+        ? null
+        : podcastId(body.podcast_id)
+      return jsonResponse(req, METHODS, 200, await readCampaignReplies(admin, workspaceId, onlyPodcastId))
     }
 
     if (action === 'create') {

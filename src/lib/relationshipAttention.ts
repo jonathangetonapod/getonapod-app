@@ -1,6 +1,6 @@
 import { decodeFeedText } from '@/lib/feedText'
 import { RELATIONSHIP_STAGE_VIEW, relationshipStage, type RelationshipStage } from '@/lib/relationshipLabels'
-import type { HostRelationshipSummary } from '@/services/hostRelationships'
+import type { HostCampaignReply, HostRelationshipSummary } from '@/services/hostRelationships'
 
 /**
  * What a relationship row says about where things stand, in one badge.
@@ -173,4 +173,27 @@ export function needsAttention(row: StatusRow, now: Date = new Date()): boolean 
   if (isSnoozed(row, now)) return false
   if (relationshipMove(row) === 'yours') return true
   return followUpOverdue(row, now) || relationshipStatus(row, now).goneQuiet
+}
+
+/**
+ * A host's newest campaign reply, folded into their row when it is newer
+ * than anything saved, so the preview line, "Your move" and Needs attention
+ * all see that the host wrote back.
+ */
+export function mergeCampaignReply(
+  row: HostRelationshipSummary,
+  reply: HostCampaignReply | undefined,
+): HostRelationshipSummary {
+  if (!reply?.received_at || !reply.body_text.trim()) return row
+  const replyAt = new Date(reply.received_at).getTime()
+  if (Number.isNaN(replyAt)) return row
+  const savedAt = row.last_message_at ? new Date(row.last_message_at).getTime() : Number.NaN
+  if (!Number.isNaN(savedAt) && savedAt >= replyAt) return row
+  return {
+    ...row,
+    last_message_body: reply.body_text,
+    last_message_at: reply.received_at,
+    last_message_direction: 'inbound',
+    last_message_source: 'campaign',
+  }
 }
