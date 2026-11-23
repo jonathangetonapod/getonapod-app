@@ -45,6 +45,7 @@ const expectedNavigation = [
   'Pipeline',
   'Client intake',
   'Client Campaigns',
+  'Replies',
   'Podcast Finder',
   'Podcast Database',
   'Prospect Studio',
@@ -171,8 +172,9 @@ describe('WorkspaceLayout', () => {
     expect(labels).toEqual(expectedNavigation)
 
     const links = within(navigation).getAllByRole('link')
-    // 12: University was added 2026-08-07 and the Inbox retired 2026-10-26.
-    expect(links).toHaveLength(12)
+    // 13: University was added 2026-08-07, the Inbox retired 2026-10-26 and
+    // Replies added 2026-11-23.
+    expect(links).toHaveLength(13)
     expect(within(navigation).getByRole('link', { name: 'Settings' })).toHaveAttribute(
       'href',
       '/app/settings',
@@ -281,7 +283,7 @@ describe('WorkspaceLayout', () => {
       item.querySelector('span')?.textContent
     ))).toEqual([
       'Client intake', 'Podcast Finder', 'Prospect Studio', 'Podcast Database', 'Pipeline',
-      'Clients', 'Client Campaigns', 'Relationships', 'Mailboxes', 'University',
+      'Clients', 'Client Campaigns', 'Replies', 'Relationships', 'Mailboxes', 'University',
       'Billing', 'Settings',
     ])
   })
@@ -516,6 +518,9 @@ describe('WorkspaceLayout', () => {
     expect(labels.indexOf('University')).toBeGreaterThan(-1)
     expect(labels.indexOf('University')).toBeLessThan(labels.indexOf('Billing'))
     expect(labels[0]).toBe('Clients')
+    // Placed after the module it follows by default, not at a fixed index.
+    expect(labels.indexOf('Replies')).toBe(labels.indexOf('Client Campaigns') + 1)
+    expect(labels.indexOf('University')).toBe(labels.indexOf('Relationships') + 1)
   })
 
   it('opens owner organize mode when requested from workspace settings', () => {

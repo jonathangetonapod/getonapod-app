@@ -155,13 +155,13 @@ const detail: HostRelationshipDetail = {
   }],
 }
 
-function renderPage(props: { platformWorkspaceId?: string } = {}) {
+function renderPage(props: { platformWorkspaceId?: string } = {}, path = '/app/relationships') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/app/relationships']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <WorkspaceRelationships {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -418,6 +418,13 @@ describe('WorkspaceRelationships', () => {
     expect(screen.queryByText('I am out of office.')).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Hide 1 automatic reply'))
     expect(screen.getByText('I am out of office.')).toBeInTheDocument()
+  })
+
+  // The Replies page links a host already in the book straight to its row.
+  it('opens the host named in ?open= once the book loads', async () => {
+    renderPage({}, '/app/relationships?open=show-one')
+    expect(await screen.findByRole('tab', { name: 'Overview' })).toHaveAttribute('data-state', 'active')
+    expect(mockedDetail).toHaveBeenCalledWith(workspaceId, 'show-one')
   })
 
   it('turns the header chips into filters with whole-book counts', async () => {

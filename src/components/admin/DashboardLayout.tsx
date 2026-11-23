@@ -21,6 +21,7 @@ import {
   ClipboardList,
   Mailbox,
   Megaphone,
+  MessageSquare,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,7 @@ const defaultNavItems: NavItem[] = [
   { id: 'calendar', name: 'Client Podcast System', href: '/admin/calendar', icon: Calendar },
   { id: 'clients', name: 'Clients', href: '/admin/clients', icon: Users },
   { id: 'outreach-platform', name: 'Client Campaigns', href: '/app/client-campaigns', icon: Megaphone },
+  { id: 'replies', name: 'Replies', href: '/app/replies', icon: MessageSquare },
   { id: 'relationships', name: 'Relationships', href: '/app/relationships', icon: BookUser },
   { id: 'mailboxes', name: 'Mailboxes', href: '/app/mailboxes', icon: Mailbox },
   { id: 'guest-resources', name: 'Guest Resources', href: '/admin/guest-resources', icon: BookOpen },

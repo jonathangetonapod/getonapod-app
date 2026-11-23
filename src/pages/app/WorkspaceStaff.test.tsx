@@ -757,8 +757,9 @@ describe('WorkspaceStaff', () => {
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
-    // 12: University was added 2026-08-07 and the Inbox retired 2026-10-26.
-    expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(12)
+    // 13: University was added 2026-08-07, the Inbox retired 2026-10-26 and
+    // Replies added 2026-11-23.
+    expect(within(navigation).getAllByRole('button', { name: /^Drag /u })).toHaveLength(13)
   })
 
   it('saves the workspace name on blur, with the timestamp it was read at', async () => {

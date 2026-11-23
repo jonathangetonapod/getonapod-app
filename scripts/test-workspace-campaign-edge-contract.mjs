@@ -1881,7 +1881,12 @@ assert.match(edge, /instantly_campaign_id: activeCampaign\.id,[\s\S]{0,400}?No l
     edge.indexOf('action === "workspace-replies"') < edge.indexOf('const clientId = requireUuid(body.client_id, "client_id");'),
     'workspace-replies needs no client id',
   )
-  assert.match(workspaceReplies, /requireOnlyKeys\(body, \["action", "workspace_id"\]\)/u)
+  assert.match(workspaceReplies, /requireOnlyKeys\(body, \["action", "workspace_id", "limit"\]\)/u)
+  assert.match(workspaceReplies, /Math\.min\(body\.limit, 200\)/u, 'the Replies page limit is capped')
+  assert.match(workspaceReplies, /relationship_podcast_id: relationshipFor\(/u)
+  const relationshipLookup = edge.slice(edge.indexOf('async function relationshipIndex'), edge.indexOf('function replyTargetIndex'))
+  assert.match(relationshipLookup, /\.is\("dismissed_at", null\)/u)
+  assert.doesNotMatch(relationshipLookup, /\.(insert|upsert|update|delete)\(/u)
   assert.match(workspaceReplies, /\.from\("workspace_client_campaigns"\)[\s\S]*?\.eq\("workspace_id", workspaceId\)/u)
   assert.match(workspaceReplies, /\.from\("workspace_client_campaign_targets"\)[\s\S]*?\.eq\("workspace_id", workspaceId\)/u)
   assert.match(workspaceReplies, /MAX_WORKSPACE_REPLY_CAMPAIGNS/u)

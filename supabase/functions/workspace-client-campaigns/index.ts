@@ -1101,6 +1101,49 @@ async function collectProviderReplies(
   return { replies, truncated, failed };
 }
 
+/**
+ * The relationship each reply's host already has, found by the show it was
+ * pitched for or by the sender's address. Rows marked "removed" do not count:
+ * adding the host again is how someone brings one back. A failed lookup only
+ * loses the label, never the replies.
+ */
+async function relationshipIndex(
+  admin: AuthContext["admin"],
+  workspaceId: string,
+  replies: Array<{ from_email: string | null; target: { podcast_id: string } | null }>,
+): Promise<(podcastId: string | null, fromEmail: string | null) => string | null> {
+  const podcastIds = [...new Set(replies.flatMap((reply) => reply.target?.podcast_id ? [reply.target.podcast_id] : []))];
+  const emails = [...new Set(replies.flatMap((reply) => {
+    const email = reply.from_email?.trim().toLowerCase();
+    return email && email.includes("@") ? [email] : [];
+  }))];
+  const byShow = new Set<string>();
+  const byEmail = new Map<string, string>();
+  const [showRows, emailRows] = await Promise.all([
+    podcastIds.length > 0
+      ? admin.from("workspace_host_relationships").select("podcast_id")
+        .eq("workspace_id", workspaceId).is("dismissed_at", null).in("podcast_id", podcastIds)
+      : Promise.resolve({ data: [], error: null }),
+    emails.length > 0
+      ? admin.from("workspace_host_relationships").select("podcast_id, contact_email")
+        .eq("workspace_id", workspaceId).is("dismissed_at", null).in("contact_email", emails)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (showRows.error || emailRows.error) {
+    console.error("[workspace-client-campaigns] relationship lookup failed", showRows.error ?? emailRows.error);
+  }
+  for (const row of (showRows.data ?? []) as Array<{ podcast_id: string }>) byShow.add(row.podcast_id);
+  for (const row of (emailRows.data ?? []) as Array<{ podcast_id: string; contact_email: string | null }>) {
+    const email = row.contact_email?.trim().toLowerCase();
+    if (email && !byEmail.has(email)) byEmail.set(email, row.podcast_id);
+  }
+  return (podcastId, fromEmail) => {
+    if (podcastId && byShow.has(podcastId)) return podcastId;
+    const email = fromEmail?.trim().toLowerCase();
+    return email ? byEmail.get(email) ?? null : null;
+  };
+}
+
 /** Each pitched address → its target, per client. The first pitch to an address wins. */
 function replyTargetIndex(targets: ReplyTargetRow[]): Map<string, ReplyTargetRow> {
   const index = new Map<string, ReplyTargetRow>();
@@ -4982,7 +5025,11 @@ serve(async (req) => {
     // campaigns assigned to a client are read, so a reply always has a client
     // to belong to.
     if (action === "workspace-replies") {
-      requireOnlyKeys(body, ["action", "workspace_id"]);
+      requireOnlyKeys(body, ["action", "workspace_id", "limit"]);
+      // The campaigns list's card shows 50; the Replies page asks for more.
+      const RECENT_LIMIT = typeof body.limit === "number" && Number.isInteger(body.limit)
+        ? Math.max(1, Math.min(body.limit, 200))
+        : 50;
       const connection = await readConnection(context.admin, workspaceId);
       const outreach = await integrationProvider(connection);
       if (!outreach.capabilities.replies) {
@@ -5047,17 +5094,23 @@ serve(async (req) => {
       const readIds = allIds.slice(0, MAX_WORKSPACE_REPLY_CAMPAIGNS);
       const collected = await collectProviderReplies(outreach, readIds, 25);
       const targetIndex = replyTargetIndex(targets);
-      const RECENT_LIMIT = 50;
+      const recent = collected.replies.slice(0, RECENT_LIMIT).map((reply) => {
+        const client = reply.campaign_id ? clientByProviderCampaign.get(normalizeProviderId(reply.campaign_id) ?? "") ?? null : null;
+        const target = client && reply.from_email
+          ? targetIndex.get(`${client.id}:${reply.from_email}`) ?? null
+          : null;
+        return { ...replyDto(reply, target), client };
+      }).filter((reply) => reply.client !== null);
+      const relationshipFor = await relationshipIndex(context.admin, workspaceId, recent);
       return jsonResponse(req, METHODS, 200, {
         supported: true,
         provider_label: outreach.label,
-        replies: collected.replies.slice(0, RECENT_LIMIT).map((reply) => {
-          const client = reply.campaign_id ? clientByProviderCampaign.get(normalizeProviderId(reply.campaign_id) ?? "") ?? null : null;
-          const target = client && reply.from_email
-            ? targetIndex.get(`${client.id}:${reply.from_email}`) ?? null
-            : null;
-          return { ...replyDto(reply, target), client };
-        }).filter((reply) => reply.client !== null),
+        // Which relationship already holds this host, so the Replies page
+        // can say so instead of offering to add them again.
+        replies: recent.map((reply) => ({
+          ...reply,
+          relationship_podcast_id: relationshipFor(reply.target?.podcast_id ?? null, reply.from_email),
+        })),
         truncated: collected.truncated || collected.replies.length > RECENT_LIMIT ||
           allIds.length > readIds.length,
         failed_campaigns: collected.failed,

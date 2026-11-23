@@ -8,6 +8,7 @@ export type WorkspaceModule =
   | 'prospects'
   | 'clients'
   | 'client-campaigns'
+  | 'replies'
   | 'relationships'
   | 'mailboxes'
   | 'university'
@@ -21,6 +22,7 @@ const WORKSPACE_MODULES = new Set<WorkspaceModule>([
   'prospects',
   'clients',
   'client-campaigns',
+  'replies',
   'relationships',
   'mailboxes',
   'university',

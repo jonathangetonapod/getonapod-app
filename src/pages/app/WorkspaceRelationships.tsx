@@ -18,7 +18,7 @@ import {
   UserRoundPlus,
   X,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { OutreachSuppressionsDialog } from '@/components/workspace/OutreachSuppressionsDialog'
 import {
   EditShowDetailsDialog,
@@ -730,6 +730,21 @@ const WorkspaceRelationships = ({ platformWorkspaceId }: WorkspaceRelationshipsP
     if (step !== 'conversation') return openRelationship(row.podcast_id, 'overview')
     openRelationship(row.podcast_id, row.last_message_source === 'campaign' ? 'replies' : 'threads')
   }
+  // ?open=<podcast id>, from the Replies page: open that host once the book
+  // holds it, then drop the parameter so closing the row stays closed.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedOpen = searchParams.get('open')
+  useEffect(() => {
+    if (!requestedOpen || !relationships.some((row) => row.podcast_id === requestedOpen)) return
+    openRelationship(requestedOpen)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('open')
+      return next
+    }, { replace: true })
+    // openRelationship is recreated each render; the book and the request decide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedOpen, relationships])
   const saveSummary = (podcastId: string) => {
     if (summaryDraft === (openRow?.summary ?? '') || summaryMutation.isPending) return
     summaryMutation.mutate({ podcastId, summary: summaryDraft })

@@ -57,6 +57,7 @@ const WorkspaceBilling = lazyRoute(() => import("./pages/app/WorkspaceBilling"))
 const WorkspaceCampaignDetail = lazyRoute(() => import("./pages/app/WorkspaceCampaignDetail"));
 const WorkspaceOutreachSuite = lazyRoute(() => import("./pages/app/WorkspaceOutreachSuite"));
 const WorkspaceRelationships = lazyRoute(() => import("./pages/app/WorkspaceRelationships"));
+const WorkspaceReplies = lazyRoute(() => import("./pages/app/WorkspaceReplies"));
 const WorkspaceUniversity = lazyRoute(() => import("./pages/app/WorkspaceUniversity"));
 const WorkspacePodcastFinderHome = lazyRoute(() => import("./pages/app/WorkspacePodcastFinderHome"));
 const WorkspaceSmartPodcastFinder = lazyRoute(() => import("./pages/app/WorkspaceSmartPodcastFinder"));
@@ -67,6 +68,7 @@ const WorkspaceProspectDashboards = lazyRoute(() => import("./pages/app/Workspac
 const AdminWorkspaceCampaignDetail = lazyRoute(() => import("./pages/admin/AdminWorkspaceCampaignDetail"));
 const AdminWorkspaceOutreachSuite = lazyRoute(() => import("./pages/admin/AdminWorkspaceOutreachSuite"));
 const AdminWorkspaceRelationships = lazyRoute(() => import("./pages/admin/AdminWorkspaceRelationships"));
+const AdminWorkspaceReplies = lazyRoute(() => import("./pages/admin/AdminWorkspaceReplies"));
 const AdminWorkspaceUniversity = lazyRoute(() => import("./pages/admin/AdminWorkspaceUniversity"));
 const AdminWorkspaceClients = lazyRoute(() => import("./pages/admin/AdminWorkspaceClients"));
 const AdminWorkspaceClientDetail = lazyRoute(() => import("./pages/admin/AdminWorkspaceClientDetail"));
@@ -313,6 +315,14 @@ const App = () => (
               }
             />
             <Route
+              path="/app/replies"
+              element={
+                <ProtectedRoute>
+                  <WorkspaceReplies />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/app/relationships"
               element={
                 <ProtectedRoute>
@@ -471,6 +481,14 @@ const App = () => (
               element={
                 <PlatformAdminRoute>
                   <AdminWorkspaceCampaignDetail />
+                </PlatformAdminRoute>
+              }
+            />
+            <Route
+              path="/app/workspaces/:workspaceId/replies"
+              element={
+                <PlatformAdminRoute>
+                  <AdminWorkspaceReplies />
                 </PlatformAdminRoute>
               }
             />

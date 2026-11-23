@@ -1204,6 +1204,8 @@ export async function getWorkspaceCampaignReplies(
 
 export interface WorkspaceRecentReply extends WorkspaceCampaignReply {
   client: { id: string; name: string }
+  /** The relationship that already holds this host, if any. */
+  relationship_podcast_id?: string | null
 }
 
 export interface WorkspaceRecentRepliesResponse {
@@ -1218,10 +1220,14 @@ export interface WorkspaceRecentRepliesResponse {
 }
 
 /** The newest replies across every client's campaign, read live from the sending platform. */
-export async function getWorkspaceRecentReplies(workspaceId: string): Promise<WorkspaceRecentRepliesResponse> {
+export async function getWorkspaceRecentReplies(
+  workspaceId: string,
+  options: { limit?: number } = {},
+): Promise<WorkspaceRecentRepliesResponse> {
   const data = await invokeWorkspaceCampaigns<WorkspaceRecentRepliesResponse>({
     action: 'workspace-replies',
     workspace_id: workspaceId,
+    ...(options.limit ? { limit: options.limit } : {}),
   }, 'Replies could not be read from the sending platform.')
   if (!data || typeof data !== 'object' || typeof data.supported !== 'boolean' || !Array.isArray(data.replies)) {
     throw new Error('The replies response could not be read. Try again.')
@@ -1234,6 +1240,7 @@ export async function getWorkspaceRecentReplies(workspaceId: string): Promise<Wo
         ...reply,
         body_text: typeof reply.body_text === 'string' ? reply.body_text : '',
         target: reply.target ? withDecodedPodcastName(reply.target) : null,
+        relationship_podcast_id: typeof reply.relationship_podcast_id === 'string' ? reply.relationship_podcast_id : null,
       })),
     truncated: data.truncated === true,
     failed_campaigns: typeof data.failed_campaigns === 'number' ? data.failed_campaigns : 0,

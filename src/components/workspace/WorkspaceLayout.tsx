@@ -31,6 +31,7 @@ import {
   LogOut,
   Mailbox,
   Megaphone,
+  MessageSquare,
   Menu,
   Search,
   CreditCard,
@@ -86,6 +87,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
   { id: 'client-podcast-system', name: 'Pipeline', segment: 'client-podcast-system', icon: Calendar, enabled: true },
   { id: 'onboarding', name: 'Client intake', segment: 'onboarding', icon: ClipboardList, enabled: true },
   { id: 'outreach-platform', name: 'Client Campaigns', segment: 'client-campaigns', icon: Megaphone, enabled: true },
+  { id: 'replies', name: 'Replies', segment: 'replies', icon: MessageSquare, enabled: true },
   { id: 'podcast-finder', name: 'Podcast Finder', segment: 'podcast-finder', icon: Search, enabled: true },
   { id: 'podcast-database', name: 'Podcast Database', segment: 'podcast-database', icon: Database, enabled: true },
   { id: 'prospects', name: 'Prospect Studio', segment: 'prospects', icon: Share2, enabled: true },
@@ -106,7 +108,7 @@ const workspaceNavItems: WorkspaceNavItem[] = [
  * places they did not choose. Anything not named here falls under Other.
  */
 const workspaceNavGroups: Array<{ label: string; ids: string[] }> = [
-  { label: 'Clients', ids: ['clients', 'client-podcast-system', 'onboarding', 'outreach-platform'] },
+  { label: 'Clients', ids: ['clients', 'client-podcast-system', 'onboarding', 'outreach-platform', 'replies'] },
   { label: 'Find', ids: ['podcast-finder', 'podcast-database', 'prospects'] },
   { label: 'Outreach', ids: ['mailboxes', 'relationships'] },
 ]
@@ -150,6 +152,8 @@ const WORKSPACE_NAV_ORDER_STORAGE_PREFIX = 'workspace-nav-order-v2'
 const WORKSPACE_NAV_SCROLL_STORAGE_PREFIX = 'workspace-nav-scroll-v1'
 export const WORKSPACE_NAV_ORGANIZE_EVENT = 'goap:workspace-navigation-organize'
 
+const MAX_NEW_MODULES_BETWEEN_VISITS = 3
+
 function orderedWorkspaceNavItems(value: unknown): WorkspaceNavItem[] {
   if (!Array.isArray(value)) return [...workspaceNavItems]
 
@@ -172,17 +176,27 @@ function orderedWorkspaceNavItems(value: unknown): WorkspaceNavItem[] {
    * conservative append: guessing positions inside a deliberate custom
    * arrangement would be worse than adding to the end.
    */
-  const savedIsCompletePriorOrder = missing.every((item) => {
+  // Several modules can ship between visits: each may count the earlier new
+  // ones as present, since they are spliced in too. Only a few can be new; a
+  // saved order missing more than that is partial, and keeps the append.
+  const accounted = new Set(seen)
+  const savedIsCompletePriorOrder = missing.length <= MAX_NEW_MODULES_BETWEEN_VISITS && missing.every((item) => {
     const defaultIndex = workspaceNavItems.findIndex((candidate) => candidate.id === item.id)
-    return workspaceNavItems.every((candidate, index) => (
-      index > defaultIndex || candidate.id === item.id || seen.has(candidate.id)
+    const complete = workspaceNavItems.every((candidate, index) => (
+      index > defaultIndex || candidate.id === item.id || accounted.has(candidate.id)
     ))
+    accounted.add(item.id)
+    return complete
   })
   if (savedIsCompletePriorOrder && ordered.length >= workspaceNavItems.length - missing.length) {
+    // Each new module goes straight after the one it follows by default, so
+    // Replies lands under Client Campaigns wherever that was moved to.
     const result = [...ordered]
     for (const item of missing) {
       const defaultIndex = workspaceNavItems.findIndex((candidate) => candidate.id === item.id)
-      result.splice(Math.min(defaultIndex, result.length), 0, item)
+      const previousId = defaultIndex > 0 ? workspaceNavItems[defaultIndex - 1].id : null
+      const previousAt = previousId ? result.findIndex((candidate) => candidate.id === previousId) : -1
+      result.splice(previousAt >= 0 ? previousAt + 1 : Math.min(defaultIndex, result.length), 0, item)
     }
     return result
   }

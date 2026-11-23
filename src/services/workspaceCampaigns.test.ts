@@ -317,6 +317,12 @@ describe('workspaceCampaigns service', () => {
     expect(result.replies.map((reply) => reply.id)).toEqual(['1'])
     expect(result.failed_campaigns).toBe(1)
     expect(result.truncated).toBe(true)
+
+    invoke.mockResolvedValueOnce({ data: { supported: true, provider_label: 'Instantly', replies: [], truncated: false }, error: null } as never)
+    await getWorkspaceRecentReplies(workspaceId, { limit: 200 })
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: { action: 'workspace-replies', workspace_id: workspaceId, limit: 200 },
+    })
   })
 
   it('refuses an unreadable replies response instead of showing an empty list', async () => {
