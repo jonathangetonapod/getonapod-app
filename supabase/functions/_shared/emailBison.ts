@@ -30,10 +30,12 @@ import {
   type PitchVariables,
   type ProviderCampaign,
   type ProviderLead,
+  type ProviderReply,
   type ProviderSchedule,
   type ProviderWorkspace,
   type SendingStatus,
   unsupportedFeature,
+  replyBodyText,
   type WarmupAccountAnalytics,
 } from "./outreachProvider.ts";
 import { providerRequest, type ProviderRequestTarget } from "./providerHttp.ts";
@@ -360,6 +362,33 @@ export function resolveBisonTimezone(zone: string, available: string[]): string 
   ) ?? zone;
 }
 
+/**
+ * One Bison reply row → ProviderReply. Rows from another campaign (the API
+ * should never return them on a campaign-scoped listing) are dropped rather
+ * than shown as this campaign's.
+ */
+export function bisonReply(row: Json, campaignId: string): ProviderReply | null {
+  const id = bisonId(row.id);
+  if (!id) return null;
+  const rowCampaignId = bisonId(row.campaign_id);
+  if (rowCampaignId && rowCampaignId !== campaignId) return null;
+  const folder = typeof row.folder === "string" ? row.folder.trim().toLowerCase() : "";
+  if (folder === "sent" || folder === "bounced") return null;
+  const lead = record(row.lead);
+  const fromEmail = text(row.from_email_address, 320)?.toLowerCase() ?? text(lead?.email, 320)?.toLowerCase() ?? null;
+  return {
+    id,
+    campaign_id: rowCampaignId ?? campaignId,
+    from_email: fromEmail,
+    from_name: text(row.from_name, 300),
+    subject: text(row.subject, 500),
+    body_text: replyBodyText(row.text_body, row.html_body),
+    received_at: timestamp(row.date_received) ?? timestamp(row.created_at),
+    automated: row.automated_reply === true,
+    interested: typeof row.interested === "boolean" ? row.interested : null,
+  };
+}
+
 export class EmailBisonProvider implements OutreachProvider {
   readonly kind = "emailbison" as const;
   readonly label = LABEL;
@@ -368,6 +397,7 @@ export class EmailBisonProvider implements OutreachProvider {
     mailboxSendHistory: false,
     sendingStatus: false,
     inbox: false,
+    replies: true,
   };
 
   private readonly target: ProviderRequestTarget;
@@ -1100,6 +1130,29 @@ export class EmailBisonProvider implements OutreachProvider {
         `This contact is no longer in the ${LABEL} campaign`,
       );
     }
+  }
+
+  /**
+   * `GET /campaigns/{id}/replies`, inbox folder only: the sent folder holds
+   * this workspace's own answers and the bounced folder holds delivery
+   * failures, neither of which is a host replying.
+   */
+  async listReplies(
+    campaignId: string,
+    options: { limit: number },
+  ): Promise<{ replies: ProviderReply[]; complete: boolean }> {
+    const limit = Math.max(1, Math.min(500, Math.floor(options.limit)));
+    const { items, complete } = await this.pages(
+      `/campaigns/${encodeURIComponent(campaignId)}/replies`,
+      new URLSearchParams({ folder: "inbox" }),
+      (rows) => rows.length >= limit,
+    );
+    const replies = items.flatMap((row) => {
+      const reply = bisonReply(row, campaignId);
+      return reply ? [reply] : [];
+    });
+    replies.sort((a, b) => (Date.parse(b.received_at ?? "") || 0) - (Date.parse(a.received_at ?? "") || 0));
+    return { replies: replies.slice(0, limit), complete: complete && replies.length <= limit };
   }
 
   async blockAddress(email: string): Promise<void> {

@@ -27,9 +27,11 @@ import type {
   PitchVariables,
   ProviderCampaign,
   ProviderLead,
+  ProviderReply,
   ProviderSchedule,
   SendingStatus,
 } from "./outreachProvider.ts";
+import { replyBodyText } from "./outreachProvider.ts";
 
 const MAX_PROVIDER_CAMPAIGN_PAGES = 10;
 const MAX_LEAD_PAGES = 10;
@@ -404,6 +406,36 @@ function nested(source: Record<string, unknown> | null, key: string) {
     : null;
 }
 
+/**
+ * One Instantly received email → ProviderReply. i_status 0 is Instantly's
+ * out-of-office; 1 and above are interested stages, negatives are lost.
+ */
+export function instantlyReply(value: unknown, campaignId: string): ProviderReply | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const email = value as Record<string, unknown>;
+  const id = typeof email.id === "string" && email.id ? email.id : null;
+  if (!id) return null;
+  const rowCampaignId = typeof email.campaign_id === "string" ? email.campaign_id : null;
+  if (rowCampaignId && rowCampaignId.toLowerCase() !== campaignId.toLowerCase()) return null;
+  const str = (field: unknown, max: number) =>
+    typeof field === "string" && field.trim() ? field.trim().slice(0, max) : null;
+  const time = (field: unknown) =>
+    typeof field === "string" && !Number.isNaN(Date.parse(field)) ? field : null;
+  const body = email.body && typeof email.body === "object" ? email.body as Record<string, unknown> : {};
+  const interest = typeof email.i_status === "number" ? email.i_status : null;
+  return {
+    id,
+    campaign_id: rowCampaignId ?? campaignId,
+    from_email: (str(email.from_address_email, 320) ?? str(email.lead, 320))?.toLowerCase() ?? null,
+    from_name: null,
+    subject: str(email.subject, 500),
+    body_text: replyBodyText(body.text, body.html),
+    received_at: time(email.timestamp_email) ?? time(email.timestamp_created),
+    automated: interest === 0,
+    interested: interest === null || interest === 0 ? null : interest > 0,
+  };
+}
+
 export class InstantlyProvider implements OutreachProvider {
   readonly kind = "instantly" as const;
   readonly label = "Instantly";
@@ -412,6 +444,7 @@ export class InstantlyProvider implements OutreachProvider {
     mailboxSendHistory: true,
     sendingStatus: true,
     inbox: true,
+    replies: true,
   };
 
   /** Exposed for the Instantly-only inbox actions, which have no Bison twin. */
@@ -773,6 +806,43 @@ export class InstantlyProvider implements OutreachProvider {
       `/leads/${encodeURIComponent(leadId)}`,
       { method: "DELETE" },
     );
+  }
+
+  /** `GET /emails?email_type=received`, scoped to the campaign, newest first. */
+  async listReplies(
+    campaignId: string,
+    options: { limit: number },
+  ): Promise<{ replies: ProviderReply[]; complete: boolean }> {
+    const limit = Math.max(1, Math.min(500, Math.floor(options.limit)));
+    const replies: ProviderReply[] = [];
+    let startingAfter: string | null = null;
+    let complete = false;
+    for (let page = 0; page < 5 && replies.length < limit; page += 1) {
+      const query = new URLSearchParams({
+        limit: String(Math.min(100, limit - replies.length)),
+        email_type: "received",
+        campaign_id: campaignId,
+      });
+      if (startingAfter) query.set("starting_after", startingAfter);
+      const payload = await instantlyRequest<{ items?: unknown; next_starting_after?: unknown }>(
+        this.apiKey,
+        "/emails",
+        { query },
+      );
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      for (const item of items) {
+        const reply = instantlyReply(item, campaignId);
+        if (reply) replies.push(reply);
+      }
+      const next = typeof payload?.next_starting_after === "string" ? payload.next_starting_after : null;
+      if (!next || items.length === 0) {
+        complete = true;
+        break;
+      }
+      startingAfter = next;
+    }
+    replies.sort((a, b) => (Date.parse(b.received_at ?? "") || 0) - (Date.parse(a.received_at ?? "") || 0));
+    return { replies: replies.slice(0, limit), complete: complete && replies.length <= limit };
   }
 
   blockAddress(email: string): Promise<void> {

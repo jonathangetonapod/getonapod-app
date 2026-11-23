@@ -10,6 +10,7 @@ import {
   getClientInstantlyCampaignLinks,
   setClientInstantlyCampaignLinks,
   getWorkspaceCampaignOverview,
+  getWorkspaceCampaignReplies,
   getWorkspaceCampaignSendingStatus,
   getWorkspaceMailboxes,
   getWorkspacePromptRequirements,
@@ -258,6 +259,43 @@ describe('workspaceCampaigns service', () => {
         client_id: clientId,
       },
     })
+  })
+
+  it('reads campaign replies for one client and decodes the matched podcast name', async () => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        supported: true,
+        provider_label: 'Email Bison',
+        replies: [{
+          id: '7',
+          provider_campaign_id: '42',
+          from_email: 'host@show.fm',
+          from_name: 'Pat Host',
+          subject: 'Re: Guest idea',
+          body_text: 'Sounds good',
+          received_at: '2026-11-20T10:00:00Z',
+          automated: false,
+          interested: true,
+          target: { id: 't1', shortlist_podcast_id: 's1', podcast_id: 'p1', podcast_name: 'Tom &amp; Jerry', host_name: 'Pat' },
+        }],
+        truncated: false,
+        checked_at: '2026-11-23T10:00:00Z',
+      },
+      error: null,
+    } as never)
+
+    const result = await getWorkspaceCampaignReplies(workspaceId, clientId)
+    expect(invoke).toHaveBeenCalledWith('workspace-client-campaigns', {
+      body: { action: 'campaign-replies', workspace_id: workspaceId, client_id: clientId },
+    })
+    expect(result.replies[0].target?.podcast_name).toBe('Tom & Jerry')
+    expect(result.replies[0].body_text).toBe('Sounds good')
+    expect(result.truncated).toBe(false)
+  })
+
+  it('refuses an unreadable replies response instead of showing an empty list', async () => {
+    invoke.mockResolvedValueOnce({ data: { replies: 'nope' }, error: null } as never)
+    await expect(getWorkspaceCampaignReplies(workspaceId, clientId)).rejects.toThrow('could not be read')
   })
 
   it('saves a campaign-local host contact without mutating the podcast database', async () => {

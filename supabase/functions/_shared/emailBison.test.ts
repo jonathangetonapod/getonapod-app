@@ -2,8 +2,8 @@
  * Email Bison adapter behaviour checked against the documented API
  * (https://dedi.emailbison.com/api/reference.openapi and docs.emailbison.com).
  */
-import { bisonSequenceSteps, bisonVariableNames, campaignLinkFor, EmailBisonProvider } from "./emailBison.ts";
-import { type CampaignSpec, OutreachProviderError } from "./outreachProvider.ts";
+import { bisonReply, bisonSequenceSteps, bisonVariableNames, campaignLinkFor, EmailBisonProvider } from "./emailBison.ts";
+import { type CampaignSpec, OutreachProviderError, plainTextFromHtml, replyBodyText } from "./outreachProvider.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -460,4 +460,91 @@ Deno.test("deleting a campaign is one DELETE on that campaign, and a missing one
       assertEquals(status, 404, "already gone surfaces as 404");
     },
   );
+});
+
+Deno.test("Bison campaign replies read the inbox folder, page, map to the podcast sender and sort newest first", async () => {
+  await withFetch((call) => {
+    assertEquals(call.url.pathname, "/api/campaigns/42/replies", "campaign-scoped replies endpoint");
+    assertEquals(call.url.searchParams.get("folder"), "inbox", "inbox folder only");
+    const current = Number(call.url.searchParams.get("page"));
+    if (current === 1) {
+      return {
+        body: page([
+          {
+            id: 7,
+            campaign_id: 42,
+            folder: "Inbox",
+            subject: "Re: Guest idea",
+            text_body: "Sounds good, send times.",
+            html_body: "<p>ignored</p>",
+            date_received: "2026-11-20T10:00:00.000000Z",
+            from_name: "Pat Host",
+            from_email_address: "Pat@Show.FM",
+            automated_reply: false,
+            interested: true,
+          },
+          { id: 8, campaign_id: 99, folder: "Inbox", text_body: "other campaign", date_received: "2026-11-22T10:00:00Z" },
+        ], 1, 2),
+      };
+    }
+    return {
+      body: page([
+        {
+          id: 9,
+          campaign_id: 42,
+          folder: "Inbox",
+          html_body: "<div>I am away<br>until Monday &amp; back</div>",
+          date_received: "2026-11-21T10:00:00Z",
+          lead: { email: "ooo@show.fm" },
+          automated_reply: true,
+        },
+        { id: 10, campaign_id: 42, folder: "Sent", text_body: "our own answer", date_received: "2026-11-23T10:00:00Z" },
+      ], 2, 2),
+    };
+  }, async (calls) => {
+    const result = await new EmailBisonProvider(ORIGIN, KEY).listReplies("42", { limit: 50 });
+    assertEquals(calls.length, 2, "both pages read");
+    assert(result.complete, "the listing reached the end");
+    assertEquals(result.replies.map((reply) => reply.id), ["9", "7"], "other campaigns and sent mail dropped, newest first");
+    assertEquals(result.replies[1].from_email, "pat@show.fm", "sender lowercased");
+    assertEquals(result.replies[1].body_text, "Sounds good, send times.", "plain part preferred");
+    assertEquals(result.replies[1].interested, true, "interested flag carried");
+    assertEquals(result.replies[0].body_text, "I am away\nuntil Monday & back", "html read as text");
+    assertEquals(result.replies[0].from_email, "ooo@show.fm", "lead email when the sender address is missing");
+    assert(result.replies[0].automated, "automatic replies flagged");
+  });
+});
+
+Deno.test("Bison campaign replies stop paging once the limit is reached and say the list is partial", async () => {
+  await withFetch((call) => {
+    const current = Number(call.url.searchParams.get("page"));
+    return {
+      body: page(
+        [1, 2, 3].map((n) => ({ id: current * 10 + n, campaign_id: 42, folder: "Inbox", text_body: "hi", date_received: "2026-11-20T10:00:00Z" })),
+        current,
+        9,
+      ),
+    };
+  }, async (calls) => {
+    const result = await new EmailBisonProvider(ORIGIN, KEY).listReplies("42", { limit: 5 });
+    assertEquals(calls.length, 2, "stops after enough rows");
+    assertEquals(result.replies.length, 5, "trimmed to the limit");
+    assert(!result.complete, "partial listing is not complete");
+  });
+});
+
+Deno.test("a Bison reply row without a usable id is dropped", () => {
+  assertEquals(bisonReply({ id: "abc", campaign_id: 42 }, "42"), null, "non-integer id");
+  assertEquals(bisonReply({ id: 3, folder: "Bounced" }, "42"), null, "bounces are not replies");
+});
+
+Deno.test("reply bodies are plain text: tags dropped, entities decoded, scripts removed, length capped", () => {
+  assertEquals(
+    plainTextFromHtml("<style>p{}</style><p>Hi&nbsp;there</p><p>Line &#39;two&#39; &lt;ok&gt;</p><script>alert(1)</script>"),
+    "Hi there\nLine 'two' <ok>",
+    "html to text",
+  );
+  assertEquals(replyBodyText("  plain\r\nbody  ", "<p>html</p>"), "plain\nbody", "plain part wins");
+  assertEquals(replyBodyText(null, null), "", "nothing to read");
+  assertEquals(replyBodyText("x".repeat(30_000), null).length, 20_000, "capped");
 });

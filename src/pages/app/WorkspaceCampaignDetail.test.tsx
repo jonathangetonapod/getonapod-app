@@ -9,6 +9,7 @@ import { getWorkspaceClientDetail, type WorkspaceClientDetail } from '@/services
 import {
   deleteWorkspaceCampaign,
   getWorkspaceCampaign,
+  getWorkspaceCampaignReplies,
   getWorkspaceCampaignSendingStatus,
   getWorkspaceTargetLeadStatus,
   provisionWorkspaceCampaign,
@@ -25,6 +26,7 @@ vi.mock('@/services/clients', () => ({ getWorkspaceClientDetail: vi.fn() }))
 vi.mock('@/services/workspaceCampaigns', () => ({
   deleteWorkspaceCampaign: vi.fn(),
   getWorkspaceCampaign: vi.fn(),
+  getWorkspaceCampaignReplies: vi.fn(),
   getWorkspaceCampaignSendingStatus: vi.fn(),
   getWorkspaceTargetLeadStatus: vi.fn(),
   provisionWorkspaceCampaign: vi.fn(),
@@ -253,6 +255,82 @@ describe('WorkspaceCampaignDetail', () => {
       'Email Bison does not report why a campaign is not sending.',
     )
     expect(getWorkspaceCampaignSendingStatus).not.toHaveBeenCalled()
+  })
+
+  describe('replies', () => {
+    const connectedState = {
+      ...campaignState,
+      integration: { ...campaignState.integration, connected: true, status: 'connected', provider: 'emailbison', provider_label: 'Email Bison', active_account_count: 3 },
+      campaign: activeCampaign,
+      targets: [{ ...sentTargets[0], status: 'replied', instantly_lead_id: 'lead-one', email_reply_count: 1, launched_at: '2026-07-22T00:00:00Z' }, sentTargets[1]],
+    } as WorkspaceCampaignDetailResponse
+    const repliesResponse = {
+      supported: true,
+      provider_label: 'Email Bison',
+      truncated: false,
+      checked_at: '2026-08-01T12:00:00Z',
+      replies: [
+        {
+          id: '7', provider_campaign_id: 'instantly-one', from_email: 'host@founder.example', from_name: 'Jamie Host', subject: 'Re: A tailored guest idea',
+          body_text: 'Happy to have Dallas on.\nSend over some dates.', received_at: '2026-07-25T10:00:00Z', automated: false, interested: true,
+          target: { id: 'target-one', shortlist_podcast_id: 'shortlist-one', podcast_id: 'podcast-one', podcast_name: 'Founder Show', host_name: 'Jamie Host' },
+        },
+        {
+          id: '8', provider_campaign_id: 'instantly-one', from_email: 'producer@elsewhere.example', from_name: null, subject: 'Out of office',
+          body_text: 'I am away until Monday.', received_at: '2026-07-24T10:00:00Z', automated: true, interested: null, target: null,
+        },
+      ],
+    }
+
+    it('reads replies only when the Replies tab is open and shows which podcast wrote what', async () => {
+      mockedCampaign.mockResolvedValue(connectedState)
+      vi.mocked(getWorkspaceCampaignReplies).mockResolvedValue(repliesResponse)
+      renderPage()
+
+      fireEvent.mouseDown(await screen.findByRole('tab', { name: /Replies/ }), { button: 0 })
+      expect(getWorkspaceCampaignReplies).toHaveBeenCalledWith(workspaceId, clientId)
+      const reply = await screen.findByRole('button', { name: /Founder Show/ })
+      expect(screen.getByText('Interested')).toBeInTheDocument()
+      expect(screen.getByText('Unmatched sender')).toBeInTheDocument()
+      expect(screen.getByText('Automatic')).toBeInTheDocument()
+      expect(screen.getByText(/2 replies from 1 podcast · 1 automatic/)).toBeInTheDocument()
+
+      fireEvent.click(reply)
+      expect(reply).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText(/Send over some dates\./)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByLabelText('Hide automatic replies'))
+      expect(screen.queryByText('Unmatched sender')).not.toBeInTheDocument()
+    })
+
+    it('does not read replies on other tabs', async () => {
+      mockedCampaign.mockResolvedValue(connectedState)
+      renderPage()
+      await screen.findByRole('tab', { name: 'Podcasts' })
+      expect(getWorkspaceCampaignReplies).not.toHaveBeenCalled()
+    })
+
+    it('opens one podcast\'s replies from its reply count', async () => {
+      mockedCampaign.mockResolvedValue(connectedState)
+      vi.mocked(getWorkspaceCampaignReplies).mockResolvedValue(repliesResponse)
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Read 1 reply from Founder Show' }))
+      await waitFor(() => expect(screen.getByRole('tab', { name: /Replies/ })).toHaveAttribute('aria-selected', 'true'))
+      expect(await screen.findByRole('button', { name: /Show all/ })).toBeInTheDocument()
+      expect(screen.getByText('Showing replies from', { exact: false })).toHaveTextContent('Showing replies from Founder Show')
+      expect(screen.queryByText('Unmatched sender')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: /Show all/ }))
+      expect(await screen.findByText('Unmatched sender')).toBeInTheDocument()
+    })
+
+    it('says so when the sending platform cannot list replies', async () => {
+      mockedCampaign.mockResolvedValue(connectedState)
+      vi.mocked(getWorkspaceCampaignReplies).mockResolvedValue({ ...repliesResponse, supported: false, provider_label: 'ReachInbox', replies: [] })
+      renderPage(undefined, '?tab=replies')
+      expect(await screen.findByText(/ReachInbox does not let us read campaign replies yet/)).toBeInTheDocument()
+    })
   })
 
   it('opens on the podcast list and keeps the saved sequence under Podcasts', async () => {

@@ -26,6 +26,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { CampaignRepliesPanel } from '@/components/workspace/CampaignRepliesPanel'
 import { DeleteCampaignDialog } from '@/components/workspace/DeleteCampaignDialog'
 import { RowMenu } from '@/components/workspace/RowMenu'
 import { toast } from 'sonner'
@@ -337,7 +338,7 @@ function scheduleWindowLabel(schedule: WorkspaceCampaignProviderSchedule | null)
 }
 
 /** Allowlisted so a hand-edited ?tab= cannot blank the page. */
-const CAMPAIGN_TABS = ['analytics', 'leads', 'sequences', 'schedule', 'options']
+const CAMPAIGN_TABS = ['analytics', 'leads', 'replies', 'sequences', 'schedule', 'options']
 
 // Instantly keys its schedule from Sunday. Naming each index here is what
 // stops the next person writing 0-4 and meaning Monday to Friday.
@@ -385,11 +386,25 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab') || ''
   const activeTab = CAMPAIGN_TABS.includes(requestedTab) ? requestedTab : 'leads'
+  const requestedReplyPodcast = searchParams.get('reply_podcast') || ''
+  // Only narrows a list already loaded, so any short id will do; junk matches nothing.
+  const replyPodcastId = /^[0-9a-z-]{1,64}$/i.test(requestedReplyPodcast) ? requestedReplyPodcast : null
+  const openRepliesFor = (shortlistPodcastId: string | null) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('tab', 'replies')
+      if (shortlistPodcastId) next.set('reply_podcast', shortlistPodcastId)
+      else next.delete('reply_podcast')
+      return next
+    }, { replace: true })
+  }
   const selectTab = (tab: string) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       if (tab === 'leads') next.delete('tab')
       else next.set('tab', tab)
+      // A podcast filter belongs to the Replies tab; leaving it drops it.
+      if (tab !== 'replies') next.delete('reply_podcast')
       return next
     }, { replace: true })
   }
@@ -987,6 +1002,7 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
           <div className="overflow-x-auto pb-1">
             <TabsList className="h-auto min-w-max justify-start" aria-label="Campaign sections">
               <TabsTrigger value="leads">Podcasts</TabsTrigger>
+              <TabsTrigger value="replies">Replies{repliedPodcastCount > 0 && <span className="ml-1 text-muted-foreground">{repliedPodcastCount}</span>}</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
               <TabsTrigger value="sequences">Sequences</TabsTrigger>
               <TabsTrigger value="schedule">Schedule</TabsTrigger>
@@ -1071,7 +1087,9 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                               <TableCell><p className="font-medium">{target?.host_name || podcast.publisher_name || 'Host needed'}</p><p className="text-xs text-muted-foreground">{contactEmail || 'Email not found'}</p></TableCell>
                               <TableCell><Badge variant="outline" className={delivery.className}>{delivery.label}</Badge><p className="mt-1 text-xs text-muted-foreground">{delivery.detail}</p></TableCell>
                               <TableCell className="text-center font-medium tabular-nums">{target?.email_open_count || 0}</TableCell>
-                              <TableCell className="text-center font-medium tabular-nums">{target?.email_reply_count || 0}</TableCell>
+                              <TableCell className="text-center font-medium tabular-nums">{(target?.email_reply_count || 0) > 0
+                                ? <Button type="button" size="sm" variant="link" className="h-auto p-0 font-medium tabular-nums" onClick={() => openRepliesFor(podcast.id)} aria-label={`Read ${target!.email_reply_count} repl${target!.email_reply_count === 1 ? 'y' : 'ies'} from ${podcast.podcast_name}`}>{target!.email_reply_count}</Button>
+                                : 0}</TableCell>
                               <TableCell><span className="text-sm text-muted-foreground">{formatDate(target?.last_activity_at || target?.updated_at || podcast.feedback_updated_at || podcast.updated_at)}</span></TableCell>
                               <TableCell><p className={`text-sm ${nextSend.kind === 'due' ? 'font-medium' : 'text-muted-foreground'}`} title={explainNextSend(nextSend)}>{describeNextSend(nextSend)}</p>{nextSend.kind === 'due' && <p className="text-xs text-muted-foreground">if nothing holds it up</p>}</TableCell>
                               <TableCell className="text-right"><div className="flex items-center justify-end gap-1">{target?.instantly_lead_id && <Button type="button" size="sm" variant="ghost" onClick={() => setExpandedPodcastId((current) => (current === podcast.id ? null : podcast.id))} aria-expanded={expandedPodcastId === podcast.id} aria-label={`Delivery detail for ${podcast.podcast_name}`}>{expandedPodcastId === podcast.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</Button>}<Button type="button" size="sm" variant="ghost" className="text-primary" onClick={() => openPodcastInSequences(podcast.id)}>Open in Sequences<ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></div></TableCell>
@@ -1134,6 +1152,20 @@ const WorkspaceCampaignDetail = ({ platformWorkspaceId }: WorkspaceCampaignDetai
                 </>
               )}
             </Card>
+          </TabsContent>
+
+          <TabsContent value="replies" className="mt-0">
+            <CampaignRepliesPanel
+              workspaceId={workspaceId}
+              clientId={clientId}
+              providerName={providerName}
+              providerCampaignHref={integration ? providerCampaignHref : null}
+              // A platform without reply reading is asked anyway: the answer
+              // is a cheap "not supported" that the panel says in words.
+              enabled={activeTab === 'replies' && Boolean(campaign?.instantly_campaign_id) && Boolean(integration?.connected)}
+              focusShortlistPodcastId={replyPodcastId}
+              onClearFocus={() => openRepliesFor(null)}
+            />
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-0 space-y-4">

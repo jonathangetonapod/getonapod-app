@@ -23,6 +23,7 @@ import {
   type PitchVariables,
   type ProviderCampaign,
   type ProviderLead,
+  type ProviderReply,
   unsupportedFeature,
   type WarmupAccountAnalytics as InstantlyWarmupAccountAnalytics,
 } from "../_shared/outreachProvider.ts";
@@ -616,10 +617,11 @@ const PROVIDER_CAPABILITIES: Record<OutreachProviderKind, {
   mailboxSendHistory: boolean;
   sendingStatus: boolean;
   inbox: boolean;
+  replies: boolean;
 }> = {
-  instantly: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true },
-  emailbison: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
-  reachinbox: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+  instantly: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true, replies: true },
+  emailbison: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false, replies: true },
+  reachinbox: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false, replies: false },
 };
 
 function connectionKind(connection: ConnectionRow | null): OutreachProviderKind {
@@ -5145,6 +5147,121 @@ serve(async (req) => {
         supported: true,
         provider_label: outreach.label,
         ...status,
+        checked_at: new Date().toISOString(),
+      });
+    }
+
+    // The replies this client's campaign received, read live from the
+    // sending platform and matched to the podcasts pitched. Read-only: the app
+    // shows who answered and what they said; answering happens on the
+    // platform. Nothing is stored, so there is no copy of a host's mail here
+    // to go stale or to leak.
+    if (action === "campaign-replies") {
+      requireOnlyKeys(body, ["action", "workspace_id", "client_id"]);
+      const campaign = await readCampaign(context.admin, workspaceId, clientId);
+      if (!campaign?.instantly_campaign_id) {
+        throw new HttpError(
+          409,
+          "CAMPAIGN_NOT_ASSIGNED",
+          "This client has no provider campaign yet, so there are no replies to read",
+        );
+      }
+      const connection = await readConnection(context.admin, workspaceId);
+      const outreach = await integrationProvider(connection);
+      if (!outreach.capabilities.replies) {
+        return jsonResponse(req, METHODS, 200, {
+          supported: false,
+          provider_label: outreach.label,
+          replies: [],
+          truncated: false,
+          checked_at: new Date().toISOString(),
+        });
+      }
+      const { data: targetData, error: targetError } = await context.admin
+        .from("workspace_client_campaign_targets")
+        .select("id, shortlist_podcast_id, podcast_id, podcast_name, host_name, contact_email, instantly_campaign_id")
+        .eq("workspace_id", workspaceId)
+        .eq("campaign_id", campaign.id)
+        .eq("client_id", clientId)
+        .limit(2_000);
+      if (targetError) {
+        throw new HttpError(
+          500,
+          "CAMPAIGN_TARGET_LOOKUP_FAILED",
+          "Campaign podcasts could not be loaded",
+        );
+      }
+      const targets = (targetData ?? []) as Array<{
+        id: string;
+        shortlist_podcast_id: string;
+        podcast_id: string;
+        podcast_name: string | null;
+        host_name: string | null;
+        contact_email: string | null;
+        instantly_campaign_id: string | null;
+      }>;
+      // A pitch can be sent through a campaign other than the client's
+      // default (a linked one), so every provider campaign this client's
+      // pitches went through is read, the default first. Bounded: each is
+      // its own paged read against the platform.
+      const MAX_REPLY_CAMPAIGNS = 5;
+      const providerCampaignIds = [
+        ...new Set(
+          [campaign.instantly_campaign_id, ...targets.map((target) => target.instantly_campaign_id)]
+            .map((id) => normalizeProviderId(id))
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      const readIds = providerCampaignIds.slice(0, MAX_REPLY_CAMPAIGNS);
+      let truncated = providerCampaignIds.length > readIds.length;
+      const REPLY_LIMIT = 100;
+      const seen = new Set<string>();
+      const replies: ProviderReply[] = [];
+      for (const providerCampaignId of readIds) {
+        const result = await outreach.listReplies(providerCampaignId, { limit: REPLY_LIMIT });
+        if (!result.complete) truncated = true;
+        for (const reply of result.replies) {
+          const key = `${providerCampaignId}:${reply.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          replies.push(reply);
+        }
+      }
+      const targetByEmail = new Map<string, (typeof targets)[number]>();
+      for (const target of targets) {
+        const email = target.contact_email?.trim().toLowerCase();
+        // The first pitch to an address wins; two shows sharing a host email
+        // are the same person answering either way.
+        if (email && !targetByEmail.has(email)) targetByEmail.set(email, target);
+      }
+      replies.sort((a, b) => (Date.parse(b.received_at ?? "") || 0) - (Date.parse(a.received_at ?? "") || 0));
+      return jsonResponse(req, METHODS, 200, {
+        supported: true,
+        provider_label: outreach.label,
+        replies: replies.slice(0, REPLY_LIMIT * MAX_REPLY_CAMPAIGNS).map((reply) => {
+          const target = reply.from_email ? targetByEmail.get(reply.from_email) ?? null : null;
+          return {
+            id: reply.id,
+            provider_campaign_id: reply.campaign_id,
+            from_email: reply.from_email,
+            from_name: reply.from_name,
+            subject: reply.subject,
+            body_text: reply.body_text,
+            received_at: reply.received_at,
+            automated: reply.automated,
+            interested: reply.interested,
+            target: target
+              ? {
+                id: target.id,
+                shortlist_podcast_id: target.shortlist_podcast_id,
+                podcast_id: target.podcast_id,
+                podcast_name: target.podcast_name,
+                host_name: target.host_name,
+              }
+              : null,
+          };
+        }),
+        truncated,
         checked_at: new Date().toISOString(),
       });
     }

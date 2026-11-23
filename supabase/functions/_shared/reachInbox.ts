@@ -249,6 +249,7 @@ export class ReachInboxProvider implements OutreachProvider {
     mailboxSendHistory: false,
     sendingStatus: false,
     inbox: false,
+    replies: false,
   };
 
   private readonly target: ProviderRequestTarget;
@@ -793,6 +794,10 @@ export class ReachInboxProvider implements OutreachProvider {
       method: "POST",
       body: { campaignId: numericId(campaignId), leadIds: [id] },
     });
+  }
+
+  listReplies(): Promise<{ replies: never[]; complete: boolean }> {
+    return Promise.reject(unsupportedFeature(LABEL, "reading campaign replies"));
   }
 
   async blockAddress(email: string): Promise<void> {

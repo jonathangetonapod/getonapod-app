@@ -32,6 +32,8 @@ export interface OutreachProviderCapabilities {
   mailboxSendHistory: boolean
   sendingStatus: boolean
   inbox: boolean
+  /** Reading a campaign's replies. Absent from older responses. */
+  replies?: boolean
 }
 
 export interface WorkspaceInstantlyIntegration {
@@ -1111,6 +1113,65 @@ export async function getWorkspaceCampaignSendingStatus(
     workspace_id: workspaceId,
     client_id: clientId,
   }, 'The sending status could not be read from the sending platform.')
+}
+
+/** The podcast a reply came from, matched on the address it was pitched at. */
+export interface WorkspaceCampaignReplyTarget {
+  id: string
+  shortlist_podcast_id: string
+  podcast_id: string
+  podcast_name: string | null
+  host_name: string | null
+}
+
+/** One message a host sent back, as plain text. Read-only. */
+export interface WorkspaceCampaignReply {
+  id: string
+  provider_campaign_id: string | null
+  from_email: string | null
+  from_name: string | null
+  subject: string | null
+  body_text: string
+  received_at: string | null
+  /** Out-of-office or another automatic answer, as the platform flagged it. */
+  automated: boolean
+  interested: boolean | null
+  /** Null when the sender is not an address this campaign pitched. */
+  target: WorkspaceCampaignReplyTarget | null
+}
+
+export interface WorkspaceCampaignRepliesResponse {
+  /** False when the connected platform cannot list replies. */
+  supported: boolean
+  provider_label: string
+  replies: WorkspaceCampaignReply[]
+  /** More replies exist than were read; the list is the newest ones. */
+  truncated: boolean
+  checked_at: string
+}
+
+/** Replies the client's campaign received, read live from the sending platform. */
+export async function getWorkspaceCampaignReplies(
+  workspaceId: string,
+  clientId: string,
+): Promise<WorkspaceCampaignRepliesResponse> {
+  const data = await invokeWorkspaceCampaigns<WorkspaceCampaignRepliesResponse>({
+    action: 'campaign-replies',
+    workspace_id: workspaceId,
+    client_id: clientId,
+  }, 'Replies could not be read from the sending platform.')
+  if (!data || typeof data !== 'object' || typeof data.supported !== 'boolean' || !Array.isArray(data.replies)) {
+    throw new Error('The replies response could not be read. Try again.')
+  }
+  return {
+    ...data,
+    replies: data.replies.map((reply) => ({
+      ...reply,
+      body_text: typeof reply.body_text === 'string' ? reply.body_text : '',
+      target: reply.target ? withDecodedPodcastName(reply.target) : null,
+    })),
+    truncated: data.truncated === true,
+  }
 }
 
 export interface ClientInstantlyCampaignLink {

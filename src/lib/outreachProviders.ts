@@ -73,7 +73,7 @@ export const OUTREACH_PROVIDERS: OutreachProviderInfo[] = [
     keyHelp: 'In Instantly: Settings → Integrations → API keys. Scopes needed: workspace and account read; campaign read/create/update/delete; lead read/create/update/delete.',
     needsBaseUrl: false,
     limitations: [],
-    capabilities: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true },
+    capabilities: { mailboxPause: true, mailboxSendHistory: true, sendingStatus: true, inbox: true, replies: true },
   },
   {
     kind: 'emailbison',
@@ -87,7 +87,7 @@ export const OUTREACH_PROVIDERS: OutreachProviderInfo[] = [
       'Mailboxes are paused and resumed in Email Bison, not here.',
       'Mailboxes show totals, not a day-by-day send history.',
     ],
-    capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+    capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false, replies: true },
   },
   {
     kind: 'reachinbox',
@@ -101,7 +101,7 @@ export const OUTREACH_PROVIDERS: OutreachProviderInfo[] = [
       'Mailboxes are paused and resumed in ReachInbox, not here.',
       'Only campaigns created here can carry your written pitch: ReachInbox does not let us read a campaign’s emails back.',
     ],
-    capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false },
+    capabilities: { mailboxPause: false, mailboxSendHistory: false, sendingStatus: false, inbox: false, replies: false },
   },
 ]
 

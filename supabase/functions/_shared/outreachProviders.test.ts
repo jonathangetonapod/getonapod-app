@@ -9,6 +9,7 @@ import {
 import {
   InstantlyProvider,
   instantlyProviderCampaign,
+  instantlyReply,
   provisionedCampaignConfiguration,
   sequenceRendersOurPitch,
 } from "./instantlyProvider.ts";
@@ -631,4 +632,23 @@ Deno.test("Instantly deletes a campaign with one bodiless DELETE, and an already
       assertEquals(status, 404, "already gone surfaces as 404, which the delete action treats as done");
     },
   );
+});
+
+Deno.test("Instantly received emails map to replies scoped to the campaign", () => {
+  const reply = instantlyReply({
+    id: "e1",
+    campaign_id: "AAAAAAAA-0000-4000-8000-000000000001",
+    from_address_email: "Host@Show.fm",
+    subject: "Re: pitch",
+    body: { html: "<p>Yes &amp; thanks</p>" },
+    timestamp_email: "2026-11-20T10:00:00Z",
+    i_status: 1,
+  }, "aaaaaaaa-0000-4000-8000-000000000001");
+  assertEquals(reply?.from_email, "host@show.fm", "sender lowercased");
+  assertEquals(reply?.body_text, "Yes & thanks", "html read as text");
+  assertEquals(reply?.interested, true, "positive interest status");
+  assertEquals(reply?.automated, false, "not out of office");
+  assertEquals(instantlyReply({ id: "e2", i_status: 0 }, "c")?.automated, true, "i_status 0 is out of office");
+  assertEquals(instantlyReply({ id: "e3", campaign_id: "other" }, "c"), null, "another campaign's email is dropped");
+  assertEquals(instantlyReply({ campaign_id: "c" }, "c"), null, "no id");
 });

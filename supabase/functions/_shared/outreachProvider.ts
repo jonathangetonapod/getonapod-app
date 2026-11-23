@@ -228,6 +228,75 @@ export interface ProviderCapabilities {
   sendingStatus: boolean;
   /** The inbox actions (list, thread, lead detail, interest). */
   inbox: boolean;
+  /** Reading the replies a campaign received (read-only). */
+  replies: boolean;
+}
+
+/**
+ * One message a host sent back to a campaign, as plain text. Read-only: the
+ * app shows replies so an operator can see who answered and what they said;
+ * answering happens on the sending platform.
+ */
+export interface ProviderReply {
+  id: string;
+  campaign_id: string | null;
+  from_email: string | null;
+  from_name: string | null;
+  subject: string | null;
+  body_text: string;
+  received_at: string | null;
+  /** The platform flagged it as an out-of-office or other automatic answer. */
+  automated: boolean;
+  /** The platform's interested flag; null where it has none. */
+  interested: boolean | null;
+}
+
+/** Longest reply body returned; quoted history makes some replies very long. */
+export const REPLY_BODY_MAX = 20_000;
+
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+/**
+ * HTML mail as readable text. Output is only ever rendered as text, never as
+ * markup, so this is about legibility rather than sanitizing: block tags turn
+ * into line breaks, everything else is dropped, and common entities decode.
+ */
+export function plainTextFromHtml(html: string): string {
+  return html
+    .replace(/<(script|style|head)[^>]*>[\s\S]*?<\/\1>/giu, "")
+    .replace(/<br\s*\/?>/giu, "\n")
+    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/giu, "\n")
+    .replace(/<[^>]+>/gu, "")
+    .replace(/&(#x?[0-9a-f]+|[a-z]+);/giu, (match, entity: string) => {
+      const lower = entity.toLowerCase();
+      if (lower.startsWith("#x")) {
+        const code = Number.parseInt(lower.slice(2), 16);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+      }
+      if (lower.startsWith("#")) {
+        const code = Number.parseInt(lower.slice(1), 10);
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+      }
+      return HTML_ENTITIES[lower] ?? match;
+    })
+    .replace(/[ \t\u00a0]+/gu, " ")
+    .replace(/ *\n */gu, "\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+/** A reply's text: the plain part when the platform sent one, else the HTML read as text. */
+export function replyBodyText(textBody: unknown, htmlBody: unknown): string {
+  const plain = typeof textBody === "string" ? textBody.replace(/\r\n?/gu, "\n").trim() : "";
+  const body = plain || (typeof htmlBody === "string" ? plainTextFromHtml(htmlBody) : "");
+  return body.slice(0, REPLY_BODY_MAX);
 }
 
 export interface OutreachProvider {
@@ -308,6 +377,16 @@ export interface OutreachProvider {
   ): Promise<ProviderLead | null>;
   /** Removes the lead from the campaign. Throws 404 when already gone. */
   removeLead(campaignId: string | null, leadId: string): Promise<void>;
+
+  /**
+   * Replies a campaign received, newest first, at most `limit`. `complete` is
+   * false when more exist than were read. Throws PROVIDER_FEATURE_UNSUPPORTED
+   * where `capabilities.replies` is false.
+   */
+  listReplies(
+    campaignId: string,
+    options: { limit: number },
+  ): Promise<{ replies: ProviderReply[]; complete: boolean }>;
 
   /** The provider's own do-not-contact list. */
   blockAddress(email: string): Promise<void>;

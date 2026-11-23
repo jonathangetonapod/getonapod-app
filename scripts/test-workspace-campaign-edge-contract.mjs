@@ -1863,3 +1863,21 @@ assert.match(edge, /if \(error\) \{\s*failedTargets \+= 1;\s*return;\s*\}/u)
 assert.match(edge, /async function syncProviderCampaign\([\s\S]*?await syncProviderCampaignOnce\([\s\S]*?last_error: `Sync failed: \$\{safe\.message\}`/u)
 // Launching a pitch does not claim the campaign's numbers were synced.
 assert.match(edge, /instantly_campaign_id: activeCampaign\.id,[\s\S]{0,400}?No last_synced_at/u)
+
+// Campaign replies: read-only, tenant-scoped, matched to the client's own
+// pitches, and never stored or rendered as markup.
+{
+  const replies = edge.match(/if \(action === "campaign-replies"\) \{[\s\S]*?\n    \}\n/u)?.[0] ?? ''
+  assert.ok(replies, 'campaign-replies action exists')
+  assert.match(replies, /requireOnlyKeys\(body, \["action", "workspace_id", "client_id"\]\)/u)
+  assert.match(replies, /readCampaign\(context\.admin, workspaceId, clientId\)/u)
+  assert.match(replies, /!outreach\.capabilities\.replies[\s\S]*?supported: false/u)
+  assert.match(replies, /\.eq\("workspace_id", workspaceId\)[\s\S]*?\.eq\("campaign_id", campaign\.id\)[\s\S]*?\.eq\("client_id", clientId\)/u)
+  assert.match(replies, /outreach\.listReplies\(/u)
+  assert.doesNotMatch(replies, /\.(insert|upsert|update|delete)\(/u, 'reply reading writes nothing')
+  assert.match(providerCore, /listReplies\(\s*campaignId: string,/u)
+  assert.match(providerCore, /export function plainTextFromHtml/u)
+  const panel = readFileSync('src/components/workspace/CampaignRepliesPanel.tsx', 'utf8')
+  assert.doesNotMatch(panel, /dangerouslySetInnerHTML/u, 'reply bodies render as text')
+  assert.match(campaignDetail, /<TabsTrigger value="replies">/u)
+}
