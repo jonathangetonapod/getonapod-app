@@ -18,6 +18,7 @@ import {
   getWorkspaceResearchPromptOverrides,
   getWorkspaceAiModels,
   setWorkspaceAiModel,
+  testWorkspaceAiStep,
   resetClientPromptRequirements,
   setClientPromptRequirements,
   setWorkspacePromptRequirements,
@@ -614,5 +615,22 @@ describe('client instantly campaign links', () => {
   it('never reports an AI model save the server did not confirm', async () => {
     invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
     await expect(setWorkspaceAiModel(workspaceId, 'default', 'claude-haiku-5-5')).rejects.toThrow('could not be saved')
+  })
+
+  it('tests one AI step and returns the outcome, failure included', async () => {
+    invoke.mockResolvedValueOnce({
+      data: { result: { ok: false, model: 'claude-opus-5-5', ms: 800, code: 'FORMAT', detail: 'Did not return JSON.' } },
+      error: null,
+    } as never)
+    const result = await testWorkspaceAiStep(workspaceId, 'autopilot')
+    expect(invoke).toHaveBeenLastCalledWith('workspace-client-campaigns', {
+      body: { action: 'ai-models-test', workspace_id: workspaceId, setting_id: 'autopilot' },
+    })
+    expect(result).toMatchObject({ ok: false, model: 'claude-opus-5-5', detail: 'Did not return JSON.' })
+  })
+
+  it('treats a test answer with no result as a failure to run', async () => {
+    invoke.mockResolvedValueOnce({ data: {}, error: null } as never)
+    await expect(testWorkspaceAiStep(workspaceId, 'autopilot')).rejects.toThrow('could not be run')
   })
 })

@@ -38,9 +38,16 @@ import { resolveTextAiKey } from "../_shared/workspaceAiKeys.ts";
 import { fetchPromptModels } from "../_shared/promptModels.ts";
 import {
   AI_MODEL_SETTING_IDS,
+  type AiModelStepId,
   isAiModelSettingId,
   loadWorkspaceAiModels,
+  stageModel,
+  stepModel,
 } from "../_shared/workspaceAiModels.ts";
+import { isAiProbeStageId, runAiStepProbe } from "../_shared/aiStepProbes.ts";
+import { HOST_DISCOVERY_MODEL } from "../_shared/hostContactDiscovery.ts";
+import { shippedPitchProfileModel } from "../_shared/workspaceOnboarding.ts";
+import { RESEARCH_PROMPT_DEFAULTS as SERVER_RESEARCH_PROMPT_DEFAULTS } from "../_shared/researchPromptDefaults.ts";
 import {
   type AuthContext,
   createAdminClient,
@@ -3854,6 +3861,49 @@ serve(async (req) => {
         },
       });
       return jsonResponse(req, METHODS, 200, { success: true });
+    }
+
+    // Integrations "Test": runs one small request shaped like the step's
+    // production request, on the model that step would use right now, and
+    // reports whether the step can work on it. Owner-only because it spends
+    // on the workspace's AI key; no credits are charged.
+    if (action === "ai-models-test") {
+      requireOnlyKeys(body, ["action", "workspace_id", "setting_id"]);
+      requireIntegrationOwner(access);
+      const target = body.setting_id;
+      const isStage = isAiProbeStageId(target);
+      if (!isStage && (!isAiModelSettingId(target) || target === "default")) {
+        throw new HttpError(400, "INVALID_FIELD", "setting_id is not an AI step that can be tested");
+      }
+      const key = await resolveTextAiKey(context.admin, workspaceId);
+      if (!key) {
+        throw new HttpError(503, "AI_NOT_CONFIGURED", "Save a Claude, OpenAI or OpenRouter key before testing models");
+      }
+      const models = await loadWorkspaceAiModels(context.admin, workspaceId);
+      let model: string;
+      if (isStage) {
+        const { data } = await context.admin
+          .from("workspace_research_prompts")
+          .select("model")
+          .eq("workspace_id", workspaceId)
+          .eq("prompt_id", target)
+          .maybeSingle();
+        model = stageModel(
+          models,
+          typeof data?.model === "string" ? data.model : null,
+          SERVER_RESEARCH_PROMPT_DEFAULTS[target].model,
+        );
+      } else {
+        const step = target as AiModelStepId;
+        const shipped = step === "host_discovery"
+          ? HOST_DISCOVERY_MODEL
+          : step === "profile_drafts"
+          ? shippedPitchProfileModel()
+          : undefined;
+        model = stepModel(models, step, shipped);
+      }
+      const result = await runAiStepProbe(key, isStage ? target : target as AiModelStepId, model);
+      return jsonResponse(req, METHODS, 200, { result });
     }
 
     if (action === "prompts-reset") {

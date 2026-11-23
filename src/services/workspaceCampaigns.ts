@@ -802,6 +802,32 @@ export type WorkspaceAiModelSettingId = 'default' | WorkspaceAiModelStepId
 /** Null means "follow the next level": a step follows the default, the default follows each step's shipped model. */
 export type WorkspaceAiModels = Record<WorkspaceAiModelSettingId, string | null>
 
+/** The outcome of running one AI step on the model it would use right now. */
+export interface AiStepTestResult {
+  ok: boolean
+  /** The model id actually sent to the provider. */
+  model: string
+  ms: number
+  /** Why it failed, or a short sample of what it returned. */
+  detail: string
+  code?: string
+}
+
+/**
+ * Runs one small request shaped like the step's production request on the
+ * step's current model, and reports whether the step can work on it. Spends a
+ * little on the workspace's AI key; no credits.
+ */
+export async function testWorkspaceAiStep(workspaceId: string, stepId: string): Promise<AiStepTestResult> {
+  const data = await invokeWorkspaceCampaigns<{ result?: AiStepTestResult }>({
+    action: 'ai-models-test',
+    workspace_id: workspaceId,
+    setting_id: stepId,
+  }, 'The model test could not be run.')
+  if (!data.result || typeof data.result.ok !== 'boolean') throw new Error('The model test could not be run.')
+  return data.result
+}
+
 export async function getWorkspaceAiModels(workspaceId: string): Promise<WorkspaceAiModels> {
   const data = await invokeWorkspaceCampaigns<{ models?: Partial<WorkspaceAiModels> }>({
     action: 'ai-models-get',

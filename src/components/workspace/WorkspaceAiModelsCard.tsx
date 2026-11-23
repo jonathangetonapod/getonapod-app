@@ -14,7 +14,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { AiStepTestStatus } from '@/components/workspace/AiStepTestStatus'
 import { ModelOptions } from '@/components/workspace/ModelOptions'
+import { useAiStepTests } from '@/components/workspace/useAiStepTests'
 import { notifySaved } from '@/components/workspace/settings/savedToast'
 import { defaultAiProvider, groupModels, modelLabel, SHIPPED_DEFAULT_MODEL, workspaceAiKeysQueryKey } from '@/lib/aiModelGroups'
 import { RESEARCH_PROMPT_DEFAULTS_BY_ID, type ResearchPromptId } from '@/lib/researchPromptDefaults'
@@ -50,6 +52,7 @@ const STEPS: Array<{ id: WorkspaceAiModelStepId; label: string; description: str
 ]
 
 const TOTAL_STEPS = STAGES.length + STEPS.length
+const ALL_STEP_IDS: string[] = [...STAGES, ...STEPS.map((step) => step.id)]
 
 type Target = { kind: 'step'; id: 'default' | WorkspaceAiModelStepId } | { kind: 'stage'; id: ResearchPromptId }
 
@@ -102,6 +105,7 @@ interface WorkspaceAiModelsCardProps { workspaceId: string }
 export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProps) => {
   const queryClient = useQueryClient()
   const [confirmReset, setConfirmReset] = useState(false)
+  const stepTests = useAiStepTests(workspaceId)
   const settingsKey = ['workspace-ai-models', workspaceId]
   const stagesKey = ['workspace-research-prompts', workspaceId]
   const modelsQuery = useQuery({
@@ -143,7 +147,12 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
 
   const choiceMutation = useMutation({
     mutationFn: ({ target, model }: { target: Target; model: string | null }) => save(target, model),
-    onMutate: ({ target, model }) => applyLocally(target, model),
+    onMutate: ({ target, model }) => {
+      // A result describes the model the step ran on; the default reaches every
+      // step left on it, so changing the default clears them all.
+      stepTests.clear(target.id === 'default' ? undefined : [target.id])
+      applyLocally(target, model)
+    },
     onSuccess: () => { void resync(); notifySaved() },
     onError,
   })
@@ -160,7 +169,10 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
     mutationFn: async (targets: Target[]) => {
       for (const target of targets) await save(target, null)
     },
-    onMutate: (targets) => targets.forEach((target) => applyLocally(target, null)),
+    onMutate: (targets) => {
+      stepTests.clear(targets.map((target) => target.id))
+      targets.forEach((target) => applyLocally(target, null))
+    },
     onSuccess: () => { void resync(); notifySaved() },
     onError,
   })
@@ -182,7 +194,9 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
           {value && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Custom</span>}
         </div>
         <p className="text-xs text-muted-foreground">{description}</p>
+        <AiStepTestStatus test={stepTests.tests[key]} />
       </div>
+      <div className="flex w-full items-center gap-2 sm:w-auto">
       <ModelSelect
         id={`ai-model-${key}`}
         value={value}
@@ -192,6 +206,17 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
         disabled={busy}
         onChange={(model) => choiceMutation.mutate({ target, model })}
       />
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 shrink-0"
+          disabled={busy || stepTests.tests[key]?.status === 'running'}
+          aria-label={`Test ${label} on its model`}
+          onClick={() => void stepTests.runOne(key)}
+        >
+          Test
+        </Button>
+      </div>
     </div>
   )
 
@@ -232,11 +257,16 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
                   ? `All ${TOTAL_STEPS} steps use the default model`
                   : `${customCount} of ${TOTAL_STEPS} steps use a custom model`}
               </p>
-              {customCount > 0 && (
-                <Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={() => setConfirmReset(true)}>
-                  Reset all to default
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" className="min-h-11" disabled={busy || stepTests.running} onClick={() => void stepTests.runAll(ALL_STEP_IDS)}>
+                  {stepTests.running ? 'Testing…' : `Test all ${TOTAL_STEPS} steps`}
                 </Button>
-              )}
+                {customCount > 0 && (
+                  <Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={() => setConfirmReset(true)}>
+                    Reset all to default
+                  </Button>
+                )}
+              </div>
             </div>
 
             <section aria-labelledby="ai-models-research">
@@ -253,7 +283,7 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
             </section>
           </>
         )}
-        <p className="border-t pt-4 text-xs text-muted-foreground">Changes apply to new requests for everyone in this workspace.</p>
+        <p className="border-t pt-4 text-xs text-muted-foreground">Changes apply to new requests for everyone in this workspace. Test sends one small request per step to its model on your AI key, to check the step works there; the host lookup test also runs a web search. Tests use no credits.</p>
       </CardContent>
 
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>

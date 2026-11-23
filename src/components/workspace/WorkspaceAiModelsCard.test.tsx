@@ -8,6 +8,7 @@ import {
   getWorkspaceResearchPromptOverrides,
   setWorkspaceAiModel,
   setWorkspacePromptModel,
+  testWorkspaceAiStep,
   type WorkspaceAiModels,
 } from '@/services/workspaceCampaigns'
 import { getWorkspaceAiKeys } from '@/services/workspaceStaff'
@@ -18,6 +19,7 @@ vi.mock('@/services/workspaceCampaigns', () => ({
   getWorkspaceResearchPromptOverrides: vi.fn(),
   setWorkspaceAiModel: vi.fn(),
   setWorkspacePromptModel: vi.fn(),
+  testWorkspaceAiStep: vi.fn(),
 }))
 vi.mock('@/services/workspaceStaff', () => ({ getWorkspaceAiKeys: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -50,6 +52,7 @@ beforeEach(() => {
   vi.mocked(getWorkspaceResearchPromptOverrides).mockResolvedValue({ write_email: { content: null, model: 'claude-sonnet-5-5', updated_at: null } })
   vi.mocked(setWorkspaceAiModel).mockResolvedValue(undefined)
   vi.mocked(setWorkspacePromptModel).mockResolvedValue(undefined)
+  vi.mocked(testWorkspaceAiStep).mockResolvedValue({ ok: true, model: 'claude-sonnet-5-5', ms: 1200, detail: 'Dana Whitfield' })
 })
 
 describe('workspace AI model settings', () => {
@@ -189,5 +192,31 @@ describe('workspace AI model settings', () => {
     expect(within(select).getByRole('group', { name: 'OpenAI (1)' })).toBeInTheDocument()
     expect(within(select).queryByRole('group', { name: 'Latest' })).not.toBeInTheDocument()
     await waitFor(() => expect(within(select).getAllByRole('option')[0]).toHaveTextContent('Recommended (Claude Sonnet 5.5)'))
+  })
+
+  it('tests one step on its model and shows whether it works', async () => {
+    vi.mocked(testWorkspaceAiStep).mockResolvedValueOnce({
+      ok: false, model: 'claude-opus-5-5', ms: 900, code: 'FORMAT', detail: 'Used its whole output limit before answering (often thinking).',
+    })
+    renderCard()
+    fireEvent.click(await screen.findByRole('button', { name: 'Test Autopilot on its model' }))
+    expect(await screen.findByText(/Doesn't work on claude-opus-5-5/u)).toBeInTheDocument()
+    expect(testWorkspaceAiStep).toHaveBeenCalledWith(workspaceId, 'autopilot')
+  })
+
+  it('tests every step from one button', async () => {
+    renderCard()
+    fireEvent.click(await screen.findByRole('button', { name: 'Test all 15 steps' }))
+    await waitFor(() => expect(testWorkspaceAiStep).toHaveBeenCalledTimes(15))
+    expect(vi.mocked(testWorkspaceAiStep).mock.calls.map(([, id]) => id)).toEqual(expect.arrayContaining(['podcast_research', 'write_email', 'host_discovery', 'profile_drafts']))
+    expect(await screen.findAllByText(/Works on claude-sonnet-5-5/u)).toHaveLength(15)
+  })
+
+  it('clears a result once its step moves to a different model', async () => {
+    renderCard()
+    fireEvent.click(await screen.findByRole('button', { name: 'Test Fit scoring on its model' }))
+    expect(await screen.findByText(/Works on claude-sonnet-5-5/u)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Fit scoring'), { target: { value: 'claude-haiku-5-5' } })
+    await waitFor(() => expect(screen.queryByText(/Works on claude-sonnet-5-5/u)).not.toBeInTheDocument())
   })
 })

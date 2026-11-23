@@ -104,7 +104,11 @@ const EXPECTED_COUNTS = Object.freeze({
   // AI model settings on Integrations (2026-11-21).
   // 236: _shared/openRouter.ts and its Deno test, for OpenRouter as a third
   // workspace text AI provider (2026-11-23).
-  edgeTypeScriptFiles: 236,
+  // 239: _shared/researchPromptCall.ts (the research call and pitch parser,
+  // moved out of workspace-client-shortlist so tests send the same request),
+  // and _shared/aiStepProbes.ts with its Deno test, for the Integrations
+  // model Test button (2026-11-23).
+  edgeTypeScriptFiles: 239,
 })
 
 const EXPECTED_PHASE_KEYS = Object.freeze([
