@@ -879,11 +879,17 @@ export interface WorkspaceAiKeyStatus {
   updated_at: string | null
 }
 
-export type WorkspaceAiProvider = 'anthropic' | 'openai'
+export type WorkspaceAiProvider = 'anthropic' | 'openai' | 'openrouter'
+export const WORKSPACE_AI_PROVIDERS: readonly WorkspaceAiProvider[] = ['anthropic', 'openai', 'openrouter']
 export interface WorkspaceAiKeysView {
   anthropic: WorkspaceAiKeyStatus
   openai?: WorkspaceAiKeyStatus
+  openrouter?: WorkspaceAiKeyStatus
   default_provider?: WorkspaceAiProvider | null
+}
+
+export function isWorkspaceAiProvider(value: unknown): value is WorkspaceAiProvider {
+  return typeof value === 'string' && (WORKSPACE_AI_PROVIDERS as readonly string[]).includes(value)
 }
 
 function parseAiKeyStatus(value: unknown): WorkspaceAiKeyStatus {
@@ -908,7 +914,8 @@ export async function getWorkspaceAiKeys(workspaceId: string): Promise<Workspace
   return {
     anthropic: parseAiKeyStatus(data.providers?.anthropic),
     openai: parseAiKeyStatus(data.providers?.openai),
-    default_provider: data.default_provider === 'openai' || data.default_provider === 'anthropic' ? data.default_provider : null,
+    openrouter: parseAiKeyStatus(data.providers?.openrouter),
+    default_provider: isWorkspaceAiProvider(data.default_provider) ? data.default_provider : null,
   }
 }
 

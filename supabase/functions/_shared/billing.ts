@@ -24,6 +24,8 @@ export interface TokenUsage {
   openaiTokens?: number
   openaiInputTokens?: number
   openaiOutputTokens?: number
+  openrouterInputTokens?: number
+  openrouterOutputTokens?: number
   podscanCalls?: number
 }
 
@@ -43,6 +45,10 @@ export function estimatedCostUsd(usage: TokenUsage): number {
     + (usage.anthropicOutputTokens ?? 0) * USD_PER_ANTHROPIC_OUTPUT_TOKEN
     + (usage.openaiInputTokens ?? 0) * 0.000002
     + (usage.openaiOutputTokens ?? 0) * 0.000008
+    // OpenRouter's price depends on the model chosen; estimated at the
+    // shipped default's rate (Sonnet 5.5), like the direct Claude tokens.
+    + (usage.openrouterInputTokens ?? 0) * USD_PER_ANTHROPIC_INPUT_TOKEN
+    + (usage.openrouterOutputTokens ?? 0) * USD_PER_ANTHROPIC_OUTPUT_TOKEN
     + (usage.openaiTokens ?? 0) * USD_PER_OPENAI_TOKEN
     + (usage.podscanCalls ?? 0) * USD_PER_PODSCAN_CALL
   return Math.round(total * 1_000_000) / 1_000_000
@@ -160,6 +166,8 @@ export async function logOperationCost(
       anthropic_output_tokens: Math.max(0, Math.round(input.usage.anthropicOutputTokens ?? 0)),
       openai_input_tokens: Math.max(0, Math.round(input.usage.openaiInputTokens ?? 0)),
       openai_output_tokens: Math.max(0, Math.round(input.usage.openaiOutputTokens ?? 0)),
+      openrouter_input_tokens: Math.max(0, Math.round(input.usage.openrouterInputTokens ?? 0)),
+      openrouter_output_tokens: Math.max(0, Math.round(input.usage.openrouterOutputTokens ?? 0)),
       openai_tokens: Math.max(0, Math.round(input.usage.openaiTokens ?? 0)),
       podscan_calls: Math.max(0, Math.round(input.usage.podscanCalls ?? 0)),
       estimated_cost_usd: estimatedCostUsd(input.usage),

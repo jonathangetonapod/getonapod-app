@@ -12,7 +12,8 @@ const resolver = keys.slice(keys.indexOf('export async function resolveTextAiKey
 assert.match(preference, /from\('workspaces'\)\.select\('default_ai_provider'\)\.eq\('id', workspaceId\)/u)
 assert.match(resolver, /await requireWorkspaceSubscription\(admin, workspaceId\)/u)
 assert.match(resolver, /await workspaceTextAiPreference\(admin, workspaceId\)/u)
-assert.match(resolver, /preferred \? \[preferred\] : \['anthropic', 'openai'\]/u)
+assert.match(resolver, /preferred \? \[preferred\] : TEXT_AI_PROVIDERS/u)
+assert.match(ai, /export const TEXT_AI_PROVIDERS: readonly TextAiProvider\[\] = \['anthropic', 'openai', 'openrouter'\]/u)
 assert.match(resolver, /readStoredAiKey\(admin, workspaceId, provider\)/u)
 assert.match(resolver, /source: 'workspace', provider/u)
 assert.doesNotMatch(resolver, /Deno\.env|platformTextAiKey|PLATFORM_ENV/u)
@@ -43,6 +44,19 @@ assert.match(ai, /store: false/u)
 assert.match(ai, /'x-api-key': apiKey/u)
 assert.match(ai, /Authorization: `Bearer \$\{apiKey\}`/u)
 assert.match(ai, /web_search_call\.action\.sources/u)
+
+// OpenRouter shares the transport: the agency's key, Chat Completions, and a
+// body checked for errors even on HTTP 200. Its key check must authenticate
+// (the model list is public and would pass any string).
+const openRouter = read('supabase/functions/_shared/openRouter.ts')
+assert.match(ai, /if \(provider === 'openrouter'\) return await openRouterFetch\(apiKey, body, model, signal, fetcher\)/u)
+assert.match(openRouter, /providerFetch\('openrouter', `\$\{OPENROUTER_API\}\/chat\/completions`/u)
+assert.match(openRouter, /Authorization: `Bearer \$\{apiKey\}`/u)
+assert.match(openRouter, /if \(payload\.error\) \{/u)
+assert.match(openRouter, /choice\.finish_reason === 'error'/u)
+// The public catalog is read without the agency's key.
+assert.match(openRouter, /fetcher\(`\$\{OPENROUTER_API\}\/models`, \{ signal: AbortSignal\.timeout\(10_000\) \}\)/u)
+assert.match(keys, /'https:\/\/openrouter\.ai\/api\/v1\/key'/u)
 
 // Search embeddings remain platform infrastructure, independent of the
 // customer's text model choice. An OpenAI text key cannot accidentally
@@ -75,6 +89,11 @@ assert.match(migration, /ADD COLUMN IF NOT EXISTS default_ai_provider TEXT\s*CHE
 assert.match(migration, /openai_input_tokens BIGINT NOT NULL DEFAULT 0 CHECK \(openai_input_tokens >= 0\)/u)
 assert.match(migration, /openai_output_tokens BIGINT NOT NULL DEFAULT 0 CHECK \(openai_output_tokens >= 0\)/u)
 assert.doesNotMatch(migration, /GRANT|DROP POLICY|DISABLE ROW LEVEL SECURITY|DELETE FROM|UPDATE public\.workspace_ai_credentials/iu)
+const openRouterMigration = read('supabase/migrations/20261123000100_openrouter_text_ai.sql')
+assert.match(openRouterMigration, /CHECK \(provider IN \('anthropic', 'openai', 'openrouter', 'winnr', 'blitz', 'podscan'\)\)/u)
+assert.match(openRouterMigration, /CHECK \(default_ai_provider IN \('anthropic', 'openai', 'openrouter'\)\)/u)
+assert.match(openRouterMigration, /openrouter_input_tokens BIGINT NOT NULL DEFAULT 0 CHECK \(openrouter_input_tokens >= 0\)/u)
+assert.doesNotMatch(openRouterMigration, /GRANT|DROP POLICY|DISABLE ROW LEVEL SECURITY|DELETE FROM|UPDATE public\.workspace_ai_credentials/iu)
 const grants = read('supabase/migrations/20260720000200_invite_only_workspace_rls.sql')
 assert.match(grants, /REVOKE ALL PRIVILEGES ON TABLE public\.workspaces FROM anon, authenticated/u)
 assert.match(grants, /GRANT SELECT ON TABLE public\.workspaces TO authenticated/u)

@@ -40,7 +40,7 @@ describe('flat subscription billing portal', () => {
   it('explains the AI choice while keeping the agency-owned sending platform separate', async () => {
     renderPage()
     await screen.findByText('$99')
-    expect(screen.getByText(/Connect your Claude or OpenAI key here/)).toHaveTextContent('your agency’s sending platform (Instantly, Email Bison or ReachInbox) in Client Campaigns')
+    expect(screen.getByText(/Connect your Claude, OpenAI or OpenRouter key here/)).toHaveTextContent('your agency’s sending platform (Instantly, Email Bison or ReachInbox) in Client Campaigns')
     expect(screen.getByRole('link', { name: /Sending accounts/ })).toHaveAttribute('href', '/app/client-campaigns')
   })
   it('preserves a subscriber’s actual founding price and opens Stripe for invoices', async () => {

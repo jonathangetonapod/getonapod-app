@@ -1,10 +1,10 @@
 import { HttpError } from './httpError.ts'
 
-export type ProviderName = 'anthropic' | 'openai' | 'openai-platform' | 'podscan' | 'blitz' | 'winnr'
+export type ProviderName = 'anthropic' | 'openai' | 'openrouter' | 'openai-platform' | 'podscan' | 'blitz' | 'winnr'
 export type ProviderRuntimeCode = 'PROVIDER_KEY_REJECTED' | 'PROVIDER_BILLING_REQUIRED' | 'PROVIDER_RATE_LIMITED' | 'PROVIDER_UNAVAILABLE' | 'PLATFORM_PROVIDER_ACTION_REQUIRED'
 
 const LABELS: Record<ProviderName, string> = {
-  anthropic: 'Anthropic', openai: 'OpenAI', 'openai-platform': 'OpenAI', podscan: 'Podscan', blitz: 'Blitz', winnr: 'Winnr',
+  anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', 'openai-platform': 'OpenAI', podscan: 'Podscan', blitz: 'Blitz', winnr: 'Winnr',
 }
 
 // Examine only bounded diagnostic fields. Upstream bodies, request IDs, URLs,
@@ -20,8 +20,13 @@ export function providerFailure(provider: ProviderName, status?: number, payload
   const label = LABELS[provider]
   const detail = diagnostic(payload)
   const billing = status === 402 || /insufficient_quota|billing_hard_limit|billing_not_active|credit balance.{0,40}(?:too low|insufficient)|insufficient.{0,20}(?:credits|funds|balance)|(?:out of|no remaining).{0,20}credits|(?:daily|per_day)_limit_exceeded/u.test(detail)
-  if (provider !== 'anthropic' && provider !== 'openai' && (billing || status === 401 || status === 403 || provider === 'blitz' && status === 423)) {
+  if (provider !== 'anthropic' && provider !== 'openai' && provider !== 'openrouter' && (billing || status === 401 || status === 403 || provider === 'blitz' && status === 423)) {
     return new HttpError(503, 'PLATFORM_PROVIDER_ACTION_REQUIRED', `${label} needs attention from the platform administrator. Contact support; you do not need to supply a ${label} key.`)
+  }
+  // OpenRouter answers 403 for a moderation flag, a guardrail or a key budget
+  // limit, not a bad key (that is 401), so say what to check instead.
+  if (provider === 'openrouter' && status === 403) {
+    return new HttpError(409, 'PROVIDER_KEY_REJECTED', 'OpenRouter blocked this request. Check the key\'s budget, guardrails and privacy settings in your OpenRouter account, or choose a different model, then try again.')
   }
   if (billing) return new HttpError(402, 'PROVIDER_BILLING_REQUIRED', `${label} needs billing attention. Add funds or review your plan and usage limits in your ${label} account, then try again.`)
   if (status === 401 || status === 403 || provider === 'blitz' && status === 423) {

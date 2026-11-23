@@ -744,6 +744,8 @@ export interface PromptModelOption {
   contextTokens: number | null
   maxOutputTokens: number | null
   thinksByDefault: boolean
+  /** The model's vendor when the key reaches many (OpenRouter); absent otherwise. */
+  group?: string
 }
 
 /**

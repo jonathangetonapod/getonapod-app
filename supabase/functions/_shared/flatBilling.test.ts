@@ -72,9 +72,10 @@ Deno.test('platform providers ignore workspace credentials and retain subscripti
 })
 
 Deno.test('workspace key status hides obsolete non-AI credential metadata', async () => {
-  const rows = ['anthropic', 'openai', 'podscan', 'blitz', 'winnr'].map((provider) => ({ provider, api_key_last_four: '1234', updated_at: '2026-10-29' }))
+  const rows = ['anthropic', 'openai', 'openrouter', 'podscan', 'blitz', 'winnr'].map((provider) => ({ provider, api_key_last_four: '1234', updated_at: '2026-10-29' }))
   const query = { select: () => query, eq: () => Promise.resolve({ data: rows, error: null }) }
   const status = await workspaceAiKeyStatus({ from: () => query } as unknown as Parameters<typeof workspaceAiKeyStatus>[0], 'workspace')
-  assert(JSON.stringify(Object.keys(status)) === '["anthropic","openai"]', 'only AI providers may be shown')
+  assert(JSON.stringify(Object.keys(status)) === '["anthropic","openai","openrouter"]', 'only AI providers may be shown')
+  assert(status.openrouter.configured && status.openrouter.last_four === '1234', 'keep saved OpenRouter status')
   assert(status.anthropic.configured && status.anthropic.last_four === '1234', 'keep saved Claude status')
 })

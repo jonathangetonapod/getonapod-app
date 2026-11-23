@@ -1,5 +1,6 @@
 import type { TextAiProvider } from './textAi.ts'
 import { providerFetch } from './providerErrors.ts'
+import { OPENROUTER_API } from './openRouter.ts'
 /**
  * The Claude models a stage may run on, read from Anthropic rather than listed
  * here.
@@ -23,6 +24,8 @@ export interface PromptModel {
   maxOutputTokens: number | null
   /** True when omitting `thinking` makes this model think. See BEHAVIOUR. */
   thinksByDefault: boolean
+  /** Who makes the model, for grouping a long list (OpenRouter). Absent for a single-vendor key. */
+  group?: string
 }
 
 /**
@@ -83,6 +86,7 @@ function toPromptModel(entry: unknown): PromptModel[] {
  * spin an invocation against its two-minute ceiling.
  */
 export async function fetchPromptModels(apiKey: string, provider: TextAiProvider = 'anthropic'): Promise<PromptModel[]> {
+  if (provider === 'openrouter') return await fetchOpenRouterModels(apiKey)
   if (provider === 'openai') {
     const response = await providerFetch('openai', 'https://api.openai.com/v1/models', {
       headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
@@ -119,4 +123,93 @@ export async function fetchPromptModels(apiKey: string, provider: TextAiProvider
   }
 
   return models
+}
+
+interface OpenRouterModelEntry {
+  id?: unknown
+  name?: unknown
+  context_length?: unknown
+  endpoints?: unknown
+  architecture?: { output_modalities?: unknown }
+  top_provider?: { max_completion_tokens?: unknown }
+  pricing?: { prompt?: unknown; completion?: unknown }
+  reasoning?: { mandatory?: unknown; default_enabled?: unknown } | null
+}
+
+/** USD per million tokens, short: 0.000003 per token reads "$3". */
+function perMillion(value: unknown): number | null {
+  const perToken = Number(value)
+  return Number.isFinite(perToken) ? perToken * 1_000_000 : null
+}
+
+function dollars(amount: number): string {
+  if (amount >= 10) return `$${Math.round(amount)}`
+  if (amount >= 0.1) return `$${Number(amount.toFixed(2))}`
+  return `$${Number(amount.toPrecision(2))}`
+}
+
+/** "$3 in / $15 out per 1M tokens", "free", or "price varies" for a router. */
+export function openRouterPriceLabel(pricing: OpenRouterModelEntry['pricing']): string | null {
+  const input = perMillion(pricing?.prompt)
+  const output = perMillion(pricing?.completion)
+  if (input === null || output === null) return null
+  if (input < 0 || output < 0) return 'price varies'
+  if (input === 0 && output === 0) return 'free'
+  return `${dollars(input)} in / ${dollars(output)} out per 1M tokens`
+}
+
+const titleCase = (value: string) => value.replace(/^~/u, '').split(/[-_]/u)
+  .map((word) => word ? word[0].toUpperCase() + word.slice(1) : word).join(' ')
+
+/** OpenRouter's own routers lead the list; vendors follow alphabetically. */
+const ROUTER_GROUP = 'OpenRouter'
+
+/**
+ * Every OpenRouter model this key can call in real time.
+ *
+ * Reads /models/user, which applies the key's guardrails, provider
+ * preferences and privacy settings, so the picker never offers a model the
+ * account has ruled out. Dropped: `:batch` variants and anything without a
+ * Chat Completions endpoint (those answer hours later, not within a run) and
+ * models that cannot write text. Everything else is kept, routers and
+ * rolling `~…-latest` aliases included, grouped by vendor with its price.
+ */
+async function fetchOpenRouterModels(apiKey: string): Promise<PromptModel[]> {
+  const response = await providerFetch('openrouter', `${OPENROUTER_API}/models/user`, {
+    headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
+  })
+  const payload = await response.json() as { data?: unknown }
+  const models: PromptModel[] = []
+  for (const raw of Array.isArray(payload.data) ? payload.data : []) {
+    if (!raw || typeof raw !== 'object') continue
+    const entry = raw as OpenRouterModelEntry
+    const id = typeof entry.id === 'string' ? entry.id.trim() : ''
+    if (!id || id.endsWith(':batch') || id.length > 128) continue
+    if (Array.isArray(entry.endpoints) && !entry.endpoints.includes('/api/v1/chat/completions')) continue
+    const outputs = entry.architecture?.output_modalities
+    if (Array.isArray(outputs) && !outputs.includes('text')) continue
+
+    const name = typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : id
+    const vendor = id.replace(/^~/u, '').split('/')[0]
+    const [prefix, ...rest] = name.split(': ')
+    const group = vendor === 'openrouter' ? ROUTER_GROUP : rest.length ? prefix : titleCase(vendor)
+    const shortName = rest.length ? rest.join(': ') : name
+    const price = openRouterPriceLabel(entry.pricing)
+    models.push({
+      id,
+      label: price ? `${shortName} · ${price}` : shortName,
+      contextTokens: positiveInt(entry.context_length),
+      maxOutputTokens: positiveInt(entry.top_provider?.max_completion_tokens),
+      thinksByDefault: entry.reasoning?.mandatory === true || entry.reasoning?.default_enabled === true,
+      group,
+    })
+  }
+  // Stable: within a vendor the API's order (newest first) is kept.
+  return models
+    .map((model, index) => ({ model, index }))
+    .sort((a, b) => {
+      if ((a.model.group === ROUTER_GROUP) !== (b.model.group === ROUTER_GROUP)) return a.model.group === ROUTER_GROUP ? -1 : 1
+      return (a.model.group ?? '').localeCompare(b.model.group ?? '') || a.index - b.index
+    })
+    .map(({ model }) => model)
 }

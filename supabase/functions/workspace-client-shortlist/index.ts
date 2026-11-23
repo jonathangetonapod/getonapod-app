@@ -2715,7 +2715,7 @@ serve(async (req) => {
 
       // No platform Claude fallback, no credit charge, no Instantly requirement.
       const claudeKey = await resolveTextAiKey(authContext.admin, workspaceId)
-      if (!claudeKey) throw new HttpError(409, 'CLAUDE_KEY_REQUIRED', 'Connect your Claude or OpenAI API key in workspace settings to find a host contact. No app credits are used.')
+      if (!claudeKey) throw new HttpError(409, 'CLAUDE_KEY_REQUIRED', 'Connect your Claude, OpenAI or OpenRouter API key in workspace settings to find a host contact. No app credits are used.')
       const blitzKey = (await resolveAiKey(authContext.admin, workspaceId, 'blitz'))?.apiKey
       if (!blitzKey) throw new HttpError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', 'The email provider is not configured. Contact your administrator.')
 

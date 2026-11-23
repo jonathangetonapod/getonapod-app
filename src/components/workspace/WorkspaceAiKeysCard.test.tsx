@@ -62,6 +62,26 @@ describe('workspace provider key management', () => {
     expect(setWorkspaceAiProvider).not.toHaveBeenCalled()
   })
 
+  it('saves an OpenRouter key and offers it as the default provider', async () => {
+    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: { configured: false, last_four: null, updated_at: null } })
+    renderCard()
+    const input = await screen.findByLabelText('OpenRouter API key')
+    expect(input).toHaveAttribute('type', 'password')
+    expect(input).toHaveAttribute('placeholder', 'sk-or-…')
+    const select = screen.getByRole('combobox', { name: 'Default AI provider' })
+    expect(within(select).getByRole('option', { name: 'OpenRouter (key not saved)' })).toBeDisabled()
+    fireEvent.change(input, { target: { value: 'sk-or-v1-agency-key-9876' } })
+    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
+      anthropic: { configured: false, last_four: null, updated_at: null },
+      openrouter: { configured: true, last_four: '9876', updated_at: '2026-11-23T00:00:00Z' },
+      default_provider: null,
+    })
+    fireEvent.submit(input.closest('form')!)
+    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'openrouter', 'sk-or-v1-agency-key-9876'))
+    expect(await screen.findByLabelText('Saved OpenRouter key')).toHaveTextContent('9876')
+    expect(screen.getByRole('combobox', { name: 'Default AI provider' })).toHaveValue('openrouter')
+  })
+
   it('retains a rejected OpenAI key draft and does not change the default provider', async () => {
     vi.mocked(setWorkspaceAiKey).mockRejectedValue(new Error('This OpenAI key was rejected'))
     renderCard()

@@ -24,7 +24,7 @@ Podcast placement platform, mid-migration from a single-agency admin tool to an 
 - **Rich Text:** TipTap editor
 - **Charts:** Recharts
 - **Backend:** Supabase (auth, Postgres with RLS, edge functions, storage) — Deno **2.5.2** pinned for edge functions
-- **AI:** Anthropic Claude API + OpenAI embeddings (server-side only)
+- **AI:** text generation through one transport (`_shared/textAi.ts`) to Claude, OpenAI or OpenRouter — each workspace brings its own key and picks a model per step; OpenAI embeddings are platform-owned (server-side only)
 - **Outreach:** one sending platform per workspace — Instantly, Email Bison (self-hosted, agency supplies its instance URL) or ReachInbox — behind `_shared/outreachProvider.ts` (per-workspace API keys, AES-GCM encrypted in DB; see `docs/outreach-providers.md`). The legacy single-agency Email Bison functions are retired
 - **Podcast data:** Podscan API (proxied through edge functions)
 - **Monitoring:** Sentry (`@sentry/react`, sanitized breadcrumbs, tracing off)
@@ -187,6 +187,7 @@ AI, email, Google, Instantly, and webhook secrets are server-only.
 **Edge function env vars (set in Supabase dashboard, not in `.env`):**
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — auto-injected
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` — AI features / embeddings
+- `OPENROUTER_API_KEY` (optional) — the platform's own OpenRouter key for admin and public-page AI; used when `TEXT_AI_PROVIDER=openrouter` or when it is the only text key set. Workspaces use their own saved key, never this one
 - `PODSCAN_API_KEY` — podcast data
 - `INSTANTLY_CREDENTIAL_ENCRYPTION_KEY` — encrypts every workspace's sending-platform key (Instantly, Email Bison, ReachInbox)
 - `EMAILBISON_ALLOWED_HOST_SUFFIXES` — comma-separated allow-list of Email Bison instance domains; when set, any other instance URL is refused. Where the runtime cannot resolve DNS it is required: without it every Email Bison connection fails closed (`EMAILBISON_URL_UNVERIFIABLE`)

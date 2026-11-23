@@ -20,7 +20,7 @@ subscriptions prioritize payment recovery. Checkout cancellation is acknowledged
 without claiming a payment result, and a late webhook confirmation clears the
 pending state even after automatic polling has stopped.
 
-Billing provider setup offers Claude and OpenAI keys and a default AI provider
+Billing provider setup offers Claude, OpenAI and OpenRouter keys and a default AI provider
 selector. Only one AI key is required. There are no customer key forms for
 Podscan, Blitz or Winnr. A failed status request shows recovery
 controls instead of empty key forms. Key entry supports keyboard submission and keeps saved secrets
@@ -34,7 +34,7 @@ can still open payment settings and historical invoices.
 
 ## Provider costs
 
-Customers choose **Claude or OpenAI** in Billing and connect their own
+Customers choose **Claude, OpenAI or OpenRouter** in Billing and connect their own
 **Instantly API key** in Client Campaigns. No other customer API keys are required.
 The selected AI provider powers research stages, pitch writing, podcast scoring,
 query generation, onboarding profiles, prospect analysis, inbox replies and

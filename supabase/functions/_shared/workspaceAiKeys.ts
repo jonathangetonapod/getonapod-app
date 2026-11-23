@@ -1,12 +1,12 @@
-// Workspace AI settings accept Claude and OpenAI. Other research and infrastructure
+// Workspace AI settings accept Claude, OpenAI and OpenRouter. Other research and infrastructure
 // providers use server secrets; Instantly has its own agency connection flow.
 // Workspace credentials reuse the Instantly AES-GCM storage machinery.
 
 import { createAdminClient, HttpError, requireWorkspaceSubscription } from './workspaceAuth.ts'
-import { type TextAiKey, type TextAiProvider } from './textAi.ts'
+import { isTextAiProvider, TEXT_AI_PROVIDERS, type TextAiKey, type TextAiProvider } from './textAi.ts'
 import { decryptInstantlyApiKey, encryptInstantlyApiKey } from './instantly.ts'
 
-export type AiProvider = 'anthropic' | 'openai' | 'winnr' | 'blitz' | 'podscan'
+export type AiProvider = 'anthropic' | 'openai' | 'openrouter' | 'winnr' | 'blitz' | 'podscan'
 
 export interface ResolvedAiKey {
   apiKey: string
@@ -16,14 +16,20 @@ export interface ResolvedAiKey {
 const PLATFORM_ENV: Record<AiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
   winnr: 'WINNR_API_TOKEN',
   blitz: 'BLITZ_API_KEY',
   podscan: 'PODSCAN_API_KEY',
 }
 
 export function requireProvider(value: unknown): TextAiProvider {
-  if (value === 'anthropic' || value === 'openai') return value
-  throw new HttpError(400, 'INVALID_PROVIDER', 'Only Claude and OpenAI keys can be managed here')
+  if (isTextAiProvider(value)) return value
+  throw new HttpError(400, 'INVALID_PROVIDER', 'Only Claude, OpenAI and OpenRouter keys can be managed here')
+}
+
+/** How a provider is named to people. */
+export function textAiProviderLabel(provider: TextAiProvider): string {
+  return provider === 'openai' ? 'OpenAI' : provider === 'openrouter' ? 'OpenRouter' : 'Claude'
 }
 
 export async function storeWorkspaceAiKey(
@@ -79,10 +85,11 @@ export async function workspaceAiKeyStatus(
   const status: Record<TextAiProvider, { configured: boolean; last_four: string | null; updated_at: string | null }> = {
     anthropic: { configured: false, last_four: null, updated_at: null },
     openai: { configured: false, last_four: null, updated_at: null },
+    openrouter: { configured: false, last_four: null, updated_at: null },
   }
   for (const row of (data ?? []) as Array<{ provider?: unknown; api_key_last_four?: unknown; updated_at?: unknown }>) {
     const provider = row.provider
-    if (provider === 'anthropic' || provider === 'openai') {
+    if (isTextAiProvider(provider)) {
       status[provider] = {
         configured: true,
         last_four: typeof row.api_key_last_four === 'string' ? row.api_key_last_four : null,
@@ -171,6 +178,13 @@ export async function probeAiKeyResult(
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         signal: AbortSignal.timeout(10_000),
       })
+      // OpenRouter's model list is public, so it proves nothing about a key;
+      // the current-key endpoint authenticates and costs nothing.
+      : provider === 'openrouter'
+      ? await fetcher('https://openrouter.ai/api/v1/key', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      })
       : await fetcher('https://api.openai.com/v1/models', {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(10_000),
@@ -191,20 +205,20 @@ export async function probeAiKey(provider: AiProvider, apiKey: string): Promise<
 export async function workspaceTextAiPreference(admin: ReturnType<typeof createAdminClient>, workspaceId: string): Promise<TextAiProvider | null> {
   const { data, error } = await admin.from('workspaces').select('default_ai_provider').eq('id', workspaceId).single()
   if (error || !data) throw new HttpError(503, 'AI_SETTINGS_UNAVAILABLE', 'AI provider settings could not be read. Try again or contact support.')
-  return data.default_ai_provider === 'anthropic' || data.default_ai_provider === 'openai' ? data.default_ai_provider : null
+  return isTextAiProvider(data.default_ai_provider) ? data.default_ai_provider : null
 }
 
 export async function resolveTextAiKey(admin: ReturnType<typeof createAdminClient>, workspaceId: string): Promise<TextAiKey> {
   await requireWorkspaceSubscription(admin, workspaceId)
   const preferred = await workspaceTextAiPreference(admin, workspaceId)
-  const providers: TextAiProvider[] = preferred ? [preferred] : ['anthropic', 'openai']
+  const providers: readonly TextAiProvider[] = preferred ? [preferred] : TEXT_AI_PROVIDERS
   for (const provider of providers) {
     const stored = await readStoredAiKey(admin, workspaceId, provider)
     if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace', provider }
   }
   throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', preferred
-    ? `Connect the selected ${preferred === 'openai' ? 'OpenAI' : 'Claude'} key in Billing, or choose another AI provider.`
-    : 'Connect a Claude or OpenAI key in Billing to use AI features.')
+    ? `Connect the selected ${textAiProviderLabel(preferred)} key in Billing, or choose another AI provider.`
+    : 'Connect a Claude, OpenAI or OpenRouter key in Billing to use AI features.')
 }
 
 export async function setWorkspaceTextAiProvider(admin: ReturnType<typeof createAdminClient>, workspaceId: string, provider: TextAiProvider): Promise<void> {

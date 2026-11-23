@@ -1,16 +1,18 @@
 import type { MeteredOperation } from '@/lib/creditCosts'
 
-export type AiKeyProvider = 'anthropic' | 'openai'
+export type AiKeyProvider = 'anthropic' | 'openai' | 'openrouter'
 
 /*
  * Which metered work each provider's key pays for, read from where the edge
  * functions resolve a workspace key before charging (resolveAiKey beside the
  * operation's chargeOperation). A prospect page uses both; Claude writes it,
  * so it is counted there. Database search is OpenAI's, and costs nothing.
+ * OpenRouter pays for the same text work Claude does when it is selected.
  */
 export const AI_KEY_OPERATIONS: Record<AiKeyProvider, MeteredOperation[]> = {
   anthropic: ['research_run', 'query_generation', 'compatibility_scoring', 'dashboard_build', 'pitch_profile'],
   openai: ['semantic_search'],
+  openrouter: ['research_run', 'query_generation', 'compatibility_scoring', 'dashboard_build', 'pitch_profile'],
 }
 
 /**
@@ -23,5 +25,5 @@ export function platformCreditsByProvider(
 ): Record<AiKeyProvider, number> {
   const total = (provider: AiKeyProvider) => AI_KEY_OPERATIONS[provider]
     .reduce((sum, operation) => sum + Math.max(0, Number(ledgerUsage?.[operation]?.credits) || 0), 0)
-  return { anthropic: total('anthropic'), openai: total('openai') }
+  return { anthropic: total('anthropic'), openai: total('openai'), openrouter: total('openrouter') }
 }

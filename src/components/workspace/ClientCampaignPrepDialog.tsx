@@ -1,3 +1,4 @@
+import { ModelOptions } from '@/components/workspace/ModelOptions'
 import { ResearchSourceNote } from '@/components/workspace/ResearchSourceNote'
 import { PitchStagedConfirmation, type PitchStagedResult } from '@/components/workspace/PitchStagedConfirmation'
 import { showOperationError } from '@/lib/billingRecovery'
@@ -1326,7 +1327,7 @@ export function ClientCampaignPrep({
       return
     }
     if (!byoAi) {
-      toast.info('Connect your Claude or OpenAI API key in workspace settings first.')
+      toast.info('Connect your Claude, OpenAI or OpenRouter API key in workspace settings first.')
       return
     }
     setVerifiedOpen(true)
@@ -2477,11 +2478,7 @@ export function ClientCampaignPrep({
                                       past that the shipped default — not pinning either id, so a
                                       workspace that never chose moves with them. */}
                                   <option value="">Workspace default (set in Integrations)</option>
-                                  {promptModels.map((model) => (
-                                    <option key={model.id} value={model.id}>
-                                      {model.label} — {model.id}
-                                    </option>
-                                  ))}
+                                  <ModelOptions models={promptModels} showId />
                                 </select>
                                 <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
                                   {promptModelsQuery.isError

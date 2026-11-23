@@ -1,30 +1,52 @@
 import { thinkingForModel } from './promptModels.ts'
 import { HttpError } from './httpError.ts'
 import { providerFetch } from './providerErrors.ts'
+import { DEFAULT_OPENROUTER_MODEL, openRouterFetch, openRouterModel } from './openRouter.ts'
 
-export type TextAiProvider = 'anthropic' | 'openai'
+export type TextAiProvider = 'anthropic' | 'openai' | 'openrouter'
 export interface TextAiKey { provider: TextAiProvider; apiKey: string; source: 'workspace' | 'platform' }
 // String credentials are accepted for existing explicitly Anthropic-only internal callers.
 export type TextAiCredential = TextAiKey | string
 export const DEFAULT_OPENAI_MODEL = 'gpt-4.1'
 export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5'
+export { DEFAULT_OPENROUTER_MODEL }
+export const TEXT_AI_PROVIDERS: readonly TextAiProvider[] = ['anthropic', 'openai', 'openrouter']
 
 export function credentialProvider(key: TextAiCredential): TextAiProvider {
   return typeof key === 'string' ? 'anthropic' : key.provider
 }
 
+const PLATFORM_TEXT_ENV: Record<TextAiProvider, string> = {
+  anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', openrouter: 'OPENROUTER_API_KEY',
+}
+
+export function isTextAiProvider(value: unknown): value is TextAiProvider {
+  return typeof value === 'string' && (TEXT_AI_PROVIDERS as readonly string[]).includes(value)
+}
+
+/**
+ * The platform's own text key, for admin and public-page features.
+ * TEXT_AI_PROVIDER picks one explicitly; otherwise the first configured key
+ * wins, Anthropic first, as it always has.
+ */
 export function platformTextAiKey(): TextAiKey | null {
   const preferred = Deno.env.get('TEXT_AI_PROVIDER')?.trim()
-  const provider = preferred === 'openai' ? 'openai' : preferred === 'anthropic' ? 'anthropic'
-    : Deno.env.get('ANTHROPIC_API_KEY')?.trim() ? 'anthropic' : 'openai'
-  const environmentKeys = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' }
-  const apiKey = Deno.env.get(environmentKeys[provider])?.trim()
+  const provider = isTextAiProvider(preferred)
+    ? preferred
+    : TEXT_AI_PROVIDERS.find((candidate) => Deno.env.get(PLATFORM_TEXT_ENV[candidate])?.trim()) ?? 'openai'
+  const apiKey = Deno.env.get(PLATFORM_TEXT_ENV[provider])?.trim()
   return apiKey ? { apiKey, provider, source: 'platform' } : null
 }
 
+/**
+ * The model id to send to a provider. A requested id the provider cannot take
+ * falls back to that provider's default; OpenRouter maps native Claude and
+ * OpenAI ids to their OpenRouter equivalents instead.
+ */
 export function textModel(provider: TextAiProvider, requested?: string): string {
   if (provider === 'anthropic') return requested?.startsWith('claude-') ? requested : DEFAULT_CLAUDE_MODEL
-  return requested && !requested.startsWith('claude-') ? requested : DEFAULT_OPENAI_MODEL
+  if (provider === 'openrouter') return openRouterModel(requested)
+  return requested && !requested.startsWith('claude-') && !requested.includes('/') ? requested : DEFAULT_OPENAI_MODEL
 }
 
 type Block = { type?: string; status?: string; text?: string; url?: string; content?: unknown; action?: { sources?: Array<{ url?: string }> } }
@@ -41,7 +63,8 @@ function plainText(value: unknown): string {
 }
 
 /** One transport for all text tasks. Callers retain their parsers and deadlines.
- * OpenAI uses Responses with storage disabled; Anthropic-only options and keys
+ * OpenAI uses Responses with storage disabled; OpenRouter uses Chat Completions
+ * (see openRouter.ts). Anthropic-only options and keys
  * never cross provider boundaries. Web-search evidence is normalized, not invented.
  */
 export async function textAiFetch(key: TextAiCredential, init: RequestInit, fetcher: typeof fetch = fetch): Promise<Response> {
@@ -58,6 +81,7 @@ export async function textAiFetch(key: TextAiCredential, init: RequestInit, fetc
       body: JSON.stringify({ ...body, model, ...(model !== body.model ? { thinking: thinkingForModel(model) ?? undefined } : {}) }),
     }, fetcher)
   }
+  if (provider === 'openrouter') return await openRouterFetch(apiKey, body, model, signal, fetcher)
   const webSearch = Array.isArray(body.tools) && body.tools.some((tool) => tool?.name === 'web_search')
   const messages = Array.isArray(body.messages) ? body.messages : []
   const response = await providerFetch(provider, 'https://api.openai.com/v1/responses', {
@@ -113,7 +137,8 @@ export function textAiClient(key: TextAiCredential) {
 }
 
 export function textTokenUsage(key: TextAiCredential, input: number, output: number) {
-  return credentialProvider(key) === 'openai'
-    ? { openaiInputTokens: input, openaiOutputTokens: output }
-    : { anthropicInputTokens: input, anthropicOutputTokens: output }
+  const provider = credentialProvider(key)
+  if (provider === 'openai') return { openaiInputTokens: input, openaiOutputTokens: output }
+  if (provider === 'openrouter') return { openrouterInputTokens: input, openrouterOutputTokens: output }
+  return { anthropicInputTokens: input, anthropicOutputTokens: output }
 }

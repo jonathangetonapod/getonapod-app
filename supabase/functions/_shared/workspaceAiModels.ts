@@ -48,7 +48,8 @@ export interface WorkspaceAiModels {
 
 export const NO_WORKSPACE_AI_MODELS: WorkspaceAiModels = Object.freeze({ defaultModel: null, steps: {} }) as WorkspaceAiModels
 
-const MODEL_SHAPE = /^[a-zA-Z0-9._-]{1,128}$/u
+// OpenRouter ids add '/', ':' and '~' (anthropic/claude-sonnet-5.5, x/y:free, ~vendor/latest).
+const MODEL_SHAPE = /^[a-zA-Z0-9._:/~-]{1,128}$/u
 
 /**
  * Reads the workspace's model choices.

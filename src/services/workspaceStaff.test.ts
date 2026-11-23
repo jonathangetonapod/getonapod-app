@@ -797,8 +797,18 @@ describe('workspace AI provider choice', () => {
     await expect(getWorkspaceAiKeys(workspaceId)).resolves.toEqual({
       anthropic: { configured: false, last_four: null, updated_at: null },
       openai: { configured: true, last_four: '1234', updated_at: '2026-10-29' },
+      openrouter: { configured: false, last_four: null, updated_at: null },
       default_provider: 'openai',
     })
+  })
+
+  it('reads an OpenRouter key and an OpenRouter provider choice', async () => {
+    invoke.mockResolvedValue({ data: { success: true, default_provider: 'openrouter', providers: {
+      openrouter: { configured: true, last_four: '9876', updated_at: '2026-11-23' },
+    } }, error: null })
+    const view = await getWorkspaceAiKeys(workspaceId)
+    expect(view.openrouter).toEqual({ configured: true, last_four: '9876', updated_at: '2026-11-23' })
+    expect(view.default_provider).toBe('openrouter')
   })
 
   it('saves an OpenAI key in the requested workspace', async () => {

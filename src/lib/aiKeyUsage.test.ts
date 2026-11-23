@@ -13,12 +13,12 @@ describe('platformCreditsByProvider', () => {
       // Not AI work: no key changes what these cost.
       podscan_lookup: { credits: 30 },
       email_unlock_verify: { credits: 4 },
-    })).toEqual({ anthropic: 312, openai: 0 })
+    })).toEqual({ anthropic: 312, openai: 0, openrouter: 312 })
   })
 
   it('reads nothing into missing or odd figures', () => {
-    expect(platformCreditsByProvider(undefined)).toEqual({ anthropic: 0, openai: 0 })
+    expect(platformCreditsByProvider(undefined)).toEqual({ anthropic: 0, openai: 0, openrouter: 0 })
     expect(platformCreditsByProvider({ research_run: { credits: -5 }, pitch_profile: { credits: Number.NaN } }))
-      .toEqual({ anthropic: 0, openai: 0 })
+      .toEqual({ anthropic: 0, openai: 0, openrouter: 0 })
   })
 })

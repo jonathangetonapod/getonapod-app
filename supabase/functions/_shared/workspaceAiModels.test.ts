@@ -72,3 +72,21 @@ Deno.test('only known setting ids are accepted', () => {
   assertEquals(isAiModelSettingId('write_email'), false)
   assertEquals(isAiModelSettingId(42), false)
 })
+
+Deno.test('OpenRouter model ids survive the loader, and junk still does not', async () => {
+  const models = await loadWorkspaceAiModels(fakeAdmin({
+    data: [
+      { setting_id: 'default', model: '~anthropic/claude-sonnet-latest' },
+      { setting_id: 'fit_scoring', model: 'meta-llama/llama-3.3-70b-instruct:free' },
+      { setting_id: 'autopilot', model: 'openai/gpt-4.1 ; drop' },
+      { setting_id: 'search_queries', model: 'x/'.padEnd(129, 'y') },
+    ],
+    error: null,
+  }), 'w')
+  assertEquals(models, {
+    defaultModel: '~anthropic/claude-sonnet-latest',
+    steps: { fit_scoring: 'meta-llama/llama-3.3-70b-instruct:free' },
+  })
+  // OpenRouter ids carry no Anthropic thinking setting; the transport picks reasoning.
+  assertEquals(thinkingFields('anthropic/claude-sonnet-5.5'), {})
+})

@@ -122,7 +122,7 @@ assert.match(recipientCards, /verified\.stale \? 'This contact needs a fresh loo
 // change, and this assertion was left behind pointing at the old sentence.
 assert.match(
   recipientCards,
-  /byoAi \? 'Billed to your AI provider\. No app credits\.' : 'Connect your Claude or OpenAI key in Billing to search\.'/u,
+  /byoAi \? 'Billed to your AI provider\. No app credits\.' : 'Connect your Claude, OpenAI or OpenRouter key in Billing to search\.'/u,
 )
 
 process.stdout.write('Global podcast catalog contract checks passed.\n')

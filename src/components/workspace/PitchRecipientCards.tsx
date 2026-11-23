@@ -346,7 +346,7 @@ export const PitchRecipientCards = ({
           <div className="space-y-3">
             <p className="text-xs leading-5 text-muted-foreground">
               <span className="font-medium text-foreground">Cost: </span>
-              {verifiedUsable ? 'None. Already found.' : byoAi ? 'Billed to your AI provider. No app credits.' : 'Connect your Claude or OpenAI key in Billing to search.'}
+              {verifiedUsable ? 'None. Already found.' : byoAi ? 'Billed to your AI provider. No app credits.' : 'Connect your Claude, OpenAI or OpenRouter key in Billing to search.'}
             </p>
             {verifiedStatus}
             {verified.linkedinUrl && safeExternalUrl(verified.linkedinUrl) && (

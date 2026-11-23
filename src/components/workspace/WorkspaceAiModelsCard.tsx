@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { ModelOptions } from '@/components/workspace/ModelOptions'
 import { Card, CardContent } from '@/components/ui/card'
 import { RESEARCH_PROMPT_DEFAULTS_BY_ID, type ResearchPromptId } from '@/lib/researchPromptDefaults'
 import {
@@ -51,7 +52,7 @@ const ModelSelect = ({ id, value, emptyLabel, models, disabled, onChange }: Mode
     <option value="">{emptyLabel}</option>
     {/* A saved model the current key no longer lists is shown, not silently blanked. */}
     {value && !models.some((model) => model.id === value) && <option value={value}>{value} (not available with the current key)</option>}
-    {models.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+    <ModelOptions models={models} />
   </select>
 )
 
@@ -116,7 +117,7 @@ export const WorkspaceAiModelsCard = ({ workspaceId }: WorkspaceAiModelsCardProp
           <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" />Loading models…</div>
         ) : failed ? (
           <div className="space-y-3 rounded-lg border border-destructive/20 bg-destructive/5 p-4" role="alert">
-            <p className="text-sm">We couldn’t read the models for this workspace. Connect a Claude or OpenAI key above, then retry. Nothing has been changed.</p>
+            <p className="text-sm">We couldn’t read the models for this workspace. Connect a Claude, OpenAI or OpenRouter key above, then retry. Nothing has been changed.</p>
             <Button variant="outline" size="sm" onClick={() => { void modelsQuery.refetch(); void settingsQuery.refetch(); void stagesQuery.refetch() }}>Retry</Button>
           </div>
         ) : (

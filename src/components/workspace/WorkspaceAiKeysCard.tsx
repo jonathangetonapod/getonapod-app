@@ -34,6 +34,13 @@ const PROVIDERS: AiKeyProviderInfo[] = [
     consoleUrl: 'https://console.anthropic.com/settings/keys',
   },
   { id: 'openai', label: 'OpenAI', keyPrefix: 'sk-', usedFor: 'An alternative to Claude for research, writing, scoring, host discovery and inbox replies.', consoleUrl: 'https://platform.openai.com/api-keys' },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    keyPrefix: 'sk-or-',
+    usedFor: 'One key for hundreds of models (Claude, GPT, Gemini, Llama, DeepSeek, Mistral, Qwen and more). Choose a model per step in AI models below.',
+    consoleUrl: 'https://openrouter.ai/settings/keys',
+  },
 ]
 
 interface WorkspaceAiKeysCardProps { workspaceId: string; queryScope: readonly unknown[] }
@@ -86,7 +93,10 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'The AI provider could not be saved.'),
   })
-  const selectedProvider = keysQuery.data?.default_provider ?? (keysQuery.data?.anthropic.configured ? 'anthropic' : keysQuery.data?.openai?.configured ? 'openai' : '')
+  // With no saved choice the server uses the first saved key in this order.
+  const selectedProvider = keysQuery.data?.default_provider
+    ?? PROVIDERS.find((provider) => keysQuery.data?.[provider.id]?.configured)?.id
+    ?? ''
   const busy = saveMutation.isPending || removeMutation.isPending || providerMutation.isPending
   const saved = PROVIDERS.filter((provider) => keysQuery.data?.[provider.id]?.configured).length
   const providerRow = (provider: AiKeyProviderInfo) => (
@@ -106,7 +116,7 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
     <Card>
       <CardContent className="space-y-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h3 className="font-semibold">Research & search</h3><p className="mt-1 text-sm text-muted-foreground">Connect Claude or OpenAI and choose the default for your agency. Only one AI key is required. Podcast data, search and contact enrichment are managed by the platform.</p></div>
+          <div><h3 className="font-semibold">Research & search</h3><p className="mt-1 text-sm text-muted-foreground">Connect Claude, OpenAI or OpenRouter and choose the default for your agency. Only one AI key is required. Podcast data, search and contact enrichment are managed by the platform.</p></div>
           {keysQuery.data && !keysQuery.isError && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">{saved} {saved === 1 ? 'key' : 'keys'} saved</span>}
         </div>
         <p className="text-sm leading-6 text-muted-foreground">Use company-owned provider accounts: these keys are shared by everyone in your workspace. Changing the workspace owner does not replace or revoke saved keys. Review and replace credentials during a handover, and revoke old keys with the provider when appropriate.</p>
@@ -121,7 +131,7 @@ function WorkspaceAiKeysPanel({ workspaceId, queryScope }: WorkspaceAiKeysCardPr
           <div className="space-y-2">
             <label htmlFor="default-ai-provider" className="text-sm font-medium">Default AI provider</label>
             <select id="default-ai-provider" className="block h-10 w-full rounded-md border bg-background px-3 text-sm" value={selectedProvider} disabled={busy} onChange={(event) => providerMutation.mutate(event.target.value as AiKeyProvider)}>
-              {!selectedProvider && <option value="" disabled>Save a Claude or OpenAI key first</option>}
+              {!selectedProvider && <option value="" disabled>Save a Claude, OpenAI or OpenRouter key first</option>}
               {PROVIDERS.map((provider) => <option key={provider.id} value={provider.id} disabled={!keysQuery.data?.[provider.id]?.configured}>{provider.label}{!keysQuery.data?.[provider.id]?.configured ? ' (key not saved)' : ''}</option>)}
             </select>
             <p className="text-xs leading-5 text-muted-foreground">Used for research, pitches, scoring, onboarding, host discovery and inbox replies. Stage model choices apply to the selected provider. Switching providers keeps existing stage choices until you change them. We never switch providers automatically after a failed request.</p>

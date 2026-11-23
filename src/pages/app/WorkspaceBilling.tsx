@@ -158,7 +158,7 @@ export default function WorkspaceBilling() {
                   </div>
                   <p className="max-w-xl text-sm leading-6 text-muted-foreground">Everything your team needs to find podcasts, build relationships and manage client placements.</p>
                   <ul className="grid gap-3 text-sm sm:grid-cols-2">
-                    {['Unlimited clients', 'Unlimited team members', 'Shared podcast catalog', 'Claude or OpenAI for AI'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />{item}</li>)}
+                    {['Unlimited clients', 'Unlimited team members', 'Shared podcast catalog', 'Claude, OpenAI or OpenRouter for AI'].map((item) => <li key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />{item}</li>)}
                   </ul>
                   <p className="text-xs leading-5 text-muted-foreground">One flat workspace fee. No per-seat charges or app credit top-ups.</p>
                 </div>
@@ -190,8 +190,8 @@ export default function WorkspaceBilling() {
           </section>
 
           <section id="providers" aria-labelledby="provider-accounts-title" className="scroll-mt-24 space-y-4">
-            <div className="flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><KeyRound className="h-5 w-5" aria-hidden="true" /></div><div><h2 id="provider-accounts-title" className="text-xl font-semibold">Provider accounts</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Connect your Claude or OpenAI key here and your agency’s sending platform (Instantly, Email Bison or ReachInbox) in Client Campaigns. Your selected AI provider and your sending platform bill your accounts directly; the platform manages podcast data, search and contact enrichment.</p></div></div>
-            {keyOwner ? <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={['tenant', user?.id, workspaceId]} /> : <Card><CardContent className="pt-6 text-sm text-muted-foreground">Ask your workspace owner to connect or update your Claude or OpenAI key.</CardContent></Card>}
+            <div className="flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><KeyRound className="h-5 w-5" aria-hidden="true" /></div><div><h2 id="provider-accounts-title" className="text-xl font-semibold">Provider accounts</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Connect your Claude, OpenAI or OpenRouter key here and your agency’s sending platform (Instantly, Email Bison or ReachInbox) in Client Campaigns. Your selected AI provider and your sending platform bill your accounts directly; the platform manages podcast data, search and contact enrichment.</p></div></div>
+            {keyOwner ? <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={['tenant', user?.id, workspaceId]} /> : <Card><CardContent className="pt-6 text-sm text-muted-foreground">Ask your workspace owner to connect or update your Claude, OpenAI or OpenRouter key.</CardContent></Card>}
             <Link className="flex items-center justify-between gap-4 rounded-xl border px-5 py-4 text-sm transition-colors hover:bg-muted/40" to="/app/client-campaigns"><span><span className="block font-medium">Sending accounts</span><span className="mt-1 block text-muted-foreground">Connect and manage your agency’s Instantly, Email Bison or ReachInbox account in Client Campaigns.</span></span><ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" /></Link>
           </section>
           <LegacyCreditReview key={workspaceId} workspaceId={workspaceId} />
