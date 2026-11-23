@@ -21,6 +21,16 @@ export function billingRecovery(error: unknown, links: BillingRecoveryLinks = {}
     description: 'Ask your workspace owner to connect or replace this provider key. The connection is shared by the whole team.',
     label: 'Provider accounts', href: links.canManageProviders === false ? null : links.providerHref ?? '/app/settings/billing#providers',
   }
+  // OpenRouter refused this request (moderation, a guardrail or a key budget);
+  // the key itself works, so never ask for it to be replaced.
+  if (code === 'PROVIDER_REQUEST_BLOCKED') return {
+    description: 'The AI provider blocked this request. Check the key\'s budget, guardrails and privacy settings in the provider account, or choose a different model.',
+    label: 'Provider accounts', href: links.canManageProviders === false ? null : links.providerHref ?? '/app/settings/billing#providers',
+  }
+  if (code === 'AI_MODEL_UNAVAILABLE') return {
+    description: 'The selected AI model can no longer be used. Ask your workspace owner to choose a different model in Integrations → AI models.',
+    label: '', href: null,
+  }
   if (code === 'PROVIDER_BILLING_REQUIRED') return {
     description: 'Check billing and usage limits in the connected provider account. Provider usage is billed separately from your workspace subscription.',
     label: 'Provider accounts', href: links.canManageProviders === false ? null : links.providerHref ?? '/app/settings/billing#providers',

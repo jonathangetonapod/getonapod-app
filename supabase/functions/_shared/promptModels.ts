@@ -1,6 +1,21 @@
 import type { TextAiProvider } from './textAi.ts'
 import { providerFetch } from './providerErrors.ts'
 import { OPENROUTER_API } from './openRouter.ts'
+
+/**
+ * A model list body, or a fixed error. A non-JSON reply (a CDN challenge page,
+ * say) must not put a fragment of the upstream page into the message callers
+ * return to the browser.
+ */
+async function listBody<T>(response: Response): Promise<T> {
+  try {
+    const decoded: unknown = await response.json()
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('not an object')
+    return decoded as T
+  } catch {
+    throw new Error('the model list could not be read (invalid response)')
+  }
+}
 /**
  * The Claude models a stage may run on, read from Anthropic rather than listed
  * here.
@@ -91,7 +106,7 @@ export async function fetchPromptModels(apiKey: string, provider: TextAiProvider
     const response = await providerFetch('openai', 'https://api.openai.com/v1/models', {
       headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
     })
-    const payload = await response.json() as { data?: unknown }
+    const payload = await listBody<{ data?: unknown }>(response)
     return (Array.isArray(payload.data) ? payload.data : [])
       .flatMap(toPromptModel)
       .filter((model) => /^gpt-(?:4\.1|4o|5|6)(?:[.-]|$)/u.test(model.id)
@@ -114,7 +129,7 @@ export async function fetchPromptModels(apiKey: string, provider: TextAiProvider
     if (!response.ok) {
       throw new Error(`the model list could not be read (${response.status})`)
     }
-    const body = await response.json() as { data?: unknown; has_more?: unknown; last_id?: unknown }
+    const body = await listBody<{ data?: unknown; has_more?: unknown; last_id?: unknown }>(response)
     const entries = Array.isArray(body.data) ? body.data : []
     models.push(...entries.flatMap(toPromptModel))
 
@@ -178,7 +193,7 @@ async function fetchOpenRouterModels(apiKey: string): Promise<PromptModel[]> {
   const response = await providerFetch('openrouter', `${OPENROUTER_API}/models/user`, {
     headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000),
   })
-  const payload = await response.json() as { data?: unknown }
+  const payload = await listBody<{ data?: unknown }>(response)
   const models: PromptModel[] = []
   for (const raw of Array.isArray(payload.data) ? payload.data : []) {
     if (!raw || typeof raw !== 'object') continue

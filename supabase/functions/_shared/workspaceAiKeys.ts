@@ -115,6 +115,13 @@ export async function resolveAiKey(
       if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
       throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', 'Ask your workspace owner to connect a Claude key in Billing → Provider accounts. Claude usage is billed by Anthropic.')
     }
+    // OpenRouter is only ever an agency-owned text key: workspace work must
+    // never run on the platform's OPENROUTER_API_KEY.
+    if (provider === 'openrouter') {
+      const stored = await readStoredAiKey(admin, workspaceId, provider)
+      if (stored.apiKey) return { apiKey: stored.apiKey, source: 'workspace' }
+      throw new HttpError(409, 'PROVIDER_KEY_REQUIRED', 'Ask your workspace owner to connect an OpenRouter key in Billing → Provider accounts. OpenRouter usage is billed by OpenRouter.')
+    }
   }
   const platformKey = Deno.env.get(PLATFORM_ENV[provider])?.trim()
   if (platformKey) return { apiKey: platformKey, source: 'platform' }

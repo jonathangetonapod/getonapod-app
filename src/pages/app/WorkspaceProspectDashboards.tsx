@@ -1,3 +1,4 @@
+import { hasOwnAiKey } from '@/lib/aiKeyUsage'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1154,7 +1155,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
   const buildStale = buildInProgress && Boolean(buildStartedAt) && Date.now() - Date.parse(buildStartedAt) > BUILD_STALE_AFTER_MS
   const building = buildMutation.isPending || (buildInProgress && !buildStale)
   // Said on every button that starts a build, and hidden once one is running.
-  const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: (listQuery.data?.ai_keys?.anthropic || listQuery.data?.ai_keys?.openai) })}</span>
+  const buildCost = building ? null : <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: hasOwnAiKey(listQuery.data?.ai_keys) })}</span>
   const mutating = building || publicationMutation.isPending || podcastMutation.isPending || photoMutation.isPending || archiveMutation.isPending || rotateLinkMutation.isPending
   const advice = selected ? nextStep(selected) : null
   const isLive = Boolean(selected?.published_at)
@@ -1707,7 +1708,7 @@ const WorkspaceProspectDashboards = ({ platformWorkspaceId }: WorkspaceProspectD
               }}
             >
               <Sparkles className="mr-2 h-4 w-4" />Rebuild and take it offline
-              <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: (listQuery.data?.ai_keys?.anthropic || listQuery.data?.ai_keys?.openai) })}</span>
+              <span className="ml-1.5 font-normal opacity-70">{creditCostSuffix('dashboard_build', { byo: hasOwnAiKey(listQuery.data?.ai_keys) })}</span>
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -297,6 +297,8 @@ export interface WorkspaceClientInput {
 export interface WorkspaceAiKeyPresence {
   anthropic: boolean
   openai: boolean
+  /** Absent from servers that predate OpenRouter. */
+  openrouter?: boolean
 }
 
 export interface WorkspaceResearchContext {

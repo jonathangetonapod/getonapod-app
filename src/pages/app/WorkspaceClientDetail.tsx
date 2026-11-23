@@ -1,3 +1,4 @@
+import { hasOwnAiKey } from '@/lib/aiKeyUsage'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
@@ -511,7 +512,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
   const relationshipsHref = `${baseHref}/relationships`
   const billingHref = isPlatformWorkspace ? '/app/platform/billing' : '/app/settings/billing'
   const briefStatus = clientBriefStatus(client.ai_sdr_profile, client.ai_sdr_profile_approved_fields)
-  const generateCost = creditCostSuffix('pitch_profile', { byo: (detail.ai_keys?.anthropic || detail.ai_keys?.openai) })
+  const generateCost = creditCostSuffix('pitch_profile', { byo: hasOwnAiKey(detail.ai_keys) })
   const profileDraftWordCount = wordCount(profileDraft)
   const profileDraftChanged = profileDraft.trim() !== (client.bio || '').trim()
   const normalizedNotes = client.notes ? normalizedText(client.notes) : ''
@@ -942,7 +943,7 @@ const WorkspaceClientDetail = ({ platformWorkspaceId }: WorkspaceClientDetailPro
                 campaignHref={campaignPageHref}
                 relationshipsHref={relationshipsHref}
                 billingHref={billingHref}
-                byoAi={(detail.ai_keys?.anthropic || detail.ai_keys?.openai)}
+                byoAi={hasOwnAiKey(detail.ai_keys)}
                 onChanged={() => void detailQuery.refetch()}
               />
             )}

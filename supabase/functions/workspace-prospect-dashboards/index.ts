@@ -1370,8 +1370,8 @@ serve(async (req) => {
       // Which providers the workspace pays for itself: a build on the
       // workspace's own key is not charged, and the button says so.
       const aiKeys = await workspaceAiKeyStatus(context.admin, workspaceId)
-        .then((status) => ({ anthropic: status.anthropic.configured, openai: status.openai.configured }))
-        .catch(() => ({ anthropic: false, openai: false }))
+        .then((status) => ({ anthropic: status.anthropic.configured, openai: status.openai.configured, openrouter: status.openrouter.configured }))
+        .catch(() => ({ anthropic: false, openai: false, openrouter: false }))
       return jsonResponse(req, METHODS, 200, {
         workspace,
         viewer_role: access.role,

@@ -82,7 +82,8 @@ interface RunFailure {
 
 function classifyFailure(error: unknown): RunFailure {
   if (isProviderRuntimeError(error)) {
-    const actionNeeded = ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED'].includes(error.code)
+    // Each needs a person to act (key, billing, account settings or model choice), so retry slowly.
+    const actionNeeded = ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED', 'PROVIDER_REQUEST_BLOCKED', 'AI_MODEL_UNAVAILABLE'].includes(error.code)
     return { message: error.message, retryMs: actionNeeded ? ACTION_RETRY_MS : TRANSIENT_RETRY_MS }
   }
   if (error instanceof HttpError) {

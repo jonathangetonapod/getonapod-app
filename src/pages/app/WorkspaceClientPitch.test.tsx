@@ -331,6 +331,15 @@ describe('WorkspaceClientPitch', () => {
     expect(screen.getByText('Your AI provider account')).toBeInTheDocument()
   })
 
+  it('allows direct host search with only an OpenRouter key', async () => {
+    mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: false, openrouter: true } })
+    await renderPage()
+    fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))
+    expect(screen.getByRole('button', { name: /^Find verified email/ })).toBeEnabled()
+    expect(screen.getByText('Billed to your AI provider. No app credits.')).toBeInTheDocument()
+    expect(screen.queryByText(/Connect your Claude, OpenAI or OpenRouter key in Billing/)).not.toBeInTheDocument()
+  })
+
   it('requires a workspace AI key without offering app credits as a substitute', async () => {
     await renderPage()
     fireEvent.click(screen.getByRole('radio', { name: 'Use verified host email' }))

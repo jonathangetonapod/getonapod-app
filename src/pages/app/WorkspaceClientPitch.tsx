@@ -1,3 +1,4 @@
+import { hasOwnAiKey } from '@/lib/aiKeyUsage'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -245,7 +246,7 @@ const WorkspaceClientPitch = ({ platformWorkspaceId }: WorkspaceClientPitchProps
           billingHref={isPlatformWorkspace ? '/app/platform/billing' : '/app/settings/billing'}
           shortlistHref={shortlistHref}
           podcast={podcast}
-          byoAi={(detail.ai_keys?.anthropic === true || detail.ai_keys?.openai === true)}
+          byoAi={hasOwnAiKey(detail.ai_keys)}
           nextPitch={pitchQueue.next ? { name: pitchQueue.next.podcast_name, href: pitchHrefFor(pitchQueue.next.id) } : null}
           onArchive={() => setArchiveOpen(true)}
         />

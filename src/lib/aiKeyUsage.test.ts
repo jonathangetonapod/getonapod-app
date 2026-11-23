@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { platformCreditsByProvider } from '@/lib/aiKeyUsage'
+import { hasOwnAiKey, platformCreditsByProvider } from '@/lib/aiKeyUsage'
+
+describe('hasOwnAiKey', () => {
+  it('counts any one saved text key, OpenRouter included', () => {
+    expect(hasOwnAiKey({ anthropic: false, openai: false, openrouter: true })).toBe(true)
+    expect(hasOwnAiKey({ anthropic: true, openai: false })).toBe(true)
+    expect(hasOwnAiKey({ anthropic: false, openai: true })).toBe(true)
+    expect(hasOwnAiKey({ anthropic: false, openai: false, openrouter: false })).toBe(false)
+    expect(hasOwnAiKey(undefined)).toBe(false)
+  })
+})
 
 describe('platformCreditsByProvider', () => {
   it('adds up the credits spent on the work each key pays for', () => {

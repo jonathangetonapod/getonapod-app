@@ -67,6 +67,8 @@ for (const path of ['workspace-podcast-catalog/index.ts', 'workspace-client-shor
 const infrastructureResolver = keys.slice(keys.indexOf('export async function resolveAiKey('), keys.indexOf('export type AiKeyProbeResult'))
 assert.match(infrastructureResolver, /const platformKey = Deno\.env\.get\(PLATFORM_ENV\[provider\]\)/u)
 assert.match(infrastructureResolver, /source: 'platform'/u)
+// OpenRouter is agency-owned text AI only: a workspace never gets the platform key.
+assert.match(infrastructureResolver, /if \(provider === 'openrouter'\) \{\s*const stored = await readStoredAiKey\(admin, workspaceId, provider\)/u)
 for (const path of ['podscan-proxy/index.ts', 'client-autopilot-tick/index.ts', 'workspace-client-shortlist/index.ts']) {
   const source = read(`supabase/functions/${path}`)
   assert.match(source, /resolveAiKey\([^\n]+, 'podscan'\)/u)

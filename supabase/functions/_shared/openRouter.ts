@@ -44,6 +44,7 @@ function cachesPrompts(model: string): boolean {
 
 interface CatalogReasoning {
   mandatory?: boolean
+  default_enabled?: boolean
   supported_efforts?: string[]
 }
 
@@ -107,7 +108,7 @@ const LOW_EFFORTS = ['none', 'minimal', 'low'] as const
  * Reasoning text is excluded either way, since no step reads it.
  */
 export function openRouterReasoning(info: OpenRouterModelInfo | null): {
-  reasoning?: { effort?: string; exclude: true }
+  reasoning?: { effort?: string; exclude?: true; enabled?: false }
   thinks: boolean
 } {
   // Unknown model (catalog unreadable): send nothing, assume it may think.
@@ -117,7 +118,12 @@ export function openRouterReasoning(info: OpenRouterModelInfo | null): {
   const effort = LOW_EFFORTS.find((candidate) => efforts.includes(candidate)
     && !(candidate === 'none' && info.reasoning?.mandatory === true))
   if (effort) return { reasoning: { effort, exclude: true }, thinks: effort !== 'none' }
-  return { reasoning: { exclude: true }, thinks: info.reasoning.mandatory === true || efforts.length > 0 }
+  // No low effort to ask for. `exclude` only hides reasoning, it does not stop
+  // it (verified live: qwen3.8-flash with exclude spent 44 of 50 tokens
+  // thinking and returned a cut-off name), so switch reasoning off whenever
+  // the model allows it.
+  if (info.reasoning.mandatory !== true) return { reasoning: { enabled: false }, thinks: false }
+  return { reasoning: { exclude: true }, thinks: true }
 }
 
 /** Extra output budget for a model that reasons, so thinking cannot crowd out the answer. */

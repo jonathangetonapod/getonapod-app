@@ -1,3 +1,4 @@
+import { hasOwnAiKey } from '@/lib/aiKeyUsage'
 import { billingRecovery, showOperationError } from '@/lib/billingRecovery'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -301,7 +302,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
    */
   const scoringUnits = Math.ceil(MAX_SCORED / SCORING_BATCH_SIZE)
   const draftsStrategy = includeAiStrategy && aiQueries.length === 0 && !aiStrategyLoaded
-  const byoAnthropic = Boolean((contextQuery.data?.ai_keys?.anthropic || contextQuery.data?.ai_keys?.openai))
+  const byoAnthropic = hasOwnAiKey(contextQuery.data?.ai_keys)
   const plannedQueryCount = customKeywords.length
     + (includeAiStrategy ? (aiStrategyLoaded ? aiQueries.length : MAX_QUERIES) : 0)
   const scanCostLabel = 'Billed to your provider accounts'
@@ -432,7 +433,7 @@ const WorkspaceSmartPodcastFinder = ({ platformWorkspaceId }: WorkspaceSmartPodc
         if (scanRunId.current !== runId) return
         setAiQueries(strategyQueries)
         setAiStrategyLoaded(true)
-        credits.strategy = (contextQuery.data?.ai_keys?.anthropic || contextQuery.data?.ai_keys?.openai) ? 0 : CREDIT_COSTS.query_generation
+        credits.strategy = hasOwnAiKey(contextQuery.data?.ai_keys) ? 0 : CREDIT_COSTS.query_generation
       }
       const queries = Array.from(new Set([
         ...customKeywords,

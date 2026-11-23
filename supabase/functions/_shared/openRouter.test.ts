@@ -82,6 +82,11 @@ Deno.test('the least reasoning a model allows is requested, with headroom only w
   const mandatory = openRouterReasoning({ reasoning: { mandatory: true, supported_efforts: ['none', 'low'] }, maxCompletionTokens: null })
   assert(mandatory.reasoning?.effort === 'low' && mandatory.thinks === true, 'a model that must reason is never sent none')
   assert(openRouterReasoning(null).thinks === true && openRouterReasoning(null).reasoning === undefined)
+  // Reasons by default with no effort list: exclude alone would let it think, so it is switched off.
+  const defaultOn = openRouterReasoning({ reasoning: { mandatory: false, default_enabled: true }, maxCompletionTokens: null })
+  assert(defaultOn.reasoning?.enabled === false && defaultOn.thinks === false)
+  const mustThink = openRouterReasoning({ reasoning: { mandatory: true }, maxCompletionTokens: null })
+  assert(mustThink.reasoning?.exclude === true && mustThink.reasoning?.enabled === undefined && mustThink.thinks === true)
   assert(openRouterMaxTokens(50, null, false) === 50)
   assert(openRouterMaxTokens(50, null, true) === 50 + 4_096)
   assert(openRouterMaxTokens(500, { reasoning: null, maxCompletionTokens: 1_000 }, true) === 1_000, 'headroom stays within the model cap')
@@ -160,7 +165,7 @@ Deno.test('a truncated but non-empty answer reports max_tokens, which callers al
 })
 
 Deno.test('OpenRouter HTTP failures stay on the agency account, without leaking the key', async () => {
-  const cases: Array<[number, string]> = [[401, 'PROVIDER_KEY_REJECTED'], [402, 'PROVIDER_BILLING_REQUIRED'], [403, 'PROVIDER_KEY_REJECTED'], [429, 'PROVIDER_RATE_LIMITED'], [502, 'PROVIDER_UNAVAILABLE']]
+  const cases: Array<[number, string]> = [[401, 'PROVIDER_KEY_REJECTED'], [402, 'PROVIDER_BILLING_REQUIRED'], [403, 'PROVIDER_REQUEST_BLOCKED'], [429, 'PROVIDER_RATE_LIMITED'], [502, 'PROVIDER_UNAVAILABLE']]
   for (const [status, expected] of cases) {
     resetOpenRouterCatalog()
     let message = ''
@@ -260,4 +265,37 @@ Deno.test('an OpenRouter key is checked against the authenticated key endpoint',
   assert(valid === 'valid' && checked === 'https://openrouter.ai/api/v1/key')
   assert(await probeAiKeyResult('openrouter', 'bad', () => Promise.resolve(new Response('', { status: 401 }))) === 'invalid')
   assert(await probeAiKeyResult('openrouter', 'x', () => Promise.resolve(new Response('', { status: 503 }))) === 'unreachable')
+})
+
+Deno.test('a model OpenRouter cannot run says to choose another model, not to retry', async () => {
+  // Bodies as OpenRouter returned them live (2026-11-23).
+  const cases: Array<[number, string]> = [
+    [400, 'anthropic/claude-retired-9 is not a valid model ID'],
+    [404, 'openai/gpt-5.6-sol:batch cannot be used with the chat/completions endpoint (adapter OpenAIBatchAdapter).'],
+  ]
+  for (const [status, message] of cases) {
+    resetOpenRouterCatalog()
+    let error: HttpError | null = null
+    try {
+      await textAiFetch(openrouter, anthropicBody('openai/gpt-4.1'), router(() => Response.json({ error: { message, code: status } }, { status })))
+    } catch (caught) { error = caught as HttpError }
+    assert(error?.code === 'AI_MODEL_UNAVAILABLE', `${status} gave ${error?.code}`)
+    assert(error.message.includes('Choose a different model') && !error.message.includes('retired-9'), 'names the fix, not the upstream text')
+  }
+  // An ordinary bad request is not blamed on the model.
+  resetOpenRouterCatalog()
+  const code = await errorCode(() => textAiFetch(openrouter, anthropicBody('openai/gpt-4.1'), router(() => Response.json({ error: { message: 'messages is required', code: 400 } }, { status: 400 }))))
+  assert(code === 'PROVIDER_UNAVAILABLE', `plain 400 gave ${code}`)
+})
+
+Deno.test('a non-JSON model list never echoes the upstream page', async () => {
+  const realFetch = globalThis.fetch
+  globalThis.fetch = () => Promise.resolve(new Response('<!DOCTYPE html><title>Just a moment</title>', { status: 200 }))
+  try {
+    let message = ''
+    try { await fetchPromptModels(openrouter.apiKey, 'openrouter') } catch (error) { message = (error as Error).message }
+    assert(message === 'the model list could not be read (invalid response)', message)
+  } finally {
+    globalThis.fetch = realFetch
+  }
 })

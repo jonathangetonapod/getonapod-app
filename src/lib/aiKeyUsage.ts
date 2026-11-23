@@ -2,6 +2,21 @@ import type { MeteredOperation } from '@/lib/creditCosts'
 
 export type AiKeyProvider = 'anthropic' | 'openai' | 'openrouter'
 
+/** Which text AI keys a workspace has saved, as client and dashboard reads report it. */
+export interface AiKeyPresence {
+  anthropic?: boolean
+  openai?: boolean
+  openrouter?: boolean
+}
+
+/**
+ * Whether the workspace pays for AI itself. Any one text key is enough: the
+ * server runs every AI step on whichever is selected.
+ */
+export function hasOwnAiKey(keys: AiKeyPresence | null | undefined): boolean {
+  return keys?.anthropic === true || keys?.openai === true || keys?.openrouter === true
+}
+
 /*
  * Which metered work each provider's key pays for, read from where the edge
  * functions resolve a workspace key before charging (resolveAiKey beside the

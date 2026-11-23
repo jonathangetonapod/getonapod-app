@@ -28,6 +28,17 @@ describe('billing recovery', () => {
     expect(billingRecovery({ code })?.description).not.toContain('connect or replace')
   })
 
+  it('never asks for a working key to be replaced when OpenRouter blocks a request or a model is gone', () => {
+    const blocked = billingRecovery({ code: 'PROVIDER_REQUEST_BLOCKED' })
+    expect(blocked?.description).toContain('budget, guardrails and privacy settings')
+    expect(blocked?.description).not.toContain('connect or replace')
+    expect(blocked?.label).toBe('Provider accounts')
+    const model = billingRecovery({ code: 'AI_MODEL_UNAVAILABLE' })
+    expect(model?.description).toContain('choose a different model')
+    expect(model?.description).not.toContain('connect or replace')
+    expect(model?.href).toBeNull()
+  })
+
   it('preserves ordinary errors without a billing action', () => {
     expect(billingRecovery(new Error('Bad input'))).toBeNull()
     showOperationError(new Error('Bad input'), 'Failed')

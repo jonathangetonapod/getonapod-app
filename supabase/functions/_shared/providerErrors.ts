@@ -1,7 +1,7 @@
 import { HttpError } from './httpError.ts'
 
 export type ProviderName = 'anthropic' | 'openai' | 'openrouter' | 'openai-platform' | 'podscan' | 'blitz' | 'winnr'
-export type ProviderRuntimeCode = 'PROVIDER_KEY_REJECTED' | 'PROVIDER_BILLING_REQUIRED' | 'PROVIDER_RATE_LIMITED' | 'PROVIDER_UNAVAILABLE' | 'PLATFORM_PROVIDER_ACTION_REQUIRED'
+export type ProviderRuntimeCode = 'PROVIDER_KEY_REJECTED' | 'PROVIDER_BILLING_REQUIRED' | 'PROVIDER_REQUEST_BLOCKED' | 'AI_MODEL_UNAVAILABLE' | 'PROVIDER_RATE_LIMITED' | 'PROVIDER_UNAVAILABLE' | 'PLATFORM_PROVIDER_ACTION_REQUIRED'
 
 const LABELS: Record<ProviderName, string> = {
   anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', 'openai-platform': 'OpenAI', podscan: 'Podscan', blitz: 'Blitz', winnr: 'Winnr',
@@ -24,9 +24,17 @@ export function providerFailure(provider: ProviderName, status?: number, payload
     return new HttpError(503, 'PLATFORM_PROVIDER_ACTION_REQUIRED', `${label} needs attention from the platform administrator. Contact support; you do not need to supply a ${label} key.`)
   }
   // OpenRouter answers 403 for a moderation flag, a guardrail or a key budget
-  // limit, not a bad key (that is 401), so say what to check instead.
+  // limit, not a bad key (that is 401). Its own code keeps recovery screens
+  // from telling people to replace a key that works.
   if (provider === 'openrouter' && status === 403) {
-    return new HttpError(409, 'PROVIDER_KEY_REJECTED', 'OpenRouter blocked this request. Check the key\'s budget, guardrails and privacy settings in your OpenRouter account, or choose a different model, then try again.')
+    return new HttpError(422, 'PROVIDER_REQUEST_BLOCKED', 'OpenRouter blocked this request. Check the key\'s budget, guardrails and privacy settings in your OpenRouter account, or choose a different model, then try again.')
+  }
+  // A model OpenRouter cannot run (retired, unknown, batch-only, or excluded
+  // by the account's provider or privacy settings) fails on every run, so it
+  // must not read as an outage to retry.
+  if (provider === 'openrouter' && (status === 400 || status === 404)
+    && /not a valid model|cannot be used with|no endpoints found|no allowed providers|model (?:is )?not (?:found|available)/u.test(detail)) {
+    return new HttpError(422, 'AI_MODEL_UNAVAILABLE', 'OpenRouter cannot run the selected model. It may have been retired, or your OpenRouter privacy or provider settings exclude it. Choose a different model in Integrations → AI models.')
   }
   if (billing) return new HttpError(402, 'PROVIDER_BILLING_REQUIRED', `${label} needs billing attention. Add funds or review your plan and usage limits in your ${label} account, then try again.`)
   if (status === 401 || status === 403 || provider === 'blitz' && status === 423) {
@@ -39,7 +47,7 @@ export function providerFailure(provider: ProviderName, status?: number, payload
 }
 
 export function isProviderRuntimeError(error: unknown): error is HttpError {
-  return error instanceof HttpError && ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'PLATFORM_PROVIDER_ACTION_REQUIRED'].includes(error.code)
+  return error instanceof HttpError && ['PROVIDER_KEY_REJECTED', 'PROVIDER_BILLING_REQUIRED', 'PROVIDER_REQUEST_BLOCKED', 'AI_MODEL_UNAVAILABLE', 'PROVIDER_RATE_LIMITED', 'PROVIDER_UNAVAILABLE', 'PLATFORM_PROVIDER_ACTION_REQUIRED'].includes(error.code)
 }
 
 /** Normalize SDK failures without returning their raw request/response text. */

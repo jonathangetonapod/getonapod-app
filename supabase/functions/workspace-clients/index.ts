@@ -324,12 +324,12 @@ function rpcError(error: { message?: string; details?: string | null }): never {
  * Which providers the workspace pays for itself. Work on those keys is not
  * charged, and the buttons that quote a price say "Included" instead.
  */
-async function aiKeyPresence(admin: Parameters<typeof workspaceAiKeyStatus>[0], workspaceId: string): Promise<{ anthropic: boolean; openai: boolean }> {
+async function aiKeyPresence(admin: Parameters<typeof workspaceAiKeyStatus>[0], workspaceId: string): Promise<{ anthropic: boolean; openai: boolean; openrouter: boolean }> {
   try {
     const status = await workspaceAiKeyStatus(admin, workspaceId)
-    return { anthropic: status.anthropic.configured, openai: status.openai.configured }
+    return { anthropic: status.anthropic.configured, openai: status.openai.configured, openrouter: status.openrouter.configured }
   } catch {
-    return { anthropic: false, openai: false }
+    return { anthropic: false, openai: false, openrouter: false }
   }
 }
 
