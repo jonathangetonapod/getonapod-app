@@ -84,6 +84,7 @@ import {
   getPodcastStatistics,
   getPodcastCategories,
   exportPodcastsToCSV,
+  exportAllPodcastsWithEmailsToCSV,
   type PodcastFilters,
   type PodcastDatabaseItem,
   savePodcastsToDatabase
@@ -244,6 +245,7 @@ export default function PodcastDatabase() {
 
   // Selection & Scoring State
   const [selectedPodcasts, setSelectedPodcasts] = useState<Set<string>>(new Set())
+  const [exportingAllEmails, setExportingAllEmails] = useState(false)
   const [isScoring, setIsScoring] = useState(false)
   const [scores, setScores] = useState<Record<string, number | null>>({})
   const [reasonings, setReasonings] = useState<Record<string, string | undefined>>({})
@@ -1152,6 +1154,24 @@ export default function PodcastDatabase() {
       toast.success(`✅ Exported ${podcastsToExport.length} podcasts to CSV`)
     } catch (error) {
       toast.error('Failed to export CSV')
+    }
+  }
+
+  // Download every podcast in the database that has an email, not just the loaded page
+  const handleExportAllWithEmails = async () => {
+    if (exportingAllEmails) return
+    setExportingAllEmails(true)
+    const toastId = toast.loading('Preparing podcasts with emails...')
+    try {
+      const exported = await exportAllPodcastsWithEmailsToCSV((count) => {
+        toast.loading(`Preparing podcasts with emails... ${count.toLocaleString()} so far`, { id: toastId })
+      })
+      toast.success(`Downloaded ${exported.toLocaleString()} podcasts with emails`, { id: toastId })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not download podcasts with emails'
+      toast.error(message.startsWith('Could not') ? `${message}. Try again.` : message, { id: toastId })
+    } finally {
+      setExportingAllEmails(false)
     }
   }
 
@@ -2113,6 +2133,13 @@ export default function PodcastDatabase() {
                         Export Selected ({selectedPodcasts.size})
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => void handleExportAllWithEmails()}
+                      disabled={exportingAllEmails}
+                    >
+                      {exportingAllEmails ? 'Preparing download...' : 'Download all podcasts with emails'}
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <DropdownMenu>

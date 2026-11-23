@@ -380,6 +380,190 @@ export async function exportPodcastsToCSV(
   return true
 }
 
+// Columns read for the whole-database email export. Embeddings, the search
+// index, transcripts, recent episodes and demographics are left out: they are
+// large and not useful in a spreadsheet.
+const EMAIL_EXPORT_SELECT = [
+  'id', 'podscan_id', 'podcast_name', 'host_name', 'publisher_name', 'website',
+  'podcast_url', 'rss_url', 'podcast_itunes_id', 'podcast_spotify_id',
+  'contact_email', 'contact_email_status', 'podscan_email', 'email_addresses',
+  'podcast_categories', 'language', 'region', 'episode_count', 'last_posted_at',
+  'is_active', 'podcast_has_guests', 'podcast_has_sponsors', 'audience_size',
+  'podcast_reach_score', 'itunes_rating', 'itunes_rating_count', 'spotify_rating',
+  'spotify_rating_count', 'social_links', 'jev_b2b_fit', 'jev_takes_guests',
+  'jev_format', 'jev_audiences', 'brand_safety_risk_level', 'podcast_description',
+  'podcast_image_url', 'created_at', 'updated_at',
+].join(',')
+
+const EMAIL_EXPORT_PAGE_SIZE = 1000
+const EMAIL_EXPORT_PAGE_TIMEOUT_MS = 30_000
+const EMAIL_EXPORT_PAGE_ATTEMPTS = 3
+
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function readEmailExportPage(lastId: string | null): Promise<Array<Record<string, unknown>>> {
+  let lastError = 'unknown error'
+  for (let attempt = 1; attempt <= EMAIL_EXPORT_PAGE_ATTEMPTS; attempt += 1) {
+    let query = supabase
+      .from('podcasts')
+      .select(EMAIL_EXPORT_SELECT)
+      .is('hidden_reason', null)
+      .is('duplicate_of', null)
+      .not('contact_email', 'is', null)
+      .order('id', { ascending: true })
+      .limit(EMAIL_EXPORT_PAGE_SIZE)
+    if (lastId) query = query.gt('id', lastId)
+    try {
+      const { data, error } = await query.abortSignal(AbortSignal.timeout(EMAIL_EXPORT_PAGE_TIMEOUT_MS))
+      if (!error) return (data ?? []) as unknown as Array<Record<string, unknown>>
+      lastError = error.message
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error)
+    }
+    if (attempt < EMAIL_EXPORT_PAGE_ATTEMPTS) await pause(1000 * attempt)
+  }
+  throw new Error(`Could not read podcasts: ${lastError}`)
+}
+
+export const EMAIL_EXPORT_HEADERS = [
+  'Email', 'Email Status', 'Contact Email', 'Podscan Email', 'All Emails',
+  'Podcast Name', 'Host', 'Publisher', 'Website', 'Podcast URL', 'RSS URL',
+  'iTunes ID', 'Spotify ID', 'Podscan ID', 'Categories', 'Language', 'Region',
+  'Episodes', 'Last Episode', 'Active', 'Has Guests', 'Has Sponsors',
+  'Audience Size', 'Reach Score', 'iTunes Rating', 'iTunes Ratings',
+  'Spotify Rating', 'Spotify Ratings', 'Social Links', 'B2B Fit',
+  'Takes Guests', 'Format', 'Audiences', 'Brand Safety Risk', 'Description',
+  'Image URL', 'Added', 'Updated',
+]
+
+const textOrBlank = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map(textOrBlank).filter(Boolean) : []
+
+/**
+ * The address to send to. Only `contact_email` counts: the database picks it
+ * from the podcast's addresses and never picks one verified invalid or
+ * disposable. Falling back to the raw Podscan field would bring those back.
+ */
+export const bestPodcastEmail = (row: Record<string, unknown>): string => textOrBlank(row.contact_email)
+
+const jsonNames = (value: unknown, format: (item: Record<string, unknown>) => string): string =>
+  Array.isArray(value)
+    ? value
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map(format)
+      .filter(Boolean)
+      .join('; ')
+    : ''
+
+/**
+ * Quotes one CSV cell. Podcast data comes from outside sources, so a cell that
+ * starts like a spreadsheet formula gets a leading apostrophe to keep Excel and
+ * Google Sheets from running it.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/
+// A plain address with no characters a formula needs ( ( ) " ' & | ! and so on ).
+const PLAIN_EMAIL = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i
+
+export const csvCell = (value: unknown, { email = false } = {}): string => {
+  let text = value === null || value === undefined ? '' : String(value)
+  // A plain address keeps a leading + or - so it still works on import; anything else is guarded.
+  if (FORMULA_START.test(text) && !(email && PLAIN_EMAIL.test(text))) text = `'${text}`
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+const csvLine = (cells: unknown[]): string =>
+  // The first cell is the email address: a leading + or - is kept so the address still works on import.
+  `${cells.map((cell, index) => csvCell(cell, { email: index === 0 })).join(',')}\n`
+
+export const podcastEmailExportRow = (row: Record<string, unknown>): unknown[] => [
+  bestPodcastEmail(row),
+  row.contact_email_status,
+  textOrBlank(row.contact_email),
+  row.podscan_email,
+  stringList(row.email_addresses).join('; '),
+  row.podcast_name,
+  row.host_name,
+  row.publisher_name,
+  row.website,
+  row.podcast_url,
+  row.rss_url,
+  row.podcast_itunes_id,
+  row.podcast_spotify_id,
+  row.podscan_id,
+  jsonNames(row.podcast_categories, (c) => textOrBlank(c.category_name)),
+  row.language,
+  row.region,
+  row.episode_count,
+  row.last_posted_at,
+  row.is_active,
+  row.podcast_has_guests,
+  row.podcast_has_sponsors,
+  row.audience_size,
+  row.podcast_reach_score,
+  row.itunes_rating,
+  row.itunes_rating_count,
+  row.spotify_rating,
+  row.spotify_rating_count,
+  jsonNames(row.social_links, (s) => [textOrBlank(s.platform), textOrBlank(s.url)].filter(Boolean).join(': ')),
+  row.jev_b2b_fit,
+  row.jev_takes_guests,
+  row.jev_format,
+  stringList(row.jev_audiences).join('; '),
+  row.brand_safety_risk_level,
+  row.podcast_description,
+  row.podcast_image_url,
+  row.created_at,
+  row.updated_at,
+]
+
+/**
+ * Downloads every podcast in the database that has an email, with its data,
+ * as one CSV. Hidden and duplicate rows are skipped. Reads in pages ordered by
+ * id so a large table never needs one huge query; the podcasts table's RLS
+ * only lets platform admins read it.
+ */
+export async function exportAllPodcastsWithEmailsToCSV(
+  onProgress?: (exported: number) => void,
+  filename = `podcasts-with-emails-${new Date().toISOString().slice(0, 10)}.csv`,
+): Promise<number> {
+  // The byte-order mark makes Excel read the file as UTF-8, so accented names survive.
+  // Each page becomes its own Blob so its text can be freed as the download builds.
+  const parts: Blob[] = [new Blob(['\uFEFF', csvLine(EMAIL_EXPORT_HEADERS)])]
+  let exported = 0
+  let lastId: string | null = null
+
+  for (;;) {
+    const rows = await readEmailExportPage(lastId)
+    // Stop only on an empty page: the server may cap a page below the size asked for.
+    if (rows.length === 0) break
+
+    let chunk = ''
+    for (const row of rows) {
+      if (!bestPodcastEmail(row)) continue
+      chunk += csvLine(podcastEmailExportRow(row))
+      exported += 1
+    }
+    parts.push(new Blob([chunk]))
+    lastId = String(rows[rows.length - 1].id)
+    onProgress?.(exported)
+  }
+
+  if (exported === 0) throw new Error('No podcasts with an email were found')
+
+  const blob = new Blob(parts, { type: 'text/csv;charset=utf-8;' })
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  // Give the browser a moment to start the download before freeing the file.
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000)
+
+  return exported
+}
+
 /**
  * Auto-save podcasts from Podscan API responses to the local database.
  * Uses upsert on podscan_id so duplicates are safely handled.
