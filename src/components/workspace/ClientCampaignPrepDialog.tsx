@@ -2468,7 +2468,7 @@ export function ClientCampaignPrep({
                                   id="campaign-research-stage-model"
                                   className="mt-2 h-8 w-full rounded border bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                                   disabled={promptBusy || promptModelsQuery.isLoading || promptModelsQuery.isError || setPromptModelMutation.isPending}
-                                  value={promptModels.some((model) => model.id === promptOverrides[selectedPromptId]?.model) ? promptOverrides[selectedPromptId]?.model ?? '' : ''}
+                                  value={promptOverrides[selectedPromptId]?.model ?? ''}
                                   onChange={(event) => setPromptModelMutation.mutate({
                                     promptId: selectedPromptId,
                                     model: event.target.value === '' ? null : event.target.value,
@@ -2478,6 +2478,15 @@ export function ClientCampaignPrep({
                                       past that the shipped default — not pinning either id, so a
                                       workspace that never chose moves with them. */}
                                   <option value="">Workspace default (set in Integrations)</option>
+                                  {/* A saved model the current key does not list (another provider's
+                                      id after a switch, or a retired model) is shown as unavailable,
+                                      not blanked, matching the AI models card in Integrations. */}
+                                  {promptOverrides[selectedPromptId]?.model
+                                    && !promptModels.some((model) => model.id === promptOverrides[selectedPromptId]?.model) && (
+                                    <option value={promptOverrides[selectedPromptId]?.model ?? ''}>
+                                      {promptOverrides[selectedPromptId]?.model} (not available with the current key)
+                                    </option>
+                                  )}
                                   <ModelOptions models={promptModels} showId />
                                 </select>
                                 <p className="mt-2 text-[11px] leading-4 text-muted-foreground">

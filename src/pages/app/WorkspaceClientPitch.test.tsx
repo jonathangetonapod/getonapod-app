@@ -907,7 +907,7 @@ describe('WorkspaceClientPitch', () => {
     expect(vi.mocked(generateClientShortlistPitch)).toHaveBeenCalledTimes(3)
   })
 
-  it('offers and saves OpenAI stage models without exposing the old Claude selection', async () => {
+  it('offers OpenAI stage models and shows an old Claude selection as unavailable', async () => {
     mockedDetail.mockResolvedValue({ ...detail, ai_keys: { anthropic: false, openai: true } })
     vi.mocked(getWorkspacePromptModels).mockResolvedValue([
       { id: 'gpt-4.1', label: 'OpenAI · gpt-4.1', contextTokens: null, maxOutputTokens: null, thinksByDefault: false },
@@ -924,14 +924,16 @@ describe('WorkspaceClientPitch', () => {
     const select = await screen.findByRole('combobox', { name: 'Model for this stage · workspace-wide' })
     await waitFor(() => expect(select).toBeEnabled())
     expect(within(select).getByRole('option', { name: /OpenAI · gpt-4.1/ })).toBeInTheDocument()
-    expect(select).toHaveValue('')
-    expect(within(select).queryByRole('option', { name: /claude-sonnet/ })).not.toBeInTheDocument()
+    // The saved Claude model is still what the stage asks for, so it is shown, flagged.
+    expect(select).toHaveValue('claude-sonnet-5-5')
+    expect(within(select).getByRole('option', { name: 'claude-sonnet-5-5 (not available with the current key)' })).toBeInTheDocument()
     vi.mocked(getWorkspaceResearchPromptOverrides).mockResolvedValue({
       podcast_research: { content: null, model: 'gpt-4.1', updated_at: '2026-10-29' },
     })
     fireEvent.change(select, { target: { value: 'gpt-4.1' } })
     await waitFor(() => expect(setWorkspacePromptModel).toHaveBeenCalledWith(workspaceId, 'podcast_research', 'gpt-4.1'))
     await waitFor(() => expect(select).toHaveValue('gpt-4.1'))
+    expect(within(select).queryByRole('option', { name: /not available/ })).not.toBeInTheDocument()
   })
 
   it('lets only the workspace owner customize the prompt for each research stage', async () => {
