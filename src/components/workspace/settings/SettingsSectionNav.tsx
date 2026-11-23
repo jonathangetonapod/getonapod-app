@@ -1,11 +1,10 @@
-import { useEffect, useRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { SECTION_NAV_STATE } from '@/components/workspace/settings/useActiveSection'
+import type { SettingsSectionId } from '@/components/workspace/settings/useSettingsSection'
 
 export interface SettingsSection {
-  id: string
+  id: SettingsSectionId
   label: string
   icon: LucideIcon
 }
@@ -17,100 +16,48 @@ export interface SettingsSectionGroup {
 
 interface SettingsSectionNavProps {
   groups: SettingsSectionGroup[]
-  activeId: string | null
-  onSelect: (id: string) => void
+  activeId: SettingsSectionId | null
+  hrefFor: (id: SettingsSectionId) => string
 }
 
-const prefersReducedMotion = () => (
-  // Guarded like every other reduced-motion check: a stubbed or missing
-  // matchMedia must not stop the menu from moving to the section.
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
-)
-
 /**
- * One menu, laid out twice by CSS: a sticky column with its group names on a
- * desktop, a sticky row of tabs that scrolls sideways on a phone. One element
- * rather than two, so a screen reader meets the menu once.
+ * The settings menu. Each entry opens one section in place of the last; it
+ * is a link, so the section is in the address and the back button returns
+ * to the one before. A column beside the content on a desktop, wrapping
+ * rows above it on a phone.
  */
-export const SettingsSectionNav = ({ groups, activeId, onSelect }: SettingsSectionNavProps) => {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const navRef = useRef<HTMLElement>(null)
-
-  /*
-   * On a phone the tabs scroll sideways, and the highlight moves as the page
-   * scrolls, so it could land on a tab out of sight. The row is scrolled on
-   * its own: scrollIntoView would also move the page, and cancel the smooth
-   * scroll a click had started.
-   */
-  useEffect(() => {
-    const nav = navRef.current
-    const tab = nav?.querySelector<HTMLElement>('[aria-current="location"]')
-    if (!nav || !tab || nav.scrollWidth <= nav.clientWidth) return
-    const navBox = nav.getBoundingClientRect()
-    const tabBox = tab.getBoundingClientRect()
-    const gutter = 16
-    if (tabBox.left < navBox.left + gutter) nav.scrollBy({ left: tabBox.left - navBox.left - gutter, behavior: 'smooth' })
-    else if (tabBox.right > navBox.right - gutter) nav.scrollBy({ left: tabBox.right - navBox.right + gutter, behavior: 'smooth' })
-  }, [activeId])
-
-  const goTo = (id: string) => {
-    const section = document.getElementById(id)
-    if (!section) return
-    onSelect(id)
-    section.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })
-    // The heading takes focus so a keyboard user carries on from the
-    // section they chose, not from the top of the menu.
-    section.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
-    navigate(
-      { pathname: location.pathname, search: location.search, hash: `#${id}` },
-      { replace: true, state: SECTION_NAV_STATE },
-    )
-  }
-
-  return (
-    <nav
-      ref={navRef}
-      aria-label="Settings sections"
-      className={cn(
-        // Phone: a full-bleed tab row under the app header.
-        'sticky top-20 z-10 -mx-4 overflow-x-auto border-b border-border/70 bg-background/95 px-4 backdrop-blur sm:-mx-6 sm:px-6',
-        // Desktop: a column beside the content, under the app header.
-        'lg:top-28 lg:mx-0 lg:overflow-visible lg:border-0 lg:bg-transparent lg:px-0 lg:backdrop-blur-none',
-      )}
-    >
-      <div className="flex w-max gap-1 py-2 lg:w-auto lg:flex-col lg:gap-5 lg:py-0">
-        {groups.map((group) => (
-          <div key={group.label} className="flex gap-1 lg:flex-col">
-            <p className="hidden px-3 pb-1 text-xs font-medium text-muted-foreground lg:block">{group.label}</p>
+export const SettingsSectionNav = ({ groups, activeId, hrefFor }: SettingsSectionNavProps) => (
+  <nav aria-label="Settings sections" className="min-w-0">
+    <div className="flex flex-col gap-4 lg:gap-6">
+      {groups.map((group) => (
+        <div key={group.label} className="min-w-0">
+          <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</p>
+          <ul className="flex flex-wrap gap-1 lg:flex-col">
             {group.sections.map((section) => {
               const Icon = section.icon
               const active = section.id === activeId
               return (
-                <a
-                  key={section.id}
-                  href={`#${section.id}`}
-                  aria-current={active ? 'location' : undefined}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    goTo(section.id)
-                  }}
-                  className={cn(
-                    'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    active
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  {section.label}
-                </a>
+                <li key={section.id}>
+                  <Link
+                    to={hrefFor(section.id)}
+                    aria-current={active ? 'page' : undefined}
+                    className={cn(
+                      'flex min-h-11 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-medium transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      active
+                        ? 'bg-primary/10 text-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )}
+                  >
+                    <Icon className={cn('h-4 w-4 shrink-0', active && 'text-primary')} aria-hidden="true" />
+                    {section.label}
+                  </Link>
+                </li>
               )
             })}
-          </div>
-        ))}
-      </div>
-    </nav>
-  )
-}
+          </ul>
+        </div>
+      ))}
+    </div>
+  </nav>
+)

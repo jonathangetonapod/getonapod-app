@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { integrationProvider, integrationProviderLabel } from '@/lib/outreachProviders'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -400,6 +400,22 @@ const WorkspaceCampaigns = ({
   const providerName = integrationProviderLabel(integration)
   const providerCampaigns = campaignOverviewQuery.data?.provider_campaigns || []
   const unassignedProviderCampaigns = providerCampaigns.filter((campaign) => !campaign.mapped_client_id)
+  /*
+   * Settings links here with ?assign=1 when campaigns still need a client.
+   * Open the assign dialog once they have loaded, then drop the flag so a
+   * refresh or the back button does not open it again.
+   */
+  const assignRequested = searchParams.get('assign') === '1'
+  const unassignedCount = unassignedProviderCampaigns.length
+  useEffect(() => {
+    if (!assignRequested || unassignedCount === 0) return
+    setAssignOpen(true)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('assign')
+      return next
+    }, { replace: true })
+  }, [assignRequested, unassignedCount, setSearchParams])
 
   const filteredClient = clientGroupFilter === 'all' ? null : clients.find((client) => client.id.toLowerCase() === clientGroupFilter) || null
   // The stats, the tab counts and the table all read this one scoped list.

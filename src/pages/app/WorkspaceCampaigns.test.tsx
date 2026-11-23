@@ -880,6 +880,17 @@ describe('WorkspaceCampaigns', () => {
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Confirm assignments' })).not.toBeInTheDocument())
   })
 
+  it('opens the assign dialog when Settings links here to link campaigns', async () => {
+    mockedOverview.mockResolvedValue({
+      ...campaignOverview,
+      integration: connectedIntegration,
+      provider_campaigns: [unassignedCampaign],
+    })
+    renderCampaigns([client], '/app/client-campaigns?assign=1')
+
+    expect(await screen.findByRole('heading', { name: 'Assign Instantly campaigns' })).toBeInTheDocument()
+  })
+
   it('keeps a failed assignment in the dialog with the reason', async () => {
     mockedOverview.mockResolvedValue({
       ...campaignOverview,

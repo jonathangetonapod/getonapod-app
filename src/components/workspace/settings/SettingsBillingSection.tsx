@@ -34,7 +34,7 @@ export const SettingsBillingSection = ({ workspaceId, billingHref }: SettingsBil
 
   return (
     <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-      <CardContent className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+      <CardContent className="flex flex-wrap items-center justify-between gap-5 p-5 sm:p-6">
         {overviewQuery.isLoading ? (
           <div className="flex gap-8" aria-label="Loading billing">
             <Skeleton className="h-10 w-32" />
@@ -46,18 +46,22 @@ export const SettingsBillingSection = ({ workspaceId, billingHref }: SettingsBil
               <dt className="text-xs text-muted-foreground">Plan</dt>
               <dd className="mt-1 flex flex-wrap items-center gap-2 font-semibold">
                 {planLabel(overview.plan_key)}
-                {status && <Badge variant="outline" className={status.className}>{status.label}</Badge>}
+                {status && (
+                  <Badge variant="outline" className={status.className}>
+                    {overview.billing_status === 'trialing' ? 'Trial' : status.label}
+                  </Badge>
+                )}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Includes</dt>
-              <dd className="mt-1 font-semibold">Unlimited clients & team members</dd>
+              <dd className="mt-1 font-semibold">Unlimited clients and team members</dd>
             </div>
           </dl>
         ) : (
           <p className="text-sm text-muted-foreground">Billing details could not be loaded right now.</p>
         )}
-        <Button variant="outline" className="w-fit shrink-0" asChild>
+        <Button className="min-h-11 w-fit shrink-0" asChild>
           <Link to={billingHref}>Manage billing<ArrowRight className="ml-2 h-4 w-4" /></Link>
         </Button>
       </CardContent>

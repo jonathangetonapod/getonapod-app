@@ -37,6 +37,10 @@ export const UnsavedChangesPrompt = ({ when }: { when: boolean }) => {
   const location = useLocation()
   const pathnameRef = useRef(location.pathname)
   pathnameRef.current = location.pathname
+  // Settings shows one section at a time (?section=), so moving to another
+  // section unmounts the field with the draft in it: that counts as leaving.
+  const searchRef = useRef(location.search)
+  searchRef.current = location.search
 
   useEffect(() => {
     if (!when) return
@@ -55,7 +59,7 @@ export const UnsavedChangesPrompt = ({ when }: { when: boolean }) => {
     const guard = (go: HistoryNavigator['push']): HistoryNavigator['push'] => (to, state, options) => {
       // The router resolves relative links before they reach the navigator.
       const target = new URL(typeof to === 'string' ? to : createPath(to), `http://app${pathnameRef.current}`)
-      if (target.pathname === pathnameRef.current) {
+      if (target.pathname === pathnameRef.current && target.search === searchRef.current) {
         go.call(history, to, state, options)
         return
       }

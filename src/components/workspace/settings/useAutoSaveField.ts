@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { notifySaved } from '@/components/workspace/settings/savedToast'
 
 export type AutoSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -103,6 +104,7 @@ export function useAutoSaveField({
           setValueState(next)
         }
         setStatus('saved')
+        notifySaved()
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
         savedTimerRef.current = setTimeout(() => setStatus((current) => (current === 'saved' ? 'idle' : current)), SAVED_SHOWN_MS)
       } catch (caught) {

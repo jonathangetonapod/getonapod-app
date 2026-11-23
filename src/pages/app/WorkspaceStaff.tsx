@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import {
-  AlertTriangle,
+  ArrowRight,
   Building2,
   Check,
   ClipboardList,
@@ -24,7 +24,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   WORKSPACE_NAV_ORGANIZE_EVENT,
@@ -43,7 +43,7 @@ import { UnsavedChangesPrompt } from '@/components/workspace/settings/UnsavedCha
 import { useAutoSaveField } from '@/components/workspace/settings/useAutoSaveField'
 import { SettingsSectionNav, type SettingsSectionGroup } from '@/components/workspace/settings/SettingsSectionNav'
 import { SettingsSetupBadge } from '@/components/workspace/settings/SettingsSetupBadge'
-import { SECTION_NAV_STATE, useActiveSection } from '@/components/workspace/settings/useActiveSection'
+import { useSettingsSection } from '@/components/workspace/settings/useSettingsSection'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,11 +63,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { notACredentialField } from '@/lib/formAutofill'
 import { plural } from '@/lib/plural'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   MEMBER_AVATAR_MIME_TYPES,
@@ -286,6 +284,14 @@ function confirmationCopy(
   }
 }
 
+/** The open section's title. One per page, so the id is shared. */
+const SectionHeading = ({ title, description }: { title: string; description?: string }) => (
+  <div className="min-w-0">
+    <h2 id="settings-section-title" className="text-xl font-semibold tracking-tight">{title}</h2>
+    {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+  </div>
+)
+
 const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const { isPlatformAdmin, membership, refreshAccount, refreshSession, signOut, user, workspace } = useAuth()
   const queryClient = useQueryClient()
@@ -389,18 +395,8 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   // surface, so it owns the message alone.
 
   const data = staffQuery.data
-  /*
-   * Other pages link straight to a setting (#client-contact-email from the
-   * intake page's reply-to banner). The sections only exist once the
-   * workspace has loaded, and the router does not scroll to a hash on its
-   * own, so a link used to land at the top of Settings with nothing pointed
-   * out. Scroll to it once per navigation, and put the cursor in it when it
-   * is a field. Keyed on the navigation rather than the hash, so following
-   * the same link twice (the credit chip, a setup step) still scrolls. The
-   * section menu scrolls for itself and marks its own hash changes.
-   */
-  const location = useLocation()
-  const scrolledNavigationRef = useRef('')
+  // Links from other pages (#client-contact-email) are mapped to their
+  // section and focused by useSettingsSection once the data has loaded.
   const settingsLoaded = Boolean(data)
   const staff = useMemo(
     () => (data?.members || []).filter((member) => member.status !== 'revoked'),
@@ -440,7 +436,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
   const ownerEmail = staff.find((member) => member.role === 'owner' && member.status === 'active')?.email ?? null
   // Below 1280px the team table does not fit beside the menu, so the people
   // stack instead; one or the other, never both in the page.
-  const stackTeam = useMediaQuery('(max-width: 1279px)')
+  const activeCount = staff.filter((member) => member.status === 'active').length
   const pendingCount = staff.filter((member) => member.status === 'invited' || member.status === 'provisioning').length
 
   /**
@@ -674,52 +670,32 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
 
 
   /*
-   * The menu, in page order. Grouped by whose setting it is: the first group
-   * is the viewer's own and follows them, the second belongs to the
-   * workspace. The group names replace the small uppercase labels each
-   * section used to carry above its heading.
+   * The menu: the viewer's own settings first, then the workspace's. One
+   * section shows at a time, named in ?section= (see useSettingsSection).
    */
+  const showProfile = viewerBelongsToWorkspaceOnScreen || canOrganizeSidebar
   const settingsGroups: SettingsSectionGroup[] = [
     {
-      label: 'Your account',
-      sections: [
-        ...(viewerBelongsToWorkspaceOnScreen ? [{ id: 'your-profile', label: 'Profile', icon: UserCircle }] : []),
-        ...(canOrganizeSidebar ? [{ id: 'sidebar-navigation', label: 'Sidebar order', icon: PanelLeft }] : []),
-      ],
+      label: 'You',
+      sections: showProfile ? [{ id: 'profile', label: 'Profile', icon: UserCircle }] : [],
     },
     {
       label: 'Workspace',
       sections: [
-        { id: 'workspace-general', label: 'General', icon: Building2 },
-        { id: 'client-branding', label: 'Client branding', icon: Palette },
-        { id: 'ai-keys', label: 'Integrations', icon: KeyRound },
-        { id: 'workspace-access', label: 'Team & access', icon: Users },
+        { id: 'general', label: 'General', icon: Building2 },
+        { id: 'branding', label: 'Client branding', icon: Palette },
+        { id: 'integrations', label: 'Integrations', icon: KeyRound },
+        { id: 'team', label: 'Team & access', icon: Users },
         // Not while viewing another workspace: its billing is platform work
         // and lives at /app/platform/billing, against any workspace.
-        ...(!isPlatformWorkspace ? [{ id: 'billing', label: 'Billing', icon: CreditCard }] : []),
-        ...(canCloseWorkspace ? [{ id: 'danger-zone', label: 'Danger zone', icon: AlertTriangle }] : []),
+        ...(!isPlatformWorkspace ? [{ id: 'billing' as const, label: 'Billing', icon: CreditCard }] : []),
       ],
     },
-  ].filter((group) => group.sections.length > 0)
-  const { activeId: activeSectionId, selectSection } = useActiveSection(
+  ].filter((group) => group.sections.length > 0) as SettingsSectionGroup[]
+  const { active: activeSection, hrefFor } = useSettingsSection(
     settingsGroups.flatMap((group) => group.sections.map((section) => section.id)),
     settingsLoaded,
   )
-  // After the menu's own hook, which it tells where a link landed.
-  useEffect(() => {
-    const target = location.hash.slice(1)
-    if (!settingsLoaded || !target || scrolledNavigationRef.current === location.key) return
-    if ((location.state as typeof SECTION_NAV_STATE | null)?.settingsSectionNav) return
-    const element = document.getElementById(decodeURIComponent(target))
-    if (!element) return
-    scrolledNavigationRef.current = location.key
-    const isField = element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
-    element.scrollIntoView({ block: isField ? 'center' : 'start' })
-    if (isField) element.focus({ preventScroll: true })
-    // The menu marks where the link landed, field or section alike.
-    const section = element.closest('section[id]')
-    if (section) selectSection(section.id)
-  }, [location.hash, location.key, location.state, settingsLoaded, selectSection])
 
   /*
    * One person's status and actions, shared by the table and by the stacked
@@ -752,7 +728,7 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     const dangerActions = [allows('transfer_owner') && capabilities.can_transfer_owner, allows('revoke')].some(Boolean)
     const hasMenu = accessActions || signInActions || dangerActions
     return (
-      member.role === 'owner' && !manageable ? <span className="text-sm text-muted-foreground">Owner</span> : manageable ? (
+      manageable ? (
         <div className="inline-flex flex-wrap items-center justify-end gap-2">
           {/* An expired invite gets its one obvious
               next step in the open, not behind the
@@ -776,16 +752,10 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
               Issue a new password
             </Button>
           )}
-          {allows('update_role') && capabilities.can_update_roles && (
-            <Select value={member.role} disabled={busy} onValueChange={(role: 'admin' | 'member') => setConfirmation({ action: 'update_role', member, role })}>
-              <SelectTrigger className="h-9 w-28" aria-label={`Change role for ${member.email}`}><SelectValue /></SelectTrigger>
-              <SelectContent align="end"><RoleOption role="admin" /><RoleOption role="member" /></SelectContent>
-            </Select>
-          )}
           {hasMenu && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy} aria-label={`More actions for ${member.email}`}>
+                <Button size="icon" variant="ghost" className="h-11 w-11" disabled={busy} aria-label={`More actions for ${member.email}`}>
                   {rowPasswordBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                 </Button>
               </DropdownMenuTrigger>
@@ -840,12 +810,27 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
     )
   }
 
-  const memberRole = (member: WorkspaceStaffMember) => (
-    <div className="flex items-center gap-2">
-      {member.role === 'owner' ? <Crown className="h-4 w-4 text-amber-600" /> : member.role === 'admin' ? <ShieldCheck className="h-4 w-4 text-primary" /> : null}
-      <Badge variant="outline" className="capitalize">{member.role}</Badge>
-    </div>
-  )
+  const memberRole = (member: WorkspaceStaffMember) => {
+    const busy = actionMutation.isPending || passwordBusy || member.pending_review
+    if (member.allowed_actions.includes('update_role') && capabilities.can_update_roles) {
+      return (
+        <Select value={member.role} disabled={busy} onValueChange={(role: 'admin' | 'member') => setConfirmation({ action: 'update_role', member, role })}>
+          <SelectTrigger className="h-11 w-32" aria-label={`Change role for ${member.email}`}><SelectValue /></SelectTrigger>
+          <SelectContent align="end"><RoleOption role="admin" /><RoleOption role="member" /></SelectContent>
+        </Select>
+      )
+    }
+    return (
+      <div className="flex items-center gap-2">
+        {member.role === 'owner' ? <Crown className="h-4 w-4 text-amber-600" aria-hidden="true" /> : member.role === 'admin' ? <ShieldCheck className="h-4 w-4 text-primary" aria-hidden="true" /> : null}
+        <Badge variant="outline" className="capitalize">{member.role}</Badge>
+      </div>
+    )
+  }
+
+  const memberJoined = (member: WorkspaceStaffMember) => (member.accepted_at
+    ? `Joined ${formatDate(member.accepted_at)}`
+    : `Invited ${formatDate(member.invited_at)}`)
 
   const body = !validWorkspaceId
     ? <Card><CardHeader><CardTitle>Workspace unavailable</CardTitle><CardDescription>The workspace address is invalid.</CardDescription></CardHeader></Card>
@@ -859,148 +844,125 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
             </Card>
           )
         : (
-            <div data-testid="workspace-settings-page" className="mx-auto w-full min-w-0 max-w-full space-y-8 pb-12 xl:max-w-7xl">
-              <header className="flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
+            <div data-testid="workspace-settings-page" className="mx-auto w-full min-w-0 max-w-full space-y-6 pb-12 xl:max-w-6xl">
+              <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
-                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
-                  <p className="mt-1.5 max-w-2xl text-muted-foreground">
-                    Manage your workspace identity, client experience, and team access.
-                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">Changes save automatically</p>
                 </div>
                 <SettingsSetupBadge progress={setupProgress} checklistHref={`${baseHref}/clients`} />
               </header>
 
-              {/* A block on a phone, not a one-column grid: the menu sticks
-                  within its parent, and a grid row of its own is exactly
-                  its height, so it could never stick there. */}
-              <div className="min-w-0 space-y-8 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0">
-                <SettingsSectionNav groups={settingsGroups} activeId={activeSectionId} onSelect={selectSection} />
+              <div className="min-w-0 space-y-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0">
+                <SettingsSectionNav groups={settingsGroups} activeId={activeSection} hrefFor={hrefFor} />
 
-                <div className="min-w-0 space-y-12">
-                  {/*
-                    * First, because it is the only thing on this page that
-                    * belongs to the person rather than to the workspace, and it
-                    * is the one setting every member can change for themselves.
-                    *
-                    * Absent when the viewer has no membership in the workspace
-                    * on screen, and that is not a permission check: a picture
-                    * belongs to a membership, and a platform admin inspecting an
-                    * agency has none there. Offering the control anyway produced
-                    * a refusal that was perfectly accurate and read as a bug —
-                    * "avatar member row is absent for this actor" — for a state
-                    * that simply has no meaning here.
-                    */}
-                  {viewerBelongsToWorkspaceOnScreen && (
-                  <section id="your-profile" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="your-profile-title">
-                    <div>
-                      <h2 id="your-profile-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Profile</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Your picture, shown beside your name in the sidebar.</p>
-                    </div>
-
-                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                      <CardContent className="flex flex-wrap items-center gap-5 p-6 sm:p-7">
-                        <Avatar className="h-16 w-16">
-                          {memberAvatarUrl(workspaceId, user?.id, avatarPath, (membership as { avatar_updated_at?: string | null } | null)?.avatar_updated_at) && (
-                            <AvatarImage
-                              src={memberAvatarUrl(workspaceId, user?.id, avatarPath, (membership as { avatar_updated_at?: string | null } | null)?.avatar_updated_at) || undefined}
-                              alt="Your profile picture"
-                              className="object-cover"
-                            />
+                <div className="min-w-0 space-y-4">
+                  {activeSection === 'profile' && (
+                    <section id="your-profile" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <SectionHeading title="Profile" description="How you appear to your team, and how your sidebar is laid out." />
+                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                        <CardContent className="divide-y p-0">
+                          {/*
+                            * Absent when the viewer has no membership in the
+                            * workspace on screen: a picture belongs to a
+                            * membership, and a platform admin inspecting an
+                            * agency has none there.
+                            */}
+                          {viewerBelongsToWorkspaceOnScreen && (
+                            <div className="flex flex-wrap items-center gap-5 p-5 sm:p-6">
+                              <Avatar className="h-16 w-16">
+                                {memberAvatarUrl(workspaceId, user?.id, avatarPath, (membership as { avatar_updated_at?: string | null } | null)?.avatar_updated_at) && (
+                                  <AvatarImage
+                                    src={memberAvatarUrl(workspaceId, user?.id, avatarPath, (membership as { avatar_updated_at?: string | null } | null)?.avatar_updated_at) || undefined}
+                                    alt="Your profile picture"
+                                    className="object-cover"
+                                  />
+                                )}
+                                <AvatarFallback>{(membership?.full_name || user?.email || '?').charAt(0).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1 basis-56 space-y-2">
+                                <p className="font-medium">Profile picture</p>
+                                <input
+                                  ref={avatarInputRef}
+                                  id="member-avatar"
+                                  aria-label="Profile picture file"
+                                  type="file"
+                                  className="sr-only"
+                                  accept={MEMBER_AVATAR_MIME_TYPES.join(',')}
+                                  disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
+                                  onChange={(event) => {
+                                    const file = event.currentTarget.files?.[0]
+                                    event.currentTarget.value = ''
+                                    if (file) avatarMutation.mutate(file)
+                                  }}
+                                />
+                                <p className="text-sm text-muted-foreground">PNG, JPEG, or WebP, up to 2 MB. Shown beside your name in the sidebar.</p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="min-h-11"
+                                  disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
+                                  onClick={() => avatarInputRef.current?.click()}
+                                >
+                                  {avatarMutation.isPending
+                                    ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    : <Upload className="mr-2 h-4 w-4" />}
+                                  {avatarPath ? 'Replace picture' : 'Upload picture'}
+                                </Button>
+                                {avatarPath && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="min-h-11 text-destructive hover:text-destructive"
+                                    disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
+                                    onClick={() => setAvatarRemoveOpen(true)}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />Remove
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
                           )}
-                          <AvatarFallback>{(membership?.full_name || user?.email || '?').charAt(0).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <input
-                            ref={avatarInputRef}
-                            id="member-avatar"
-                            aria-label="Profile picture file"
-                            type="file"
-                            className="sr-only"
-                            accept={MEMBER_AVATAR_MIME_TYPES.join(',')}
-                            disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
-                            onChange={(event) => {
-                              const file = event.currentTarget.files?.[0]
-                              event.currentTarget.value = ''
-                              if (file) avatarMutation.mutate(file)
-                            }}
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
-                              onClick={() => avatarInputRef.current?.click()}
-                            >
-                              {avatarMutation.isPending
-                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                : <Upload className="mr-2 h-4 w-4" />}
-                              {avatarPath ? 'Replace picture' : 'Upload picture'}
-                            </Button>
-                            {avatarPath && (
+                          {/*
+                            * Mirrors canOrganizeNavigation in the shell. The
+                            * order is the viewer's own in every view, so it
+                            * sits with their profile.
+                            */}
+                          {canOrganizeSidebar && (
+                            <div id="sidebar-navigation" className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+                              <div className="min-w-0 flex-1 basis-56">
+                                <p className="font-medium">Sidebar order</p>
+                                <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                                  Put the pages you use most where you want them. Only you see this order.
+                                  <InfoTip topic="where the order is saved">
+                                    It is saved in this browser, so another browser or device starts with the default order.
+                                  </InfoTip>
+                                </p>
+                              </div>
                               <Button
                                 type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="text-destructive hover:text-destructive"
-                                disabled={avatarMutation.isPending || removeAvatarMutation.isPending}
-                                onClick={() => setAvatarRemoveOpen(true)}
+                                variant="outline"
+                                className="min-h-11 shrink-0"
+                                onClick={() => window.dispatchEvent(new Event(WORKSPACE_NAV_ORGANIZE_EVENT))}
                               >
-                                <Trash2 className="mr-2 h-4 w-4" />Remove
+                                <PanelLeft className="mr-2 h-4 w-4" />
+                                Reorder sidebar
                               </Button>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground">PNG, JPEG, or WebP, up to 2 MB. Only you can change yours.</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </section>
-                  )}
-
-                  {canOrganizeSidebar && (
-                    <section id="sidebar-navigation" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="sidebar-navigation-title">
-                      <div>
-                        <h2 id="sidebar-navigation-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Sidebar order</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Put the pages you use most where you want them. Only you see this order.</p>
-                      </div>
-
-                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                        <CardContent className="flex min-w-0 flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
-                          <div className="flex min-w-0 items-start gap-4">
-                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                              <PanelLeft className="h-5 w-5" />
-                            </span>
-                            <p className="flex min-w-0 max-w-2xl items-center gap-1 text-sm leading-6 text-muted-foreground">
-                              Drag pages into the order you want.
-                              <InfoTip topic="where the order is saved">
-                                It is saved in this browser, so another browser or device starts with the default order.
-                              </InfoTip>
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="shrink-0"
-                            onClick={() => window.dispatchEvent(new Event(WORKSPACE_NAV_ORGANIZE_EVENT))}
-                          >
-                            <PanelLeft className="mr-2 h-4 w-4" />
-                            Organize sidebar
-                          </Button>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     </section>
                   )}
 
-                  <section id="workspace-general" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-general-title">
-                    <div>
-                      <h2 id="workspace-general-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">General</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">How this workspace appears to your team.</p>
-                    </div>
-
-                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                      <CardContent className="p-0">
-                        <div className="min-w-0 p-6 sm:p-7">
-                          <div className="min-w-0 max-w-xl space-y-3">
+                  {activeSection === 'general' && (
+                    <section id="workspace-general" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <SectionHeading title="General" />
+                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                        <CardContent className="p-5 sm:p-6">
+                          <div className="min-w-0 max-w-xl space-y-2">
                             <div className="flex items-center justify-between gap-2">
                               <Label htmlFor="workspace-name">Workspace name</Label>
                               <FieldSaveStatus status={workspaceName.status} />
@@ -1009,15 +971,16 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               id="workspace-name"
                               {...notACredentialField}
                               maxLength={120}
+                              className="h-11"
                               value={workspaceName.value}
                               disabled={!canManageWorkspaceName}
                               onChange={(event) => workspaceName.setValue(event.target.value)}
                               onBlur={workspaceName.onBlur}
                               aria-invalid={workspaceName.error ? true : undefined}
-                              aria-describedby={workspaceName.error ? 'workspace-name-error' : undefined}
+                              aria-describedby={workspaceName.error ? 'workspace-name-error' : 'workspace-name-help'}
                             />
                             <FieldSaveError id="workspace-name-error" error={workspaceName.error} />
-                            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <p id="workspace-name-help" className="flex items-center gap-1 text-xs text-muted-foreground">
                               Only your team sees this.
                               <InfoTip topic="the workspace name">
                                 It names the workspace in the sidebar and the workspace switcher. Clients see the agency name under Client branding instead.
@@ -1027,169 +990,128 @@ const WorkspaceStaff = ({ platformWorkspaceId }: WorkspaceStaffProps) => {
                               <p className="text-sm text-muted-foreground">Workspace name controls are not available for your role.</p>
                             ) : null}
                           </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Only the owner of a real tenant workspace. Kept out of
+                          the menu: it is rare, and it should not sit one
+                          click away beside everyday settings. */}
+                      {canCloseWorkspace && workspace && (
+                        <div id="danger-zone" className="min-w-0 space-y-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 sm:p-6">
+                          <div>
+                            <h3 className="font-semibold">Danger zone</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">Nothing here can be undone from inside the app.</p>
+                          </div>
+                          <WorkspaceDeletionCard workspaceId={workspace.id} workspaceName={workspace.name} />
                         </div>
-                      </CardContent>
-                    </Card>
-                  </section>
-
-                  <section id="client-branding" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="client-branding-title">
-                    <div>
-                      <h2 id="client-branding-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Client branding</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">What your clients see on their dashboards, onboarding and emails.</p>
-                    </div>
-
-                    <ClientBrandingSection
-                      workspaceId={workspaceId}
-                      view={data}
-                      canManageBranding={canManageBranding}
-                      canManageClientBranding={canManageClientBranding}
-                      ownerEmail={ownerEmail}
-                      logoUrl={logoUrl}
-                      workspaceInitials={workspaceInitials}
-                      onSaved={refreshSettings}
-                      onLogoChanged={refreshShellIdentity}
-                      onUnsavedChange={setBrandingUnsaved}
-                    />
-                  </section>
-
-                  <section id="ai-keys" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="ai-keys-title">
-                    <div>
-                      <h2 id="ai-keys-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">
-                        Integrations
-                      </h2>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {canManageAiKeys
-                          ? 'Your sending platform, and the AI provider accounts that power AI features. AI providers bill usage directly.'
-                          : 'The services this workspace is connected to.'}
-                      </p>
-                    </div>
-                    {/* The same card Client Campaigns shows, so the sending
-                        platform can be connected, synced, or changed from
-                        either place. */}
-                    <OutreachConnectionCard workspaceId={workspaceId} />
-                    {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} queryScope={queryKey} />}
-                    {canManageAiKeys && <WorkspaceAiModelsCard workspaceId={workspaceId} />}
-                  </section>
-
-                  <section id="workspace-access" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="workspace-access-title">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        {/* The count in the heading, where the three stat
-                            tiles used to repeat it at the size of a headline. */}
-                        <h2 id="workspace-access-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">
-                          Team &amp; access
-                          <span className="text-base font-normal tracking-normal text-muted-foreground">
-                            {' · '}{plural(staff.length, 'member')}
-                            {pendingCount > 0 && `, ${pendingCount} pending`}
-                          </span>
-                        </h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Who can sign in to this workspace, and what they can do.
-                        </p>
-                      </div>
-                      {platformRoster ? (
-                        <Button variant="outline" asChild>
-                          <Link to="/app/manage-workspaces?tab=team"><Users className="mr-2 h-4 w-4" />Manage platform team</Link>
-                        </Button>
-                      ) : (
-                        <Button
-                          disabled={!canInvite}
-                          onClick={() => {
-                            setInvite({ ...emptyInvite, role: allowedInviteRoles[0] || 'member' })
-                            setInviteMethod('email_invite')
-                            setInviteOpen(true)
-                          }}
-                        >
-                          <UserPlus className="mr-2 h-4 w-4" />Invite member
-                        </Button>
                       )}
-                    </div>
-
-                    <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
-                      <CardHeader className="border-b border-border/70 bg-muted/15">
-                        <CardDescription>
-                          {platformRoster
-                            ? <>These are the people who run the platform. Invite, promote or remove them on the <Link to="/app/manage-workspaces?tab=team" className="font-medium underline underline-offset-2">Platform team</Link> tab of Manage workspaces.</>
-                            : (
-                              <span className="flex items-center gap-1">
-                                Owners and admins manage the workspace; members work on clients.
-                                {/* The full list of what each role may do, behind
-                                    the line rather than three paragraphs above
-                                    the table. The role picker repeats it. */}
-                                <InfoTip topic="what each role can do">
-                                  <RolesCaption roles={['admin', 'member', 'owner']} className="text-popover-foreground [&_span]:text-popover-foreground" />
-                                  <span className="mt-2 block">Client portal users are separate, and are managed inside each client.</span>
-                                </InfoTip>
-                              </span>
-                            )}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="min-w-0 p-0">
-                        {/* A phone gets the same people stacked: name, then
-                            role and status, then the actions, all in view. */}
-                        {stackTeam ? (
-                        <ul className="divide-y divide-border/70" aria-label="Team members">
-                          {staff.map((member) => (
-                            <li key={member.id} className="space-y-3 p-4">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">{member.full_name || 'Invited user'}</p>
-                                <p className="truncate text-sm text-muted-foreground">{member.email}</p>
-                              </div>
-                              <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-                                {memberRole(member)}
-                                <div>{memberStatus(member)}</div>
-                                <p className="text-xs text-muted-foreground">Added {formatDate(member.accepted_at || member.invited_at)}</p>
-                              </div>
-                              <div className="flex justify-start [&>div]:justify-start">{memberActions(member)}</div>
-                            </li>
-                          ))}
-                        </ul>
-                        ) : (
-                        <div className="max-w-full overflow-hidden">
-                    <Table className="min-w-[44rem]">
-                      <TableHeader className="bg-muted/30"><TableRow><TableHead>User</TableHead><TableHead>Role</TableHead><TableHead>Status</TableHead><TableHead>Joined / added</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {staff.map((member) => (
-                          <TableRow key={member.id}>
-                            <TableCell>
-                              <div className="font-medium">{member.full_name || 'Invited user'}</div>
-                              <div className="text-sm text-muted-foreground">{member.email}</div>
-                            </TableCell>
-                            <TableCell>{memberRole(member)}</TableCell>
-                            <TableCell>{memberStatus(member)}</TableCell>
-                            <TableCell>{formatDate(member.accepted_at || member.invited_at)}</TableCell>
-                            <TableCell className="text-right">{memberActions(member)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                        </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </section>
-
-                  {!isPlatformWorkspace && (
-                    <section id="billing" className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28" aria-labelledby="billing-title">
-                      <div>
-                        <h2 id="billing-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Billing</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Your plan and credit balance. Buy credits or change plan on the billing page.</p>
-                      </div>
-                      <SettingsBillingSection workspaceId={workspaceId} billingHref={`${baseHref}/settings/billing`} />
                     </section>
                   )}
 
-                  {canCloseWorkspace && workspace && (
-                    <section
-                      id="danger-zone"
-                      className="min-w-0 scroll-mt-36 space-y-4 lg:scroll-mt-28 rounded-2xl border border-destructive/30 bg-destructive/5 p-5 sm:p-6"
-                      aria-labelledby="danger-zone-title"
-                    >
-                      <div>
-                        <h2 id="danger-zone-title" tabIndex={-1} className="text-2xl font-semibold tracking-tight focus:outline-none">Danger zone</h2>
-                        <p className="mt-1 text-sm text-muted-foreground">Nothing here can be undone from inside the app.</p>
+                  {activeSection === 'branding' && (
+                    <section id="client-branding" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <SectionHeading title="Client branding" description="What your clients see on their dashboards, onboarding and emails." />
+                      <ClientBrandingSection
+                        workspaceId={workspaceId}
+                        view={data}
+                        canManageBranding={canManageBranding}
+                        canManageClientBranding={canManageClientBranding}
+                        ownerEmail={ownerEmail}
+                        logoUrl={logoUrl}
+                        workspaceInitials={workspaceInitials}
+                        onSaved={refreshSettings}
+                        onLogoChanged={refreshShellIdentity}
+                        onUnsavedChange={setBrandingUnsaved}
+                      />
+                    </section>
+                  )}
+
+                  {activeSection === 'integrations' && (
+                    <section id="ai-keys" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <SectionHeading title="Integrations" />
+                      {/* The same connection Client Campaigns shows, in its
+                          compact form. */}
+                      <OutreachConnectionCard
+                        workspaceId={workspaceId}
+                        variant="compact"
+                        linkCampaignsHref={`${baseHref}/client-campaigns?assign=1`}
+                      />
+                      {canManageAiKeys && <WorkspaceAiKeysCard workspaceId={workspaceId} />}
+                      {canManageAiKeys && <WorkspaceAiModelsCard workspaceId={workspaceId} />}
+                    </section>
+                  )}
+
+                  {activeSection === 'team' && (
+                    <section id="workspace-access" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <SectionHeading
+                          title="Team & access"
+                          description={`${plural(activeCount, 'person', 'people')} can sign in to this workspace${pendingCount > 0 ? ` · ${plural(pendingCount, 'invite')} pending` : ''}`}
+                        />
+                        {!platformRoster && (
+                          <Button
+                            className="min-h-11"
+                            disabled={!canInvite}
+                            onClick={() => {
+                              setInvite({ ...emptyInvite, role: allowedInviteRoles[0] || 'member' })
+                              setInviteMethod('email_invite')
+                              setInviteOpen(true)
+                            }}
+                          >
+                            <UserPlus className="mr-2 h-4 w-4" />Invite teammate
+                          </Button>
+                        )}
                       </div>
-                      <WorkspaceDeletionCard workspaceId={workspace.id} workspaceName={workspace.name} />
+
+                      <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
+                        <CardContent className="min-w-0 p-0">
+                          <ul className="divide-y divide-border/70" aria-label="Team members">
+                            {staff.map((member) => {
+                              const state = memberState(member)
+                              return (
+                                <li key={member.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 p-4">
+                                  <div className="flex min-w-0 flex-1 basis-60 items-center gap-3">
+                                    <Avatar className="h-10 w-10">
+                                      <AvatarFallback>{(member.full_name || member.email || '?').charAt(0).toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0">
+                                      <p className="truncate font-medium">{member.full_name || 'Invited user'}</p>
+                                      <p className="truncate text-sm text-muted-foreground">{member.email}</p>
+                                    </div>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{memberJoined(member)}</p>
+                                  {state.label !== 'Active' && <div>{memberStatus(member)}</div>}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {memberRole(member)}
+                                    {memberActions(member)}
+                                  </div>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </CardContent>
+                      </Card>
+
+                      {platformRoster ? (
+                        <Link to="/app/manage-workspaces?tab=team" className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
+                          Manage the platform team in Manage workspaces<ArrowRight className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                      ) : (
+                        <p className="flex items-center gap-1 text-sm text-muted-foreground">
+                          Owners and admins manage the workspace; members work on clients.
+                          <InfoTip topic="what each role can do">
+                            <RolesCaption roles={['admin', 'member', 'owner']} className="text-popover-foreground [&_span]:text-popover-foreground" />
+                            <span className="mt-2 block">Client portal users are separate, and are managed inside each client.</span>
+                          </InfoTip>
+                        </p>
+                      )}
+                    </section>
+                  )}
+
+                  {activeSection === 'billing' && (
+                    <section id="billing" className="min-w-0 space-y-4" aria-labelledby="settings-section-title">
+                      <SectionHeading title="Billing" />
+                      <SettingsBillingSection workspaceId={workspaceId} billingHref={`${baseHref}/settings/billing`} />
                     </section>
                   )}
                 </div>

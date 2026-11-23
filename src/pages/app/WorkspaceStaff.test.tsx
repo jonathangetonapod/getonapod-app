@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceStaff from '@/pages/app/WorkspaceStaff'
 import { useAuth } from '@/contexts/AuthContext'
@@ -174,9 +174,18 @@ function openRowMenu(email: string) {
   fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' })
 }
 
-const LocationHash = () => <span data-testid="location-hash">{useLocation().hash}</span>
+const LocationProbe = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (
+    <>
+      <span data-testid="location-search">{location.search}</span>
+      <button type="button" onClick={() => navigate(-1)}>Browser back</button>
+    </>
+  )
+}
 
-function renderPage(platformWorkspaceId?: string, hash = '') {
+function renderPage(platformWorkspaceId?: string, suffix = '') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -188,17 +197,26 @@ function renderPage(platformWorkspaceId?: string, hash = '') {
       <MemoryRouter
         initialEntries={[
           platformWorkspaceId
-            ? `/app/workspaces/${platformWorkspaceId}/settings`
-            : `/app/settings${hash}`,
+            ? `/app/workspaces/${platformWorkspaceId}/settings${suffix}`
+            : `/app/settings${suffix}`,
         ]}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
         <WorkspaceStaff platformWorkspaceId={platformWorkspaceId} />
-        <LocationHash />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return queryClient
 }
+
+/** Opens a settings section from the menu, the way a person would. */
+async function openSection(name: RegExp) {
+  const navigation = await screen.findByRole('navigation', { name: 'Settings sections' })
+  fireEvent.click(within(navigation).getByRole('link', { name }))
+}
+
+const pageLoaded = () => screen.findByTestId('workspace-settings-page')
 
 describe('WorkspaceStaff', () => {
   beforeEach(() => {
@@ -316,7 +334,7 @@ describe('WorkspaceStaff', () => {
     mockedUpdateRole.mockResolvedValue({ ...admin, role: 'member' })
   })
 
-  it('scrolls to and focuses the field another page linked to', async () => {
+  it('opens the section a link from another page names, and focuses its field', async () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     renderPage(undefined, '#client-contact-email')
@@ -326,11 +344,11 @@ describe('WorkspaceStaff', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
     // The menu marks the section the link landed in.
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('aria-current', 'location')
+    expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('aria-current', 'page')
   })
 
   it('warns while the reply-to email is empty and offers the owner address', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Email clients reply to')
     expect(field).toHaveAttribute('aria-invalid', 'true')
@@ -344,27 +362,28 @@ describe('WorkspaceStaff', () => {
 
   // 1Password offered a login for "Agency name shown to clients".
   it('keeps password managers off the fields that are not credentials', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
-
-    for (const label of ['Workspace name', 'Agency name shown to clients', 'Email clients reply to', 'Booking link or embed code']) {
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
+    const check = (label: string) => {
       const field = screen.getByLabelText(label)
       expect(field).toHaveAttribute('autocomplete', 'off')
       expect(field).toHaveAttribute('data-1p-ignore', 'true')
       expect(field).toHaveAttribute('data-lpignore', 'true')
     }
+    check('Workspace name')
+    await openSection(/Client branding/)
+    for (const label of ['Agency name shown to clients', 'Email clients reply to', 'Booking link or embed code']) check(label)
+    await openSection(/Integrations/)
+    await screen.findByLabelText('Claude API key')
+    check('Claude API key')
   })
 
-  it('hides an API key as it is typed and reveals it on request', async () => {
-    renderPage()
+  it('hides an API key as it is typed', async () => {
+    renderPage(undefined, '?section=integrations')
 
-    const field = await screen.findByLabelText('Anthropic (Claude) API key')
+    const field = await screen.findByLabelText('Claude API key')
     expect(field).toHaveAttribute('type', 'password')
     expect(field).toHaveAttribute('autocomplete', 'off')
-    fireEvent.click(screen.getByRole('button', { name: 'Show Anthropic (Claude) key' }))
-    expect(field).toHaveAttribute('type', 'text')
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Anthropic (Claude) key' }))
-    expect(field).toHaveAttribute('type', 'password')
   })
 
   describe('AI keys', () => {
@@ -372,36 +391,35 @@ describe('WorkspaceStaff', () => {
       anthropic: { configured: true, last_four: '4f2a', updated_at: '2026-10-01T00:00:00Z' },
     })
 
-    it('shows a saved key masked, with Replace, Test and Remove instead of an empty box', async () => {
+    it('shows a saved key masked, with Test, Replace and Remove key instead of an empty box', async () => {
       savedAnthropic()
-      renderPage()
+      renderPage(undefined, '?section=integrations')
 
-      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toHaveTextContent('sk-ant-…4f2a')
-      expect(screen.queryByLabelText('Anthropic (Claude) API key')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Replace' })).toBeEnabled()
-      expect(screen.getByRole('button', { name: 'Test key' })).toBeEnabled()
+      expect(await screen.findByLabelText('Saved Claude key')).toHaveTextContent('sk-ant-…4f2a')
+      expect(screen.queryByLabelText('Claude API key')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled()
 
       fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
-      expect(screen.getByLabelText('Anthropic (Claude) API key')).toHaveAttribute('type', 'password')
+      expect(screen.getByLabelText('Claude API key')).toHaveAttribute('type', 'password')
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-      expect(screen.getByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+      expect(screen.getByLabelText('Saved Claude key')).toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: /^Remove$/ }))
-      expect(await screen.findByRole('alertdialog', { name: 'Remove the Anthropic (Claude) key?' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+      expect(await screen.findByRole('alertdialog', { name: 'Remove the Claude key?' })).toBeInTheDocument()
     })
 
     it.each([
-      ['valid', 'Valid. The provider accepted this key.'],
-      ['invalid', 'Invalid. The provider rejected this key.'],
+      ['valid', 'Key works'],
+      ['invalid', 'The provider rejected this key.'],
       // An outage says nothing about the key; calling it invalid would
       // invite deleting a key that works.
-      ['unreachable', 'The provider did not answer, so the key could not be checked.'],
+      ['unreachable', 'The provider did not answer.'],
     ] as const)('says what a test of the saved key found: %s', async (result, copy) => {
       savedAnthropic()
       vi.mocked(testWorkspaceAiKey).mockResolvedValue(result)
-      renderPage()
+      renderPage(undefined, '?section=integrations')
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Test key' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Test' }))
       expect(await screen.findByText(new RegExp(`^${copy.replace(/[.]/gu, '\\.')}`))).toBeInTheDocument()
       expect(testWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic')
     })
@@ -409,52 +427,52 @@ describe('WorkspaceStaff', () => {
     it('says plainly when the server cannot test keys yet', async () => {
       savedAnthropic()
       vi.mocked(testWorkspaceAiKey).mockRejectedValue(Object.assign(new Error('Unknown workspace user action'), { code: 'INVALID_ACTION' }))
-      renderPage()
+      renderPage(undefined, '?section=integrations')
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Test key' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Test' }))
       expect(await screen.findByText('Testing a saved key is not available yet.')).toBeInTheDocument()
     })
 
-    it('explains provider usage without legacy credit estimates', async () => {
-      renderPage()
-      expect(await screen.findByText(/^Used for podcast research, pitch writing and inbox replies/)).toBeInTheDocument()
+    it('says what the provider powers, without legacy credit estimates', async () => {
+      renderPage(undefined, '?section=integrations')
+      expect(await screen.findByText('Powers research, pitches and inbox replies. Usage bills to your provider account.')).toBeInTheDocument()
       expect(screen.queryByText(/platform credits on/)).not.toBeInTheDocument()
-  })
-
-    it('offers Claude and OpenAI in billing provider settings', async () => {
-      renderPage()
-      await screen.findByLabelText('Anthropic (Claude) API key')
-      expect(screen.queryByLabelText('Podscan API key')).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /Additional providers/ })).not.toBeInTheDocument()
-      expect(screen.getByLabelText('OpenAI API key')).toBeInTheDocument()
-      expect(screen.queryByLabelText('Blitz API key')).not.toBeInTheDocument()
-      expect(screen.queryByLabelText('Winnr API key')).not.toBeInTheDocument()
     })
 
-    it('does not show empty key forms when connection status cannot be loaded', async () => {
+    it('offers Claude and OpenAI and nothing else', async () => {
+      renderPage(undefined, '?section=integrations')
+      await screen.findByLabelText('Claude API key')
+      expect(screen.getByRole('button', { name: 'Claude' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'OpenAI' })).toHaveAttribute('aria-pressed', 'false')
+      for (const provider of ['Podscan', 'Blitz', 'Winnr']) {
+        expect(screen.queryByLabelText(`${provider} API key`)).not.toBeInTheDocument()
+      }
+    })
+
+    it('does not show an empty key form when the provider cannot be loaded', async () => {
       vi.mocked(getWorkspaceAiKeys).mockRejectedValue(new Error('offline'))
-      renderPage()
-      expect(await screen.findByText(/couldn’t load your provider connections/)).toBeInTheDocument()
-      expect(screen.queryByLabelText('Anthropic (Claude) API key')).not.toBeInTheDocument()
+      renderPage(undefined, '?section=integrations')
+      expect(await screen.findByText(/couldn't load your AI provider/)).toBeInTheDocument()
+      expect(screen.queryByLabelText('Claude API key')).not.toBeInTheDocument()
       savedAnthropic()
-      fireEvent.click(screen.getByRole('button', { name: 'Retry connections' }))
-      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(await screen.findByLabelText('Saved Claude key')).toBeInTheDocument()
     })
 
     it('saves a new key with an explicit save, then shows it masked', async () => {
       vi.mocked(setWorkspaceAiKey).mockResolvedValue(undefined)
-      renderPage()
+      renderPage(undefined, '?section=integrations')
 
-      fireEvent.change(await screen.findByLabelText('Anthropic (Claude) API key'), { target: { value: ' sk-ant-api03-new-key-0000 ' } })
+      fireEvent.change(await screen.findByLabelText('Claude API key'), { target: { value: ' sk-ant-api03-new-key-0000 ' } })
       savedAnthropic()
-      fireEvent.click(screen.getAllByRole('button', { name: 'Save key' })[0])
+      fireEvent.click(screen.getByRole('button', { name: 'Save and use Claude' }))
       await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic', 'sk-ant-api03-new-key-0000'))
-      expect(await screen.findByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+      expect(await screen.findByLabelText('Saved Claude key')).toBeInTheDocument()
     })
   })
 
   it('saves a pasted scheduler link when the field loses focus and says it will load inline', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://calendly.com/agency/intro' } })
@@ -471,7 +489,7 @@ describe('WorkspaceStaff', () => {
   })
 
   it('takes the link out of the embed block a scheduler puts on the clipboard', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, {
@@ -491,7 +509,7 @@ describe('WorkspaceStaff', () => {
   })
 
   it('says a link it cannot frame will open in a new tab instead of refusing it', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://book.example.com/agency' } })
@@ -500,7 +518,7 @@ describe('WorkspaceStaff', () => {
   })
 
   it('refuses a paste with no link in it, under the field, without saving', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'not a link at all' } })
@@ -511,51 +529,46 @@ describe('WorkspaceStaff', () => {
     expect(updateWorkspaceBookingLink).not.toHaveBeenCalled()
   })
 
-  it('renders the owner roster and only server-authorized controls for the signed-in workspace', async () => {
+  it('lists the sections in two groups and shows one at a time', async () => {
     renderPage()
+    await pageLoaded()
 
-    expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-settings-page')).toHaveClass('min-w-0', 'max-w-full')
     expect(screen.getByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText('Changes save automatically')).toBeInTheDocument()
+    expect(screen.queryByText('Manage your workspace identity, client experience, and team access.')).not.toBeInTheDocument()
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
-    expect(within(settingsNavigation).getByRole('link', { name: /General/ })).toHaveAttribute('href', '#workspace-general')
-    expect(within(settingsNavigation).getByRole('link', { name: /Sidebar order/ })).toHaveAttribute('href', '#sidebar-navigation')
-    expect(within(settingsNavigation).getByRole('link', { name: /Profile/ })).toHaveAttribute('href', '#your-profile')
-    expect(within(settingsNavigation).getByRole('link', { name: /Integrations/ })).toHaveAttribute('href', '#ai-keys')
-    // Grouped by whose setting it is; the group names replaced the small
-    // uppercase labels each section used to carry.
-    expect(within(settingsNavigation).getByText('Your account')).toBeInTheDocument()
+    expect(within(settingsNavigation).getByText('You')).toBeInTheDocument()
     expect(within(settingsNavigation).getByText('Workspace')).toBeInTheDocument()
-    for (const label of ['YOU', 'PERSONALIZATION', 'WHITE LABEL', 'ACCESS']) {
-      expect(screen.queryByText(new RegExp(`^${label}$`, 'i'))).not.toBeInTheDocument()
-    }
-    expect(within(settingsNavigation).getByRole('link', { name: /Client branding/ })).toHaveAttribute('href', '#client-branding')
-    expect(within(settingsNavigation).getByRole('link', { name: /Team & access/ })).toHaveAttribute('href', '#workspace-access')
-    // Billing is a section of its own now, not a link off the page.
-    expect(within(settingsNavigation).getByRole('link', { name: /Billing/ })).toHaveAttribute('href', '#billing')
-    expect(screen.getByRole('heading', { name: 'Billing', level: 2 })).toBeInTheDocument()
-    expect(within(settingsNavigation).getByRole('link', { name: /Danger zone/ })).toHaveAttribute('href', '#danger-zone')
-    expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'General', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Client branding', level: 2 })).toBeInTheDocument()
-    // The count lives in the heading; the three stat tiles that repeated it are gone.
-    expect(screen.getByRole('heading', { name: 'Team & access · 2 members', level: 2 })).toBeInTheDocument()
-    expect(screen.queryByText('Total users')).not.toBeInTheDocument()
-    expect(screen.queryByText('Pending access')).not.toBeInTheDocument()
-    // The way out sits inside the settings body under its own heading, not
-    // floating after the grid where nothing pointed at it.
-    expect(screen.getByRole('heading', { name: 'Danger zone', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Close workspace' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Primary color')).toHaveClass('min-w-0', 'flex-1')
-    expect(screen.getByRole('table')).toHaveClass('min-w-[44rem]')
-    expect(screen.getByText('Who can sign in to this workspace, and what they can do.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
-    expect(screen.getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
-    const table = screen.getByRole('table')
-    expect(within(table).getByText('Owner')).toBeInTheDocument()
-    expect(within(table).queryByText('Protected owner')).not.toBeInTheDocument()
-    expect(within(table).queryByText('No actions')).not.toBeInTheDocument()
+    expect(within(settingsNavigation).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Profile', 'General', 'Client branding', 'Integrations', 'Team & access', 'Billing',
+    ])
+    expect(within(settingsNavigation).getByRole('link', { name: /Integrations/ })).toHaveAttribute('href', '/app/settings?section=integrations')
+    // Sidebar order is a row in Profile now, not a section of its own.
+    expect(within(settingsNavigation).queryByRole('link', { name: /Sidebar order/ })).not.toBeInTheDocument()
+    // The first section opens on its own; the rest are not in the page.
+    expect(within(settingsNavigation).getByRole('link', { name: /Profile/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('heading', { name: 'Profile', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'General', level: 2 })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Workspace name')).not.toBeInTheDocument()
+  })
+
+  it('renders the owner roster and only server-authorized controls for the signed-in workspace', async () => {
+    renderPage(undefined, '?section=team')
+
+    expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
+    expect(screen.getByText('2 people can sign in to this workspace')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Invite teammate' })).toBeEnabled()
+    const list = screen.getByRole('list', { name: 'Team members' })
+    const adminRow = within(list).getByText('Agency Admin').closest('li') as HTMLElement
+    expect(within(adminRow).getByText('admin@example.com')).toBeInTheDocument()
+    expect(within(adminRow).getByText(/^Joined /)).toBeInTheDocument()
+    expect(within(adminRow).getByText('A')).toBeInTheDocument()
+    expect(within(adminRow).getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
+    const ownerRow = within(list).getByText('Workspace Owner').closest('li') as HTMLElement
+    expect(within(ownerRow).getByText('owner')).toBeInTheDocument()
+    expect(within(ownerRow).queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Protected owner')).not.toBeInTheDocument()
     // One line beside the list; what each role may do is behind its ⓘ.
     expect(screen.getByText('Owners and admins manage the workspace; members work on clients.')).toBeInTheDocument()
     expect(screen.queryByText(/Cannot see Settings, Billing or the team list\./)).not.toBeInTheDocument()
@@ -572,18 +585,34 @@ describe('WorkspaceStaff', () => {
     expect(mockedList).toHaveBeenCalledWith(workspaceId)
   })
 
-  it('says how far setup has come, and whether Instantly is connected', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+  it('keeps closing the workspace under General, out of the menu', async () => {
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
+    expect(screen.getByRole('heading', { name: 'Danger zone' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close workspace' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Settings sections' })).queryByRole('link', { name: /Danger zone/ })).not.toBeInTheDocument()
+  })
 
-    // The connection is managed here as well as in Client Campaigns: the
-    // same card, with sync and the connect/manage dialog.
-    const card = screen.getByTestId('instantly-connection-card')
-    await waitFor(() => expect(card).toHaveTextContent('Acme Sending'))
+  it('says how far setup has come, and shows the sending platform as one compact card', async () => {
+    vi.mocked(getWorkspaceCampaignOverview).mockResolvedValue({
+      integration: { connected: true, status: 'connected', provider: 'instantly', provider_workspace_name: 'Acme Sending', active_account_count: 3, can_manage: true, last_verified_at: new Date(Date.now() - 5 * 60_000).toISOString() },
+      can_manage_campaigns: true,
+      campaigns: [],
+      provider_campaigns: [{ id: 'c1', mapped_client_id: null }, { id: 'c2', mapped_client_id: 'client-1' }, { id: 'c3', mapped_client_id: null }],
+      provider_campaigns_error: null,
+    } as never)
+    renderPage(undefined, '?section=integrations')
+    await pageLoaded()
+
+    const card = await screen.findByTestId('instantly-connection-card')
+    await waitFor(() => expect(card).toHaveTextContent('3 sending accounts · 3 campaigns'))
+    expect(card).toHaveTextContent('Instantly')
     expect(card).toHaveTextContent('Connected')
-    expect(card).toHaveTextContent('3 active sending accounts')
-    expect(within(card).getByRole('button', { name: /Sync with Instantly/ })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: /Manage connection/ })).toBeInTheDocument()
+    expect(card).toHaveTextContent('Synced 5 minutes ago')
+    expect(within(card).getByRole('button', { name: 'Sync now' })).toBeInTheDocument()
+    expect(within(card).getByText("2 campaigns aren't linked to a client yet.")).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Link campaigns' })).toHaveAttribute('href', '/app/client-campaigns?assign=1')
+    expect(within(card).getByRole('button', { name: 'Manage connection' })).toBeInTheDocument()
     // Instantly connected and credits in hand, but no client, no linked
     // mailbox and no reply-to address: two of five. It opens what is left,
     // each linking to where it is finished.
@@ -591,26 +620,41 @@ describe('WorkspaceStaff', () => {
     expect(await screen.findByText('Still to do')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Set the email clients reply to' })).toHaveAttribute('href', '/app/settings#client-contact-email')
     expect(screen.getByRole('link', { name: 'Add your first client' })).toHaveAttribute('href', '/app/clients')
-    expect(screen.getByRole('link', { name: 'Open the full checklist' })).toHaveAttribute('href', '/app/clients')
     expect(screen.queryByText('Workspace active')).not.toBeInTheDocument()
   })
 
-  it('moves to a section from the menu, marks it current and puts it in the address', async () => {
-    const scrollIntoView = vi.fn()
-    Element.prototype.scrollIntoView = scrollIntoView
-    renderPage()
-    await screen.findByText('Agency Admin')
+  it('hides the unlinked-campaigns notice when every campaign has a client', async () => {
+    vi.mocked(getWorkspaceCampaignOverview).mockResolvedValue({
+      integration: { connected: true, status: 'connected', provider: 'instantly', provider_workspace_name: 'Acme Sending', active_account_count: 3, can_manage: true },
+      can_manage_campaigns: true,
+      campaigns: [],
+      provider_campaigns: [{ id: 'c2', mapped_client_id: 'client-1' }],
+      provider_campaigns_error: null,
+    } as never)
+    renderPage(undefined, '?section=integrations')
+    const card = await screen.findByTestId('instantly-connection-card')
+    await waitFor(() => expect(card).toHaveTextContent('1 campaign'))
+    expect(within(card).queryByText(/linked to a client yet/)).not.toBeInTheDocument()
+    expect(within(card).queryByRole('link', { name: 'Link campaigns' })).not.toBeInTheDocument()
+  })
+
+  it('switches sections from the menu, puts the section in the address, and goes back with the browser', async () => {
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
+    expect(screen.getByLabelText('Workspace name')).toBeInTheDocument()
 
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
     const branding = within(settingsNavigation).getByRole('link', { name: /Client branding/ })
     fireEvent.click(branding)
 
-    expect(scrollIntoView).toHaveBeenCalledWith(expect.objectContaining({ block: 'start' }))
-    expect(branding).toHaveAttribute('aria-current', 'location')
-    expect(screen.getByRole('heading', { name: 'Client branding', level: 2 })).toHaveFocus()
-    await waitFor(() => expect(screen.getByTestId('location-hash')).toHaveTextContent('#client-branding'))
-    // The menu scrolled already; the page does not scroll a second time.
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('heading', { name: 'Client branding', level: 2 })).toBeInTheDocument()
+    expect(branding).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?section=branding')
+    expect(screen.queryByLabelText('Workspace name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }))
+    expect(await screen.findByLabelText('Workspace name')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?section=general')
   })
 
   it('hides the setup badge once every required step is done', async () => {
@@ -627,45 +671,34 @@ describe('WorkspaceStaff', () => {
       analytics_errors: [],
     } as never)
     renderPage()
-    await screen.findByText('Agency Admin')
+    await pageLoaded()
 
     await waitFor(() => expect(getWorkspaceMailboxes).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.queryByRole('button', { name: /Setup:/ })).not.toBeInTheDocument()
   })
 
-  it('shows the plan and balance in its own billing section', async () => {
-    renderPage()
+  it('shows the plan in its own billing section', async () => {
+    renderPage(undefined, '?section=billing')
 
     const billing = await screen.findByRole('region', { name: 'Billing' })
     expect(await within(billing).findByText('Founding member')).toBeInTheDocument()
-    expect(within(billing).getByText('Unlimited clients & team members')).toBeInTheDocument()
+    expect(within(billing).getByText('Trial')).toBeInTheDocument()
+    expect(within(billing).getByText('Unlimited clients and team members')).toBeInTheDocument()
     expect(within(billing).getByRole('link', { name: 'Manage billing' })).toHaveAttribute('href', '/app/settings/billing')
   })
 
-  it('stacks the team on a narrow screen, with every action in view', async () => {
-    // The setup's matchMedia is a read-only vi.fn(); its implementation is
-    // swapped for this test and put back after.
-    const original = vi.mocked(window.matchMedia).getMockImplementation()
-    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
-      matches: query === '(max-width: 1279px)',
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }) as never)
-    try {
-      renderPage()
-      const list = await screen.findByRole('list', { name: 'Team members' })
-      expect(screen.queryByRole('table')).not.toBeInTheDocument()
-      const admin = within(list).getByText('Agency Admin').closest('li') as HTMLElement
-      expect(within(admin).getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
-      expect(within(admin).getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
-      // The owner cannot be removed from here, by themselves or anyone.
-      const owner = within(list).getByText('Workspace Owner').closest('li') as HTMLElement
-      expect(within(owner).queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
-    } finally {
-      if (original) vi.mocked(window.matchMedia).mockImplementation(original)
-    }
+  it('lists the team as rows that wrap, with every action in view', async () => {
+    renderPage(undefined, '?section=team')
+    const list = await screen.findByRole('list', { name: 'Team members' })
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const admin = within(list).getByText('Agency Admin').closest('li') as HTMLElement
+    expect(admin).toHaveClass('flex-wrap')
+    expect(within(admin).getByRole('combobox', { name: 'Change role for admin@example.com' })).toBeEnabled()
+    expect(within(admin).getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
+    // The owner cannot be removed from here, by themselves or anyone.
+    const owner = within(list).getByText('Workspace Owner').closest('li') as HTMLElement
+    expect(within(owner).queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument()
   })
 
   it('offers to resend an invite that is still being set up', async () => {
@@ -682,10 +715,10 @@ describe('WorkspaceStaff', () => {
         allowed_actions: ['retry_invite', 'revoke'],
       }],
     })
-    renderPage()
+    renderPage(undefined, '?section=team')
     await screen.findByText('Agency Admin')
 
-    expect(screen.getByRole('heading', { name: 'Team & access · 3 members, 1 pending', level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('2 people can sign in to this workspace · 1 invite pending')).toBeInTheDocument()
     openRowMenu('new@example.com')
     expect(await screen.findByRole('menuitem', { name: 'Resend invite' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /Remove/ })).toBeInTheDocument()
@@ -707,7 +740,7 @@ describe('WorkspaceStaff', () => {
     }
     mockedList.mockResolvedValue({ ...ownerView, members: [owner, admin, expired] })
     mockedMutate.mockResolvedValue(undefined)
-    renderPage()
+    renderPage(undefined, '?section=team')
 
     await screen.findByText('Late Invitee')
     expect(screen.getByText('Invite expired')).toBeInTheDocument()
@@ -717,10 +750,10 @@ describe('WorkspaceStaff', () => {
   })
 
   it('lets only the signed-in workspace owner launch their sidebar organizer', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Organize sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder sidebar' }))
 
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     expect(within(navigation).getByRole('button', { name: 'Done' })).toBeInTheDocument()
@@ -729,8 +762,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('saves the workspace name on blur, with the timestamp it was read at', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
 
     const name = screen.getByLabelText('Workspace name')
     fireEvent.change(name, { target: { value: '  Northstar Workspace ' } })
@@ -744,8 +777,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('refuses an empty workspace name under the field, without saving', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
 
     const name = screen.getByLabelText('Workspace name')
     fireEvent.change(name, { target: { value: '   ' } })
@@ -758,8 +791,8 @@ describe('WorkspaceStaff', () => {
   it('saves the workspace name once typing pauses, without a blur', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
-      renderPage()
-      await screen.findByText('Agency Admin')
+      renderPage(undefined, '?section=general')
+      await pageLoaded()
 
       fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Northstar Workspace' } })
       expect(mockedUpdateWorkspaceName).not.toHaveBeenCalled()
@@ -797,8 +830,8 @@ describe('WorkspaceStaff', () => {
         client_brand_updated_at: '2026-07-22T01:06:00.000Z',
         client_contact_email: 'owner@example.com',
       })
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const agency = screen.getByLabelText('Agency name shown to clients')
     fireEvent.change(agency, { target: { value: 'Northstar Advisory' } })
@@ -824,47 +857,37 @@ describe('WorkspaceStaff', () => {
     })
   })
 
-  it('holds colours behind the unsaved-changes bar until Save, and Discard puts them back', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+  it('saves colours on their own once a valid pair is typed', async () => {
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
-    const bar = screen.getByRole('region', { name: 'Unsaved changes' })
-    expect(mockedUpdateClientBrand).not.toHaveBeenCalled()
-
-    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }))
-    expect(screen.getByLabelText('Primary color')).toHaveValue('#0D1B2A')
-    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeInTheDocument()
-
     fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
     fireEvent.change(screen.getByLabelText('Accent color'), { target: { value: '#E07A5F' } })
-    fireEvent.click(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' }))
+    expect(mockedUpdateClientBrand).not.toHaveBeenCalled()
     await waitFor(() => expect(mockedUpdateClientBrand).toHaveBeenCalledWith(workspaceId, {
       client_brand_name: 'Acme Agency',
       client_brand_primary_color: '#16324F',
       client_brand_accent_color: '#E07A5F',
       client_contact_email: undefined,
       expected_brand_updated_at: '2026-07-22T00:30:00.000Z',
-    }))
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Client branding saved.'))
+    }), { timeout: 3000 })
+    expect(mockedUpdateClientBrand).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Saved', expect.anything()))
   })
 
-  it('asks before leaving the page with unsaved colours, and not for moving within it', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+  it('asks before leaving with a colour that cannot be saved yet', async () => {
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
-    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#16324F' } })
-    // Within the page: the section menu changes only the hash.
+    fireEvent.change(screen.getByLabelText('Primary color'), { target: { value: '#12' } })
+    // Another section unmounts the field, so it asks first.
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('link', { name: /General/ }))
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-
-    // Out of it: a link to another page.
-    fireEvent.click(await screen.findByRole('link', { name: /Manage billing/ }))
     expect(await screen.findByRole('alertdialog', { name: 'Leave without saving?' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Stay on this page' }))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
-    expect(screen.getByLabelText('Primary color')).toHaveValue('#16324F')
+    expect(screen.getByLabelText('Primary color')).toHaveValue('#12')
+    expect(mockedUpdateClientBrand).not.toHaveBeenCalled()
 
     // The browser's own prompt covers closing and reloading the tab.
     const unload = new Event('beforeunload', { cancelable: true })
@@ -879,22 +902,31 @@ describe('WorkspaceStaff', () => {
    * the sidebar never draws must not pay that.
    */
   it('keeps a half-typed workspace name when an unrelated roster change refetches', async () => {
-    // Suspending a teammate invalidates and refetches the staff roster with
-    // changed data. A blanket effect keyed on `data` used to wipe the name,
-    // booking link, and brand a user was mid-editing.
-    renderPage()
-    await screen.findByText('Agency Admin')
+    // A roster change elsewhere refetches the staff view with changed data.
+    // A blanket effect keyed on `data` used to wipe the name a user was
+    // mid-editing.
+    const queryClient = renderPage(undefined, '?section=general')
+    await pageLoaded()
 
     fireEvent.change(screen.getByLabelText('Workspace name'), { target: { value: 'Half Typed Name' } })
-
-    // The next roster load reflects the suspension — genuinely different data.
     mockedList.mockResolvedValue({
       ...ownerView,
       members: ownerView.members.map((member) => (
         member.id === adminId ? { ...member, status: 'suspended', suspended_at: '2026-07-22T01:00:00.000Z' } : member
       )),
     })
+    const calls = mockedList.mock.calls.length
+    await queryClient.invalidateQueries()
+    await waitFor(() => expect(mockedList.mock.calls.length).toBeGreaterThan(calls))
+
+    // The edit the user never saved is still in the field.
+    expect((screen.getByLabelText('Workspace name') as HTMLInputElement).value).toBe('Half Typed Name')
+  })
+
+  it('asks before suspending a teammate, and says what it does', async () => {
     mockedMutate.mockResolvedValue(undefined)
+    renderPage(undefined, '?section=team')
+    await screen.findByText('Agency Admin')
 
     openRowMenu('admin@example.com')
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Suspend' }))
@@ -904,9 +936,6 @@ describe('WorkspaceStaff', () => {
     )).toBeInTheDocument()
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Suspend user' }))
     await waitFor(() => expect(mockedMutate).toHaveBeenCalledWith(workspaceId, adminId, 'suspend'))
-
-    // The edit the user never saved is still in the field.
-    expect((screen.getByLabelText('Workspace name') as HTMLInputElement).value).toBe('Half Typed Name')
   })
 
   it('shows a saved booking link and lets it be cleared', async () => {
@@ -917,8 +946,8 @@ describe('WorkspaceStaff', () => {
       workspace: { ...ownerView.workspace, booking_embed_url: 'https://calendly.com/northstar/intro' },
     })
     vi.mocked(updateWorkspaceBookingLink).mockResolvedValue(undefined)
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const box = screen.getByLabelText('Booking link or embed code') as HTMLInputElement
     expect(box.value).toBe('https://calendly.com/northstar/intro')
@@ -930,8 +959,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('does not tear the page down to save a booking link', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const box = screen.getByLabelText('Booking link or embed code')
     fireEvent.change(box, { target: { value: 'https://calendly.com/northstar/intro' } })
@@ -943,8 +972,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('does not tear the page down to save the client-facing brand', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const agency = screen.getByLabelText('Agency name shown to clients')
     fireEvent.change(agency, { target: { value: 'Northstar Advisory' } })
@@ -959,8 +988,8 @@ describe('WorkspaceStaff', () => {
   // has to re-read it or the sidebar sits stale until a hard refresh — but
   // quietly, or ProtectedRoute throws up a spinner and rebuilds the page.
   it('refreshes the shell for the name the sidebar draws, without tearing the page down', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
 
     const name = screen.getByLabelText('Workspace name')
     fireEvent.change(name, { target: { value: 'Northstar Workspace' } })
@@ -973,18 +1002,19 @@ describe('WorkspaceStaff', () => {
   // Two fields on this page are called a name, and which one a client sees was
   // described only from the other one's helper text.
   it('says plainly which name a client sees and which one they never do', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=general')
+    await pageLoaded()
 
     expect(screen.getByText('Only your team sees this.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More about the workspace name' })).toBeInTheDocument()
-    expect(screen.getByText('Shown on client dashboards. Defaults to your workspace name.')).toBeInTheDocument()
+    await openSection(/Client branding/)
+    expect(await screen.findByText('Shown on client dashboards. Defaults to your workspace name.')).toBeInTheDocument()
     // The fixture has no reply-to yet, so its field shows the warning in place of its line.
     expect(screen.getByText('Replies to your client emails go nowhere until you add an address.')).toBeInTheDocument()
   })
 
   it('names the scheduler a link belongs to and offers to open it', async () => {
-    renderPage()
+    renderPage(undefined, '?section=branding')
 
     const field = await screen.findByLabelText('Booking link or embed code')
     fireEvent.change(field, { target: { value: 'https://savvycal.com/northstar/intro' } })
@@ -996,8 +1026,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('takes a hex color with or without the # and stores it in capitals', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const primary = screen.getByLabelText('Primary color')
     fireEvent.focus(primary)
@@ -1011,12 +1041,11 @@ describe('WorkspaceStaff', () => {
     expect(screen.queryByText('Enter a hex color, like #2B4C7E.')).not.toBeInTheDocument()
     fireEvent.blur(primary)
     expect(screen.getByText('Enter a hex color, like #2B4C7E.')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
   it('warns when white text on a brand color would be hard to read', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     // The default accent, #C7794F, is already too light for white text.
     expect(screen.getAllByText(/Text on this color may be hard to read/)).toHaveLength(1)
@@ -1027,8 +1056,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('previews the brand on the client dashboard and on onboarding', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     expect(screen.getByLabelText('Client dashboard brand preview')).toBeInTheDocument()
     // Radix tabs switch on mouse down, which is what a click starts with.
@@ -1040,18 +1069,21 @@ describe('WorkspaceStaff', () => {
   // The copy rules for this page: no em dashes anywhere a person reads.
   it('puts no em dash in any copy on the page', async () => {
     renderPage()
-    await screen.findByText('Agency Admin')
-    await waitFor(() => expect(screen.getByRole('region', { name: 'Billing' })).toBeInTheDocument())
+    await pageLoaded()
 
-    expect(screen.getByTestId('workspace-settings-page').textContent).not.toMatch(/—/u)
-    const labelled = [...document.querySelectorAll('[aria-label],[placeholder],[title]')]
-      .map((element) => ['aria-label', 'placeholder', 'title'].map((name) => element.getAttribute(name) ?? '').join(' '))
-    expect(labelled.join(' ')).not.toMatch(/—/u)
+    for (const section of [/Profile/, /General/, /Client branding/, /Integrations/, /Team & access/, /Billing/]) {
+      await openSection(section)
+      await waitFor(() => expect(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('link', { name: section })).toHaveAttribute('aria-current', 'page'))
+      expect(screen.getByTestId('workspace-settings-page').textContent).not.toMatch(/—/u)
+      const labelled = [...document.querySelectorAll('[aria-label],[placeholder],[title]')]
+        .map((element) => ['aria-label', 'placeholder', 'title'].map((name) => element.getAttribute(name) ?? '').join(' '))
+      expect(labelled.join(' ')).not.toMatch(/—/u)
+    }
   })
 
   it('says what the two brand colours actually move', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     expect(screen.getByText('Primary fills headers and buttons on client pages. Accent marks the active item, like the current tab.')).toBeInTheDocument()
   })
@@ -1059,8 +1091,8 @@ describe('WorkspaceStaff', () => {
   // The instruction never changes and the status changes with every keystroke,
   // so reading the status used to mean re-reading the instruction.
   it('keeps the booking-link instruction apart from its live status', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     // One line: what the link is for. Nothing typed yet, so no provider.
     expect(screen.getByText('Prospects without their own call-to-action will see this booking link.')).toBeInTheDocument()
@@ -1069,10 +1101,10 @@ describe('WorkspaceStaff', () => {
   })
 
   it('invites through the authenticated workspace and its allowed default role', async () => {
-    renderPage()
+    renderPage(undefined, '?section=team')
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite teammate' }))
     const dialog = screen.getByRole('dialog')
     fireEvent.change(within(dialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(dialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -1093,8 +1125,8 @@ describe('WorkspaceStaff', () => {
   // containing block and stretched the document 260px past the viewport.
   // jsdom has no layout, so the classes are what can be asserted here.
   it('hides the logo field without giving it a width that widens the page', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     const field = screen.getByLabelText('Workspace logo file')
     expect(field.tagName).toBe('INPUT')
@@ -1104,31 +1136,22 @@ describe('WorkspaceStaff', () => {
     expect(field.className).not.toMatch(/\bh-10\b/)
   })
 
-  it('uploads a workspace logo and refreshes the signed-in workspace shell', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+  it('uploads a workspace logo as soon as it is chosen and refreshes the signed-in workspace shell', async () => {
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
     const file = new File(
       [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
       'agency.png',
       { type: 'image/png' },
     )
 
-    // jsdom has no object URLs; the chosen file is previewed through one.
-    URL.createObjectURL = vi.fn(() => 'blob:preview')
-    URL.revokeObjectURL = vi.fn()
-
     fireEvent.change(screen.getByLabelText('Workspace logo file'), {
       target: { files: [file] },
     })
 
-    // Previewed, not uploaded, until the bar's Save.
-    expect(screen.getByLabelText('Client dashboard brand preview').querySelector('img')).toHaveAttribute('src', 'blob:preview')
-    expect(mockedUpdateLogo).not.toHaveBeenCalled()
-    fireEvent.click(within(screen.getByRole('region', { name: 'Unsaved changes' })).getByRole('button', { name: 'Save' }))
-
     await waitFor(() => expect(mockedUpdateLogo).toHaveBeenCalledWith(workspaceId, file, null))
     await waitFor(() => expect(refreshAccount).toHaveBeenCalledTimes(1))
-    expect(toastSuccess).toHaveBeenCalledWith('Client branding saved.')
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Saved', expect.anything()))
   })
 
   it('confirms and removes the current workspace logo', async () => {
@@ -1141,8 +1164,8 @@ describe('WorkspaceStaff', () => {
         logo_updated_at: '2026-07-22T01:00:00.000Z',
       },
     })
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=branding')
+    await pageLoaded()
 
     // Shown on the primary color it sits on in the client's header.
     expect(screen.getByTestId('workspace-logo-on-primary')).toHaveStyle({ backgroundColor: '#0D1B2A' })
@@ -1157,8 +1180,8 @@ describe('WorkspaceStaff', () => {
   })
 
   it('lets a member upload their own picture and refreshes the shell that draws it', async () => {
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
     const profile = screen.getByRole('region', { name: 'Profile' })
     expect(within(profile).getByRole('button', { name: /upload picture/i })).toBeEnabled()
@@ -1196,8 +1219,8 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
     const profile = screen.getByRole('region', { name: 'Profile' })
     expect(within(profile).getByRole('button', { name: /replace picture/i })).toBeEnabled()
@@ -1226,14 +1249,16 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage(workspaceId)
-    await screen.findByText('Agency Admin')
+    renderPage(workspaceId, '?section=profile')
+    await pageLoaded()
 
-    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
+    // Profile still holds their sidebar order, but no picture.
+    expect(screen.getByRole('button', { name: 'Reorder sidebar' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Profile picture file')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /upload picture/i })).not.toBeInTheDocument()
     // The workspace's own branding is still theirs to manage from this view.
-    expect(screen.getByLabelText('Workspace logo file')).toBeInTheDocument()
+    await openSection(/Client branding/)
+    expect(await screen.findByLabelText('Workspace logo file')).toBeInTheDocument()
   })
 
   /*
@@ -1253,8 +1278,8 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage(workspaceId)
-    await screen.findByText('Agency Admin')
+    renderPage(workspaceId, '?section=profile')
+    await pageLoaded()
 
     const profile = screen.getByRole('region', { name: 'Profile' })
     const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'me.png', { type: 'image/png' })
@@ -1296,8 +1321,8 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage(workspaceId)
-    await screen.findByText('Agency Admin')
+    renderPage(workspaceId, '?section=profile')
+    await pageLoaded()
 
     const profile = screen.getByRole('region', { name: 'Profile' })
     fireEvent.click(within(profile).getByRole('button', { name: /^Remove$/ }))
@@ -1332,8 +1357,8 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
     const file = new File(
       [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
@@ -1355,8 +1380,8 @@ describe('WorkspaceStaff', () => {
     mockedUploadAvatar.mockRejectedValueOnce(
       new Error('Your profile picture changed elsewhere. Refresh and try again.'),
     )
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
     const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'me.png', { type: 'image/png' })
     fireEvent.change(screen.getByLabelText('Profile picture file'), { target: { files: [file] } })
@@ -1386,10 +1411,9 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage(workspaceId)
-    await screen.findByText('Agency Admin')
+    renderPage(workspaceId, '?section=profile')
+    await pageLoaded()
 
-    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Profile picture file')).not.toBeInTheDocument()
   })
 
@@ -1411,8 +1435,8 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage()
-    await screen.findByText('Agency Admin')
+    renderPage(undefined, '?section=profile')
+    await pageLoaded()
 
     expect(screen.getByRole('region', { name: 'Profile' })).toBeInTheDocument()
   })
@@ -1430,10 +1454,10 @@ describe('WorkspaceStaff', () => {
       signOut,
     } as never)
 
-    renderPage(workspaceId)
-    await screen.findByText('Agency Admin')
+    renderPage(workspaceId, '?section=profile')
+    await pageLoaded()
 
-    expect(screen.queryByRole('region', { name: 'Profile' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Profile picture file')).not.toBeInTheDocument()
   })
 
   it('generates a one-time password and requires confirmation before closing it', async () => {
@@ -1452,10 +1476,10 @@ describe('WorkspaceStaff', () => {
       email: passwordMember.email,
       temporary_password: temporaryPassword,
     })
-    renderPage()
+    renderPage(undefined, '?section=team')
     await screen.findByText('Agency Admin')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Invite teammate' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'New Teammate' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'new@example.com' } })
@@ -1507,7 +1531,7 @@ describe('WorkspaceStaff', () => {
       email: pendingPassword.email,
       temporary_password: temporaryPassword,
     })
-    renderPage()
+    renderPage(undefined, '?section=team')
 
     expect(await screen.findByText('Password User')).toBeInTheDocument()
     expect(screen.getByText('Setting up')).toBeInTheDocument()
@@ -1519,7 +1543,7 @@ describe('WorkspaceStaff', () => {
   })
 
   it('lets the workspace owner reset a user password and reveals the temporary password once', async () => {
-    renderPage()
+    renderPage(undefined, '?section=team')
     await screen.findByText('Agency Admin')
 
     openRowMenu('admin@example.com')
@@ -1547,7 +1571,7 @@ describe('WorkspaceStaff', () => {
   })
 
   it('confirms ownership transfer and refreshes the demoted owner session', async () => {
-    renderPage()
+    renderPage(undefined, '?section=team')
     await screen.findByText('Agency Admin')
 
     openRowMenu('admin@example.com')
@@ -1580,29 +1604,20 @@ describe('WorkspaceStaff', () => {
     mockedList.mockResolvedValue(ownerView)
 
     renderPage(workspaceId)
-
-    expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
-    // The same words a workspace owner reads on their own settings page.
-    expect(screen.getByText('Manage your workspace identity, client experience, and team access.')).toBeInTheDocument()
-    expect(screen.getByText('Who can sign in to this workspace, and what they can do.')).toBeInTheDocument()
+    await pageLoaded()
     const settingsNavigation = screen.getByRole('navigation', { name: 'Settings sections' })
     expect(within(settingsNavigation).queryByRole('link', { name: /^Credits/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Workspace credits' })).not.toBeInTheDocument()
+    // Billing for another workspace is platform work, at /app/platform/billing.
+    expect(within(settingsNavigation).queryByRole('link', { name: /Billing/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/admin preview/i)).not.toBeInTheDocument()
+    expect(within(settingsNavigation).getByRole('link', { name: /Profile/ })).toHaveAttribute('href', `/app/workspaces/${workspaceId}/settings?section=profile`)
     /*
-     * Present here, which is the point of this test's name: an owner sees this
-     * section on their own settings, so hiding it from the platform view made
-     * the two disagree — and the shell offered the reorder control on this very
-     * screen, so the sidebar had a button whose settings entry did not exist.
-     * The order is the viewer's own in every view, never the viewed
-     * workspace's, and the card says so.
+     * The sidebar order is the viewer's own in every view, so Profile offers
+     * it here too: the shell offers the reorder control on this very screen.
      */
-    expect(screen.getByRole('heading', { name: 'Sidebar order', level: 2 })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Organize sidebar' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Reorder sidebar' })).toBeEnabled()
     expect(screen.getByText(/Only you see this order/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More about where the order is saved' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Invite member' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
     // Sign out lives in the menu on the person's avatar.
     expect(screen.getByRole('button', { name: /^Account menu: / })).toBeEnabled()
     expect(screen.getByText('platform@example.com')).toBeInTheDocument()
@@ -1612,7 +1627,10 @@ describe('WorkspaceStaff', () => {
       `/app/workspaces/${workspaceId}/settings`,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Invite member' }))
+    await openSection(/Team & access/)
+    expect(await screen.findByText('Agency Admin')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions for admin@example.com' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Invite teammate' }))
     const inviteDialog = screen.getByRole('dialog')
     fireEvent.change(within(inviteDialog).getByLabelText('Full name'), { target: { value: 'Platform Invite' } })
     fireEvent.change(within(inviteDialog).getByLabelText('Email'), { target: { value: 'platform-invite@example.com' } })
@@ -1669,9 +1687,9 @@ describe('WorkspaceStaff', () => {
       temporary_password: temporaryPassword,
     })
 
-    renderPage(workspaceId)
-    const teamTable = await screen.findByRole('table')
-    const ownerRow = within(teamTable).getByText('Workspace Owner').closest('tr')
+    renderPage(workspaceId, '?section=team')
+    const teamList = await screen.findByRole('list', { name: 'Team members' })
+    const ownerRow = within(teamList).getByText('Workspace Owner').closest('li')
     expect(ownerRow).not.toBeNull()
     const trigger = within(ownerRow as HTMLElement).getByRole('button', { name: 'More actions for owner@example.com' })
     trigger.focus()
@@ -1702,7 +1720,7 @@ describe('WorkspaceStaff', () => {
         },
       ],
     })
-    renderPage()
+    renderPage(undefined, '?section=team')
 
     // A temporary password is handed over by a person, so it can simply never
     // arrive. "Password change required" read the same on day one and day
@@ -1713,13 +1731,14 @@ describe('WorkspaceStaff', () => {
 
   it('leaves a member who has signed in unmarked', async () => {
     mockedList.mockResolvedValue({ ...ownerView, members: [owner, admin] })
-    renderPage()
+    renderPage(undefined, '?section=team')
 
     // The shell footer also names the signed-in owner, so wait for the row
     // only the table draws.
     await screen.findByText('Agency Admin')
     expect(screen.queryByText(/Issued |Email sent /)).not.toBeInTheDocument()
-    expect(within(screen.getByRole('table')).getAllByText('Active')).toHaveLength(2)
+    // Active is the normal state, so a row only carries a badge when it is not.
+    expect(within(screen.getByRole('list', { name: 'Team members' })).queryByText('Active')).not.toBeInTheDocument()
   })
 
   it('fails closed when selected-workspace data names a different workspace', async () => {
@@ -1818,24 +1837,24 @@ describe('WorkspaceStaff', () => {
     })
 
     it('lets the platform workspace set its own client-facing brand', async () => {
-      renderPage()
+      renderPage(undefined, '?section=branding')
       // The workspace runs real clients, so the identity its prospects see is
       // its own to set rather than a platform default.
       expect(await screen.findByRole('heading', { name: 'Client branding' })).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
+      expect(screen.getByLabelText('Agency name shown to clients')).toBeEnabled()
     })
 
     it('sends the platform roster to the platform team tab instead of offering an invite', async () => {
-      renderPage()
+      renderPage(undefined, '?section=team')
       await screen.findByRole('heading', { name: /^Team & access/ })
-      expect(screen.queryByRole('button', { name: 'Invite member' })).not.toBeInTheDocument()
-      const links = screen.getAllByRole('link', { name: /Platform team|Manage platform team/ })
+      expect(screen.queryByRole('button', { name: 'Invite teammate' })).not.toBeInTheDocument()
+      const links = screen.getAllByRole('link', { name: /platform team/i })
       expect(links.length).toBeGreaterThan(0)
       for (const link of links) expect(link).toHaveAttribute('href', '/app/manage-workspaces?tab=team')
     })
 
     it('offers no action on a platform operator account', async () => {
-      renderPage()
+      renderPage(undefined, '?section=team')
       await screen.findByRole('heading', { name: /^Team & access/ })
       // Staff mutations are refused at the SQL root for this workspace, so a
       // button here would be a promise the database will not keep.

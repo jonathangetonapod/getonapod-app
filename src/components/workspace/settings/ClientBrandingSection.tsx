@@ -21,7 +21,7 @@ import { BrandColorField } from '@/components/workspace/settings/BrandColorField
 import { BrandPreview } from '@/components/workspace/settings/BrandPreview'
 import { InfoTip } from '@/components/workspace/InfoTip'
 import { FieldSaveError, FieldSaveStatus } from '@/components/workspace/settings/FieldSaveStatus'
-import { UnsavedChangesBar } from '@/components/workspace/settings/UnsavedChangesBar'
+import { notifySaved } from '@/components/workspace/settings/savedToast'
 import { useAutoSaveField } from '@/components/workspace/settings/useAutoSaveField'
 import { normalizeHexColor, readableColor } from '@/lib/brandColor'
 import { notACredentialField } from '@/lib/formAutofill'
@@ -160,8 +160,8 @@ export const ClientBrandingSection = ({
   const bookingLinkResolved = bookingLinkFromPaste(bookingLink.value)
   const bookingProvider = schedulerName(bookingLinkResolved)
 
-  // Colours and logo save together from the bar: a brand half-published is
-  // worse than one not yet changed.
+  // Colours save on their own once typing pauses on a valid pair; a half-
+  // typed hex waits rather than publishing a colour nobody chose.
   const serverColors = { primary: workspace.client_brand_primary_color, accent: workspace.client_brand_accent_color }
   const [colors, setColors] = useState(serverColors)
   const lastServerColorsRef = useRef(`${serverColors.primary}${serverColors.accent}`)
@@ -179,36 +179,33 @@ export const ClientBrandingSection = ({
   const colorsValid = primary !== null && accent !== null
   const shownPrimary = primary ?? serverColors.primary
   const shownAccent = accent ?? serverColors.accent
+  const shownLogoUrl = logoUrl
 
-  // A chosen logo waits for Save, shown in the preview meanwhile.
-  const [pendingLogo, setPendingLogo] = useState<{ file: File; url: string } | null>(null)
-  useEffect(() => () => { if (pendingLogo) URL.revokeObjectURL(pendingLogo.url) }, [pendingLogo])
-  const shownLogoUrl = pendingLogo?.url ?? logoUrl
+  const colorsMutation = useMutation({
+    mutationFn: (next: { primary: string; accent: string }) => saveBrand(next),
+    onSuccess: () => notifySaved(),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The brand colors could not be saved.'),
+  })
+  const saveColorsRef = useRef(colorsMutation.mutate)
+  saveColorsRef.current = colorsMutation.mutate
+  useEffect(() => {
+    if (!colorsDirty || !colorsValid || !canManageClientBranding) return
+    const timer = setTimeout(() => saveColorsRef.current({ primary, accent }), 800)
+    return () => clearTimeout(timer)
+  }, [primary, accent, colorsDirty, colorsValid, canManageClientBranding])
 
-  const brandDirty = colorsDirty || pendingLogo !== null
-  const unsaved = brandDirty || agencyName.unsaved || replyTo.unsaved || bookingLink.unsaved
+  const unsaved = (colorsDirty && !colorsValid) || agencyName.unsaved || replyTo.unsaved || bookingLink.unsaved
   useEffect(() => { onUnsavedChange(unsaved) }, [onUnsavedChange, unsaved])
 
-  const discard = () => {
-    setColors(serverColors)
-    setPendingLogo(null)
-  }
-
-  const saveBarMutation = useMutation({
-    mutationFn: async () => {
-      if (colorsDirty) {
-        if (!primary || !accent) throw new Error('Enter both colors as hex values, like #2B4C7E.')
-        await saveBrand({ primary, accent })
-      }
-      if (pendingLogo) {
-        if (!canManageBranding) throw new Error('You do not have permission to update workspace branding.')
-        await updateWorkspaceLogo(workspaceId, pendingLogo.file, workspace.logo_path)
-        setPendingLogo(null)
-        await onLogoChanged()
-      }
+  // A chosen logo saves straight away; the preview shows it once it lands.
+  const logoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!canManageBranding) throw new Error('You do not have permission to update workspace branding.')
+      await updateWorkspaceLogo(workspaceId, file, workspace.logo_path)
+      await onLogoChanged()
     },
-    onSuccess: () => toast.success('Client branding saved.'),
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Client branding could not be saved.'),
+    onSuccess: () => notifySaved(),
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'The logo could not be saved.'),
   })
 
   const removeLogoMutation = useMutation({
@@ -225,7 +222,7 @@ export const ClientBrandingSection = ({
   })
 
   const replyToMissing = !replyTo.value.trim()
-  const busy = saveBarMutation.isPending
+  const busy = logoMutation.isPending
   const fieldsDisabled = !canManageClientBranding
 
   return (
@@ -236,11 +233,11 @@ export const ClientBrandingSection = ({
           that. Two panels rather than one card: the card's overflow-hidden,
           there for its rounded corners, would have stopped the preview
           sticking. */}
-      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
         <Card className="min-w-0 max-w-full overflow-hidden border-border/70 shadow-sm">
           <CardContent className="min-w-0 p-0">
-            <div className="min-w-0 space-y-6 p-6 sm:p-7">
-              <div className="space-y-2">
+            <div className="grid min-w-0 gap-6 p-5 sm:p-6 md:grid-cols-2">
+              <div className="min-w-0 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="client-brand-name">Agency name shown to clients</Label>
                   <FieldSaveStatus status={agencyName.status} />
@@ -261,7 +258,7 @@ export const ClientBrandingSection = ({
                 <p className="text-xs text-muted-foreground">Shown on client dashboards. Defaults to your workspace name.</p>
               </div>
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="client-contact-email">Email clients reply to</Label>
                   <FieldSaveStatus status={replyTo.status} />
@@ -313,7 +310,7 @@ export const ClientBrandingSection = ({
                 )}
               </div>
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2 md:col-span-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="workspace-booking-link">Booking link or embed code</Label>
                   <FieldSaveStatus status={bookingLink.status} />
@@ -356,33 +353,33 @@ export const ClientBrandingSection = ({
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {/* Named for what they do, not where they sit in a palette:
                     "primary" and "accent" mean nothing until you know which
                     one moves. */}
                 <p className="text-xs leading-5 text-muted-foreground">
                   Primary fills headers and buttons on client pages. Accent marks the active item, like the current tab.
                 </p>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4">
                   {COLOR_FIELDS.map((field) => (
                     <BrandColorField
                       key={field.key}
                       id={field.id}
                       label={field.label}
                       value={colors[field.key]}
-                      disabled={fieldsDisabled || busy}
+                      disabled={fieldsDisabled}
                       onChange={(value) => setColors((current) => ({ ...current, [field.key]: value }))}
                     />
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-3 border-t border-border/70 pt-6">
+              <div className="min-w-0 space-y-3">
                 <div>
-                  <p className="font-semibold">Agency logo</p>
+                  <p className="text-sm font-medium">Agency logo</p>
                   <p className="mt-0.5 text-sm text-muted-foreground">PNG, JPEG, or WebP up to 2 MB. Recommended: square, at least 256×256px.</p>
                 </div>
-                <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/20 p-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/20 p-4">
                   {/* On the primary color, which is what it sits on in the
                       client's header, so a dark logo on a dark brand shows
                       up here first. */}
@@ -411,7 +408,7 @@ export const ClientBrandingSection = ({
                       onChange={(event) => {
                         const file = event.currentTarget.files?.[0]
                         event.currentTarget.value = ''
-                        if (file) setPendingLogo({ file, url: URL.createObjectURL(file) })
+                        if (file) logoMutation.mutate(file)
                       }}
                     />
                     <div className="flex flex-wrap gap-2">
@@ -422,15 +419,10 @@ export const ClientBrandingSection = ({
                         disabled={!canManageBranding || busy || removeLogoMutation.isPending}
                         onClick={() => logoInputRef.current?.click()}
                       >
-                        <Upload className="mr-2 h-4 w-4" />
+                        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                         {shownLogoUrl ? 'Replace logo' : 'Upload logo'}
                       </Button>
-                      {pendingLogo ? (
-                        // Not saved yet, so nothing is lost: no confirmation.
-                        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setPendingLogo(null)}>
-                          Undo new logo
-                        </Button>
-                      ) : workspace.logo_path && (
+                      {workspace.logo_path && (
                         <Button
                           type="button"
                           size="sm"
@@ -451,14 +443,14 @@ export const ClientBrandingSection = ({
               </div>
 
               {!canManageClientBranding ? (
-                <p className="text-sm text-muted-foreground">Client-facing brand controls are not available for your role.</p>
+                <p className="text-sm md:col-span-2 text-muted-foreground">Client-facing brand controls are not available for your role.</p>
               ) : null}
             </div>
 
           </CardContent>
         </Card>
 
-        <div className="min-w-0 rounded-xl border border-border/70 bg-muted/25 p-4 sm:p-5 xl:sticky xl:top-28">
+        <div className="min-w-0 rounded-xl border border-border/70 bg-muted/25 p-4 sm:p-5 2xl:sticky 2xl:top-28">
           <BrandPreview
             name={agencyName.value.trim() || workspace.name}
             primary={shownPrimary}
@@ -468,14 +460,6 @@ export const ClientBrandingSection = ({
           />
         </div>
       </div>
-      {brandDirty && (
-        <UnsavedChangesBar
-          saving={busy}
-          canSave={colorsValid && (canManageClientBranding || !colorsDirty)}
-          onDiscard={discard}
-          onSave={() => saveBarMutation.mutate()}
-        />
-      )}
 
       <AlertDialog
         open={logoRemoveOpen}

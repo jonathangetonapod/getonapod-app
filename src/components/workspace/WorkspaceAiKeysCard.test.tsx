@@ -1,170 +1,175 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { toast } from 'sonner'
 import { WorkspaceAiKeysCard } from './WorkspaceAiKeysCard'
-import { clearWorkspaceAiKey, getWorkspaceAiKeys, setWorkspaceAiKey, setWorkspaceAiProvider, type WorkspaceAiKeysView } from '@/services/workspaceStaff'
+import {
+  clearWorkspaceAiKey,
+  getWorkspaceAiKeys,
+  setWorkspaceAiKey,
+  setWorkspaceAiProvider,
+  testWorkspaceAiKey,
+  type WorkspaceAiKeysView,
+} from '@/services/workspaceStaff'
 
 vi.mock('@/services/workspaceStaff', () => ({
   getWorkspaceAiKeys: vi.fn(), clearWorkspaceAiKey: vi.fn(), setWorkspaceAiKey: vi.fn(), setWorkspaceAiProvider: vi.fn(), testWorkspaceAiKey: vi.fn(),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
 const workspaceId = '11111111-1111-4111-8111-111111111111'
-const keys: WorkspaceAiKeysView = {
-  anthropic: { configured: true, last_four: '1234', updated_at: '2026-10-28T12:00:00Z' },
-}
+const saved = { configured: true, last_four: '1234', updated_at: '2026-10-28T12:00:00Z' }
+const none = { configured: false, last_four: null, updated_at: null }
+const claudeOnly: WorkspaceAiKeysView = { anthropic: saved, openai: none, default_provider: 'anthropic' }
 
 function renderCard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  const renderWith = (id: string) => <QueryClientProvider client={client}><WorkspaceAiKeysCard workspaceId={id} queryScope={['tenant', id]} /></QueryClientProvider>
+  const renderWith = (id: string) => <QueryClientProvider client={client}><WorkspaceAiKeysCard workspaceId={id} /></QueryClientProvider>
   const view = render(renderWith(workspaceId))
   return { ...view, updateWorkspace: (id: string) => view.rerender(renderWith(id)) }
 }
 
+const toggle = (name: string) => screen.getByRole('button', { name })
+
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(getWorkspaceAiKeys).mockResolvedValue(keys)
+  vi.mocked(getWorkspaceAiKeys).mockResolvedValue(claudeOnly)
   vi.mocked(clearWorkspaceAiKey).mockResolvedValue(undefined)
   vi.mocked(setWorkspaceAiKey).mockResolvedValue(undefined)
   vi.mocked(setWorkspaceAiProvider).mockResolvedValue(undefined)
+  vi.mocked(testWorkspaceAiKey).mockResolvedValue('valid')
 })
 
-describe('workspace provider key management', () => {
-  it('offers Claude and OpenAI while hiding platform provider credentials from an older server', async () => {
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ ...keys, podscan: keys.anthropic, winnr: keys.anthropic, openai: keys.anthropic, blitz: keys.anthropic } as WorkspaceAiKeysView)
+describe('AI provider card', () => {
+  it('shows the default provider pressed with its masked key, and no key count', async () => {
     renderCard()
-    expect(await screen.findByText('2 keys saved')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Replace' })).toHaveLength(2)
-    expect(screen.getByLabelText('Saved OpenAI key')).toBeInTheDocument()
-    expect(screen.queryByText('Additional providers')).not.toBeInTheDocument()
-    for (const provider of ['Podscan', 'Blitz', 'Winnr']) {
-      expect(screen.queryByText(provider)).not.toBeInTheDocument()
-      expect(screen.queryByLabelText(`${provider} API key`)).not.toBeInTheDocument()
-    }
+    expect(await screen.findByLabelText('Saved Claude key')).toHaveTextContent('sk-ant-…1234')
+    expect(toggle('Claude')).toHaveAttribute('aria-pressed', 'true')
+    expect(toggle('OpenAI')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText(/keys? saved/u)).not.toBeInTheDocument()
+    expect(screen.queryByText(/We never switch providers automatically/u)).not.toBeInTheDocument()
+    expect(screen.queryByText(/AI key checks confirm authentication only/u)).not.toBeInTheDocument()
   })
 
-  it('saves an OpenAI key without asking for a Claude key', async () => {
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: { configured: false, last_four: null, updated_at: null } })
+  it('does not switch the default to a provider with no key until the key is saved', async () => {
     renderCard()
-    const input = await screen.findByLabelText('OpenAI API key')
-    expect(input).toHaveAttribute('type', 'password')
-    fireEvent.change(input, { target: { value: ' sk-project-customer-key-1234 ' } })
-    expect(setWorkspaceAiKey).not.toHaveBeenCalled()
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
-      anthropic: { configured: false, last_four: null, updated_at: null },
-      openai: keys.anthropic,
-      default_provider: null,
-    })
-    fireEvent.submit(input.closest('form')!)
-    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'openai', 'sk-project-customer-key-1234'))
-    expect(await screen.findByLabelText('Saved OpenAI key')).toHaveTextContent('1234')
-    expect(screen.getByRole('combobox', { name: 'Default AI provider' })).toHaveValue('openai')
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(toggle('OpenAI'))
+
+    expect(toggle('OpenAI')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Claude stays the default until you save an OpenAI key.')).toBeInTheDocument()
     expect(setWorkspaceAiProvider).not.toHaveBeenCalled()
-  })
 
-  it('saves an OpenRouter key and offers it as the default provider', async () => {
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: { configured: false, last_four: null, updated_at: null } })
-    renderCard()
-    const input = await screen.findByLabelText('OpenRouter API key')
+    const input = screen.getByLabelText('OpenAI API key')
     expect(input).toHaveAttribute('type', 'password')
-    expect(input).toHaveAttribute('placeholder', 'sk-or-…')
-    const select = screen.getByRole('combobox', { name: 'Default AI provider' })
-    expect(within(select).getByRole('option', { name: 'OpenRouter (key not saved)' })).toBeDisabled()
-    fireEvent.change(input, { target: { value: 'sk-or-v1-agency-key-9876' } })
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({
-      anthropic: { configured: false, last_four: null, updated_at: null },
-      openrouter: { configured: true, last_four: '9876', updated_at: '2026-11-23T00:00:00Z' },
-      default_provider: null,
-    })
-    fireEvent.submit(input.closest('form')!)
-    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'openrouter', 'sk-or-v1-agency-key-9876'))
-    expect(await screen.findByLabelText('Saved OpenRouter key')).toHaveTextContent('9876')
-    expect(screen.getByRole('combobox', { name: 'Default AI provider' })).toHaveValue('openrouter')
-  })
+    fireEvent.change(input, { target: { value: ' sk-proj-new-key-9876 ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and use OpenAI' }))
 
-  it('retains a rejected OpenAI key draft and does not change the default provider', async () => {
-    vi.mocked(setWorkspaceAiKey).mockRejectedValue(new Error('This OpenAI key was rejected'))
-    renderCard()
-    const input = await screen.findByLabelText('OpenAI API key')
-    fireEvent.change(input, { target: { value: 'sk-project-rejected-key' } })
-    fireEvent.submit(input.closest('form')!)
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('This OpenAI key was rejected'))
-    expect(input).toHaveValue('sk-project-rejected-key')
-    expect(screen.getByRole('combobox', { name: 'Default AI provider' })).toHaveValue('anthropic')
-    expect(setWorkspaceAiProvider).not.toHaveBeenCalled()
-  })
-
-  it('selects OpenAI only after the preference is saved and refreshed', async () => {
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ ...keys, openai: keys.anthropic, default_provider: 'anthropic' })
-    let finish!: () => void
-    vi.mocked(setWorkspaceAiProvider).mockReturnValue(new Promise((resolve) => { finish = resolve }))
-    renderCard()
-    const select = await screen.findByRole('combobox', { name: 'Default AI provider' })
-    fireEvent.change(select, { target: { value: 'openai' } })
+    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'openai', 'sk-proj-new-key-9876'))
     await waitFor(() => expect(setWorkspaceAiProvider).toHaveBeenCalledWith(workspaceId, 'openai'))
-    expect(select).toBeDisabled()
-    expect(select).toHaveValue('anthropic')
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ ...keys, openai: keys.anthropic, default_provider: 'openai' })
-    finish()
-    await waitFor(() => expect(select).toHaveValue('openai'))
-    expect(select).toBeEnabled()
+    expect(vi.mocked(setWorkspaceAiKey).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(setWorkspaceAiProvider).mock.invocationCallOrder[0])
   })
 
-  it('keeps the saved provider selected when changing it fails', async () => {
-    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ ...keys, openai: keys.anthropic, default_provider: 'anthropic' })
-    vi.mocked(setWorkspaceAiProvider).mockRejectedValue(new Error('Provider setting could not be saved'))
+  it('leaves the default alone when the key for the new provider fails to save', async () => {
+    vi.mocked(setWorkspaceAiKey).mockRejectedValue(new Error('That key was rejected.'))
     renderCard()
-    const select = await screen.findByRole('combobox', { name: 'Default AI provider' })
-    fireEvent.change(select, { target: { value: 'openai' } })
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Provider setting could not be saved'))
-    expect(select).toHaveValue('anthropic')
-    expect(select).toBeEnabled()
-    expect(toast.success).not.toHaveBeenCalled()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(toggle('OpenAI'))
+    fireEvent.change(screen.getByLabelText('OpenAI API key'), { target: { value: 'sk-bad' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and use OpenAI' }))
+    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalled())
+    expect(setWorkspaceAiProvider).not.toHaveBeenCalled()
   })
 
-  it('disables choosing providers without saved credentials', async () => {
+  it('switches the default straight away to a provider that already has a key', async () => {
+    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: saved, openai: { ...saved, last_four: '5678' }, default_provider: 'anthropic' })
     renderCard()
-    const select = await screen.findByRole('combobox', { name: 'Default AI provider' })
-    expect(within(select).getByRole('option', { name: /OpenAI/ })).toBeDisabled()
-    expect(within(select).getByRole('option', { name: 'Anthropic (Claude)' })).toBeEnabled()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(toggle('OpenAI'))
+    await waitFor(() => expect(setWorkspaceAiProvider).toHaveBeenCalledWith(workspaceId, 'openai'))
+    expect(screen.getByLabelText('Saved OpenAI key')).toHaveTextContent('5678')
   })
 
-  it('explains shared ownership and credential handover without treating saved keys as validated connections', async () => {
+  it('shows a passing test inline as a Key works badge', async () => {
     renderCard()
-    expect(await screen.findByText('1 key saved')).toBeInTheDocument()
-    expect(screen.getByText(/Use company-owned provider accounts/)).toHaveTextContent('Changing the workspace owner does not replace or revoke saved keys')
-    expect(screen.getByText(/Keys are encrypted/)).toHaveTextContent('authentication only, not available credits, quota or model access')
-    expect(screen.queryByText('1 provider connected')).not.toBeInTheDocument()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(screen.getByRole('button', { name: 'Test' }))
+    expect(await screen.findByText('Key works')).toBeInTheDocument()
   })
 
-  it('explains workspace-wide removal and ongoing external jobs before removing a key', async () => {
+  it('shows a failed test inline', async () => {
+    vi.mocked(testWorkspaceAiKey).mockResolvedValue('invalid')
     renderCard()
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-    const dialog = await screen.findByRole('alertdialog')
-    expect(dialog).toHaveTextContent('pause for everyone in this workspace')
-    expect(dialog).toHaveTextContent('Jobs or campaigns already running in the provider account may continue')
-    expect(dialog).toHaveTextContent('Removing a key here does not revoke it at the provider')
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(screen.getByRole('button', { name: 'Test' }))
+    expect(await screen.findByText(/The provider rejected this key/u)).toBeInTheDocument()
+    expect(screen.queryByText('Key works')).not.toBeInTheDocument()
+  })
+
+  it('asks before removing a key', async () => {
+    renderCard()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
     expect(clearWorkspaceAiKey).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove key' }))
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Remove the Claude key?')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove key' }).at(-1)!)
     await waitFor(() => expect(clearWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic'))
   })
 
-  it('preserves a key when the owner cancels removal', async () => {
+  it('replaces a saved key without switching provider', async () => {
     renderCard()
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Keep the key' }))
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
-    expect(clearWorkspaceAiKey).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('Saved Anthropic (Claude) key')).toBeInTheDocument()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    fireEvent.change(screen.getByLabelText('Claude API key'), { target: { value: 'sk-ant-new' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'anthropic', 'sk-ant-new'))
+    expect(setWorkspaceAiProvider).not.toHaveBeenCalled()
   })
 
-  it('discards an open removal dialog when an admin switches workspaces', async () => {
+  it('keeps the shared-key guidance in a closed disclosure', async () => {
+    renderCard()
+    await screen.findByLabelText('Saved Claude key')
+    const details = screen.getByText('Who can use this key?').closest('details')!
+    expect(details).not.toHaveAttribute('open')
+    expect(details).toHaveTextContent('Everyone in this workspace shares it.')
+  })
+
+  it('links to each provider for a key', async () => {
+    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: none, openai: none, default_provider: null })
+    renderCard()
+    expect(await screen.findByRole('link', { name: /Get a key/u })).toHaveAttribute('href', 'https://console.anthropic.com/settings/keys')
+    fireEvent.click(toggle('OpenAI'))
+    expect(screen.getByRole('link', { name: /Get a key/u })).toHaveAttribute('href', 'https://platform.openai.com/api-keys')
+  })
+
+  it('starts clean when the workspace changes', async () => {
     const view = renderCard()
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }))
-    await screen.findByRole('alertdialog')
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    fireEvent.change(screen.getByLabelText('Claude API key'), { target: { value: 'half typed' } })
     view.updateWorkspace('22222222-2222-4222-8222-222222222222')
-    await screen.findByLabelText('Saved Anthropic (Claude) key')
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(clearWorkspaceAiKey).not.toHaveBeenCalled()
+    expect(await screen.findByLabelText('Saved Claude key')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('half typed')).not.toBeInTheDocument()
+  })
+
+  it('offers OpenRouter as a third provider, and makes it the default once its key is saved', async () => {
+    renderCard()
+    await screen.findByLabelText('Saved Claude key')
+    fireEvent.click(toggle('OpenRouter'))
+    expect(toggle('OpenRouter')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Claude stays the default until you save an OpenRouter key.')).toBeInTheDocument()
+    const input = screen.getByLabelText('OpenRouter API key')
+    expect(input).toHaveAttribute('placeholder', 'sk-or-…')
+    expect(screen.getByRole('link', { name: /Get a key/u })).toHaveAttribute('href', 'https://openrouter.ai/settings/keys')
+    fireEvent.change(input, { target: { value: 'sk-or-v1-agency-key-9876' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and use OpenRouter' }))
+    await waitFor(() => expect(setWorkspaceAiKey).toHaveBeenCalledWith(workspaceId, 'openrouter', 'sk-or-v1-agency-key-9876'))
+    await waitFor(() => expect(setWorkspaceAiProvider).toHaveBeenCalledWith(workspaceId, 'openrouter'))
+  })
+
+  it('treats a lone OpenRouter key as the default', async () => {
+    vi.mocked(getWorkspaceAiKeys).mockResolvedValue({ anthropic: none, openai: none, openrouter: { ...saved, last_four: '9876' }, default_provider: null })
+    renderCard()
+    expect(await screen.findByLabelText('Saved OpenRouter key')).toHaveTextContent('sk-or-…9876')
+    expect(toggle('OpenRouter')).toHaveAttribute('aria-pressed', 'true')
   })
 })
