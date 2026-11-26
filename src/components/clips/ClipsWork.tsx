@@ -11,7 +11,7 @@ const FAN = [
   { rz: 26, tz: 0 },
 ]
 
-/** The middle phone is lime with ink text; the others are card-dark with white text. */
+/** The middle phone is paper with ink text (its names still say lime, the old accent); the others are card-dark with white text. */
 const LIME_INDEX = 1
 
 /**
@@ -23,7 +23,7 @@ const LIME_INDEX = 1
  */
 const PhoneScreen = ({ lime }: { lime: boolean }) => (
   <div className="clips-ph-screen" aria-hidden="true">
-    <Silhouette fill={lime ? '#a9d62e' : '#242427'} />
+    <Silhouette fill={lime ? '#d8d3ce' : '#242427'} />
   </div>
 )
 

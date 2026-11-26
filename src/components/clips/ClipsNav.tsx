@@ -10,7 +10,7 @@ export const ClipsWordmark = () => (
 
 /**
  * The sticky bar. Below 720px the four links fold behind a Menu button; the
- * lime call to action stays out where a thumb can reach it.
+ * call to action stays out where a thumb can reach it.
  */
 export const ClipsNav = () => {
   const [open, setOpen] = useState(false)

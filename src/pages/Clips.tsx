@@ -20,12 +20,14 @@ import { CLIPS_FAQ, CLIPS_PATH, CLIPS_SEO } from '@/lib/clipsContent'
 import '@/styles/clips.css'
 
 /**
- * The page's four faces, from Google Fonts with display=swap. Inter Tight is
- * the display face and is preloaded; the fallbacks in clips.css carry matched
- * metrics so the swap moves nothing.
+ * The page's faces, from Google Fonts with display=swap: the homepage's
+ * Familjen Grotesk (display, preloaded) and Figtree (body), Unbounded for the
+ * headline's one orange word, JetBrains Mono for labels and Caveat for the
+ * signature. The fallbacks in clips.css carry matched metrics so the swap
+ * moves little.
  */
 const FONTS_HREF =
-  'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@600&display=swap'
+  'https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Figtree:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@600&family=Unbounded:wght@800&display=swap'
 
 const FAQ_JSON_LD = {
   '@context': 'https://schema.org',

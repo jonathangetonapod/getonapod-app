@@ -32,7 +32,7 @@ export const ClipsProcess = () => (
   </section>
 )
 
-/** Four columns, seven rows; ours carries the lime-dim column. Scrolls inside its own box below 760px. */
+/** Four columns, seven rows; ours carries the tinted column. Scrolls inside its own box below 760px. */
 export const ClipsTable = () => (
   <section className="clips-wrap clips-section clips-table-section" aria-labelledby="clips-table-title">
     <div className="clips-head">

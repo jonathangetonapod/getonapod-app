@@ -17,9 +17,9 @@ const navLinks = [
   { href: '/login', label: 'Sign in' },
 ];
 
-/** The wordmark as the homepage sets it: two italics and a gold full stop. */
+/** The homepage's mark and wordmark: an ink square with a microphone's grille. */
 export const Brand = () => (
-  <>Get<i>on</i>a<i>Pod</i><b>.</b></>
+  <><span className="dfy-brand-mark" aria-hidden="true" />Get On A Pod</>
 );
 
 /**

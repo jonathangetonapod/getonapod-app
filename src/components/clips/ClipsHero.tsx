@@ -20,16 +20,16 @@ const RotatingBadge = () => (
       <defs>
         <path id="clips-circ" d="M100,100 m-74,0 a74,74 0 1,1 148,0 a74,74 0 1,1 -148,0" />
       </defs>
-      <text fontFamily="JetBrains Mono, Menlo, monospace" fontSize="12.5" letterSpacing="3.2" fill="#c8f542">
+      <text fontFamily="JetBrains Mono, Menlo, monospace" fontSize="12.5" letterSpacing="3.2" fill="#121212">
         <textPath href="#clips-circ">{CLIPS_HERO.badgeRing}</textPath>
       </text>
-      <circle cx="100" cy="100" r="5" fill="#c8f542" />
+      <circle cx="100" cy="100" r="5" fill="#121212" />
     </svg>
   </div>
 )
 
 /**
- * The 3D blade cut: one 640×360 episode frame as five slabs over a lime
+ * The 3D blade cut: one 640×360 episode frame as five slabs over a
  * dot-grid floor. A blade sweeps across on a 9-second loop and each slab flies
  * to its own place, shows its job, and comes back. All of it is CSS; this
  * component only lays the slabs out and hands each its flight path.

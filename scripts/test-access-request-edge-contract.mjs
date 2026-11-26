@@ -143,9 +143,10 @@ assert.doesNotMatch(serviceCode, /\.insert\(/u)
 // not a landing-page one — `section { padding-block: ... }` here put 8rem of
 // padding on every <section> in the product. Everything must stay under
 // .gp-page.
-// The done-for-you homepage stylesheet has the same shape under .dfy-.
+// The inner marketing pages' stylesheet has the same shape under .dfy-, and
+// the done-for-you homepage's under .hp-.
 const css = readFileSync('src/styles/agencyLanding.css', 'utf8')
-for (const [file, prefix] of [['src/styles/agencyLanding.css', 'gp'], ['src/styles/landing.css', 'dfy']]) {
+for (const [file, prefix] of [['src/styles/agencyLanding.css', 'gp'], ['src/styles/landing.css', 'dfy'], ['src/styles/homepage.css', 'hp']]) {
   const sheet = readFileSync(file, 'utf8')
   const withoutComments = sheet.replace(/\/\*[\s\S]*?\*\//gu, '')
   const lead = new RegExp(`^\\.${prefix}-`, 'u')

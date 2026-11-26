@@ -14,9 +14,12 @@ export default {
       },
     },
     extend: {
-      // The marketing site's faces are the homepage's (see the --dfy-* tokens in
-      // src/index.css). The homepage's kicker is its body face set small, in
-      // capitals and letterspaced, not a monospace, so `font-kicker` is Lora;
+      // display/body/kicker and the ink/cream/gold colours are the marketing
+      // site's former (Classical) system, kept for the public prospect
+      // dashboard (src/pages/prospect/ProspectView.tsx), which still uses them
+      // — see the --dfy-* tokens in src/index.css. The marketing pages
+      // themselves moved to Familjen Grotesk over Figtree, set in their own
+      // stylesheets (homepage.css, landing.css, agencyLanding.css, clips.css).
       // `font-mono` is the one monospace the domain loads.
       fontFamily: {
         sans: ["Instrument Sans", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
@@ -26,7 +29,8 @@ export default {
         mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       colors: {
-        // The homepage's palette, by the names landing.css gives it.
+        // The former marketing palette (prospect dashboard only), by the names
+        // landing.css once gave it.
         ink: {
           DEFAULT: "var(--dfy-ink)",
           band: "var(--dfy-ink-band)",

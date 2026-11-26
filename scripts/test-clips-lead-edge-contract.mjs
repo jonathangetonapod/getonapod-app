@@ -182,7 +182,7 @@ for (const block of withoutComments.matchAll(/@media[^{]+\{([\s\S]*?)\n\}/gu)) {
 }
 assert.deepEqual(escaped, [], `clips.css nested selectors must start with .clips-: ${escaped.join(' | ')}`)
 // The page paints its own ground and declares its own tokens; it does not read the site's.
-assert.match(css, /\.clips-page \{[\s\S]*?--bg: #0a0a0b;/u)
+assert.match(css, /\.clips-page \{[\s\S]*?--bg: #f3f0ed;/u)
 assert.doesNotMatch(css, /--dfy-/u)
 // Every animation stops under reduced motion and the labels show assembled.
 assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.clips-lbl \{ opacity: 1; \}/u)

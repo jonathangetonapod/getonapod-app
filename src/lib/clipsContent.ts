@@ -43,9 +43,9 @@ export const CLIPS_HERO = {
 export interface ClipJob {
   time: string
   label: string
-  /** The on-screen caption, with the lime phrase split out where there is one. */
+  /** The on-screen caption, with the highlighted phrase split out where there is one. */
   caption: [string, string?]
-  /** The eight-bar waveform on the slab face; bars 3–6 are lime. */
+  /** The eight-bar waveform on the slab face; bars 3–6 are lit. */
   bars: number[]
   /** Where the slab flies when the blade passes. */
   fly: { dx: number; dy: number; dz: number; ry: number; rx: number }

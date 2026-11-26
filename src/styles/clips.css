@@ -1,7 +1,12 @@
 /*
- * getonapod.com/clips — the short-form clips offer, in its own dark system:
- * Inter Tight display over Instrument Sans body on a near-black ground, one
- * lime accent, JetBrains Mono for every label, Caveat for one signature.
+ * getonapod.com/clips — the short-form clips offer, in the homepage's system:
+ * Familjen Grotesk display over Figtree body on warm paper, near-black ink for
+ * actions and emphasis (the token kept its old name, --lime, so the rules
+ * that read it did not move), one orange word in the headline, JetBrains Mono
+ * for every label, Caveat for one signature. The video mockups — the blade
+ * cut, the phone fan, the AI-versus-ours slider — stay dark, as screens on
+ * paper, through the scoped tokens in .clips-screen below; the closing band
+ * is the ink band, with a paper form in it.
  *
  * Every selector is scoped under .clips-page, including the element ones. This
  * file is bundled into the app's single stylesheet and loads on every route,
@@ -15,7 +20,7 @@
 
 /* Fallback faces with matched metrics, so the swap to the web font moves nothing. */
 @font-face {
-  font-family: "Inter Tight Fallback";
+  font-family: "Familjen Grotesk Fallback";
   src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
   size-adjust: 92%;
   ascent-override: 97%;
@@ -23,7 +28,7 @@
   line-gap-override: 0%;
 }
 @font-face {
-  font-family: "Instrument Sans Fallback";
+  font-family: "Figtree Fallback";
   src: local("Arial"), local("Helvetica Neue"), local("Helvetica");
   size-adjust: 99%;
   ascent-override: 96%;
@@ -40,26 +45,27 @@
 }
 
 .clips-page {
-  --bg: #0a0a0b;
-  --panel: #0f0f10;
-  --card: #151517;
-  --card-2: #1b1b1e;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-2: rgba(255, 255, 255, 0.10);
-  --text: #f4f4f2;
-  --text-2: #b8b8b2;
-  /* The brief's #7a7a76 sits at 4.2:1 on a card and 4.0:1 on the compare
-     layer; this is the nearest grey that clears 4.5:1 on every ground. */
-  --text-3: #868682;
-  --text-4: #4a4a48;
-  --lime: #c8f542;
-  --lime-dim: rgba(200, 245, 66, 0.06);
-  --lime-ink: #3b4a0f;
-  --lime-text: #2b3410;
-  --red: #ff4d4d;
+  --bg: #f3f0ed;
+  --panel: #ebe6e1;
+  --card: #f8f6f3;
+  --card-2: #ebe6e1;
+  --line: #d9d3cd;
+  --line-2: #d9d3cd;
+  --text: #121212;
+  --text-2: #333333;
+  /* 5.0:1 on paper and 4.6:1 on the panel grey: AA as small text on both. */
+  --text-3: #6b6560;
+  --text-4: #b5aea7;
+  --lime: #121212;
+  --lime-dim: rgba(18, 18, 18, 0.05);
+  --lime-ink: #9c958e;
+  --lime-text: #d8d3ce;
+  /* Deep enough to pass 3:1 as large text on paper. */
+  --accent: #e2522c;
+  --red: #c4361b;
 
-  --display: "Inter Tight", "Inter Tight Fallback", system-ui, sans-serif;
-  --body: "Instrument Sans", "Instrument Sans Fallback", system-ui, sans-serif;
+  --display: "Familjen Grotesk", "Familjen Grotesk Fallback", system-ui, sans-serif;
+  --body: "Figtree", "Figtree Fallback", system-ui, sans-serif;
   --mono: "JetBrains Mono", "JetBrains Mono Fallback", Menlo, monospace;
   --hand: "Caveat", "Segoe Script", "Bradley Hand", cursive;
 
@@ -76,14 +82,14 @@
   font-size: 17px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
+  color-scheme: light;
   text-wrap: pretty;
 }
 
 .clips-page ::selection { background: var(--lime); color: var(--bg); }
 .clips-page :where(h1, h2, h3, p) { margin: 0; }
 .clips-page a { color: var(--lime); text-underline-offset: 3px; }
-.clips-page a:hover { color: #e2ff7a; }
+.clips-page a:hover { color: var(--text-3); }
 .clips-page :focus { outline: none; }
 .clips-page :focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 .clips-page :where(a, button, input, label) { touch-action: manipulation; }
@@ -114,6 +120,16 @@
 .clips-panel { background: var(--panel); }
 .clips-rule { border-top: 1px solid var(--line); }
 
+/* The video mockups are screens, and screens are dark: the same tokens, retuned,
+   for everything inside one. Paper (--lime) is the highlight on a screen. */
+.clips-stage, .clips-fan, .clips-compare-box {
+  --bg: #0a0a0b; --panel: #0f0f10; --card: #151517; --card-2: #1b1b1e;
+  --line: rgba(255, 255, 255, 0.08); --line-2: rgba(255, 255, 255, 0.10);
+  --text: #f4f4f2; --text-2: #b8b8b2; --text-3: #868682; --text-4: #4a4a48;
+  --lime: #f3f0ed; --lime-ink: #4a4541; --red: #ff4d4d;
+  color: var(--text);
+}
+
 .clips-mono {
   font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
   color: var(--text-3);
@@ -133,23 +149,23 @@
   display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--display); font-weight: 700; font-size: 17px;
   color: var(--bg); background: var(--lime); text-decoration: none; border: 0; cursor: pointer;
-  border-radius: 999px; padding: 16px 26px; min-height: 52px; box-sizing: border-box;
-  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 12px; padding: 16px 26px; min-height: 52px; box-sizing: border-box;
+  transition: background-color 0.2s;
 }
-.clips-page .clips-btn:hover { color: var(--bg); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(200, 245, 66, 0.25); }
+.clips-page .clips-btn:hover { color: var(--bg); background: #2b2826; }
 .clips-page .clips-btn-ghost {
-  color: var(--text); background: rgba(10, 10, 11, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text); background: rgba(18, 18, 18, 0.05);
+  border: 1px solid var(--line);
 }
-.clips-page .clips-btn-ghost:hover { color: var(--text); box-shadow: none; }
+.clips-page .clips-btn-ghost:hover { color: var(--text); background: rgba(18, 18, 18, 0.09); }
 .clips-page .clips-btn-small { font-size: 16px; padding: 14px 20px; min-height: 50px; }
 
 .clips-card {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
   padding: 26px; box-sizing: border-box;
-  transition: transform 0.3s var(--ease), border-color 0.3s;
+  transition: border-color 0.3s;
 }
-.clips-card:hover { transform: translateY(-4px); border-color: rgba(200, 245, 66, 0.5); }
+.clips-card:hover { border-color: #b5aea7; }
 
 .clips-silhouette { display: flex; justify-content: center; }
 
@@ -186,12 +202,12 @@
 
 .clips-hero {
   position: relative; overflow: hidden;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(18, 18, 18, 0.12) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 .clips-grain {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  opacity: 0.07; pointer-events: none; mix-blend-mode: screen;
+  opacity: 0.05; pointer-events: none; mix-blend-mode: multiply;
 }
 .clips-ring {
   position: absolute; top: 56px; right: 24px; width: 150px; height: 150px; pointer-events: none;
@@ -206,8 +222,8 @@
 .clips-badge {
   display: inline-flex; align-items: center; gap: 10px;
   font-family: var(--mono); font-size: 11.5px; letter-spacing: 1.6px; text-transform: uppercase;
-  color: var(--lime); border: 1px solid rgba(200, 245, 66, 0.35); border-radius: 999px;
-  padding: 8px 14px; background: rgba(10, 10, 11, 0.7);
+  color: var(--text-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 14px; background: rgba(243, 240, 237, 0.8);
 }
 .clips-dot {
   width: 7px; height: 7px; border-radius: 50%; background: var(--lime); display: inline-block; flex: 0 0 7px;
@@ -223,8 +239,8 @@
   color: var(--text); max-width: 1040px;
 }
 .clips-mark {
-  display: inline-block; background: var(--lime); color: var(--bg); padding: 0 0.14em;
-  transform: skew(-6deg);
+  display: inline-block; color: var(--accent);
+  font-family: "Unbounded", "Arial Black", sans-serif; font-weight: 800; letter-spacing: -0.05em; font-size: 0.86em;
 }
 .clips-hero-lead { font-size: clamp(18px, 1.6vw, 22px); line-height: 1.5; color: var(--text-2); max-width: 720px; }
 .clips-cta-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 8px; }
@@ -248,7 +264,7 @@
 .clips-floor {
   position: absolute; left: 50%; bottom: -30px; width: 1100px; height: 520px;
   transform: translateX(-50%) rotateX(78deg);
-  background-image: radial-gradient(rgba(200, 245, 66, 0.22) 1px, transparent 1px); background-size: 26px 26px;
+  background-image: radial-gradient(rgba(18, 18, 18, 0.2) 1px, transparent 1px); background-size: 26px 26px;
   -webkit-mask-image: radial-gradient(ellipse at center, #000 15%, transparent 68%);
   mask-image: radial-gradient(ellipse at center, #000 15%, transparent 68%);
   pointer-events: none;
@@ -306,7 +322,7 @@
 }
 .clips-blade {
   position: absolute; top: -40px; bottom: -40px; left: -6%; width: 3px; background: var(--lime);
-  box-shadow: 0 0 18px 4px rgba(200, 245, 66, 0.55); opacity: 0;
+  box-shadow: 0 0 18px 4px rgba(243, 240, 237, 0.55); opacity: 0;
   animation: clips-blade 9s linear infinite; transform: translateZ(60px);
 }
 @keyframes clips-blade {
@@ -325,7 +341,7 @@
 .clips-work { position: relative; overflow: hidden; }
 .clips-ghost {
   position: absolute; font-family: var(--display); font-weight: 800; line-height: 1; letter-spacing: -0.06em;
-  color: transparent; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.08);
+  color: transparent; -webkit-text-stroke: 1px rgba(18, 18, 18, 0.08);
   white-space: nowrap; pointer-events: none; user-select: none;
 }
 .clips-ghost-cut { left: 50%; top: 40%; transform: translate(-50%, -50%); font-size: clamp(180px, 30vw, 440px); }
@@ -348,13 +364,16 @@
 .clips-phin {
   position: relative; width: 100%; height: 100%; border-radius: 28px; background: var(--card); color: var(--text);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 6px var(--bg);
+  box-shadow: 0 30px 60px -20px rgba(18, 18, 18, 0.45), inset 0 0 0 6px var(--bg);
   box-sizing: border-box; padding: 22px 16px 18px;
   display: flex; flex-direction: column; justify-content: space-between; overflow: hidden;
   transition: transform 0.4s var(--ease), border-color 0.4s;
 }
 .clips-ph:hover .clips-phin { transform: translateY(-26px) translateZ(40px); border-color: var(--lime); }
 .clips-phin-lime { background: var(--lime); color: var(--bg); }
+/* On the paper phone, the highlight and the hover edge take the screen's dark. */
+.clips-phin-lime .clips-ph-caption b { color: var(--bg); }
+.clips-ph:hover .clips-phin-lime { border-color: var(--bg); }
 .clips-notch { position: absolute; top: 12px; left: 50%; width: 64px; height: 14px; margin-left: -32px; border-radius: 8px; background: var(--bg); }
 .clips-ph-top { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
 .clips-ph-job { font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.2px; color: var(--text-3); }
@@ -369,7 +388,7 @@
 }
 .clips-ph-caption b { font-weight: inherit; color: var(--lime); }
 .clips-bar { height: 3px; background: #2a2a2e; border-radius: 2px; overflow: hidden; }
-.clips-phin-lime .clips-bar { background: #a9d62e; }
+.clips-phin-lime .clips-bar { background: #d8d3ce; }
 .clips-bar span { display: block; height: 100%; width: 0; background: var(--lime); animation: clips-fill 7s linear infinite; }
 .clips-phin-lime .clips-bar span { background: var(--bg); }
 @keyframes clips-fill { from { width: 0; } to { width: 100%; } }
@@ -392,7 +411,7 @@
   padding-top: 72px; padding-bottom: 72px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 24px;
 }
-.clips-number { display: flex; flex-direction: column; gap: 6px; border-left: 1px solid rgba(255, 255, 255, 0.12); padding-left: 18px; }
+.clips-number { display: flex; flex-direction: column; gap: 6px; border-left: 1px solid var(--line); padding-left: 18px; }
 .clips-number-value {
   font-family: var(--display); font-weight: 800; font-size: clamp(44px, 5vw, 72px); line-height: 1; letter-spacing: -0.04em; color: var(--text);
   font-variant-numeric: tabular-nums; min-height: 1em;
@@ -410,9 +429,9 @@
 .clips-tile {
   background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 24px; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 16px; overflow: hidden;
-  transition: transform 0.3s var(--ease), border-color 0.3s;
+  transition: border-color 0.3s;
 }
-.clips-tile:hover { transform: translateY(-4px); border-color: rgba(200, 245, 66, 0.5); }
+.clips-tile:hover { border-color: #b5aea7; }
 .clips-tile-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--lime); }
 .clips-tile-body { font-size: 14px; color: var(--text-2); }
 .clips-tile-window { height: 170px; overflow: hidden; position: relative; }
@@ -431,7 +450,7 @@
 
 .clips-wave { height: 170px; display: flex; align-items: center; gap: 3px; }
 .clips-wave span {
-  flex: 1 1 0; border-radius: 2px; background: #2a2a2e; transform-origin: center;
+  flex: 1 1 0; border-radius: 2px; background: #d9d3cd; transform-origin: center;
   animation: clips-wave 1.6s ease-in-out infinite;
 }
 .clips-wave .clips-wave-lit { background: var(--lime); }
@@ -447,7 +466,7 @@
 .clips-crop-b { right: 10%; }
 .clips-crop-mask {
   position: absolute; top: 4%; bottom: 4%; left: 6%; width: 40%; border: 2px solid var(--lime); border-radius: 6px;
-  box-shadow: 0 0 0 999px rgba(10, 10, 11, 0.55);
+  box-shadow: 0 0 0 999px rgba(243, 240, 237, 0.6);
   animation: clips-crop 6s ease-in-out infinite;
 }
 @keyframes clips-crop { 0%, 35% { left: 6%; } 50%, 85% { left: 54%; } 100% { left: 6%; } }
@@ -468,7 +487,7 @@
 @keyframes clips-blink { 50% { opacity: 0; } }
 
 .clips-editor {
-  grid-column: 1 / -1; background: var(--card); border-color: rgba(200, 245, 66, 0.4); padding: 30px;
+  grid-column: 1 / -1; background: var(--card); border-color: var(--text); padding: 30px;
   flex-direction: row; flex-wrap: wrap; gap: 28px 48px; align-items: flex-start;
 }
 .clips-editor-left { flex: 1 1 280px; display: flex; flex-direction: column; gap: 10px; }
@@ -487,11 +506,11 @@
 .clips-compare-text { flex: 1 1 360px; display: flex; flex-direction: column; gap: 16px; }
 .clips-compare-text .clips-lead { max-width: 460px; }
 .clips-compare-control { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
-.clips-range { width: 100%; max-width: 420px; height: 32px; cursor: ew-resize; margin: 0; }
+.clips-range { width: 100%; max-width: 420px; height: 44px; cursor: ew-resize; margin: 0; }
 .clips-compare-visual { flex: 1 1 420px; min-width: 0; display: flex; justify-content: center; }
 .clips-compare-box {
   position: relative; width: 100%; max-width: 560px; aspect-ratio: 4 / 5; border-radius: 20px; overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12); background: var(--card); touch-action: none; cursor: ew-resize;
+  border: 1px solid var(--line); background: var(--card); touch-action: none; cursor: ew-resize;
   user-select: none; -webkit-user-select: none;
 }
 .clips-layer {
@@ -563,7 +582,7 @@
 .clips-pricing-head .clips-h2 { max-width: 760px; }
 .clips-tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; align-items: stretch; }
 .clips-tier { background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 22px; }
-.clips-tier-glow { background: var(--card); border-color: var(--lime); box-shadow: 0 0 0 1px var(--lime), 0 30px 90px rgba(200, 245, 66, 0.14); }
+.clips-tier-glow { background: var(--card); border-color: var(--lime); box-shadow: 0 0 0 1px var(--lime); }
 .clips-tier-glow:hover { transform: none; }
 .clips-tier-head { display: flex; flex-direction: column; gap: 8px; }
 .clips-tier-kicker { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-3); }
@@ -592,7 +611,7 @@
 
 .clips-guarantee {
   display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: center;
-  background: var(--lime-dim); border: 1px solid rgba(200, 245, 66, 0.3); border-radius: 14px; padding: 20px 24px; text-align: center;
+  background: var(--lime-dim); border: 1px solid var(--line); border-radius: 14px; padding: 20px 24px; text-align: center;
 }
 .clips-guarantee-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--lime); }
 .clips-guarantee-body { font-family: var(--display); font-weight: 700; font-size: 19px; letter-spacing: -0.02em; }
@@ -603,14 +622,14 @@
 .clips-founder-side { flex: 0 1 300px; display: flex; flex-direction: column; gap: 18px; }
 .clips-founder-photo {
   display: block; width: 100%; max-width: 300px; height: auto; aspect-ratio: 4 / 5; object-fit: cover;
-  border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.12); background: var(--card);
+  border-radius: 20px; border: 1px solid var(--line); background: var(--card);
 }
 .clips-founder-name { font-family: var(--display); font-weight: 700; font-size: 18px; }
 .clips-founder-role { font-size: 14px; color: var(--text-3); }
 .clips-founder-places { font-family: var(--mono); font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-3); margin-top: 6px; }
 .clips-founder-main { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
 .clips-founder-title { font-size: clamp(32px, 4vw, 54px); line-height: 1; }
-.clips-founder-letter { display: flex; flex-direction: column; gap: 16px; font-size: 18px; line-height: 1.6; color: #d6d6d0; max-width: 680px; }
+.clips-founder-letter { display: flex; flex-direction: column; gap: 16px; font-size: 18px; line-height: 1.6; color: var(--text-2); max-width: 680px; }
 .clips-sig { font-family: var(--hand); font-size: 44px; line-height: 1; color: var(--lime); }
 
 /* ---------- fit ---------- */
@@ -618,7 +637,7 @@
 .clips-fit { display: flex; flex-direction: column; gap: 40px; }
 .clips-fit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 .clips-fit-card { border-radius: 20px; padding: 30px; display: flex; flex-direction: column; gap: 14px; }
-.clips-fit-yes { border-color: rgba(200, 245, 66, 0.35); }
+.clips-fit-yes { border-color: var(--text); }
 .clips-fit-no { background: var(--panel); border-color: var(--line-2); color: var(--text-2); }
 .clips-fit-kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--lime); }
 .clips-fit-no .clips-fit-kicker { color: var(--text-3); }
@@ -640,7 +659,7 @@
 .clips-final { background: var(--lime); color: var(--bg); position: relative; overflow: hidden; }
 .clips-ghost-clock {
   left: -2%; bottom: -8%; font-size: clamp(120px, 22vw, 360px);
-  -webkit-text-stroke: 1px rgba(10, 10, 11, 0.18); font-variant-numeric: tabular-nums;
+  -webkit-text-stroke: 1px rgba(243, 240, 237, 0.12); font-variant-numeric: tabular-nums;
 }
 .clips-final-inner { position: relative; display: flex; flex-wrap: wrap; gap: 56px; align-items: center; justify-content: space-between; }
 .clips-final-text { flex: 1 1 420px; display: flex; flex-direction: column; gap: 18px; }
@@ -660,7 +679,7 @@
 .clips-field label { font-family: var(--mono); font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-3); }
 .clips-field input {
   font-family: var(--body); font-size: 16px; padding: 12px 14px; min-height: 48px; box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.14); background: var(--card); color: var(--text); border-radius: 10px; width: 100%;
+  border: 1px solid #857e77; background: var(--card); color: var(--text); border-radius: 12px; width: 100%;
 }
 .clips-field input[aria-invalid="true"] { border-color: var(--red); }
 .clips-field-error { font-family: var(--mono); font-size: 11px; letter-spacing: 0.4px; color: var(--red); }

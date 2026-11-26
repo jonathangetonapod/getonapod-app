@@ -8,7 +8,7 @@ export const Silhouette = ({ fill, className }: { fill: string; className?: stri
 
 interface IconProps { size?: number; stroke?: string; width?: number }
 
-const iconProps = ({ size = 28, stroke = '#c8f542', width = 1.8 }: IconProps) => ({
+const iconProps = ({ size = 28, stroke = '#121212', width = 1.8 }: IconProps) => ({
   width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke, strokeWidth: width,
   strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, focusable: false,
 })
@@ -38,7 +38,7 @@ export const CheckIcon = (props: IconProps) => (
   <svg {...iconProps({ size: 20, width: 2.2, ...props })}><polyline points="20 6 9 17 4 12" /></svg>
 )
 export const XIcon = (props: IconProps) => (
-  <svg {...iconProps({ size: 20, width: 2.2, stroke: '#7a7a76', ...props })}>
+  <svg {...iconProps({ size: 20, width: 2.2, stroke: '#857e77', ...props })}>
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 )

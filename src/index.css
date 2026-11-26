@@ -1,11 +1,14 @@
 /*
- * Four families, and only four. Cormorant Garamond and Lora are the marketing
- * site's display and body faces (the homepage's system, which the inner pages
- * share); Instrument Sans is the platform landing and auth pages' face and the
+ * Cormorant Garamond and Lora are the inner marketing pages' display and body
+ * faces; Instrument Sans is the platform landing and auth pages' face and the
  * app's sans; JetBrains Mono is the one monospace face, used by those pages'
- * kickers and by the app's code and identifiers.
+ * kickers, the homepage's small labels and the app's code and identifiers.
+ * Familjen Grotesk, Figtree and Unbounded are the marketing pages' display,
+ * body and wordmark/accent-word faces (src/styles/homepage.css). A browser only downloads a
+ * face a page actually uses, so the homepage's three cost other routes nothing
+ * beyond this stylesheet's few lines.
  */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Familjen+Grotesk:wght@400;500;600;700&family=Figtree:wght@300;400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&family=Unbounded:wght@800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -14,11 +17,12 @@
 @layer base {
   :root {
     /*
-     * The homepage's palette and type, exported for the rest of the marketing
-     * site. src/styles/landing.css declares the same values on .dfy-page (as
-     * --bg, --text, --accent, --neutral-700 and so on) and is the source of
-     * truth; keep the two lists agreeing. Tailwind's display/body/kicker
-     * families and the ink/cream/gold colours read these.
+     * The marketing site's former (Classical) palette and type. Tailwind's
+     * display/body/kicker families and the ink/cream/gold colours read these,
+     * and the public prospect dashboard (src/pages/prospect/ProspectView.tsx)
+     * is the one page still styled with them. The marketing pages themselves
+     * moved to the homepage's paper-and-ink system: landing.css and
+     * homepage.css declare their own values and no longer mirror these.
      */
     --dfy-bg: #f3f2f2;
     --dfy-surface: #eae9e9;

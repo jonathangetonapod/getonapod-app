@@ -176,6 +176,51 @@ export const PODCAST_CATALOG: ShowCategory[] = [
   ] },
 ]
 
+/**
+ * The text bubbles floating over the hero's art: what a founder would ask, and
+ * what comes back done. Decorative (the scene is hidden from screen readers);
+ * the facts row under the buttons states the same terms in words.
+ */
+export const HERO_BUBBLES: Array<{ text: string; done?: boolean }> = [
+  { text: 'Find the shows my buyers hear' },
+  { text: 'Recording booked ✓', done: true },
+  { text: 'Only shows worth my time' },
+  { text: 'Prep brief sent ✓', done: true },
+  { text: '5 clips ready ✓', done: true },
+]
+
+/** The request the how-it-works timeline answers, and the timeline itself. */
+export const HOW_REQUEST = 'Get me on the shows my buyers already listen to.'
+export const HOW_FIRST_RECORDING = 'First recording in 3–5 weeks'
+export const HOW_FLOW: Array<{ label: string; when: string }> = [
+  { label: 'Positioning interview', when: 'Week 1' },
+  { label: 'Pitches go out', when: 'Week 1' },
+  { label: 'You approve', when: `${WEEKLY_MINUTES} min a week` },
+  { label: 'First recording', when: 'Weeks 3–5' },
+  { label: '5 clips', when: 'When it airs' },
+]
+
+/** The four how-it-works cards: a title and one line each. */
+export const HOW_STEPS: Array<{ title: string; line: string }> = [
+  { title: 'We craft your story', line: 'A one-hour interview becomes your positioning, one-sheet and three pitch angles.' },
+  { title: 'We pitch the right shows', line: 'Each pitch written for that show, with researched follow-ups. Never paid placements.' },
+  { title: 'You show up and talk', line: 'Every booking lands on your calendar with a prep brief: host, audience, angle, plug.' },
+  { title: 'We turn it into a week of posts', line: '5 captioned vertical clips per episode, sized for LinkedIn, Instagram, TikTok and Shorts.' },
+]
+
+/** The dark band's promises, one short line each. */
+export const PRINCIPLES = [
+  'Active shows only',
+  'No paid placements',
+  'You approve every show',
+  'A prep brief for every booking',
+  '5 clips from every episode',
+  'The files are yours',
+]
+
+/** The comparison under the plan; the FAQ's last answer says the same. */
+export const PR_AGENCY_NOTE = 'PR agencies typically charge $2,000–5,000 a month for a service spread across press, awards and everything else.'
+
 export const PLAN_INCLUDES = [
   'Targeted outreach to vetted SaaS, startup, AI and B2B shows, every week',
   'Speaker one-sheet, positioning and pitch angles written around your product and market',

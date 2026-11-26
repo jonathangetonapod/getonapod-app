@@ -55,7 +55,7 @@ describe('Clips', () => {
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent('Five clips from your last episode.Free. In 72 hours.')
     expect(screen.getByRole('link', { name: /skip to content/iu })).toHaveAttribute('href', '#clips-main')
-    // Nav, hero, pricing: every lime button lands on #cut.
+    // Nav, hero, pricing: every primary button lands on #cut.
     const ctas = screen.getAllByRole('link', { name: /get your free cut|start with the free cut/iu })
     expect(ctas.length).toBeGreaterThanOrEqual(4)
     for (const cta of ctas) expect(cta).toHaveAttribute('href', '#cut')
@@ -172,7 +172,7 @@ describe('Clips', () => {
     const service = schemas.find((schema) => schema['@type'] === 'Service')
     expect(service.provider.name).toBe('Get On A Pod LLC')
     expect(service.offers).toMatchObject({ price: '750', priceCurrency: 'USD' })
-    expect(document.querySelector('link[rel="preload"][as="style"]')).toHaveAttribute('href', expect.stringContaining('Inter+Tight'))
+    expect(document.querySelector('link[rel="preload"][as="style"]')).toHaveAttribute('href', expect.stringContaining('Familjen+Grotesk'))
   })
 
   it('folds the links behind a Menu button that says whether it is open', () => {

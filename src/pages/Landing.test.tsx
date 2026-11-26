@@ -174,7 +174,7 @@ describe('Landing', () => {
     const quotes = screen.getByRole('region', { name: 'Testimonials' })
     const showing = () => within(quotes).getAllByRole('link', { name: /^Watch on YouTube — /u }).map(watching)
     expect(showing()).toEqual(['Miles Mufuka Martin'])
-    const hidden = within(quotes).getByText('Tom Conlon', { selector: '.dfy-quote-name' }).closest('figure')
+    const hidden = within(quotes).getByText('Tom Conlon', { selector: '.hp-quote-name' }).closest('figure')
     expect(hidden).toHaveAttribute('inert')
     expect(hidden).toHaveAttribute('aria-hidden', 'true')
 

@@ -134,7 +134,7 @@ const LeadForm = ({ onDone }: { onDone: (email: string, startedAt: number) => vo
   )
 }
 
-/** The lime band at the bottom: the ask, the ghost clock, and the form. This is #cut. */
+/** The ink band at the bottom: the ask, the ghost clock, and the form. This is #cut. */
 export const ClipsFinal = () => {
   const [receipt, setReceipt] = useState<{ email: string; startedAt: number } | null>(null)
   const [loadedAt] = useState(() => Date.now())
