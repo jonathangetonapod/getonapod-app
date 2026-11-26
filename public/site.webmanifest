@@ -2,8 +2,8 @@
   "name": "Get On A Pod",
   "short_name": "GOAP",
   "description": "Done-for-you podcast guesting for tech founders and SaaS owners. You bring the story, we get you on the show.",
-  "theme_color": "#201f1d",
-  "background_color": "#f3f2f2",
+  "theme_color": "#121212",
+  "background_color": "#f3f0ed",
   "display": "standalone",
   "start_url": "/",
   "icons": [

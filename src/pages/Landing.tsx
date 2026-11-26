@@ -6,7 +6,7 @@ import PageSEO from '@/components/seo/PageSEO'
 import Dither from '@/components/landing/Dither'
 import HomeVignettes from '@/components/landing/HomeVignettes'
 import {
-  CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, FOUNDER, HERO, HERO_BUBBLES,
+  CALL_LABEL, CALL_NOTE, CALL_PROMISE, CALL_URL, CLIENT_NAMES, CLIENT_QUOTES, CONTACT_EMAIL, FAQ, FOUNDER, HERO, HERO_BUBBLES, HOMEPAGE_META_DESCRIPTION,
   HERO_SECONDARY, HOW_FIRST_RECORDING, HOW_FLOW, HOW_REQUEST, MINIMUM_MONTHS, MONTHLY_PRICE_TEXT, PODCAST_CATALOG, PLAN_INCLUDES,
   PR_AGENCY_NOTE, PRINCIPLES, WEEKLY_MINUTES, initials,
 } from '@/lib/landingContent'
@@ -492,7 +492,7 @@ const Landing = () => {
     <div className="hp-page">
       <PageSEO
         title="Podcast booking for tech founders and SaaS owners | Get On A Pod"
-        description={HERO.lead}
+        description={HOMEPAGE_META_DESCRIPTION}
         path="/"
         keywords="podcast booking for SaaS founders, tech founder podcast guesting, B2B SaaS podcast marketing, done-for-you podcast booking, founder-led marketing"
       />

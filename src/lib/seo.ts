@@ -2,8 +2,9 @@ export const SITE_NAME = 'Get On A Pod'
 export const DEFAULT_SITE_URL = 'https://getonapod.com'
 export const DEFAULT_OG_IMAGE_PATH = '/og-image.png'
 export const DEFAULT_OG_IMAGE_ALT =
-  'Get On A Pod social preview with podcast booking dashboard styling'
-export const DEFAULT_THEME_COLOR = '#201f1d'
+  'Get On A Pod: get booked on the podcasts your buyers already listen to. Done-for-you podcast guesting, you approve every show, 5 clips from every episode.'
+/** The site's ink, the colour of the announcement bar every marketing page opens with. */
+export const DEFAULT_THEME_COLOR = '#121212'
 
 export function getSiteUrl() {
   return (import.meta.env.VITE_APP_URL || DEFAULT_SITE_URL).replace(/\/+$/, '')

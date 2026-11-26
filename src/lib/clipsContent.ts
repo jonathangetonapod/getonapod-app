@@ -16,7 +16,7 @@ export const CLIPS_SEO = {
   description:
     'AI-enabled human editors cut five clips and two thumbnails from your latest podcast or YouTube episode in 72 hours, free. Like them? $750 a month, posted for you.',
   image: '/clips-og.png',
-  imageAlt: 'Five clips from your last episode. Free. In 72 hours. Get On A Pod clips.',
+  imageAlt: 'Five clips from your last episode. Free. In 72 hours. AI-enabled human editors, 5 clips and 2 thumbnails, $0 to try.',
 }
 
 export const CLIPS_NAV = [

@@ -121,6 +121,14 @@ export const HERO: Hero = {
   lead: 'Get On A Pod pitches you to the SaaS, startup, AI and B2B shows your buyers, investors and future hires listen to, puts confirmed recordings on your calendar and sends a prep brief before each one. Then every episode comes back as 5 captioned vertical clips, ready to post on LinkedIn, Instagram, TikTok and YouTube Shorts. You approve every show, which takes about 15 minutes a week. Most clients have 2–4 bookings a month once outreach ramps up.',
 }
 
+/**
+ * The homepage's meta and social description: what search results and link
+ * previews show, so it fits their ~155 characters. HERO.lead stays the longer
+ * description in index.html's structured data.
+ */
+export const HOMEPAGE_META_DESCRIPTION =
+  'Done-for-you podcast guesting for tech founders and SaaS owners: we pitch you to the shows your buyers listen to and turn each episode into 5 clips.'
+
 export const HERO_SECONDARY = 'See how it works'
 
 /** What the call is, said the same way under the hero and in the closing band. */

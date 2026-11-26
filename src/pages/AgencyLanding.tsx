@@ -135,6 +135,8 @@ const AgencyLanding = () => {
         title="Podcast booking software for agencies | Get On A Pod"
         description="Book your clients on more podcasts in less time: find shows, get the client's approval, pitch, and land the booking — with a client portal under your own name."
         path="/platform"
+        image="/platform-og.png"
+        imageAlt="Get On A Pod for agencies: book your clients on more podcasts, in less time. A client portal on your own domain, invite only."
       />
       <a className="gp-skip" href="#main">Skip to content</a>
 
