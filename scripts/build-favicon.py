@@ -11,6 +11,9 @@ the manifest's 192/512) are full-bleed squares: the platforms round them.
 
     python3 scripts/build-favicon.py
 
+Then bump the ?v= query on the icon links in index.html and the manifest, so
+browsers and the CDN fetch the new files.
+
 Needs a Chrome or Chromium binary: set CHROME=/path/to/chrome, or let it find
 google-chrome, chromium or Playwright's.
 """

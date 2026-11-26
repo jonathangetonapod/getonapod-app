@@ -8,6 +8,9 @@ Headless Chrome renders each page and screenshots it.
 
     python3 scripts/build-social-cards.py
 
+Then bump the ?v= query where each card is referenced (src/lib/seo.ts, the
+clips content, AgencyLanding), so link previews and the CDN fetch it again.
+
 Needs a Chrome or Chromium binary: set CHROME=/path/to/chrome, or let it find
 google-chrome, chromium or Playwright's. Fonts come from Google Fonts, so it
 needs the network.
