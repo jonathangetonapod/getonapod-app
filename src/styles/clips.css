@@ -184,7 +184,12 @@
   color: var(--text); text-decoration: none; white-space: nowrap;
 }
 .clips-page .clips-wordmark, .clips-page .clips-wordmark:hover { color: var(--text); }
-.clips-wordmark-accent { color: var(--lime); }
+/* The site's mark: an ink square with a microphone's grille (see homepage.css .hp-mark). */
+.clips-page .clips-wordmark { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+.clips-brand-mark { width: 26px; height: 26px; border-radius: 8px; background: var(--text); position: relative; overflow: hidden; flex: none; }
+.clips-brand-mark::after { content: ""; position: absolute; inset: 7px 6px; border-radius: 50%; border: 2.5px solid var(--bg); border-left-color: transparent; border-right-color: transparent; }
+.clips-wordmark-name { font-family: "Unbounded", "Arial Black", sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.03em; }
+.clips-wordmark-accent { font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--text-3); margin-left: -4px; }
 .clips-nav-right { display: flex; align-items: center; gap: 28px; }
 .clips-nav-links { display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 500; }
 .clips-page .clips-nav-links a { color: var(--text-2); text-decoration: none; padding: 10px 0; }
@@ -738,7 +743,11 @@
   .clips-nav-links a { padding: 12px 0; min-height: 44px; display: flex; align-items: center; }
   .clips-nav-open .clips-nav-links { display: flex; }
   .clips-page .clips-nav-cta { padding: 8px 11px; font-size: 12.5px; min-height: 44px; }
-  .clips-page .clips-wordmark { font-size: 15px; letter-spacing: -0.4px; }
+  .clips-page .clips-wordmark { gap: 8px; }
+  .clips-wordmark-name { font-size: 14px; }
+  .clips-wordmark-accent { font-size: 11px; }
+  .clips-brand-mark { width: 24px; height: 24px; }
+  .clips-brand-mark::after { inset: 6px 5px; }
   .clips-nav-inner { gap: 8px; }
   .clips-menu-btn { padding: 0 10px; font-size: 14px; }
   .clips-numbers { padding-top: 48px; padding-bottom: 48px; }
@@ -750,6 +759,16 @@
   .clips-page .clips-footer-col a { display: inline-flex; align-items: center; min-height: 44px; padding: 0; }
   .clips-footer-col { gap: 0; }
   .clips-page .clips-wordmark { display: inline-flex; align-items: center; min-height: 44px; }
+}
+
+/* The nav must fit the mark, Menu and the call to action on one row down to
+   320px: the suffix goes on phones, and on the narrowest the name goes too
+   (the mark still links home, and the link keeps its accessible name). */
+@media (max-width: 420px) {
+  .clips-wordmark-accent { display: none; }
+}
+@media (max-width: 370px) {
+  .clips-nav .clips-wordmark-name { display: none; }
 }
 
 /* ---------- reduced motion: everything at rest, assembled ---------- */

@@ -4,8 +4,13 @@ import { Link } from 'react-router-dom'
 import { trackClips } from '@/lib/clipsAnalytics'
 import { CLIPS_CTA, CLIPS_NAV } from '@/lib/clipsContent'
 
+/** The site's mark and wordmark, as every marketing page sets them, with this page's name after. */
 export const ClipsWordmark = () => (
-  <Link to="/" className="clips-wordmark">getonapod.com<span className="clips-wordmark-accent">/clips</span></Link>
+  <Link to="/" className="clips-wordmark" aria-label="Get On A Pod, home">
+    <span className="clips-brand-mark" aria-hidden="true" />
+    <span className="clips-wordmark-name">Get On A Pod</span>
+    <span className="clips-wordmark-accent" aria-hidden="true">/clips</span>
+  </Link>
 )
 
 /**
